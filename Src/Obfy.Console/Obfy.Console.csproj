@@ -2,11 +2,29 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>obfy</AssemblyName>
+
+    <!-- .NET Tool Configuration -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>obfy</ToolCommandName>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>Obfy</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Obfy Contributors</Authors>
+    <Description>Professional .NET obfuscation tool for protecting C# assemblies and source code. Features string encryption, control flow obfuscation, symbol renaming, anti-debug protection, and metadata removal.</Description>
+    <PackageTags>obfuscation;dotnet;csharp;security;protection;dnlib;roslyn</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Obfy.Core\Obfy.Core.csproj" />

@@ -9,7 +9,10 @@
       "Bash(dotnet test:*)",
       "Bash(dotnet run:*)",
       "Bash(git:*)",
-      "Bash(dotnet restore:*)"
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet tool install:*)",
+      "Bash(dir \"C:\\\\code\\\\projects\\\\Obfy\\\\Src\\\\Obfy.Console\\\\bin\\\\Release\\\\*.nupkg\")",
+      "Bash(obfy --version:*)"
     ]
   }
 }

@@ -58,6 +58,10 @@ public class StringEncryptionObfuscator : IObfuscator
                 if (IsExcluded(type, context.Settings.Exclusions))
                     continue;
 
+                // Skip compiler-generated types (async state machines, closures, etc.)
+                if (IsCompilerGenerated(type))
+                    continue;
+
                 foreach (var method in type.Methods)
                 {
                     if (!method.HasBody)
@@ -66,6 +70,11 @@ public class StringEncryptionObfuscator : IObfuscator
                     // Skip methods with exception handlers to avoid corrupting handler boundaries
                     if (method.Body.HasExceptionHandlers)
                         continue;
+
+                    // Skip compiler-generated methods
+                    if (IsCompilerGeneratedMethod(method))
+                        continue;
+
 
                     var body = method.Body;
                     var instructions = body.Instructions;
@@ -102,8 +111,15 @@ public class StringEncryptionObfuscator : IObfuscator
                     // Fix branch targets and instruction offsets after modifications
                     if (modified)
                     {
+                        // Simplify and optimize branches
                         body.SimplifyBranches();
                         body.OptimizeBranches();
+
+                        // Ensure locals are properly initialized
+                        if (body.InitLocals == false && body.Variables.Count > 0)
+                            body.InitLocals = true;
+
+                        // Update instruction offsets
                         body.UpdateInstructionOffsets();
                     }
                 }
@@ -276,5 +292,68 @@ public class StringEncryptionObfuscator : IObfuscator
             return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
         }
         return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Checks if a type is compiler-generated (async state machines, closures, etc.)
+    /// </summary>
+    private static bool IsCompilerGenerated(TypeDef type)
+    {
+        // Check for CompilerGeneratedAttribute
+        if (type.CustomAttributes.Any(a => a.TypeFullName == "System.Runtime.CompilerServices.CompilerGeneratedAttribute"))
+            return true;
+
+        // Check for common compiler-generated naming patterns
+        var name = type.Name.String;
+        if (name.StartsWith("<") || name.Contains(">d__") || name.Contains(">c__") ||
+            name.Contains("<>c") || name.Contains("DisplayClass"))
+            return true;
+
+        // Check if type implements IAsyncStateMachine (async methods)
+        if (type.Interfaces.Any(i => i.Interface.FullName == "System.Runtime.CompilerServices.IAsyncStateMachine"))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if a method is compiler-generated
+    /// </summary>
+    private static bool IsCompilerGeneratedMethod(MethodDef method)
+    {
+        // Check for CompilerGeneratedAttribute
+        if (method.CustomAttributes.Any(a => a.TypeFullName == "System.Runtime.CompilerServices.CompilerGeneratedAttribute"))
+            return true;
+
+        // Check for common compiler-generated naming patterns
+        var name = method.Name.String;
+        if (name.StartsWith("<") || name.Contains(">b__") || name.Contains(">g__"))
+            return true;
+
+        // Skip property getters/setters with complex patterns
+        if (method.IsSpecialName && (name.StartsWith("get_") || name.StartsWith("set_")))
+        {
+            // Only skip if there's complex IL (branches back to start, etc.)
+            if (method.Body?.Instructions.Count > 0)
+            {
+                var instructions = method.Body.Instructions;
+                // Check for backward branches which indicate loops or complex patterns
+                for (int i = 0; i < instructions.Count; i++)
+                {
+                    if (instructions[i].OpCode.FlowControl == FlowControl.Branch ||
+                        instructions[i].OpCode.FlowControl == FlowControl.Cond_Branch)
+                    {
+                        if (instructions[i].Operand is Instruction target)
+                        {
+                            var targetIndex = instructions.IndexOf(target);
+                            if (targetIndex < i)
+                                return true; // Backward branch - skip this method
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 }

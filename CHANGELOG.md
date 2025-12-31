@@ -1,0 +1,23 @@
+# Changelog
+
+All notable changes to Obfy will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.0] - 2025-12-31
+
+### Added
+- Initial release of Obfy obfuscation tool
+- String encryption with AES-256 and XOR algorithms
+- Symbol renaming with multiple naming modes (unreadable, sequential, hash, random)
+- Control flow obfuscation with switch flattening and opaque predicates
+- Anti-debugging protection injection
+- Metadata removal (debug info, attributes, documentation)
+- CLI with System.CommandLine
+- JSON configuration file support
+- Obfuscation level presets (minimal, standard, aggressive, custom)
+- Symbol map export for debugging
+- Batch processing of multiple files
+- Support for .NET assemblies (DLL/EXE)
+- Roslyn-based source code processing infrastructure

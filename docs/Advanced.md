@@ -352,6 +352,36 @@ obfy bin/Release/net8.0/MyApp.dll -o dist/
 - Re-sign assembly after obfuscation
 - Or disable strong naming during obfuscation
 
+### Single-File Executable Error
+
+**Error:** `Failed to load input: .NET data directory RVA is 0`
+
+**Cause:** Single-file .NET apps (`PublishSingleFile=true`) bundle all assemblies into a native host that dnlib cannot read.
+
+**Solution:** Obfuscate before publishing to single-file:
+
+```bash
+# 1. Build release (not single-file)
+dotnet build -c Release
+
+# 2. Obfuscate the DLLs
+obfy bin/Release/net8.0/MyApp.dll -o bin/Release/net8.0/ -l aggressive
+
+# 3. Publish single-file (uses obfuscated assemblies)
+dotnet publish -c Release -p:PublishSingleFile=true
+```
+
+The obfuscated code gets bundled into the single-file output.
+
+**MSBuild Integration:**
+
+```xml
+<Target Name="Obfuscate" AfterTargets="Build" BeforeTargets="Publish"
+        Condition="'$(Configuration)' == 'Release'">
+  <Exec Command="obfy $(TargetPath) -c obfy.json -o $(TargetDir)" />
+</Target>
+```
+
 ## Integration with Build Systems
 
 ### MSBuild

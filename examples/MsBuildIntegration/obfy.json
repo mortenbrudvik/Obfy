@@ -1,0 +1,24 @@
+{
+  "level": "aggressive",
+  "stringEncryption": {
+    "enabled": true,
+    "algorithm": "Aes256",
+    "minStringLength": 2
+  },
+  "controlFlow": {
+    "enabled": true,
+    "mode": "Switch",
+    "intensity": 50
+  },
+  "symbolRenaming": {
+    "enabled": true,
+    "mode": "Unreadable"
+  },
+  "protection": {
+    "antiDebug": true
+  },
+  "metadata": {
+    "removeDebugInfo": true,
+    "removeAttributes": true
+  }
+}

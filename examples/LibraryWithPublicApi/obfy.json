@@ -1,0 +1,31 @@
+{
+  "level": "standard",
+  "stringEncryption": {
+    "enabled": true,
+    "algorithm": "Aes256"
+  },
+  "symbolRenaming": {
+    "enabled": true,
+    "mode": "Unreadable",
+    "renameTypes": true,
+    "renameMethods": true,
+    "renameFields": true,
+    "renameProperties": true,
+    "renameParameters": true,
+    "preservePublicApi": true
+  },
+  "metadata": {
+    "removeDebugInfo": true,
+    "removeAttributes": false,
+    "stripDocumentation": false
+  },
+  "exclusions": {
+    "namespaces": [],
+    "types": [],
+    "methods": [],
+    "attributes": [
+      "SerializableAttribute",
+      "DataContractAttribute"
+    ]
+  }
+}

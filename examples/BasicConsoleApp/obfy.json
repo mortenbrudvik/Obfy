@@ -1,0 +1,23 @@
+{
+  "level": "standard",
+  "stringEncryption": {
+    "enabled": true,
+    "algorithm": "Aes256",
+    "minStringLength": 3
+  },
+  "symbolRenaming": {
+    "enabled": true,
+    "mode": "Unreadable",
+    "renameTypes": true,
+    "renameMethods": true,
+    "renameFields": true,
+    "renameProperties": true,
+    "renameParameters": true,
+    "preservePublicApi": false
+  },
+  "metadata": {
+    "removeDebugInfo": true,
+    "removeAttributes": true,
+    "stripDocumentation": true
+  }
+}

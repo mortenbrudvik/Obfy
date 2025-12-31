@@ -1,4 +1,4 @@
-w# Obfuscation Techniques
+# Obfuscation Techniques
 
 Detailed documentation of each obfuscation technique in Obfy.
 

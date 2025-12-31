@@ -13,7 +13,7 @@ Obfy helps protect your .NET applications from reverse engineering by applying m
 
 - **Easy to Use** - Single command to obfuscate your assemblies
 - **Configurable** - From minimal to aggressive protection levels
-- **Modern** - Built for .NET 8+ with cross-platform support
+- **Modern** - Built for .NET 10 with cross-platform support
 - **Extensible** - JSON configuration for fine-grained control
 - **Fast** - Efficient obfuscation with minimal overhead
 
@@ -155,7 +155,7 @@ Check out the [examples](examples/) folder:
 - name: Obfuscate
   run: |
     dotnet tool install --global Obfy
-    obfy bin/Release/net8.0/MyApp.dll -l aggressive -o dist/
+    obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
 ```
 
 ## Contributing

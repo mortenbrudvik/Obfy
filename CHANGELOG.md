@@ -5,6 +5,39 @@ All notable changes to Obfy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2025-12-31
+
+### Fixed
+- Preserve branch targets when encrypting strings
+
+## [1.0.5] - 2025-12-31
+
+### Fixed
+- Skip compiler-generated code in string encryption
+
+## [1.0.4] - 2025-12-31
+
+### Changed
+- Add comprehensive documentation for public library
+- Add GitHub infrastructure (issue templates, PR template)
+
+## [1.0.2] - 2025-12-31
+
+### Fixed
+- Prevent invalid IL in string encryption
+
+## [1.0.1] - 2025-12-31
+
+### Added
+- Single-file executable troubleshooting guide
+
+## [1.0.0] - 2025-12-31
+
+### Added
+- Configure Obfy as a .NET global tool
+- Comprehensive test coverage for obfuscators and services
+- Comprehensive documentation
+
 ## [0.1.0] - 2025-12-31
 
 ### Added

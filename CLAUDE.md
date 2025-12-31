@@ -65,6 +65,8 @@ obfy file1.dll file2.dll -o output/
 
 ## Obfuscation Techniques
 
+### Assembly Obfuscators (dnlib)
+
 | Technique | Priority | Description |
 |-----------|----------|-------------|
 | StringEncryption | 10 | Encrypts string literals with AES-256 |
@@ -72,6 +74,14 @@ obfy file1.dll file2.dll -o output/
 | SymbolRenaming | 50 | Renames types, methods, fields, properties |
 | AntiDebug | 70 | Injects debugger detection |
 | MetadataRemoval | 90 | Strips debug info and attributes |
+
+### Source Obfuscators (Roslyn)
+
+| Technique | Priority | Description |
+|-----------|----------|-------------|
+| SourceStringEncryption | 10 | Encrypts string literals in source code |
+| SourceControlFlow | 30 | Adds opaque predicates and transforms control flow |
+| SourceSymbolRenaming | 50 | Renames identifiers in source code |
 
 ## Architecture
 

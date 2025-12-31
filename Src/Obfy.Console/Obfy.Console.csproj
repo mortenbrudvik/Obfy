@@ -13,7 +13,7 @@
 
     <!-- NuGet Package Metadata -->
     <PackageId>Obfy</PackageId>
-    <Version>1.0.5</Version>
+    <Version>1.0.6</Version>
     <Authors>Obfy Contributors</Authors>
     <Description>Professional .NET obfuscation tool for protecting C# assemblies and source code. Features string encryption, control flow obfuscation, symbol renaming, anti-debug protection, and metadata removal.</Description>
     <PackageTags>obfuscation;dotnet;csharp;security;protection;dnlib;roslyn</PackageTags>

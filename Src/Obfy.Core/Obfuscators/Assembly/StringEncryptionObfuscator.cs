@@ -99,8 +99,10 @@ public class StringEncryptionObfuscator : IObfuscator
                         var index = encryptedStrings.Count;
                         encryptedStrings.Add((index, encrypted));
 
-                        // Replace: ldstr "original" -> ldc.i4 index; call Decrypt
-                        instructions[i] = Instruction.CreateLdcI4(index);
+                        // Modify instruction IN PLACE to preserve branch targets
+                        // Change: ldstr "original" -> ldc.i4 index; call Decrypt
+                        var originalInstr = instructions[i];
+                        SetLdcI4(originalInstr, index);
                         instructions.Insert(i + 1, Instruction.Create(OpCodes.Call, decryptMethod));
                         i++; // Skip the inserted instruction
                         modified = true;
@@ -355,5 +357,68 @@ public class StringEncryptionObfuscator : IObfuscator
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Modifies an instruction IN PLACE to become an ldc.i4 instruction.
+    /// This preserves branch target references that point to this instruction.
+    /// </summary>
+    private static void SetLdcI4(Instruction instruction, int value)
+    {
+        switch (value)
+        {
+            case -1:
+                instruction.OpCode = OpCodes.Ldc_I4_M1;
+                instruction.Operand = null;
+                break;
+            case 0:
+                instruction.OpCode = OpCodes.Ldc_I4_0;
+                instruction.Operand = null;
+                break;
+            case 1:
+                instruction.OpCode = OpCodes.Ldc_I4_1;
+                instruction.Operand = null;
+                break;
+            case 2:
+                instruction.OpCode = OpCodes.Ldc_I4_2;
+                instruction.Operand = null;
+                break;
+            case 3:
+                instruction.OpCode = OpCodes.Ldc_I4_3;
+                instruction.Operand = null;
+                break;
+            case 4:
+                instruction.OpCode = OpCodes.Ldc_I4_4;
+                instruction.Operand = null;
+                break;
+            case 5:
+                instruction.OpCode = OpCodes.Ldc_I4_5;
+                instruction.Operand = null;
+                break;
+            case 6:
+                instruction.OpCode = OpCodes.Ldc_I4_6;
+                instruction.Operand = null;
+                break;
+            case 7:
+                instruction.OpCode = OpCodes.Ldc_I4_7;
+                instruction.Operand = null;
+                break;
+            case 8:
+                instruction.OpCode = OpCodes.Ldc_I4_8;
+                instruction.Operand = null;
+                break;
+            default:
+                if (value >= sbyte.MinValue && value <= sbyte.MaxValue)
+                {
+                    instruction.OpCode = OpCodes.Ldc_I4_S;
+                    instruction.Operand = (sbyte)value;
+                }
+                else
+                {
+                    instruction.OpCode = OpCodes.Ldc_I4;
+                    instruction.Operand = value;
+                }
+                break;
+        }
     }
 }

@@ -12,7 +12,10 @@
       "Bash(dotnet restore:*)",
       "Bash(dotnet tool install:*)",
       "Bash(dir \"C:\\\\code\\\\projects\\\\Obfy\\\\Src\\\\Obfy.Console\\\\bin\\\\Release\\\\*.nupkg\")",
-      "Bash(obfy --version:*)"
+      "Bash(obfy --version:*)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)",
+      "Bash(dotnet pack:*)",
+      "Bash(dotnet nuget push:*)"
     ]
   }
 }

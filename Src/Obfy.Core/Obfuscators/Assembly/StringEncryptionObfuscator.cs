@@ -63,8 +63,13 @@ public class StringEncryptionObfuscator : IObfuscator
                     if (!method.HasBody)
                         continue;
 
+                    // Skip methods with exception handlers to avoid corrupting handler boundaries
+                    if (method.Body.HasExceptionHandlers)
+                        continue;
+
                     var body = method.Body;
                     var instructions = body.Instructions;
+                    var modified = false;
 
                     for (var i = 0; i < instructions.Count; i++)
                     {
@@ -89,8 +94,17 @@ public class StringEncryptionObfuscator : IObfuscator
                         instructions[i] = Instruction.CreateLdcI4(index);
                         instructions.Insert(i + 1, Instruction.Create(OpCodes.Call, decryptMethod));
                         i++; // Skip the inserted instruction
+                        modified = true;
 
                         stats.StringsEncrypted++;
+                    }
+
+                    // Fix branch targets and instruction offsets after modifications
+                    if (modified)
+                    {
+                        body.SimplifyBranches();
+                        body.OptimizeBranches();
+                        body.UpdateInstructionOffsets();
                     }
                 }
             }

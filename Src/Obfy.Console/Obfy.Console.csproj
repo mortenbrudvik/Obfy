@@ -20,6 +20,9 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/mortenbrudvik/Obfy</RepositoryUrl>
+    <ProjectUrl>https://github.com/mortenbrudvik/Obfy</ProjectUrl>
+    <PackageProjectUrl>https://github.com/mortenbrudvik/Obfy</PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>

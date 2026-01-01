@@ -41,4 +41,18 @@ public interface IObfuscationService
     /// <param name="symbolMap">The symbol map to write.</param>
     /// <param name="outputPath">Path to write the symbol map.</param>
     Task WriteSymbolMapAsync(Dictionary<string, string> symbolMap, string outputPath);
+
+    /// <summary>
+    /// Merges multiple assemblies into one and then obfuscates the result.
+    /// </summary>
+    /// <param name="inputPaths">Paths to assemblies to merge. The first assembly is treated as primary.</param>
+    /// <param name="outputPath">Path to write the merged and obfuscated output.</param>
+    /// <param name="settings">Obfuscation settings to apply.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The result of the merge and obfuscation operation.</returns>
+    Task<ObfuscationResult> MergeAndObfuscateAsync(
+        IEnumerable<string> inputPaths,
+        string outputPath,
+        ObfySettings settings,
+        CancellationToken cancellationToken = default);
 }

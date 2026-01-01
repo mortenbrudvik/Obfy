@@ -48,6 +48,11 @@ public class ObfySettings
     public ConstantEncryptionSettings ConstantEncryption { get; set; } = new();
 
     /// <summary>
+    /// Assembly merging settings.
+    /// </summary>
+    public AssemblyMergeSettings AssemblyMerge { get; set; } = new();
+
+    /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
     public ExclusionRules Exclusions { get; set; } = new();
@@ -490,4 +495,37 @@ public class ConstantEncryptionSettings
     /// Skip common double values (0.0, 1.0, -1.0).
     /// </summary>
     public bool SkipCommonDoubles { get; set; } = true;
+}
+
+/// <summary>
+/// Settings for assembly merging.
+/// </summary>
+public class AssemblyMergeSettings
+{
+    /// <summary>
+    /// Whether assembly merging is enabled.
+    /// </summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>
+    /// Make merged types internal (recommended for obfuscation).
+    /// When true, public types from secondary assemblies become internal.
+    /// </summary>
+    public bool Internalize { get; set; } = true;
+
+    /// <summary>
+    /// Preserve debug information in merged assembly.
+    /// </summary>
+    public bool PreserveDebugInfo { get; set; } = false;
+
+    /// <summary>
+    /// Additional directories to search for resolving dependencies.
+    /// </summary>
+    public List<string> SearchDirectories { get; set; } = new();
+
+    /// <summary>
+    /// Assembly patterns to exclude from merging (keep as references).
+    /// Supports wildcards: System.*, Microsoft.*
+    /// </summary>
+    public List<string> ExcludePatterns { get; set; } = new();
 }

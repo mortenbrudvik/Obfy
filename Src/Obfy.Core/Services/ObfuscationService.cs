@@ -13,17 +13,20 @@ public class ObfuscationService : IObfuscationService
     private readonly IAssemblyProcessor _assemblyProcessor;
     private readonly ISourceProcessor _sourceProcessor;
     private readonly IObfuscationPipeline _pipeline;
+    private readonly IAssemblyMerger _assemblyMerger;
     private readonly ILogger<ObfuscationService> _logger;
 
     public ObfuscationService(
         IAssemblyProcessor assemblyProcessor,
         ISourceProcessor sourceProcessor,
         IObfuscationPipeline pipeline,
+        IAssemblyMerger assemblyMerger,
         ILogger<ObfuscationService> logger)
     {
         _assemblyProcessor = assemblyProcessor;
         _sourceProcessor = sourceProcessor;
         _pipeline = pipeline;
+        _assemblyMerger = assemblyMerger;
         _logger = logger;
     }
 
@@ -141,6 +144,82 @@ public class ObfuscationService : IObfuscationService
 
         _logger.LogInformation("Symbol map written to {OutputPath} with {Count} entries",
             outputPath, symbolMap.Count);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ObfuscationResult> MergeAndObfuscateAsync(
+        IEnumerable<string> inputPaths,
+        string outputPath,
+        ObfySettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        var inputList = inputPaths.ToList();
+
+        if (inputList.Count < 2)
+        {
+            return ObfuscationResult.Failed("At least two assemblies are required for merging");
+        }
+
+        _logger.LogInformation("Starting merge-and-obfuscate of {Count} assemblies", inputList.Count);
+
+        // Create temp file for merged assembly
+        var tempDir = Path.Combine(Path.GetTempPath(), "obfy_merge_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(tempDir);
+        var tempMergedPath = Path.Combine(tempDir, Path.GetFileName(outputPath));
+
+        try
+        {
+            // Merge assemblies
+            var mergeResult = await _assemblyMerger.MergeAsync(
+                inputList,
+                tempMergedPath,
+                settings.AssemblyMerge,
+                cancellationToken);
+
+            if (!mergeResult.Success)
+            {
+                _logger.LogError("Assembly merge failed: {Error}", mergeResult.ErrorMessage);
+                return ObfuscationResult.Failed($"Merge failed: {mergeResult.ErrorMessage}");
+            }
+
+            _logger.LogInformation(
+                "Merged {Count} assemblies in {Duration:F2}s",
+                mergeResult.MergedAssemblyCount,
+                mergeResult.Duration.TotalSeconds);
+
+            // Obfuscate the merged assembly
+            var obfuscationResult = await ObfuscateAsync(
+                tempMergedPath,
+                outputPath,
+                settings,
+                cancellationToken);
+
+            // Add merge info to the result
+            if (obfuscationResult.Success)
+            {
+                _logger.LogInformation(
+                    "Successfully merged and obfuscated {Count} assemblies to {Output}",
+                    mergeResult.MergedAssemblyCount,
+                    outputPath);
+            }
+
+            return obfuscationResult;
+        }
+        finally
+        {
+            // Cleanup temp directory
+            try
+            {
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to cleanup temp directory: {TempDir}", tempDir);
+            }
+        }
     }
 
     private static string GenerateOutputPath(string inputPath)

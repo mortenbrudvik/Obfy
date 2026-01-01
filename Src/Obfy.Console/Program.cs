@@ -86,6 +86,15 @@ public class Program
             name: "--no-logo",
             description: "Suppress the banner");
 
+        var mergeOption = new Option<bool>(
+            name: "--merge",
+            description: "Merge all input assemblies into one before obfuscating");
+
+        var internalizeOption = new Option<bool>(
+            name: "--internalize",
+            description: "Make merged types internal (improves obfuscation)",
+            getDefaultValue: () => true);
+
         // Root command
         var rootCommand = new RootCommand("Obfy - C# Obfuscation Tool")
         {
@@ -104,7 +113,9 @@ public class Program
             reportOption,
             dryRunOption,
             verboseOption,
-            noLogoOption
+            noLogoOption,
+            mergeOption,
+            internalizeOption
         };
 
         // Config generate command
@@ -152,6 +163,8 @@ public class Program
             var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
             var verbose = context.ParseResult.GetValueForOption(verboseOption);
             var noLogo = context.ParseResult.GetValueForOption(noLogoOption);
+            var merge = context.ParseResult.GetValueForOption(mergeOption);
+            var internalize = context.ParseResult.GetValueForOption(internalizeOption);
 
             if (!noLogo)
             {
@@ -162,7 +175,14 @@ public class Program
                 config, level, stringEncrypt, controlFlow, rename,
                 antiDebug, stripMetadata, encryptResources, preservePublic);
 
-            await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose);
+            // Configure merge settings if --merge is specified
+            if (merge)
+            {
+                settings.AssemblyMerge.Enabled = true;
+                settings.AssemblyMerge.Internalize = internalize;
+            }
+
+            await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose, merge);
         });
 
         return await rootCommand.InvokeAsync(args);
@@ -234,7 +254,8 @@ public class Program
         FileInfo? mapFile,
         FileInfo? reportFile,
         bool dryRun,
-        bool verbose)
+        bool verbose,
+        bool merge = false)
     {
         // Setup DI container
         var builder = new ContainerBuilder();
@@ -248,6 +269,104 @@ public class Program
         var allSymbols = new Dictionary<string, string>();
         var successfulResults = new List<(ObfuscationResult Result, ObfySettings Settings)>();
 
+        // Handle merge mode
+        if (merge && inputs.Length >= 2)
+        {
+            await RunMergeObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun);
+        }
+        else
+        {
+            await RunStandardObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun);
+        }
+
+        // Write symbol map if requested
+        if (mapFile != null && allSymbols.Count > 0)
+        {
+            await service.WriteSymbolMapAsync(allSymbols, mapFile.FullName);
+            AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
+        }
+
+        // Generate report if requested
+        if (reportFile != null && successfulResults.Count > 0)
+        {
+            var format = Path.GetExtension(reportFile.FullName).ToLowerInvariant() == ".json"
+                ? ReportFormat.Json
+                : ReportFormat.Html;
+
+            // For single file, generate report directly
+            // For multiple files, use the first result (or could aggregate in future)
+            var (result, usedSettings) = successfulResults[0];
+            var report = reportService.BuildReport(result, usedSettings);
+            await reportService.GenerateReportAsync(report, reportFile.FullName, format);
+            AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
+        }
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
+    }
+
+    private static async Task RunMergeObfuscationAsync(
+        FileInfo[] inputs,
+        DirectoryInfo? output,
+        ObfySettings settings,
+        Dictionary<string, string> allSymbols,
+        List<(ObfuscationResult Result, ObfySettings Settings)> successfulResults,
+        IObfuscationService service,
+        bool dryRun)
+    {
+        var primaryInput = inputs[0];
+        var outputPath = output != null
+            ? Path.Combine(output.FullName, primaryInput.Name)
+            : Path.Combine(
+                Path.GetDirectoryName(primaryInput.FullName) ?? ".",
+                Path.GetFileNameWithoutExtension(primaryInput.Name) + ".merged" + Path.GetExtension(primaryInput.Name));
+
+        var inputNames = string.Join(", ", inputs.Select(i => i.Name));
+        AnsiConsole.MarkupLine($"[cyan]Merging assemblies:[/] {inputNames}");
+
+        if (dryRun)
+        {
+            AnsiConsole.MarkupLine($"[yellow]Dry run:[/] Would merge and obfuscate {inputs.Length} assemblies");
+            return;
+        }
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync("Merging and obfuscating...", async ctx =>
+            {
+                var inputPaths = inputs.Select(i => i.FullName).ToArray();
+
+                var result = await service.MergeAndObfuscateAsync(
+                    inputPaths,
+                    outputPath,
+                    settings);
+
+                if (result.Success)
+                {
+                    DisplaySuccess($"Merged ({inputs.Length} assemblies)", result);
+                    successfulResults.Add((result, settings));
+
+                    foreach (var (key, value) in result.SymbolMap)
+                    {
+                        allSymbols[key] = value;
+                    }
+                }
+                else
+                {
+                    DisplayError("Merge", result);
+                }
+            });
+    }
+
+    private static async Task RunStandardObfuscationAsync(
+        FileInfo[] inputs,
+        DirectoryInfo? output,
+        ObfySettings settings,
+        Dictionary<string, string> allSymbols,
+        List<(ObfuscationResult Result, ObfySettings Settings)> successfulResults,
+        IObfuscationService service,
+        bool dryRun)
+    {
         await AnsiConsole.Progress()
             .AutoClear(false)
             .Columns(
@@ -291,7 +410,6 @@ public class Program
                         DisplaySuccess(input.Name, result);
                         successfulResults.Add((result, settings));
 
-                        // Collect symbols for map
                         foreach (var (key, value) in result.SymbolMap)
                         {
                             allSymbols[key] = value;
@@ -303,31 +421,6 @@ public class Program
                     }
                 }
             });
-
-        // Write symbol map if requested
-        if (mapFile != null && allSymbols.Count > 0)
-        {
-            await service.WriteSymbolMapAsync(allSymbols, mapFile.FullName);
-            AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
-        }
-
-        // Generate report if requested
-        if (reportFile != null && successfulResults.Count > 0)
-        {
-            var format = Path.GetExtension(reportFile.FullName).ToLowerInvariant() == ".json"
-                ? ReportFormat.Json
-                : ReportFormat.Html;
-
-            // For single file, generate report directly
-            // For multiple files, use the first result (or could aggregate in future)
-            var (result, usedSettings) = successfulResults[0];
-            var report = reportService.BuildReport(result, usedSettings);
-            await reportService.GenerateReportAsync(report, reportFile.FullName, format);
-            AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
-        }
-
-        AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
     }
 
     private static void DisplaySuccess(string fileName, ObfuscationResult result)

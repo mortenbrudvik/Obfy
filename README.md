@@ -125,6 +125,13 @@ Generate detailed HTML or JSON reports with statistics, file size comparison, pr
 obfy MyApp.dll -o output/ --report report.html
 ```
 
+### Assembly Merging
+Merge multiple assemblies into a single output before obfuscation. Internalize merged types for better protection.
+
+```bash
+obfy App.dll Lib1.dll Lib2.dll --merge -o output/
+```
+
 ## Configuration
 
 Create an `obfy.json` configuration file:

@@ -71,6 +71,9 @@ obfy config generate -o obfy.json
 
 # Multiple files
 obfy file1.dll file2.dll -o output/
+
+# Merge assemblies into one
+obfy App.dll Lib.dll --merge -o output/
 ```
 
 ## UI Application

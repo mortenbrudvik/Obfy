@@ -39,6 +39,8 @@ obfy <input>... [options]
 | `--strip-metadata` | | Remove debug metadata | Off |
 | `--encrypt-resources` | | Enable resource encryption | Off |
 | `--preserve-public` | | Preserve public API names | Off |
+| `--merge` | | Merge all input assemblies into one before obfuscating | Off |
+| `--internalize` | | Make merged types internal (improves obfuscation) | On |
 | `--map <file>` | | Output symbol mapping to file | None |
 | `--report <file>` | | Generate obfuscation report (HTML or JSON based on extension) | None |
 | `--dry-run` | | Analyze only, don't write output | Off |
@@ -85,6 +87,19 @@ obfy MyApp.dll MyLibrary.dll -o output/
 
 # Obfuscate all DLLs in a directory
 obfy *.dll -o output/
+```
+
+### Assembly Merging
+
+```bash
+# Merge two assemblies into one and obfuscate
+obfy App.dll Lib.dll --merge -o output/
+
+# Merge with internalization disabled (keep public types)
+obfy App.dll Lib.dll --merge --internalize false -o output/
+
+# Merge multiple libraries with aggressive protection
+obfy App.dll Lib1.dll Lib2.dll --merge -l aggressive -o output/
 ```
 
 ### Using Configuration Files

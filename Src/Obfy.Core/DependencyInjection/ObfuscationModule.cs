@@ -86,6 +86,11 @@ public class ObfuscationModule : Module
             .As<IObfuscationPipeline>()
             .SingleInstance();
 
+        // Register assembly merger
+        builder.RegisterType<AssemblyMerger>()
+            .As<IAssemblyMerger>()
+            .SingleInstance();
+
         // Register main service
         builder.RegisterType<ObfuscationService>()
             .As<IObfuscationService>()

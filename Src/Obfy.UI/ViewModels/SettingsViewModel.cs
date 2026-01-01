@@ -107,6 +107,13 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private EncryptionAlgorithm _resourceAlgorithm = EncryptionAlgorithm.Aes256;
 
+    // Assembly Merge
+    [ObservableProperty]
+    private bool _assemblyMergeEnabled = false;
+
+    [ObservableProperty]
+    private bool _internalizeMergedTypes = true;
+
     // Constant Encryption
     [ObservableProperty]
     private bool _constantEncryptionEnabled = false;
@@ -259,6 +266,11 @@ public partial class SettingsViewModel : ObservableObject
                 Enabled = ResourceEncryptionEnabled,
                 Algorithm = ResourceAlgorithm
             },
+            AssemblyMerge = new AssemblyMergeSettings
+            {
+                Enabled = AssemblyMergeEnabled,
+                Internalize = InternalizeMergedTypes
+            },
             ConstantEncryption = new ConstantEncryptionSettings
             {
                 Enabled = ConstantEncryptionEnabled,
@@ -327,6 +339,10 @@ public partial class SettingsViewModel : ObservableObject
         // Resource Encryption
         ResourceEncryptionEnabled = settings.ResourceEncryption.Enabled;
         ResourceAlgorithm = settings.ResourceEncryption.Algorithm;
+
+        // Assembly Merge
+        AssemblyMergeEnabled = settings.AssemblyMerge.Enabled;
+        InternalizeMergedTypes = settings.AssemblyMerge.Internalize;
 
         // Constant Encryption
         ConstantEncryptionEnabled = settings.ConstantEncryption.Enabled;

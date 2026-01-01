@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Assembly merging to combine multiple DLLs into one (UF-01)
+  - Merge multiple assemblies before obfuscation for single-file output
+  - Internalize merged types (makes public types internal for better obfuscation)
+  - Exclude patterns for framework assemblies (System.*, Microsoft.*)
+  - `--merge` and `--internalize` CLI options
+  - Configurable via `assemblyMerge` settings in obfy.json
 - Anti-decompiler protection to make reverse engineering harder (PF-04)
   - Injects junk types and methods to clutter decompiler output
   - Adds SuppressIldasm attribute to block ILDasm

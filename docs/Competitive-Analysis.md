@@ -129,7 +129,7 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 | **Error Reporting** | - | - | Yes | - |
 | **Crash Analytics** | - | - | Yes | - |
 | **License Management** | - | - | - | Yes |
-| **DLL Merging** | - | - | Yes | Yes |
+| **DLL Merging** | Yes | - | Yes | Yes |
 | **Assembly Embedding** | - | - | Yes | Yes |
 | **RASP** | - | Yes | - | - |
 
@@ -149,6 +149,7 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 - Resource, constant, and string encryption
 - Anti-tamper detection with SHA-256 hash verification
 - Anti-decompiler protection (junk types, SuppressIldasm)
+- Assembly merging to combine multiple DLLs into one
 - Obfuscation reports (HTML/JSON)
 - Excellent documentation
 - Active development
@@ -306,6 +307,7 @@ A detailed comparison of free, open-source .NET obfuscators.
 | **Anti-de4dot** | - | - | Yes | - | - | - |
 | **Constant Encryption** | Yes | - | - | Yes | - | Yes |
 | **Resource Encryption** | Yes | - | - | - | - | Yes |
+| **Assembly Merging** | Yes | - | - | - | - | - |
 | **Metadata Removal** | Yes | - | Yes | - | - | - |
 
 ### .NET Version Support (Open Source)
@@ -522,7 +524,6 @@ dotnet tool install --global Obfuscar.GlobalTool
 | Feature | Difficulty | Value | Notes |
 |---------|------------|-------|-------|
 | **Native Code Generation** | Very High | Medium | Generate native stubs; complex |
-| **Assembly Merging** | Medium | Medium | ILMerge/ILRepack integration |
 
 ### Minor Gaps (Low Priority)
 
@@ -538,7 +539,7 @@ dotnet tool install --global Obfuscar.GlobalTool
 
 ### Short-Term (High Impact, Lower Effort)
 
-1. **Assembly Merging** - Built-in ILMerge functionality
+*All short-term items completed - see Recently Completed section*
 
 ### Medium-Term (Strategic Features)
 
@@ -552,6 +553,7 @@ dotnet tool install --global Obfuscar.GlobalTool
 
 ### Recently Completed
 
+- **Assembly Merging** ✅ - Merge multiple assemblies into one (v1.2.0)
 - **Anti-Decompiler** ✅ - Junk types/methods injection, SuppressIldasm (v1.2.0)
 - **Anti-Tamper Detection** ✅ - SHA-256 hash verification at runtime (v1.1.0)
 - **Resource Encryption** ✅ - Encrypt embedded resources (v1.1.0)
@@ -566,6 +568,7 @@ dotnet tool install --global Obfuscar.GlobalTool
 | Scenario | Recommended Tool |
 |----------|------------------|
 | **Free, modern .NET** | Obfy |
+| **Merge + obfuscate (free)** | Obfy |
 | **Maximum protection, budget available** | .NET Reactor |
 | **Enterprise, compliance requirements** | Dotfuscator |
 | **Need crash reporting** | SmartAssembly |
@@ -584,7 +587,7 @@ Obfy provides a compelling open-source alternative to commercial .NET obfuscator
 - **vs Budget commercial**: Matches .NET Reactor's core features at zero cost, including anti-tamper
 - **vs Enterprise commercial**: Covers most protection needs but lacks enterprise features (RASP, licensing)
 
-For most applications, Obfy's combination of string encryption, constant encryption, resource encryption, control flow obfuscation, symbol renaming, anti-debug, anti-decompiler, anti-tamper, and metadata removal provides comprehensive protection. Teams requiring maximum security should consider .NET Reactor ($249) or Dotfuscator (enterprise) for additional protection layers like code virtualization.
+For most applications, Obfy's combination of string encryption, constant encryption, resource encryption, control flow obfuscation, symbol renaming, anti-debug, anti-decompiler, anti-tamper, assembly merging, and metadata removal provides comprehensive protection. Teams requiring maximum security should consider .NET Reactor ($249) or Dotfuscator (enterprise) for additional protection layers like code virtualization.
 
 ---
 

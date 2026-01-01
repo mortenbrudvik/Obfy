@@ -184,7 +184,7 @@ A strategic development plan based on competitive analysis against commercial an
 
 | ID | Feature | Priority | Effort | Value | Status |
 |----|---------|----------|--------|-------|--------|
-| UF-01 | Assembly Merging | P1 | Medium | Medium | Planned |
+| UF-01 | Assembly Merging | P1 | Medium | Medium | ✅ Done |
 | UF-02 | Dependency Embedding | P2 | Medium | Medium | Backlog |
 | UF-03 | Assembly Signing | P2 | Low | Medium | Backlog |
 | UF-04 | Obfuscation Report | P1 | Low | Medium | ✅ Done |
@@ -242,20 +242,20 @@ A strategic development plan based on competitive analysis against commercial an
 
 ---
 
-### Phase 2: Protection Plus (v1.2)
+### Phase 2: Protection Plus (v1.2) ✅
 **Theme:** Stronger runtime protection
 
 | Feature | Type | Notes | Status |
 |---------|------|-------|--------|
 | Anti-Tamper Detection (PF-03) | Protection | Runtime integrity checks | ✅ Done |
 | Anti-Decompiler (PF-04) | Protection | Break decompiler tools | ✅ Done |
-| Assembly Merging (UF-01) | Utility | Merge multiple DLLs | Planned |
+| Assembly Merging (UF-01) | Utility | Merge multiple DLLs | ✅ Done |
 
 **Success Metrics:**
 - Protection comparable to budget commercial tools
 - Decompilers fail on obfuscated output
 
-**Target:** Q2 2026
+**Completed:** January 2026
 
 ---
 

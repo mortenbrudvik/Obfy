@@ -14,6 +14,7 @@ Complete JSON configuration schema for Obfy.
   "symbolRenaming": { ... },
   "protection": { ... },
   "metadata": { ... },
+  "assemblyMerge": { ... },
   "exclusions": { ... }
 }
 ```
@@ -90,6 +91,14 @@ Complete JSON configuration schema for Obfy.
     "removeDebugInfo": true,
     "removeAttributes": true,
     "stripDocumentation": true
+  },
+
+  "assemblyMerge": {
+    "enabled": false,
+    "internalize": true,
+    "preserveDebugInfo": false,
+    "searchDirectories": [],
+    "excludePatterns": []
   },
 
   "exclusions": {
@@ -310,6 +319,24 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `removeDebugInfo` | bool | `true` | Remove PDB references and debug symbols |
 | `removeAttributes` | bool | `true` | Remove custom attributes |
 | `stripDocumentation` | bool | `true` | Strip XML documentation |
+
+### assemblyMerge
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable assembly merging |
+| `internalize` | bool | `true` | Make merged types internal (improves obfuscation) |
+| `preserveDebugInfo` | bool | `false` | Preserve debug information in merged assembly |
+| `searchDirectories` | string[] | `[]` | Additional directories to search for dependencies |
+| `excludePatterns` | string[] | `[]` | Assembly patterns to exclude from merging (e.g., `System.*`) |
+
+**Use Cases:**
+
+| Scenario | Configuration |
+|----------|---------------|
+| Merge app + libraries | `"enabled": true, "internalize": true` |
+| Keep public APIs exposed | `"enabled": true, "internalize": false` |
+| Exclude framework assemblies | `"excludePatterns": ["System.*", "Microsoft.*"]` |
 
 ### exclusions
 

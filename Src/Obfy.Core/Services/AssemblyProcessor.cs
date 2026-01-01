@@ -2,7 +2,9 @@ using dnlib.DotNet;
 using dnlib.DotNet.Writer;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
+using Obfy.Core.Obfuscators.Assembly;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Services;
 
@@ -65,7 +67,49 @@ public class AssemblyProcessor : IAssemblyProcessor
             writerOptions.WritePdb = false;
         }
 
-        context.Module.Write(outputPath, writerOptions);
+        // Check if anti-tamper post-processing is needed
+        if (context.Settings.Protection.AntiTamper.Enabled &&
+            context.SharedData.TryGetValue(AntiTamperObfuscator.HashFieldMetadataKey, out var metadataObj) &&
+            metadataObj is AntiTamperMetadata metadata)
+        {
+            // Write to temp file first
+            var tempPath = Path.Combine(Path.GetTempPath(), $"obfy_{Guid.NewGuid():N}.dll");
+
+            try
+            {
+                context.Module.Write(tempPath, writerOptions);
+                _logger.LogDebug("Wrote assembly to temp file for anti-tamper processing");
+
+                // Compute hash of the assembly (excluding the placeholder)
+                var hash = AssemblyHashComputer.ComputeAssemblyHash(tempPath);
+                _logger.LogDebug("Computed assembly hash: {Hash}", Convert.ToHexString(hash));
+
+                // Patch the hash into the assembly
+                AssemblyHashComputer.PatchHashFieldByToken(tempPath, metadata.HashFieldToken, hash);
+                _logger.LogDebug("Patched anti-tamper hash into assembly");
+
+                // Move to final output path
+                if (File.Exists(outputPath))
+                {
+                    File.Delete(outputPath);
+                }
+                File.Move(tempPath, outputPath);
+            }
+            finally
+            {
+                // Clean up temp file if it still exists
+                if (File.Exists(tempPath))
+                {
+                    try { File.Delete(tempPath); }
+                    catch { /* Ignore cleanup errors */ }
+                }
+            }
+        }
+        else
+        {
+            // Standard save without anti-tamper processing
+            context.Module.Write(outputPath, writerOptions);
+        }
 
         _logger.LogDebug("Assembly saved successfully");
 

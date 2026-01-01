@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Anti-tamper detection to verify assembly integrity at runtime (PF-03)
+  - Computes SHA-256 hash of method bodies during obfuscation
+  - Injects runtime verification at entry point and/or module initializer
+  - Graceful fallback for single-file published apps
+  - Configurable via `protection.antiTamper` settings
 - Resource encryption obfuscator to encrypt embedded resources (PF-01)
 - Constant encryption obfuscator to encrypt numeric literals (PF-02)
   - Supports int, long, float, double constants

@@ -93,7 +93,7 @@ public class ObfySettings
                 ControlFlow.Intensity = 80;
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = true;
-                Protection.AntiTamper = true;
+                Protection.AntiTamper.Enabled = true;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = true;
@@ -282,14 +282,35 @@ public class ProtectionSettings
     public bool AntiDebug { get; set; } = true;
 
     /// <summary>
-    /// Whether to inject anti-tampering checks.
+    /// Anti-tamper detection settings.
     /// </summary>
-    public bool AntiTamper { get; set; } = false;
+    public AntiTamperSettings AntiTamper { get; set; } = new();
 
     /// <summary>
     /// Whether to inject anti-dump protection.
     /// </summary>
     public bool AntiDump { get; set; } = false;
+}
+
+/// <summary>
+/// Settings for anti-tamper detection.
+/// </summary>
+public class AntiTamperSettings
+{
+    /// <summary>
+    /// Whether anti-tamper detection is enabled.
+    /// </summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>
+    /// Whether to check integrity at the entry point method.
+    /// </summary>
+    public bool CheckEntryPoint { get; set; } = true;
+
+    /// <summary>
+    /// Whether to check integrity at the module initializer (.cctor).
+    /// </summary>
+    public bool CheckModuleInitializer { get; set; } = true;
 }
 
 /// <summary>

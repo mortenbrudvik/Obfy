@@ -66,6 +66,12 @@ public partial class SettingsViewModel : ObservableObject
     private bool _antiTamperEnabled = false;
 
     [ObservableProperty]
+    private bool _tamperCheckEntryPoint = true;
+
+    [ObservableProperty]
+    private bool _tamperCheckModuleInit = true;
+
+    [ObservableProperty]
     private bool _antiDumpEnabled = false;
 
     // Metadata
@@ -209,7 +215,12 @@ public partial class SettingsViewModel : ObservableObject
             Protection = new ProtectionSettings
             {
                 AntiDebug = AntiDebugEnabled,
-                AntiTamper = AntiTamperEnabled,
+                AntiTamper = new AntiTamperSettings
+                {
+                    Enabled = AntiTamperEnabled,
+                    CheckEntryPoint = TamperCheckEntryPoint,
+                    CheckModuleInitializer = TamperCheckModuleInit
+                },
                 AntiDump = AntiDumpEnabled
             },
             Metadata = new MetadataSettings
@@ -273,7 +284,9 @@ public partial class SettingsViewModel : ObservableObject
 
         // Protection
         AntiDebugEnabled = settings.Protection.AntiDebug;
-        AntiTamperEnabled = settings.Protection.AntiTamper;
+        AntiTamperEnabled = settings.Protection.AntiTamper.Enabled;
+        TamperCheckEntryPoint = settings.Protection.AntiTamper.CheckEntryPoint;
+        TamperCheckModuleInit = settings.Protection.AntiTamper.CheckModuleInitializer;
         AntiDumpEnabled = settings.Protection.AntiDump;
 
         // Metadata

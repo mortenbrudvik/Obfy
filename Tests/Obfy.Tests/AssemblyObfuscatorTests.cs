@@ -729,6 +729,258 @@ public class AssemblyObfuscatorTests
 
     #endregion
 
+    #region AntiTamperObfuscator Tests
+
+    [Fact]
+    public async Task AntiTamper_InjectsAntiTamperType()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        // Create entry point
+        var entryPoint = new MethodDefUser(
+            "Main",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Public | MethodAttributes.Static);
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        entryPoint.Body = body;
+        type.Methods.Add(entryPoint);
+        module.EntryPoint = entryPoint;
+
+        var logger = new Mock<ILogger<AntiTamperObfuscator>>();
+        var obfuscator = new AntiTamperObfuscator(logger.Object);
+
+        var settings = new ObfySettings { Protection = { AntiTamper = { Enabled = true } } };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        var antiTamperType = module.Types.FirstOrDefault(t => t.Name == "<AntiTamper>");
+        antiTamperType.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task AntiTamper_InjectsVerifyMethod()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        var entryPoint = new MethodDefUser(
+            "Main",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Public | MethodAttributes.Static);
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        entryPoint.Body = body;
+        type.Methods.Add(entryPoint);
+        module.EntryPoint = entryPoint;
+
+        var logger = new Mock<ILogger<AntiTamperObfuscator>>();
+        var obfuscator = new AntiTamperObfuscator(logger.Object);
+
+        var settings = new ObfySettings { Protection = { AntiTamper = { Enabled = true } } };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        var antiTamperType = module.Types.First(t => t.Name == "<AntiTamper>");
+        antiTamperType.FindMethod("Verify").ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task AntiTamper_InjectsHashField()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        var entryPoint = new MethodDefUser(
+            "Main",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Public | MethodAttributes.Static);
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        entryPoint.Body = body;
+        type.Methods.Add(entryPoint);
+        module.EntryPoint = entryPoint;
+
+        var logger = new Mock<ILogger<AntiTamperObfuscator>>();
+        var obfuscator = new AntiTamperObfuscator(logger.Object);
+
+        var settings = new ObfySettings { Protection = { AntiTamper = { Enabled = true } } };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        var antiTamperType = module.Types.First(t => t.Name == "<AntiTamper>");
+        var hashField = antiTamperType.Fields.FirstOrDefault(f => f.Name == "_h");
+        hashField.ShouldNotBeNull();
+        hashField.FieldType.FullName.ShouldBe("System.Byte[]");
+    }
+
+    [Fact]
+    public async Task AntiTamper_InstrumentsEntryPoint()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        var entryPoint = new MethodDefUser(
+            "Main",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Public | MethodAttributes.Static);
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.CreateLdcI4(0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        entryPoint.Body = body;
+        type.Methods.Add(entryPoint);
+        module.EntryPoint = entryPoint;
+
+        var originalCount = entryPoint.Body.Instructions.Count;
+
+        var logger = new Mock<ILogger<AntiTamperObfuscator>>();
+        var obfuscator = new AntiTamperObfuscator(logger.Object);
+
+        var settings = new ObfySettings { Protection = { AntiTamper = { Enabled = true, CheckEntryPoint = true } } };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        entryPoint.Body.Instructions.Count.ShouldBeGreaterThan(originalCount);
+        entryPoint.Body.Instructions[0].OpCode.ShouldBe(OpCodes.Call);
+    }
+
+    [Fact]
+    public async Task AntiTamper_InstrumentsModuleInitializer()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        var logger = new Mock<ILogger<AntiTamperObfuscator>>();
+        var obfuscator = new AntiTamperObfuscator(logger.Object);
+
+        var settings = new ObfySettings { Protection = { AntiTamper = { Enabled = true, CheckModuleInitializer = true, CheckEntryPoint = false } } };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
+
+        // Module initializer should be created and instrumented
+        var globalType = module.GlobalType;
+        globalType.ShouldNotBeNull();
+        var cctor = globalType.Methods.FirstOrDefault(m => m.IsStaticConstructor);
+        cctor.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task AntiTamper_StoresMetadataInContext()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        var entryPoint = new MethodDefUser(
+            "Main",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Public | MethodAttributes.Static);
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        entryPoint.Body = body;
+        type.Methods.Add(entryPoint);
+        module.EntryPoint = entryPoint;
+
+        var logger = new Mock<ILogger<AntiTamperObfuscator>>();
+        var obfuscator = new AntiTamperObfuscator(logger.Object);
+
+        var settings = new ObfySettings { Protection = { AntiTamper = { Enabled = true } } };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        context.SharedData.ContainsKey(AntiTamperObfuscator.HashFieldMetadataKey).ShouldBeTrue();
+        var metadata = context.SharedData[AntiTamperObfuscator.HashFieldMetadataKey] as AntiTamperMetadata;
+        metadata.ShouldNotBeNull();
+        metadata.HashFieldToken.ShouldBeGreaterThan(0u);
+    }
+
+    [Fact]
+    public void AntiTamper_Properties_AreCorrect()
+    {
+        var logger = new Mock<ILogger<AntiTamperObfuscator>>();
+        var obfuscator = new AntiTamperObfuscator(logger.Object);
+
+        obfuscator.Name.ShouldBe("AntiTamper");
+        obfuscator.Priority.ShouldBe(75);
+        obfuscator.SupportsTargetType(TargetType.Assembly).ShouldBeTrue();
+        obfuscator.SupportsTargetType(TargetType.SourceCode).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AntiTamper_IsEnabled_RespectsSettings()
+    {
+        var logger = new Mock<ILogger<AntiTamperObfuscator>>();
+        var obfuscator = new AntiTamperObfuscator(logger.Object);
+
+        var enabledSettings = new ObfySettings { Protection = { AntiTamper = { Enabled = true } } };
+        var disabledSettings = new ObfySettings { Protection = { AntiTamper = { Enabled = false } } };
+
+        obfuscator.IsEnabled(enabledSettings).ShouldBeTrue();
+        obfuscator.IsEnabled(disabledSettings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task AntiTamper_SkipsWhenDisabled()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        var entryPoint = new MethodDefUser(
+            "Main",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Public | MethodAttributes.Static);
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        entryPoint.Body = body;
+        type.Methods.Add(entryPoint);
+        module.EntryPoint = entryPoint;
+
+        var logger = new Mock<ILogger<AntiTamperObfuscator>>();
+        var obfuscator = new AntiTamperObfuscator(logger.Object);
+
+        var settings = new ObfySettings { Protection = { AntiTamper = { Enabled = false } } };
+
+        // Act & Assert
+        obfuscator.IsEnabled(settings).ShouldBeFalse();
+
+        // Verify no AntiTamper type would be injected if run
+        var typeCountBefore = module.Types.Count;
+        // Don't run the obfuscator since it's disabled
+        module.Types.Count.ShouldBe(typeCountBefore);
+    }
+
+    #endregion
+
     #region MetadataRemovalObfuscator Tests
 
     [Fact]

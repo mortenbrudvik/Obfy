@@ -14,6 +14,7 @@ Obfy applies techniques in a specific order (priority):
 | 30 | Control Flow | Flatten control flow |
 | 50 | Symbol Renaming | Rename identifiers |
 | 70 | Anti-Debug | Inject debugger detection |
+| 75 | Anti-Tamper | Verify assembly integrity |
 | 90 | Metadata Removal | Strip debug info |
 
 ## Assembly Obfuscation (dnlib)
@@ -415,6 +416,88 @@ if (System.Diagnostics.Debugger.IsAttached)
 - Can be bypassed by experienced reverse engineers
 - May cause issues with legitimate profilers
 - Some detection methods can be patched out
+
+---
+
+### Anti-Tamper Protection
+
+Verifies assembly integrity at runtime by computing and comparing cryptographic hashes.
+
+**How It Works:**
+
+1. During obfuscation:
+   - Injects a runtime class (`Obfy.Runtime.<AntiTamper>`)
+   - Creates a placeholder hash field (32 zero bytes)
+   - Adds verification calls at entry point and/or module initializer
+   - After writing the assembly, computes SHA-256 hash of all method bodies
+   - Patches the placeholder with the actual hash
+
+2. At runtime:
+   - Reads the assembly file from disk
+   - Recomputes the hash of method bodies
+   - Compares with the stored expected hash
+   - Exits if mismatch is detected
+
+**Two-Pass Process:**
+
+The hash must be computed after all obfuscation is complete, but the verification code must be injected before saving. This is solved with a two-pass approach:
+
+```
+1. Inject <AntiTamper> type with placeholder (32 zero bytes)
+2. Write module to temp file
+3. Compute hash of all method bodies (excluding <AntiTamper> type)
+4. Patch placeholder with actual hash
+5. Write final file
+```
+
+**Verification Logic:**
+
+```csharp
+static void Verify()
+{
+    // Get assembly path (handles single-file apps)
+    var path = Assembly.GetExecutingAssembly().Location;
+    if (string.IsNullOrEmpty(path))
+        path = Environment.ProcessPath;  // .NET 6+ fallback
+    if (string.IsNullOrEmpty(path))
+        return;  // Skip verification gracefully
+
+    // Load and hash method bodies
+    var module = ModuleDefMD.Load(path);
+    var actualHash = ComputeMethodBodiesHash(module);
+
+    // Compare with expected
+    if (!HashesEqual(actualHash, _h))
+        Environment.Exit(1);
+}
+```
+
+**Settings:**
+
+```json
+{
+  "protection": {
+    "antiTamper": {
+      "enabled": true,
+      "checkEntryPoint": true,
+      "checkModuleInitializer": true
+    }
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enabled` | false | Enable anti-tamper protection |
+| `checkEntryPoint` | true | Inject verification at entry point |
+| `checkModuleInitializer` | true | Inject verification in module initializer |
+
+**Limitations:**
+- Requires file system access at runtime (cannot verify in-memory loaded assemblies)
+- Single-file published apps: Uses `Environment.ProcessPath` fallback (.NET 6+)
+- Assemblies loaded from byte arrays skip verification gracefully
+- Adds slight startup overhead for hash computation
+- Can be bypassed by patching the verification code (combine with Anti-Debug for better protection)
 
 ---
 

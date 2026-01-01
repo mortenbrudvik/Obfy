@@ -31,7 +31,7 @@ A strategic development plan based on competitive analysis against commercial an
 |----|---------|----------|--------|-------|--------|
 | PF-01 | Resource Encryption | P0 | Low | Medium | ✅ Done |
 | PF-02 | Constant Encryption | P0 | Low | Medium | ✅ Done |
-| PF-03 | Anti-Tamper Detection | P1 | Medium | High | Planned |
+| PF-03 | Anti-Tamper Detection | P1 | Medium | High | ✅ Done |
 | PF-04 | Anti-Decompiler | P1 | Medium | Medium | Planned |
 | PF-05 | Anti-Dump Protection | P2 | Medium | Medium | Backlog |
 | PF-06 | Watermarking | P2 | Low | Low | Backlog |
@@ -244,11 +244,11 @@ A strategic development plan based on competitive analysis against commercial an
 ### Phase 2: Protection Plus (v1.2)
 **Theme:** Stronger runtime protection
 
-| Feature | Type | Notes |
-|---------|------|-------|
-| Anti-Tamper Detection (PF-03) | Protection | Runtime integrity checks |
-| Anti-Decompiler (PF-04) | Protection | Break decompiler tools |
-| Assembly Merging (UF-01) | Utility | Merge multiple DLLs |
+| Feature | Type | Notes | Status |
+|---------|------|-------|--------|
+| Anti-Tamper Detection (PF-03) | Protection | Runtime integrity checks | ✅ Done |
+| Anti-Decompiler (PF-04) | Protection | Break decompiler tools | Planned |
+| Assembly Merging (UF-01) | Utility | Merge multiple DLLs | Planned |
 
 **Success Metrics:**
 - Protection comparable to budget commercial tools

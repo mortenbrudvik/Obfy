@@ -43,7 +43,7 @@ public class ObfySettingsTests
         settings.ControlFlow.Intensity.ShouldBe(80);
         settings.SymbolRenaming.Enabled.ShouldBeTrue();
         settings.Protection.AntiDebug.ShouldBeTrue();
-        settings.Protection.AntiTamper.ShouldBeTrue();
+        settings.Protection.AntiTamper.Enabled.ShouldBeTrue();
     }
 
     [Fact]

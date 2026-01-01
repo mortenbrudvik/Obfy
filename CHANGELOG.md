@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--encrypt-resources` CLI option
 - Pattern-based include/exclude for resource encryption
 - Support for AES-256 and XOR algorithms for resources
+- Inno Setup installer with PATH registration
 
 ### Changed
 - Remove dotnet tool support in favor of installer-based distribution

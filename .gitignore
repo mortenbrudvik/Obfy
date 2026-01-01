@@ -50,3 +50,7 @@ Thumbs.db
 *.env
 appsettings.*.json
 !appsettings.Development.json.example
+
+# Installer
+installer/installer-output/
+publish/

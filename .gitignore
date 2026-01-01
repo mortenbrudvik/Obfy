@@ -54,3 +54,10 @@ appsettings.*.json
 # Installer
 installer/installer-output/
 publish/
+publish-ui/
+
+# Claude Code
+.claude/settings.local.json
+
+# Windows artifacts
+nul

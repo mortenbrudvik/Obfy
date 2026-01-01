@@ -6,7 +6,7 @@ A comprehensive comparison of Obfy against leading commercial and open-source .N
 
 Obfy is a modern, open-source .NET obfuscation tool that provides essential protection features comparable to commercial alternatives. While professional tools offer advanced features like code virtualization and native code generation, Obfy delivers solid protection at no cost with a focus on simplicity and modern .NET support.
 
-**Key Finding**: Obfy covers ~80% of typical obfuscation needs. The 20% gap consists primarily of advanced anti-reverse-engineering features (virtualization, native code, anti-tamper) that most applications don't require.
+**Key Finding**: Obfy covers ~85% of typical obfuscation needs. The remaining gap consists primarily of advanced anti-reverse-engineering features (virtualization, native code) that most applications don't require.
 
 ---
 
@@ -56,7 +56,7 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 | **Native Code Generation** | - | - | - | Yes | - | - |
 | **MSIL Encryption** | - | - | - | Yes | Yes | - |
 | **Anti-Debug** | Yes | Yes | - | Yes | Yes | Yes |
-| **Anti-Tamper** | - | Yes | Yes | Yes | Yes | - |
+| **Anti-Tamper** | Yes | Yes | Yes | Yes | Yes | - |
 | **Anti-Dump** | - | - | - | Yes | Yes | - |
 | **Watermarking** | - | Yes | - | Yes | - | - |
 
@@ -146,7 +146,9 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 - WPF desktop application with Fluent Design
 - Simple installer-based distribution
 - Dual-mode: Assembly (dnlib) + Source (Roslyn) obfuscation
-- Resource and constant encryption
+- Resource, constant, and string encryption
+- Anti-tamper detection with SHA-256 hash verification
+- Obfuscation reports (HTML/JSON)
 - Excellent documentation
 - Active development
 
@@ -154,7 +156,6 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 - No code virtualization
 - No native code generation
 - No IDE plugins
-- Limited anti-tamper protection
 - No licensing/DRM features
 - Smaller community (new project)
 
@@ -300,7 +301,7 @@ A detailed comparison of free, open-source .NET obfuscators.
 | **Control Flow** | Yes | - | - | Yes | Yes | Yes |
 | **Anti-Debug** | Yes | - | Yes | - | - | Yes |
 | **Anti-Decompiler** | - | - | Yes | - | - | Yes |
-| **Anti-Tamper** | - | - | - | - | - | Yes |
+| **Anti-Tamper** | Yes | - | - | - | - | Yes |
 | **Anti-de4dot** | - | - | Yes | - | - | - |
 | **Constant Encryption** | Yes | - | - | Yes | - | Yes |
 | **Resource Encryption** | Yes | - | - | - | - | Yes |
@@ -514,7 +515,6 @@ dotnet tool install --global Obfuscar.GlobalTool
 | Feature | Difficulty | Value | Notes |
 |---------|------------|-------|-------|
 | **Code Virtualization** | Very High | High | Converts IL to custom VM bytecode; major undertaking |
-| **Anti-Tamper** | Medium | High | Detect assembly modifications at runtime |
 
 ### Moderate Gaps (Nice to Have)
 
@@ -538,18 +538,26 @@ dotnet tool install --global Obfuscar.GlobalTool
 
 ### Short-Term (High Impact, Lower Effort)
 
-1. **Anti-Tamper Detection** - Hash verification at runtime
-2. **Anti-Decompiler** - Break decompiler tools (dnSpy, ILSpy)
+1. **Anti-Decompiler** - Break decompiler tools (dnSpy, ILSpy)
+2. **Assembly Merging** - Built-in ILMerge functionality
 
 ### Medium-Term (Strategic Features)
 
 3. **Visual Studio Extension** - Integration for broader adoption
-4. **Assembly Merging** - Built-in ILMerge functionality
+4. **Configuration Wizard** - Interactive CLI wizard for generating config
 
 ### Long-Term (Advanced Protection)
 
 5. **Code Virtualization** - Custom VM for method protection
 6. **Native Code Bridge** - Optional native launcher
+
+### Recently Completed
+
+- **Anti-Tamper Detection** ✅ - SHA-256 hash verification at runtime (v1.1.0)
+- **Resource Encryption** ✅ - Encrypt embedded resources (v1.1.0)
+- **Constant Encryption** ✅ - Encrypt numeric literals (v1.1.0)
+- **Obfuscation Reports** ✅ - HTML/JSON report generation (v1.1.0)
+- **WPF Desktop Application** ✅ - Fluent Design UI (v1.1.0)
 
 ---
 
@@ -572,11 +580,11 @@ dotnet tool install --global Obfuscar.GlobalTool
 Obfy provides a compelling open-source alternative to commercial .NET obfuscators. While it lacks advanced features like code virtualization and native code generation, it covers the core obfuscation needs that protect against casual reverse engineering.
 
 **Obfy's Competitive Position:**
-- **vs Free alternatives**: Superior to discontinued ConfuserEx with modern .NET support
-- **vs Budget commercial**: Matches .NET Reactor's core features at zero cost
-- **vs Enterprise commercial**: Covers basics but lacks enterprise features (RASP, reporting)
+- **vs Free alternatives**: Superior to discontinued ConfuserEx with modern .NET support and active development
+- **vs Budget commercial**: Matches .NET Reactor's core features at zero cost, including anti-tamper
+- **vs Enterprise commercial**: Covers most protection needs but lacks enterprise features (RASP, licensing)
 
-For most applications, Obfy's combination of string encryption, constant encryption, resource encryption, control flow obfuscation, symbol renaming, anti-debug, and metadata removal provides adequate protection. Teams requiring maximum security should consider .NET Reactor ($249) or Dotfuscator (enterprise) for additional protection layers like code virtualization and anti-tamper.
+For most applications, Obfy's combination of string encryption, constant encryption, resource encryption, control flow obfuscation, symbol renaming, anti-debug, anti-tamper, and metadata removal provides comprehensive protection. Teams requiring maximum security should consider .NET Reactor ($249) or Dotfuscator (enterprise) for additional protection layers like code virtualization.
 
 ---
 

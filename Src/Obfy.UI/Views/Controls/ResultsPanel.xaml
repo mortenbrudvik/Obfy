@@ -1,0 +1,100 @@
+<UserControl x:Class="Obfy.UI.Views.Controls.ResultsPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:vm="clr-namespace:Obfy.UI.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:ResultsViewModel}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="12,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel>
+                    <TextBlock Text="Obfuscation Results" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="{Binding ElapsedTime, StringFormat='Completed in {0:mm\\:ss\\.fff}'}"
+                              Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
+                </StackPanel>
+                <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Save24}" Content="Export Map"
+                          Command="{Binding ExportSymbolMapCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- Statistics Summary -->
+        <Border Grid.Row="1" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" Margin="12,8,12,0"
+                CornerRadius="4" Padding="12,8">
+            <WrapPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                    <TextBlock Text="Strings: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Statistics.StringsEncrypted}" FontWeight="SemiBold"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                    <TextBlock Text="Types: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Statistics.TypesRenamed}" FontWeight="SemiBold"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                    <TextBlock Text="Methods: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Statistics.MethodsRenamed}" FontWeight="SemiBold"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                    <TextBlock Text="Fields: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Statistics.FieldsRenamed}" FontWeight="SemiBold"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                    <TextBlock Text="Control Flow: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Statistics.MethodsControlFlowObfuscated}" FontWeight="SemiBold"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Total: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Statistics.TotalTransformations}" FontWeight="Bold"
+                              Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"/>
+                </StackPanel>
+            </WrapPanel>
+        </Border>
+
+        <!-- Search -->
+        <ui:TextBox Grid.Row="2" Margin="12,8,12,0" PlaceholderText="Search symbols..."
+                   Icon="{ui:SymbolIcon Search24}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
+
+        <!-- Tree View -->
+        <TreeView Grid.Row="3" ItemsSource="{Binding RootNodes}" Margin="12,8,12,12"
+                  Background="Transparent" BorderThickness="0"
+                  VirtualizingPanel.IsVirtualizing="True">
+            <TreeView.ItemTemplate>
+                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                    <Grid Margin="4,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <ui:SymbolIcon Grid.Column="0" Symbol="{Binding SymbolType, Converter={StaticResource SymbolTypeToIconConverter}}"
+                                      Margin="0,0,8,0" FontSize="14"/>
+                        <TextBlock Grid.Column="1" Text="{Binding OriginalName}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="2" Text=" -> " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Grid.Column="3" Text="{Binding ObfuscatedName}"
+                                  Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                  FontFamily="Cascadia Mono, Consolas" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                </HierarchicalDataTemplate>
+            </TreeView.ItemTemplate>
+        </TreeView>
+    </Grid>
+</UserControl>

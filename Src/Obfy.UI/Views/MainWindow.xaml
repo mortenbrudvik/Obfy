@@ -1,0 +1,143 @@
+<ui:FluentWindow x:Class="Obfy.UI.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:controls="clr-namespace:Obfy.UI.Views.Controls"
+        xmlns:vm="clr-namespace:Obfy.UI.ViewModels"
+        mc:Ignorable="d"
+        Title="Obfy" Height="900" Width="1400"
+        WindowStartupLocation="CenterScreen"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- TitleBar -->
+        <ui:TitleBar Grid.Row="0" Title="Obfy - .NET Obfuscator"/>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="1" Background="{DynamicResource ApplicationBackgroundBrush}"
+                BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="10,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: Action Buttons -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <ui:Button Icon="{ui:SymbolIcon Play24}" Content="Obfuscate"
+                              Appearance="Primary" Command="{Binding ObfuscateCommand}"/>
+                    <ui:Button Icon="{ui:SymbolIcon Stop24}" Content="Cancel"
+                              Command="{Binding CancelCommand}" Margin="8,0,0,0"
+                              Visibility="{Binding IsObfuscating, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                </StackPanel>
+
+                <!-- Center: Progress -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center"
+                           Visibility="{Binding IsObfuscating, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ProgressBar Width="200" Height="8" Value="{Binding OverallProgress}" Maximum="100"/>
+                    <TextBlock Text="{Binding OverallProgress, StringFormat={}{0:F0}%}" Margin="8,0,0,0"
+                              VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Right: Settings Menu -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <ui:Button Icon="{ui:SymbolIcon Save24}" ToolTip="Save Configuration"
+                              Command="{Binding SaveConfigurationCommand}" Margin="0,0,4,0"/>
+                    <ui:Button Icon="{ui:SymbolIcon FolderOpen24}" ToolTip="Load Configuration"
+                              Command="{Binding LoadConfigurationCommand}" Margin="0,0,4,0"/>
+                    <ui:Button Icon="{ui:SymbolIcon Info24}" ToolTip="About"
+                              Command="{Binding ShowAboutCommand}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content (Three-Panel Layout) -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" MinWidth="250"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Panel: Settings -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Settings" FontWeight="SemiBold" FontSize="16"
+                              Margin="12,12,12,8"/>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <controls:SettingsPanel DataContext="{Binding Settings}"/>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+
+            <!-- Right Panel: Files, Results, Output -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="200" MinHeight="100"/>
+                </Grid.RowDefinitions>
+
+                <!-- Files and Results -->
+                <Grid Grid.Row="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Files Panel -->
+                    <controls:FilesPanel Grid.Row="0" DataContext="{Binding Files}"/>
+
+                    <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"
+                                 Visibility="{Binding ShowResultsPanel, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                    <!-- Results Panel -->
+                    <controls:ResultsPanel Grid.Row="2" DataContext="{Binding Results}"
+                                          Visibility="{Binding ShowResultsPanel, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                          MaxHeight="300"/>
+                </Grid>
+
+                <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"/>
+
+                <!-- Output Panel -->
+                <controls:OutputPanel Grid.Row="2" DataContext="{Binding Output}"/>
+            </Grid>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="3" Background="{DynamicResource ApplicationBackgroundBrush}"
+                BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="0,1,0,0">
+            <Grid Margin="10,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="{Binding Files.Files.Count, StringFormat='{}{0} file(s)'}"
+                          VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+    </Grid>
+</ui:FluentWindow>

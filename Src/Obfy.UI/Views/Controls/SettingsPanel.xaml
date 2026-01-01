@@ -1,0 +1,92 @@
+<UserControl x:Class="Obfy.UI.Views.Controls.SettingsPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:vm="clr-namespace:Obfy.UI.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}">
+
+    <StackPanel Margin="12">
+        <!-- Level Selector -->
+        <TextBlock Text="Obfuscation Level" FontWeight="SemiBold" Margin="0,0,0,8"/>
+        <ComboBox ItemsSource="{Binding AvailableLevels}" SelectedItem="{Binding Level}" Margin="0,0,0,16"/>
+
+        <!-- String Encryption -->
+        <Expander Header="String Encryption" IsExpanded="True" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <ui:ToggleSwitch Content="Enabled" IsChecked="{Binding StringEncryptionEnabled}"/>
+                <StackPanel Visibility="{Binding StringEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="0,8,0,0">
+                    <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
+                    <ComboBox ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding StringEncryptionAlgorithm}"/>
+                    <TextBlock Text="Min String Length" Margin="0,12,0,4"/>
+                    <ui:NumberBox Value="{Binding MinStringLength}" Minimum="1" Maximum="100" SpinButtonPlacementMode="Compact"/>
+                </StackPanel>
+            </StackPanel>
+        </Expander>
+
+        <!-- Control Flow -->
+        <Expander Header="Control Flow" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <ui:ToggleSwitch Content="Enabled" IsChecked="{Binding ControlFlowEnabled}"/>
+                <StackPanel Visibility="{Binding ControlFlowEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="0,8,0,0">
+                    <TextBlock Text="Mode" Margin="0,0,0,4"/>
+                    <ComboBox ItemsSource="{Binding AvailableModes}" SelectedItem="{Binding ControlFlowMode}"/>
+                    <TextBlock Text="{Binding ControlFlowIntensity, StringFormat='Intensity: {0}%'}" Margin="0,12,0,4"/>
+                    <Slider Value="{Binding ControlFlowIntensity}" Minimum="0" Maximum="100"/>
+                </StackPanel>
+            </StackPanel>
+        </Expander>
+
+        <!-- Symbol Renaming -->
+        <Expander Header="Symbol Renaming" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <ui:ToggleSwitch Content="Enabled" IsChecked="{Binding SymbolRenamingEnabled}"/>
+                <StackPanel Visibility="{Binding SymbolRenamingEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="0,8,0,0">
+                    <TextBlock Text="Naming Mode" Margin="0,0,0,4"/>
+                    <ComboBox ItemsSource="{Binding AvailableNamingModes}" SelectedItem="{Binding NamingMode}"/>
+                    <CheckBox Content="Rename Types" IsChecked="{Binding RenameTypes}" Margin="0,8,0,0"/>
+                    <CheckBox Content="Rename Methods" IsChecked="{Binding RenameMethods}"/>
+                    <CheckBox Content="Rename Fields" IsChecked="{Binding RenameFields}"/>
+                    <CheckBox Content="Rename Properties" IsChecked="{Binding RenameProperties}"/>
+                    <CheckBox Content="Rename Parameters" IsChecked="{Binding RenameParameters}"/>
+                    <ui:ToggleSwitch Content="Preserve Public API" IsChecked="{Binding PreservePublicApi}" Margin="0,8,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Expander>
+
+        <!-- Protection -->
+        <Expander Header="Protection" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <ui:ToggleSwitch Content="Anti-Debug" IsChecked="{Binding AntiDebugEnabled}"/>
+                <ui:ToggleSwitch Content="Anti-Tamper" IsChecked="{Binding AntiTamperEnabled}"/>
+                <ui:ToggleSwitch Content="Anti-Dump" IsChecked="{Binding AntiDumpEnabled}"/>
+            </StackPanel>
+        </Expander>
+
+        <!-- Metadata -->
+        <Expander Header="Metadata" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <CheckBox Content="Remove Debug Info" IsChecked="{Binding RemoveDebugInfo}"/>
+                <CheckBox Content="Remove Attributes" IsChecked="{Binding RemoveAttributes}"/>
+                <CheckBox Content="Strip Documentation" IsChecked="{Binding StripDocumentation}"/>
+            </StackPanel>
+        </Expander>
+
+        <!-- Resource Encryption -->
+        <Expander Header="Resource Encryption" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <ui:ToggleSwitch Content="Enabled" IsChecked="{Binding ResourceEncryptionEnabled}"/>
+                <StackPanel Visibility="{Binding ResourceEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="0,8,0,0">
+                    <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
+                    <ComboBox ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding ResourceAlgorithm}"/>
+                </StackPanel>
+            </StackPanel>
+        </Expander>
+    </StackPanel>
+</UserControl>

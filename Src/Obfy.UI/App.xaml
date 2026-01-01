@@ -1,0 +1,22 @@
+<Application x:Class="Obfy.UI.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Obfy.UI"
+             xmlns:converters="clr-namespace:Obfy.UI.Converters"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ui:ThemesDictionary Theme="Dark" />
+                <ui:ControlsDictionary />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Converters -->
+            <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+            <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+            <converters:LevelToColorConverter x:Key="LevelToColorConverter"/>
+            <converters:SymbolTypeToIconConverter x:Key="SymbolTypeToIconConverter"/>
+            <converters:EnumDescriptionConverter x:Key="EnumDescriptionConverter"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

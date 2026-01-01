@@ -8,6 +8,7 @@
         xmlns:vm="clr-namespace:Obfy.UI.ViewModels"
         mc:Ignorable="d"
         Title="Obfy" Height="900" Width="1400"
+        Icon="/Images/app.png"
         WindowStartupLocation="CenterScreen"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
 
@@ -20,7 +21,11 @@
         </Grid.RowDefinitions>
 
         <!-- TitleBar -->
-        <ui:TitleBar Grid.Row="0" Title="Obfy - .NET Obfuscator"/>
+        <ui:TitleBar Grid.Row="0" Title="Obfy - .NET Obfuscator">
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Source="/Images/app.png" Width="16" Height="16"/>
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
 
         <!-- Toolbar -->
         <Border Grid.Row="1" Background="{DynamicResource ApplicationBackgroundBrush}"

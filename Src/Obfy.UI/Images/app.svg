@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="purpleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6"/>
+      <stop offset="100%" style="stop-color:#A78BFA"/>
+    </linearGradient>
+    <linearGradient id="fadeGradient" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" style="stop-color:white;stop-opacity:1"/>
+      <stop offset="40%" style="stop-color:white;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:white;stop-opacity:0"/>
+    </linearGradient>
+    <mask id="fadeMask">
+      <rect x="0" y="0" width="256" height="256" fill="url(#fadeGradient)"/>
+    </mask>
+  </defs>
+
+  <!-- Bold O ring with fade effect -->
+  <g mask="url(#fadeMask)">
+    <circle cx="128" cy="128" r="100" fill="url(#purpleGradient)"/>
+    <circle cx="128" cy="128" r="50" fill="black"/>
+  </g>
+</svg>

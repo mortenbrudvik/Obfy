@@ -10,12 +10,16 @@
       "Bash(dotnet run:*)",
       "Bash(git:*)",
       "Bash(dotnet restore:*)",
-      "Bash(dotnet tool install:*)",
-      "Bash(dir \"C:\\\\code\\\\projects\\\\Obfy\\\\Src\\\\Obfy.Console\\\\bin\\\\Release\\\\*.nupkg\")",
       "Bash(obfy --version:*)",
       "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)",
-      "Bash(dotnet pack:*)",
-      "Bash(dotnet nuget push:*)"
+      "Bash(while read ref)",
+      "Bash(do git -C \"C:\\\\code\\\\projects\\\\Obfy\" update-ref -d \"$ref\")",
+      "Bash(done)",
+      "Bash(findstr:*)",
+      "Skill(publish)",
+      "WebFetch(domain:blog.ndepend.com)",
+      "WebFetch(domain:www.preemptive.com)",
+      "WebFetch(domain:www.red-gate.com)"
     ]
   }
 }

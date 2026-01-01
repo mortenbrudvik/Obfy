@@ -396,17 +396,13 @@ The obfuscated code gets bundled into the single-file output.
 
 ```yaml
 - name: Obfuscate
-  run: |
-    dotnet tool install --global Obfy
-    obfy bin/Release/net8.0/MyApp.dll -l aggressive -o dist/
+  run: obfy bin/Release/net8.0/MyApp.dll -l aggressive -o dist/
 ```
 
 ### Azure DevOps
 
 ```yaml
-- script: |
-    dotnet tool install --global Obfy
-    obfy $(Build.ArtifactStagingDirectory)/*.dll -o $(Build.ArtifactStagingDirectory)/protected/
+- script: obfy $(Build.ArtifactStagingDirectory)/*.dll -o $(Build.ArtifactStagingDirectory)/protected/
   displayName: 'Obfuscate assemblies'
 ```
 

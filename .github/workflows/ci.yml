@@ -26,12 +26,3 @@ jobs:
 
     - name: Test
       run: dotnet test --no-build -c Release --verbosity normal
-
-    - name: Pack
-      run: dotnet pack Src/Obfy.Console/Obfy.Console.csproj --no-build -c Release -o ./artifacts
-
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: nuget-package
-        path: ./artifacts/*.nupkg

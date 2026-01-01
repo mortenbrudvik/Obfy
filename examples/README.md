@@ -12,10 +12,7 @@ This folder contains example projects demonstrating various Obfy use cases.
 
 ## Quick Start
 
-1. Install Obfy:
-   ```bash
-   dotnet tool install --global Obfy
-   ```
+1. Ensure Obfy is installed and available in your PATH.
 
 2. Navigate to an example:
    ```bash

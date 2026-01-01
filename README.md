@@ -1,7 +1,5 @@
 # Obfy
 
-[![NuGet](https://img.shields.io/nuget/v/Obfy.svg)](https://www.nuget.org/packages/Obfy/)
-[![NuGet Downloads](https://img.shields.io/nuget/dt/Obfy.svg)](https://www.nuget.org/packages/Obfy/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/)
 
@@ -19,9 +17,7 @@ Obfy helps protect your .NET applications from reverse engineering by applying m
 
 ## Installation
 
-```bash
-dotnet tool install --global Obfy
-```
+Download and run the Obfy installer, which adds the `obfy` command to your PATH.
 
 ## Quick Start
 
@@ -156,9 +152,7 @@ Check out the [examples](examples/) folder:
 
 ```yaml
 - name: Obfuscate
-  run: |
-    dotnet tool install --global Obfy
-    obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
+  run: obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
 ```
 
 ## Contributing

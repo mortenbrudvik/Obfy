@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pattern-based include/exclude for resource encryption
 - Support for AES-256 and XOR algorithms for resources
 
+### Changed
+- Remove dotnet tool support in favor of installer-based distribution
+
 ## [1.0.6] - 2025-12-31
 
 ### Fixed

@@ -143,7 +143,7 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 - Free and open-source (MIT license)
 - Modern .NET 10 support (ahead of competitors)
 - Clean, simple CLI interface
-- NuGet-based installation (`dotnet tool install`)
+- Simple installer-based distribution
 - Dual-mode: Assembly (dnlib) + Source (Roslyn) obfuscation
 - Excellent documentation
 - Active development

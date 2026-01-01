@@ -8,6 +8,7 @@ Complete JSON configuration schema for Obfy.
 {
   "level": "standard",
   "stringEncryption": { ... },
+  "constantEncryption": { ... },
   "resourceEncryption": { ... },
   "controlFlow": { ... },
   "symbolRenaming": { ... },
@@ -29,6 +30,19 @@ Complete JSON configuration schema for Obfy.
     "encryptConstantStrings": true,
     "encryptResourceStrings": true,
     "minStringLength": 3
+  },
+
+  "constantEncryption": {
+    "enabled": false,
+    "algorithm": "Xor | Aes256",
+    "encryptIntegers": true,
+    "encryptLongs": true,
+    "encryptFloats": true,
+    "encryptDoubles": true,
+    "integerThreshold": 2,
+    "longThreshold": 2,
+    "skipCommonFloats": true,
+    "skipCommonDoubles": true
   },
 
   "resourceEncryption": {
@@ -120,6 +134,7 @@ Maximum protection with all techniques enabled.
 {
   "level": "aggressive",
   "stringEncryption": { "enabled": true },
+  "constantEncryption": { "enabled": true },
   "resourceEncryption": { "enabled": true },
   "controlFlow": {
     "enabled": true,
@@ -165,6 +180,32 @@ Full control over individual settings.
 |-----------|----------|-------------|----------|
 | `Aes256` | High | Slower | Production, sensitive data |
 | `Xor` | Medium | Faster | Development, less sensitive code |
+
+### constantEncryption
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable constant encryption |
+| `algorithm` | enum | `Xor` | Encryption algorithm: `Xor` or `Aes256` |
+| `encryptIntegers` | bool | `true` | Encrypt int constants |
+| `encryptLongs` | bool | `true` | Encrypt long constants |
+| `encryptFloats` | bool | `true` | Encrypt float constants |
+| `encryptDoubles` | bool | `true` | Encrypt double constants |
+| `integerThreshold` | int | `2` | Skip integers where \|value\| < threshold |
+| `longThreshold` | long | `2` | Skip longs where \|value\| < threshold |
+| `skipCommonFloats` | bool | `true` | Skip 0.0f, 1.0f, -1.0f |
+| `skipCommonDoubles` | bool | `true` | Skip 0.0, 1.0, -1.0 |
+
+**Algorithm Recommendation:**
+
+XOR is recommended for constants because they are accessed frequently at runtime. AES-256 provides stronger encryption but adds more overhead.
+
+**Threshold Settings:**
+
+Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear frequently in loops and conditionals:
+- `integerThreshold: 2` skips -1, 0, 1
+- `integerThreshold: 10` skips -9 through 9
+- `skipCommonFloats/Doubles` skips 0.0, 1.0, -1.0 regardless of threshold
 
 ### resourceEncryption
 
@@ -309,6 +350,14 @@ Full control over individual settings.
     "enabled": true,
     "algorithm": "Aes256",
     "minStringLength": 1
+  },
+  "constantEncryption": {
+    "enabled": true,
+    "algorithm": "Xor",
+    "integerThreshold": 0,
+    "longThreshold": 0,
+    "skipCommonFloats": false,
+    "skipCommonDoubles": false
   },
   "resourceEncryption": {
     "enabled": true,

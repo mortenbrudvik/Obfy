@@ -92,6 +92,7 @@ Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | Technique | Priority | Description |
 |-----------|----------|-------------|
 | StringEncryption | 10 | Encrypts string literals with AES-256 |
+| ConstantEncryption | 11 | Encrypts numeric constants (int, long, float, double) |
 | ResourceEncryption | 15 | Encrypts embedded resources |
 | ControlFlow | 30 | Flattens control flow with state machines |
 | SymbolRenaming | 50 | Renames types, methods, fields, properties |

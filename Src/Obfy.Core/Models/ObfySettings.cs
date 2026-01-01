@@ -43,6 +43,11 @@ public class ObfySettings
     public ResourceEncryptionSettings ResourceEncryption { get; set; } = new();
 
     /// <summary>
+    /// Constant (numeric) encryption settings.
+    /// </summary>
+    public ConstantEncryptionSettings ConstantEncryption { get; set; } = new();
+
+    /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
     public ExclusionRules Exclusions { get; set; } = new();
@@ -70,6 +75,7 @@ public class ObfySettings
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = false;
                 Metadata.RemoveDebugInfo = true;
+                ConstantEncryption.Enabled = false;
                 break;
 
             case ObfuscationLevel.Standard:
@@ -78,6 +84,7 @@ public class ObfySettings
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = false;
                 Metadata.RemoveDebugInfo = true;
+                ConstantEncryption.Enabled = false;
                 break;
 
             case ObfuscationLevel.Aggressive:
@@ -90,6 +97,8 @@ public class ObfySettings
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = true;
+                ConstantEncryption.Enabled = true;
+                ConstantEncryption.Algorithm = EncryptionAlgorithm.Xor;
                 break;
 
             case ObfuscationLevel.Custom:
@@ -361,4 +370,64 @@ public class ResourceEncryptionSettings
     /// Excluded patterns take precedence over include patterns.
     /// </summary>
     public List<string> ExcludePatterns { get; set; } = new();
+}
+
+/// <summary>
+/// Settings for constant (numeric) encryption obfuscation.
+/// </summary>
+public class ConstantEncryptionSettings
+{
+    /// <summary>
+    /// Whether constant encryption is enabled.
+    /// </summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>
+    /// The encryption algorithm to use.
+    /// </summary>
+    public EncryptionAlgorithm Algorithm { get; set; } = EncryptionAlgorithm.Xor;
+
+    /// <summary>
+    /// Whether to encrypt integer (int) constants.
+    /// </summary>
+    public bool EncryptIntegers { get; set; } = true;
+
+    /// <summary>
+    /// Whether to encrypt long constants.
+    /// </summary>
+    public bool EncryptLongs { get; set; } = true;
+
+    /// <summary>
+    /// Whether to encrypt float constants.
+    /// </summary>
+    public bool EncryptFloats { get; set; } = true;
+
+    /// <summary>
+    /// Whether to encrypt double constants.
+    /// </summary>
+    public bool EncryptDoubles { get; set; } = true;
+
+    /// <summary>
+    /// Minimum absolute value for integer encryption.
+    /// Values with |value| less than this threshold are skipped.
+    /// Default: 2 (skips -1, 0, 1)
+    /// </summary>
+    [Range(0, 1000)]
+    public int IntegerThreshold { get; set; } = 2;
+
+    /// <summary>
+    /// Minimum absolute value for long encryption.
+    /// </summary>
+    [Range(0, 1000)]
+    public long LongThreshold { get; set; } = 2;
+
+    /// <summary>
+    /// Skip common float values (0.0f, 1.0f, -1.0f).
+    /// </summary>
+    public bool SkipCommonFloats { get; set; } = true;
+
+    /// <summary>
+    /// Skip common double values (0.0, 1.0, -1.0).
+    /// </summary>
+    public bool SkipCommonDoubles { get; set; } = true;
 }

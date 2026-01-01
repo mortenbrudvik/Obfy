@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Resource encryption obfuscator to encrypt embedded resources (PF-01)
+- Constant encryption obfuscator to encrypt numeric literals (PF-02)
+  - Supports int, long, float, double constants
+  - Configurable thresholds to skip small/common values
+  - XOR encryption for fast runtime decryption
 - `--encrypt-resources` CLI option
 - Pattern-based include/exclude for resource encryption
 - Support for AES-256 and XOR algorithms for resources

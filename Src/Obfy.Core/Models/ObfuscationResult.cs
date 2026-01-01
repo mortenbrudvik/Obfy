@@ -122,10 +122,16 @@ public class ObfuscationStatistics
     public int ResourcesEncrypted { get; set; }
 
     /// <summary>
+    /// Number of numeric constants encrypted.
+    /// </summary>
+    public int ConstantsEncrypted { get; set; }
+
+    /// <summary>
     /// Total number of transformations applied.
     /// </summary>
     public int TotalTransformations =>
         StringsEncrypted +
+        ConstantsEncrypted +
         TypesRenamed +
         MethodsRenamed +
         FieldsRenamed +
@@ -142,6 +148,7 @@ public class ObfuscationStatistics
     public void Merge(ObfuscationStatistics other)
     {
         StringsEncrypted += other.StringsEncrypted;
+        ConstantsEncrypted += other.ConstantsEncrypted;
         TypesRenamed += other.TypesRenamed;
         MethodsRenamed += other.MethodsRenamed;
         FieldsRenamed += other.FieldsRenamed;

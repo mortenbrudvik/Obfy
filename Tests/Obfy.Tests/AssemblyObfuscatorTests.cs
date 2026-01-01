@@ -1094,4 +1094,286 @@ public class AssemblyObfuscatorTests
     }
 
     #endregion
+
+    #region ConstantEncryptionObfuscator Tests
+
+    private static MethodDef CreateMethodWithConstants(TypeDef type, string name, int intValue, long longValue, float floatValue, double doubleValue)
+    {
+        var method = new MethodDefUser(
+            name,
+            MethodSig.CreateStatic(type.Module.CorLibTypes.Void),
+            MethodImplAttributes.IL,
+            MethodAttributes.Private | MethodAttributes.Static);
+
+        var body = new CilBody();
+
+        // ldc.i4 intValue + pop
+        body.Instructions.Add(Instruction.CreateLdcI4(intValue));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+
+        // ldc.i8 longValue + pop
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I8, longValue));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+
+        // ldc.r4 floatValue + pop
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_R4, floatValue));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+
+        // ldc.r8 doubleValue + pop
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_R8, doubleValue));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        method.Body = body;
+
+        type.Methods.Add(method);
+        return method;
+    }
+
+    [Fact]
+    public async Task ConstantEncryption_EncryptsIntegerConstants()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        CreateMethodWithConstants(type, "TestMethod", 42, 100L, 3.14f, 2.718);
+
+        var logger = new Mock<ILogger<ConstantEncryptionObfuscator>>();
+        var obfuscator = new ConstantEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ConstantEncryption = { Enabled = true, Algorithm = EncryptionAlgorithm.Xor, IntegerThreshold = 2 }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ConstantsEncrypted.ShouldBeGreaterThan(0);
+
+        // Verify decryptor type was injected
+        var decryptorType = module.Types.FirstOrDefault(t => t.Name == "<ConstantDecryptor>");
+        decryptorType.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ConstantEncryption_SkipsSmallIntegers()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        // Create method with small constants (0, 1, -1)
+        var method = new MethodDefUser(
+            "SmallConstants",
+            MethodSig.CreateStatic(type.Module.CorLibTypes.Void),
+            MethodImplAttributes.IL,
+            MethodAttributes.Private | MethodAttributes.Static);
+
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_M1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        method.Body = body;
+        type.Methods.Add(method);
+
+        var logger = new Mock<ILogger<ConstantEncryptionObfuscator>>();
+        var obfuscator = new ConstantEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ConstantEncryption = { Enabled = true, IntegerThreshold = 2 } // Skip |value| < 2
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ConstantsEncrypted.ShouldBe(0);
+
+        // Verify original instructions preserved
+        var hasZero = method.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldc_I4_0);
+        hasZero.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ConstantEncryption_SkipsCommonFloats()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        var method = new MethodDefUser(
+            "CommonFloats",
+            MethodSig.CreateStatic(type.Module.CorLibTypes.Void),
+            MethodImplAttributes.IL,
+            MethodAttributes.Private | MethodAttributes.Static);
+
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_R4, 0.0f));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_R4, 1.0f));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        method.Body = body;
+        type.Methods.Add(method);
+
+        var logger = new Mock<ILogger<ConstantEncryptionObfuscator>>();
+        var obfuscator = new ConstantEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ConstantEncryption =
+            {
+                Enabled = true,
+                EncryptIntegers = false, // Disable to focus on floats
+                EncryptLongs = false,
+                EncryptFloats = true,
+                EncryptDoubles = false,
+                SkipCommonFloats = true
+            }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ConstantsEncrypted.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ConstantEncryption_InjectsDecryptorMethods()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        CreateMethodWithConstants(type, "TestMethod", 100, 200L, 3.14f, 2.718);
+
+        var logger = new Mock<ILogger<ConstantEncryptionObfuscator>>();
+        var obfuscator = new ConstantEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ConstantEncryption = { Enabled = true, IntegerThreshold = 0, LongThreshold = 0, SkipCommonFloats = false, SkipCommonDoubles = false }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        var decryptorType = module.Types.First(t => t.Name == "<ConstantDecryptor>");
+        decryptorType.FindMethod("DecryptInt32").ShouldNotBeNull();
+        decryptorType.FindMethod("DecryptInt64").ShouldNotBeNull();
+        decryptorType.FindMethod("DecryptSingle").ShouldNotBeNull();
+        decryptorType.FindMethod("DecryptDouble").ShouldNotBeNull();
+        decryptorType.FindMethod(".cctor").ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void ConstantEncryption_Properties_AreCorrect()
+    {
+        var logger = new Mock<ILogger<ConstantEncryptionObfuscator>>();
+        var obfuscator = new ConstantEncryptionObfuscator(logger.Object);
+
+        obfuscator.Name.ShouldBe("ConstantEncryption");
+        obfuscator.Priority.ShouldBe(11);
+        obfuscator.SupportsTargetType(TargetType.Assembly).ShouldBeTrue();
+        obfuscator.SupportsTargetType(TargetType.SourceCode).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ConstantEncryption_IsEnabled_RespectsSettings()
+    {
+        var logger = new Mock<ILogger<ConstantEncryptionObfuscator>>();
+        var obfuscator = new ConstantEncryptionObfuscator(logger.Object);
+
+        var enabledSettings = new ObfySettings { ConstantEncryption = { Enabled = true } };
+        var disabledSettings = new ObfySettings { ConstantEncryption = { Enabled = false } };
+
+        obfuscator.IsEnabled(enabledSettings).ShouldBeTrue();
+        obfuscator.IsEnabled(disabledSettings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ConstantEncryption_DisabledTypesNotEncrypted()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        CreateMethodWithConstants(type, "TestMethod", 100, 200L, 3.14f, 2.718);
+
+        var logger = new Mock<ILogger<ConstantEncryptionObfuscator>>();
+        var obfuscator = new ConstantEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ConstantEncryption =
+            {
+                Enabled = true,
+                EncryptIntegers = true,
+                EncryptLongs = false, // Disabled
+                EncryptFloats = false, // Disabled
+                EncryptDoubles = false, // Disabled
+                IntegerThreshold = 0
+            }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert - Only integers should be encrypted
+        result.Success.ShouldBeTrue();
+        result.Statistics.ConstantsEncrypted.ShouldBe(1); // Only the int
+    }
+
+    [Fact]
+    public async Task ConstantEncryption_EncryptsAllTypesWhenEnabled()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        CreateMethodWithConstants(type, "TestMethod", 100, 200L, 3.14f, 2.718);
+
+        var logger = new Mock<ILogger<ConstantEncryptionObfuscator>>();
+        var obfuscator = new ConstantEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ConstantEncryption =
+            {
+                Enabled = true,
+                EncryptIntegers = true,
+                EncryptLongs = true,
+                EncryptFloats = true,
+                EncryptDoubles = true,
+                IntegerThreshold = 0,
+                LongThreshold = 0,
+                SkipCommonFloats = false,
+                SkipCommonDoubles = false
+            }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert - All 4 constants should be encrypted
+        result.Success.ShouldBeTrue();
+        result.Statistics.ConstantsEncrypted.ShouldBe(4);
+    }
+
+    #endregion
 }

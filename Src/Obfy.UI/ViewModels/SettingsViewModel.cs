@@ -85,6 +85,34 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private EncryptionAlgorithm _resourceAlgorithm = EncryptionAlgorithm.Aes256;
 
+    // Constant Encryption
+    [ObservableProperty]
+    private bool _constantEncryptionEnabled = false;
+
+    [ObservableProperty]
+    private EncryptionAlgorithm _constantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
+
+    [ObservableProperty]
+    private bool _encryptIntegers = true;
+
+    [ObservableProperty]
+    private bool _encryptLongs = true;
+
+    [ObservableProperty]
+    private bool _encryptFloats = true;
+
+    [ObservableProperty]
+    private bool _encryptDoubles = true;
+
+    [ObservableProperty]
+    private int _integerThreshold = 2;
+
+    [ObservableProperty]
+    private bool _skipCommonFloats = true;
+
+    [ObservableProperty]
+    private bool _skipCommonDoubles = true;
+
     // Exclusions
     public ObservableCollection<string> ExcludedNamespaces { get; } = new();
     public ObservableCollection<string> ExcludedTypes { get; } = new();
@@ -118,6 +146,7 @@ public partial class SettingsViewModel : ObservableObject
                 AntiDebugEnabled = false;
                 RemoveDebugInfo = true;
                 ResourceEncryptionEnabled = false;
+                ConstantEncryptionEnabled = false;
                 break;
 
             case ObfuscationLevel.Standard:
@@ -127,6 +156,7 @@ public partial class SettingsViewModel : ObservableObject
                 AntiDebugEnabled = false;
                 RemoveDebugInfo = true;
                 ResourceEncryptionEnabled = false;
+                ConstantEncryptionEnabled = false;
                 break;
 
             case ObfuscationLevel.Aggressive:
@@ -139,6 +169,8 @@ public partial class SettingsViewModel : ObservableObject
                 RemoveDebugInfo = true;
                 RemoveAttributes = true;
                 ResourceEncryptionEnabled = true;
+                ConstantEncryptionEnabled = true;
+                ConstantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
                 break;
         }
     }
@@ -191,6 +223,18 @@ public partial class SettingsViewModel : ObservableObject
                 Enabled = ResourceEncryptionEnabled,
                 Algorithm = ResourceAlgorithm
             },
+            ConstantEncryption = new ConstantEncryptionSettings
+            {
+                Enabled = ConstantEncryptionEnabled,
+                Algorithm = ConstantEncryptionAlgorithm,
+                EncryptIntegers = EncryptIntegers,
+                EncryptLongs = EncryptLongs,
+                EncryptFloats = EncryptFloats,
+                EncryptDoubles = EncryptDoubles,
+                IntegerThreshold = IntegerThreshold,
+                SkipCommonFloats = SkipCommonFloats,
+                SkipCommonDoubles = SkipCommonDoubles
+            },
             Exclusions = new ExclusionRules
             {
                 Namespaces = ExcludedNamespaces.ToList(),
@@ -240,6 +284,17 @@ public partial class SettingsViewModel : ObservableObject
         // Resource Encryption
         ResourceEncryptionEnabled = settings.ResourceEncryption.Enabled;
         ResourceAlgorithm = settings.ResourceEncryption.Algorithm;
+
+        // Constant Encryption
+        ConstantEncryptionEnabled = settings.ConstantEncryption.Enabled;
+        ConstantEncryptionAlgorithm = settings.ConstantEncryption.Algorithm;
+        EncryptIntegers = settings.ConstantEncryption.EncryptIntegers;
+        EncryptLongs = settings.ConstantEncryption.EncryptLongs;
+        EncryptFloats = settings.ConstantEncryption.EncryptFloats;
+        EncryptDoubles = settings.ConstantEncryption.EncryptDoubles;
+        IntegerThreshold = settings.ConstantEncryption.IntegerThreshold;
+        SkipCommonFloats = settings.ConstantEncryption.SkipCommonFloats;
+        SkipCommonDoubles = settings.ConstantEncryption.SkipCommonDoubles;
 
         // Exclusions
         ExcludedNamespaces.Clear();

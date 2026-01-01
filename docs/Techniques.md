@@ -9,6 +9,7 @@ Obfy applies techniques in a specific order (priority):
 | Priority | Technique | Description |
 |----------|-----------|-------------|
 | 10 | String Encryption | Encrypt string literals |
+| 11 | Constant Encryption | Encrypt numeric constants |
 | 15 | Resource Encryption | Encrypt embedded resources |
 | 30 | Control Flow | Flatten control flow |
 | 50 | Symbol Renaming | Rename identifiers |
@@ -66,6 +67,81 @@ Console.WriteLine(StringDecryptor.Decrypt(0));
 - Strings shorter than `minStringLength` are not encrypted
 - Empty strings are skipped
 - Adds slight runtime overhead for first access
+
+---
+
+### Constant Encryption
+
+Encrypts numeric constants (int, long, float, double) so they don't appear as literal values in the assembly.
+
+**How It Works:**
+
+1. Scans all methods for constant-loading IL instructions:
+   - `ldc.i4` variants (int constants)
+   - `ldc.i8` (long constants)
+   - `ldc.r4` (float constants)
+   - `ldc.r8` (double constants)
+2. Encrypts each constant using XOR encryption
+3. Injects a runtime decryptor class (`Obfy.Runtime.<ConstantDecryptor>`)
+4. Replaces constant loads with decryptor calls
+
+**Before:**
+```csharp
+int timeout = 30000;
+double pi = 3.14159265359;
+```
+
+**After (conceptual):**
+```csharp
+int timeout = ConstantDecryptor.DecryptInt32(0);
+double pi = ConstantDecryptor.DecryptDouble(1);
+```
+
+**Runtime Decryptor:**
+- Stores encrypted bytes for each constant
+- Provides type-specific decrypt methods: `DecryptInt32`, `DecryptInt64`, `DecryptSingle`, `DecryptDouble`
+- Key is embedded in the assembly
+
+**Algorithms:**
+
+| Algorithm | Description |
+|-----------|-------------|
+| **XOR** | Fast XOR with key rotation. Recommended for constants due to frequent access. |
+
+**Threshold Settings:**
+
+To avoid performance overhead from encrypting ubiquitous values, thresholds allow skipping common constants:
+
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `integerThreshold` | 2 | Skip integers where \|value\| < 2 (skips -1, 0, 1) |
+| `longThreshold` | 2 | Skip longs where \|value\| < 2 |
+| `skipCommonFloats` | true | Skip 0.0f, 1.0f, -1.0f |
+| `skipCommonDoubles` | true | Skip 0.0, 1.0, -1.0 |
+
+**Settings:**
+
+```json
+{
+  "constantEncryption": {
+    "enabled": true,
+    "algorithm": "Xor",
+    "encryptIntegers": true,
+    "encryptLongs": true,
+    "encryptFloats": true,
+    "encryptDoubles": true,
+    "integerThreshold": 2,
+    "longThreshold": 2,
+    "skipCommonFloats": true,
+    "skipCommonDoubles": true
+  }
+}
+```
+
+**Limitations:**
+- Only encrypts literal constants, not computed values
+- Adds slight runtime overhead for each constant access
+- Not enabled by default (only in Aggressive preset)
 
 ---
 

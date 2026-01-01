@@ -83,6 +83,9 @@ public class _‌‍‏‎
 ### String Encryption
 Encrypts string literals with AES-256 or XOR, making sensitive data like API keys and connection strings unreadable in the binary.
 
+### Resource Encryption
+Encrypts embedded resources (config files, data files, images) so they cannot be extracted from the assembly.
+
 ### Control Flow Obfuscation
 Transforms code structure using switch dispatchers and opaque predicates, making the logic harder to follow.
 

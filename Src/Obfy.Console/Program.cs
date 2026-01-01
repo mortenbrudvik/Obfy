@@ -57,6 +57,10 @@ public class Program
             name: "--strip-metadata",
             description: "Remove debug metadata");
 
+        var encryptResourcesOption = new Option<bool>(
+            name: "--encrypt-resources",
+            description: "Enable resource encryption");
+
         var preservePublicOption = new Option<bool>(
             name: "--preserve-public",
             description: "Preserve public API names");
@@ -89,6 +93,7 @@ public class Program
             renameOption,
             antiDebugOption,
             stripMetadataOption,
+            encryptResourcesOption,
             preservePublicOption,
             mapOption,
             dryRunOption,
@@ -134,6 +139,7 @@ public class Program
             var rename = context.ParseResult.GetValueForOption(renameOption);
             var antiDebug = context.ParseResult.GetValueForOption(antiDebugOption);
             var stripMetadata = context.ParseResult.GetValueForOption(stripMetadataOption);
+            var encryptResources = context.ParseResult.GetValueForOption(encryptResourcesOption);
             var preservePublic = context.ParseResult.GetValueForOption(preservePublicOption);
             var map = context.ParseResult.GetValueForOption(mapOption);
             var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
@@ -147,7 +153,7 @@ public class Program
 
             var settings = await BuildSettingsAsync(
                 config, level, stringEncrypt, controlFlow, rename,
-                antiDebug, stripMetadata, preservePublic);
+                antiDebug, stripMetadata, encryptResources, preservePublic);
 
             await RunObfuscationAsync(input, output, settings, map, dryRun, verbose);
         });
@@ -171,6 +177,7 @@ public class Program
         bool rename,
         bool antiDebug,
         bool stripMetadata,
+        bool encryptResources,
         bool preservePublic)
     {
         ObfySettings settings;
@@ -195,6 +202,7 @@ public class Program
         if (rename) settings.SymbolRenaming.Enabled = true;
         if (antiDebug) settings.Protection.AntiDebug = true;
         if (stripMetadata) settings.Metadata.RemoveDebugInfo = true;
+        if (encryptResources) settings.ResourceEncryption.Enabled = true;
         if (preservePublic) settings.SymbolRenaming.PreservePublicApi = true;
 
         return settings;
@@ -313,6 +321,7 @@ public class Program
         if (result.Statistics.TotalTransformations > 0)
         {
             table.AddRow("Strings Encrypted", result.Statistics.StringsEncrypted.ToString());
+            table.AddRow("Resources Encrypted", result.Statistics.ResourcesEncrypted.ToString());
             table.AddRow("Types Renamed", result.Statistics.TypesRenamed.ToString());
             table.AddRow("Methods Renamed", result.Statistics.MethodsRenamed.ToString());
             table.AddRow("Control Flow", result.Statistics.MethodsControlFlowObfuscated.ToString());

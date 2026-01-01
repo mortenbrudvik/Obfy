@@ -37,6 +37,7 @@ obfy <input>... [options]
 | `--rename` | | Enable symbol renaming | Off |
 | `--anti-debug` | | Enable anti-debugging protection | Off |
 | `--strip-metadata` | | Remove debug metadata | Off |
+| `--encrypt-resources` | | Enable resource encryption | Off |
 | `--preserve-public` | | Preserve public API names | Off |
 | `--map <file>` | | Output symbol mapping to file | None |
 | `--dry-run` | | Analyze only, don't write output | Off |
@@ -105,10 +106,13 @@ obfy MyApp.dll -c obfy.json -o output/
 obfy MyApp.dll --string-encrypt --rename -o output/
 
 # Enable all protections manually
-obfy MyApp.dll --string-encrypt --control-flow --rename --anti-debug --strip-metadata -o output/
+obfy MyApp.dll --string-encrypt --control-flow --rename --anti-debug --strip-metadata --encrypt-resources -o output/
 
 # Enable renaming but preserve public API
 obfy MyApp.dll --rename --preserve-public -o output/
+
+# Encrypt embedded resources (configs, data files)
+obfy MyApp.dll --encrypt-resources -o output/
 ```
 
 ### Symbol Mapping

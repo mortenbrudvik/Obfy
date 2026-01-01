@@ -5,6 +5,14 @@ All notable changes to Obfy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Resource encryption obfuscator to encrypt embedded resources (PF-01)
+- `--encrypt-resources` CLI option
+- Pattern-based include/exclude for resource encryption
+- Support for AES-256 and XOR algorithms for resources
+
 ## [1.0.6] - 2025-12-31
 
 ### Fixed

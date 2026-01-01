@@ -35,6 +35,10 @@ public class ObfuscationModule : Module
             .As<IObfuscator>()
             .SingleInstance();
 
+        builder.RegisterType<ResourceEncryptionObfuscator>()
+            .As<IObfuscator>()
+            .SingleInstance();
+
         builder.RegisterType<SymbolRenamingObfuscator>()
             .As<IObfuscator>()
             .SingleInstance();

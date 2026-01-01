@@ -9,6 +9,7 @@ Obfy applies techniques in a specific order (priority):
 | Priority | Technique | Description |
 |----------|-----------|-------------|
 | 10 | String Encryption | Encrypt string literals |
+| 15 | Resource Encryption | Encrypt embedded resources |
 | 30 | Control Flow | Flatten control flow |
 | 50 | Symbol Renaming | Rename identifiers |
 | 70 | Anti-Debug | Inject debugger detection |
@@ -65,6 +66,79 @@ Console.WriteLine(StringDecryptor.Decrypt(0));
 - Strings shorter than `minStringLength` are not encrypted
 - Empty strings are skipped
 - Adds slight runtime overhead for first access
+
+---
+
+### Resource Encryption
+
+Encrypts embedded resources (images, configs, data files) so they are not visible in plain form.
+
+**How It Works:**
+
+1. Scans all `EmbeddedResource` entries in the assembly
+2. Filters resources based on include/exclude patterns
+3. Encrypts each resource using the configured algorithm
+4. Removes original resources from the assembly
+5. Injects a runtime decryptor class (`Obfy.Runtime.<ResourceDecryptor>`)
+6. Stores encrypted resources in the decryptor type
+
+**Before:**
+```
+Assembly
+└── Resources
+    ├── Config.json (visible)
+    ├── Data.xml (visible)
+    └── Image.png (visible)
+```
+
+**After:**
+```
+Assembly
+├── Obfy.Runtime.<ResourceDecryptor>
+│   ├── _k (encryption key)
+│   ├── _d (encrypted data)
+│   ├── _n (resource names)
+│   └── GetResource(string name) → byte[]
+└── Resources (empty - all moved to decryptor)
+```
+
+**Runtime Access:**
+```csharp
+// Original code that uses Assembly.GetManifestResourceStream
+// will need to call the decryptor instead:
+var data = ResourceDecryptor.GetResource("Config.json");
+```
+
+**Algorithms:**
+
+| Algorithm | Description |
+|-----------|-------------|
+| **AES-256** | Strong encryption with random IV. Recommended for sensitive resources. |
+| **XOR** | Fast XOR with key rotation. Lower security but faster startup. |
+
+**Settings:**
+
+```json
+{
+  "resourceEncryption": {
+    "enabled": true,
+    "algorithm": "Aes256",
+    "includePatterns": ["*"],
+    "excludePatterns": ["*.resources"]
+  }
+}
+```
+
+**Pattern Matching:**
+- `*` - matches all resources
+- `*.json` - matches all JSON files
+- `Config.*` - matches resources starting with "Config."
+- `*.resources` - matches .NET resource files (typically excluded)
+
+**Limitations:**
+- Resources accessed via reflection need code changes
+- System resources (*.resources) may cause runtime issues if encrypted
+- Large resources increase assembly size slightly due to encryption overhead
 
 ---
 

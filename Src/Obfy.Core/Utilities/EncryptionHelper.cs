@@ -78,6 +78,40 @@ public static class EncryptionHelper
         return Decrypt(encrypted, key, algorithm);
     }
 
+    /// <summary>
+    /// Encrypts binary data using the specified algorithm.
+    /// </summary>
+    /// <param name="data">The data to encrypt.</param>
+    /// <param name="key">The encryption key.</param>
+    /// <param name="algorithm">The encryption algorithm.</param>
+    /// <returns>The encrypted data as a byte array.</returns>
+    public static byte[] EncryptBytes(byte[] data, byte[] key, EncryptionAlgorithm algorithm)
+    {
+        return algorithm switch
+        {
+            EncryptionAlgorithm.Xor => EncryptBytesXor(data, key),
+            EncryptionAlgorithm.Aes256 => EncryptBytesAes(data, key),
+            _ => throw new ArgumentException($"Unknown algorithm: {algorithm}")
+        };
+    }
+
+    /// <summary>
+    /// Decrypts binary data using the specified algorithm.
+    /// </summary>
+    /// <param name="encryptedData">The encrypted data.</param>
+    /// <param name="key">The encryption key.</param>
+    /// <param name="algorithm">The encryption algorithm.</param>
+    /// <returns>The decrypted data as a byte array.</returns>
+    public static byte[] DecryptBytes(byte[] encryptedData, byte[] key, EncryptionAlgorithm algorithm)
+    {
+        return algorithm switch
+        {
+            EncryptionAlgorithm.Xor => DecryptBytesXor(encryptedData, key),
+            EncryptionAlgorithm.Aes256 => DecryptBytesAes(encryptedData, key),
+            _ => throw new ArgumentException($"Unknown algorithm: {algorithm}")
+        };
+    }
+
     private static byte[] EncryptXor(string plainText, byte[] key)
     {
         var data = Encoding.UTF8.GetBytes(plainText);
@@ -139,5 +173,56 @@ public static class EncryptionHelper
         var decrypted = decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
 
         return Encoding.UTF8.GetString(decrypted);
+    }
+
+    private static byte[] EncryptBytesXor(byte[] data, byte[] key)
+    {
+        var result = new byte[data.Length];
+        for (var i = 0; i < data.Length; i++)
+        {
+            result[i] = (byte)(data[i] ^ key[i % key.Length]);
+        }
+        return result;
+    }
+
+    private static byte[] DecryptBytesXor(byte[] encryptedData, byte[] key)
+    {
+        // XOR is symmetric
+        return EncryptBytesXor(encryptedData, key);
+    }
+
+    private static byte[] EncryptBytesAes(byte[] data, byte[] key)
+    {
+        using var aes = Aes.Create();
+        aes.Key = key;
+        aes.GenerateIV();
+
+        using var encryptor = aes.CreateEncryptor();
+        var encrypted = encryptor.TransformFinalBlock(data, 0, data.Length);
+
+        // Prepend IV to encrypted data
+        var result = new byte[aes.IV.Length + encrypted.Length];
+        Buffer.BlockCopy(aes.IV, 0, result, 0, aes.IV.Length);
+        Buffer.BlockCopy(encrypted, 0, result, aes.IV.Length, encrypted.Length);
+
+        return result;
+    }
+
+    private static byte[] DecryptBytesAes(byte[] encryptedData, byte[] key)
+    {
+        using var aes = Aes.Create();
+        aes.Key = key;
+
+        // Extract IV from beginning of data
+        var iv = new byte[aes.BlockSize / 8];
+        Buffer.BlockCopy(encryptedData, 0, iv, 0, iv.Length);
+        aes.IV = iv;
+
+        // Extract encrypted content
+        var encrypted = new byte[encryptedData.Length - iv.Length];
+        Buffer.BlockCopy(encryptedData, iv.Length, encrypted, 0, encrypted.Length);
+
+        using var decryptor = aes.CreateDecryptor();
+        return decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
     }
 }

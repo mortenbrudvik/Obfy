@@ -70,6 +70,7 @@ obfy file1.dll file2.dll -o output/
 | Technique | Priority | Description |
 |-----------|----------|-------------|
 | StringEncryption | 10 | Encrypts string literals with AES-256 |
+| ResourceEncryption | 15 | Encrypts embedded resources |
 | ControlFlow | 30 | Flattens control flow with state machines |
 | SymbolRenaming | 50 | Renames types, methods, fields, properties |
 | AntiDebug | 70 | Injects debugger detection |

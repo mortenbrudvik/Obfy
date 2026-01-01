@@ -874,4 +874,224 @@ public class AssemblyObfuscatorTests
     }
 
     #endregion
+
+    #region ResourceEncryptionObfuscator Tests
+
+    [Fact]
+    public async Task ResourceEncryption_EncryptsEmbeddedResources()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var resourceData = new byte[] { 0x48, 0x65, 0x6C, 0x6C, 0x6F }; // "Hello"
+        var resource = new EmbeddedResource("TestResource.dat", resourceData);
+        module.Resources.Add(resource);
+
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ResourceEncryption = { Enabled = true, Algorithm = EncryptionAlgorithm.Aes256 }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ResourcesEncrypted.ShouldBe(1);
+
+        // Original resource should be removed
+        module.Resources.ShouldNotContain(r => r.Name == "TestResource.dat");
+
+        // Decryptor type should be injected
+        var decryptorType = module.Types.FirstOrDefault(t => t.Name == "<ResourceDecryptor>");
+        decryptorType.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task ResourceEncryption_XorAlgorithm_EncryptsResources()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var resourceData = new byte[] { 0x54, 0x65, 0x73, 0x74 }; // "Test"
+        var resource = new EmbeddedResource("Config.json", resourceData);
+        module.Resources.Add(resource);
+
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ResourceEncryption = { Enabled = true, Algorithm = EncryptionAlgorithm.Xor }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ResourcesEncrypted.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ResourceEncryption_RespectsIncludePatterns()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        module.Resources.Add(new EmbeddedResource("Data.json", new byte[] { 0x7B, 0x7D }));
+        module.Resources.Add(new EmbeddedResource("Image.png", new byte[] { 0x89, 0x50 }));
+        module.Resources.Add(new EmbeddedResource("Config.xml", new byte[] { 0x3C, 0x3F }));
+
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ResourceEncryption = new ResourceEncryptionSettings
+            {
+                Enabled = true,
+                IncludePatterns = new List<string> { "*.json", "*.xml" }
+            }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ResourcesEncrypted.ShouldBe(2); // json and xml, not png
+        module.Resources.ShouldContain(r => r.Name == "Image.png");
+    }
+
+    [Fact]
+    public async Task ResourceEncryption_RespectsExcludePatterns()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        module.Resources.Add(new EmbeddedResource("Data.json", new byte[] { 0x7B, 0x7D }));
+        module.Resources.Add(new EmbeddedResource("System.resources", new byte[] { 0x00, 0x01 }));
+
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ResourceEncryption = new ResourceEncryptionSettings
+            {
+                Enabled = true,
+                IncludePatterns = new List<string> { "*" },
+                ExcludePatterns = new List<string> { "*.resources" }
+            }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ResourcesEncrypted.ShouldBe(1); // Only json, not .resources
+        module.Resources.ShouldContain(r => r.Name == "System.resources");
+    }
+
+    [Fact]
+    public async Task ResourceEncryption_DisabledWhenSettingFalse()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        module.Resources.Add(new EmbeddedResource("Test.dat", new byte[] { 0x01, 0x02 }));
+
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ResourceEncryption = { Enabled = false }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act - shouldn't run because IsEnabled returns false
+        obfuscator.IsEnabled(settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ResourceEncryption_NoResourcesReturnsSuccess()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        // No resources added
+
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ResourceEncryption = { Enabled = true }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ResourcesEncrypted.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ResourceEncryption_InjectsDecryptorWithGetResourceMethod()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        module.Resources.Add(new EmbeddedResource("Test.dat", new byte[] { 0x01, 0x02, 0x03 }));
+
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            ResourceEncryption = { Enabled = true }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        var decryptorType = module.Types.FirstOrDefault(t => t.Name == "<ResourceDecryptor>");
+        decryptorType.ShouldNotBeNull();
+        decryptorType.FindMethod("GetResource").ShouldNotBeNull();
+        decryptorType.FindMethod(".cctor").ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void ResourceEncryption_Properties_AreCorrect()
+    {
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+
+        obfuscator.Name.ShouldBe("ResourceEncryption");
+        obfuscator.Priority.ShouldBe(15);
+        obfuscator.SupportsTargetType(TargetType.Assembly).ShouldBeTrue();
+        obfuscator.SupportsTargetType(TargetType.SourceCode).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ResourceEncryption_IsEnabled_RespectsSettings()
+    {
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+
+        var enabledSettings = new ObfySettings { ResourceEncryption = { Enabled = true } };
+        var disabledSettings = new ObfySettings { ResourceEncryption = { Enabled = false } };
+
+        obfuscator.IsEnabled(enabledSettings).ShouldBeTrue();
+        obfuscator.IsEnabled(disabledSettings).ShouldBeFalse();
+    }
+
+    #endregion
 }

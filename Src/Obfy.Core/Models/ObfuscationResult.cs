@@ -117,6 +117,11 @@ public class ObfuscationStatistics
     public int MetadataItemsRemoved { get; set; }
 
     /// <summary>
+    /// Number of resources encrypted.
+    /// </summary>
+    public int ResourcesEncrypted { get; set; }
+
+    /// <summary>
     /// Total number of transformations applied.
     /// </summary>
     public int TotalTransformations =>
@@ -128,7 +133,8 @@ public class ObfuscationStatistics
         ParametersRenamed +
         MethodsControlFlowObfuscated +
         ProtectionsApplied +
-        MetadataItemsRemoved;
+        MetadataItemsRemoved +
+        ResourcesEncrypted;
 
     /// <summary>
     /// Merges another statistics instance into this one.
@@ -144,5 +150,6 @@ public class ObfuscationStatistics
         MethodsControlFlowObfuscated += other.MethodsControlFlowObfuscated;
         ProtectionsApplied += other.ProtectionsApplied;
         MetadataItemsRemoved += other.MetadataItemsRemoved;
+        ResourcesEncrypted += other.ResourcesEncrypted;
     }
 }

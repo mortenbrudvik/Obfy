@@ -38,6 +38,11 @@ public class ObfySettings
     public MetadataSettings Metadata { get; set; } = new();
 
     /// <summary>
+    /// Resource encryption settings.
+    /// </summary>
+    public ResourceEncryptionSettings ResourceEncryption { get; set; } = new();
+
+    /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
     public ExclusionRules Exclusions { get; set; } = new();
@@ -84,6 +89,7 @@ public class ObfySettings
                 Protection.AntiTamper = true;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
+                ResourceEncryption.Enabled = true;
                 break;
 
             case ObfuscationLevel.Custom:
@@ -327,4 +333,32 @@ public class ExclusionRules
         "DataContractAttribute",
         "DataMemberAttribute"
     };
+}
+
+/// <summary>
+/// Settings for resource encryption.
+/// </summary>
+public class ResourceEncryptionSettings
+{
+    /// <summary>
+    /// Whether resource encryption is enabled.
+    /// </summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>
+    /// The encryption algorithm to use.
+    /// </summary>
+    public EncryptionAlgorithm Algorithm { get; set; } = EncryptionAlgorithm.Aes256;
+
+    /// <summary>
+    /// Patterns for resources to include (supports wildcards: *, ?).
+    /// Default includes all resources.
+    /// </summary>
+    public List<string> IncludePatterns { get; set; } = new() { "*" };
+
+    /// <summary>
+    /// Patterns for resources to exclude (supports wildcards: *, ?).
+    /// Excluded patterns take precedence over include patterns.
+    /// </summary>
+    public List<string> ExcludePatterns { get; set; } = new();
 }

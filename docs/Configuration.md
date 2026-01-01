@@ -8,6 +8,7 @@ Complete JSON configuration schema for Obfy.
 {
   "level": "standard",
   "stringEncryption": { ... },
+  "resourceEncryption": { ... },
   "controlFlow": { ... },
   "symbolRenaming": { ... },
   "protection": { ... },
@@ -28,6 +29,13 @@ Complete JSON configuration schema for Obfy.
     "encryptConstantStrings": true,
     "encryptResourceStrings": true,
     "minStringLength": 3
+  },
+
+  "resourceEncryption": {
+    "enabled": false,
+    "algorithm": "Aes256 | Xor",
+    "includePatterns": ["*"],
+    "excludePatterns": []
   },
 
   "controlFlow": {
@@ -112,6 +120,7 @@ Maximum protection with all techniques enabled.
 {
   "level": "aggressive",
   "stringEncryption": { "enabled": true },
+  "resourceEncryption": { "enabled": true },
   "controlFlow": {
     "enabled": true,
     "intensity": 80
@@ -156,6 +165,27 @@ Full control over individual settings.
 |-----------|----------|-------------|----------|
 | `Aes256` | High | Slower | Production, sensitive data |
 | `Xor` | Medium | Faster | Development, less sensitive code |
+
+### resourceEncryption
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable resource encryption |
+| `algorithm` | enum | `Aes256` | Encryption algorithm: `Aes256` or `Xor` |
+| `includePatterns` | string[] | `["*"]` | Glob patterns for resources to include |
+| `excludePatterns` | string[] | `[]` | Glob patterns for resources to exclude |
+
+**Pattern Examples:**
+
+| Pattern | Matches |
+|---------|---------|
+| `*` | All resources |
+| `*.json` | All JSON files |
+| `*.config` | All config files |
+| `Config.*` | Resources starting with "Config." |
+| `*.resources` | .NET resource files (typically excluded) |
+
+**Note:** Exclude patterns take precedence over include patterns. System resources (`*.resources`) should typically be excluded to avoid runtime issues.
 
 ### controlFlow
 
@@ -279,6 +309,11 @@ Full control over individual settings.
     "enabled": true,
     "algorithm": "Aes256",
     "minStringLength": 1
+  },
+  "resourceEncryption": {
+    "enabled": true,
+    "algorithm": "Aes256",
+    "excludePatterns": ["*.resources"]
   },
   "controlFlow": {
     "enabled": true,

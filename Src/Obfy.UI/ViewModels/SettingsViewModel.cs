@@ -74,6 +74,22 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _antiDumpEnabled = false;
 
+    // Anti-Decompiler
+    [ObservableProperty]
+    private bool _antiDecompilerEnabled = false;
+
+    [ObservableProperty]
+    private bool _injectJunkTypes = true;
+
+    [ObservableProperty]
+    private bool _addSuppressIldasmAttribute = true;
+
+    [ObservableProperty]
+    private int _junkTypeCount = 5;
+
+    [ObservableProperty]
+    private int _junkMethodsPerType = 3;
+
     // Metadata
     [ObservableProperty]
     private bool _removeDebugInfo = true;
@@ -172,6 +188,7 @@ public partial class SettingsViewModel : ObservableObject
                 SymbolRenamingEnabled = true;
                 AntiDebugEnabled = true;
                 AntiTamperEnabled = true;
+                AntiDecompilerEnabled = true;
                 RemoveDebugInfo = true;
                 RemoveAttributes = true;
                 ResourceEncryptionEnabled = true;
@@ -220,6 +237,14 @@ public partial class SettingsViewModel : ObservableObject
                     Enabled = AntiTamperEnabled,
                     CheckEntryPoint = TamperCheckEntryPoint,
                     CheckModuleInitializer = TamperCheckModuleInit
+                },
+                AntiDecompiler = new AntiDecompilerSettings
+                {
+                    Enabled = AntiDecompilerEnabled,
+                    InjectJunkTypes = InjectJunkTypes,
+                    AddSuppressIldasmAttribute = AddSuppressIldasmAttribute,
+                    JunkTypeCount = JunkTypeCount,
+                    JunkMethodsPerType = JunkMethodsPerType
                 },
                 AntiDump = AntiDumpEnabled
             },
@@ -287,6 +312,11 @@ public partial class SettingsViewModel : ObservableObject
         AntiTamperEnabled = settings.Protection.AntiTamper.Enabled;
         TamperCheckEntryPoint = settings.Protection.AntiTamper.CheckEntryPoint;
         TamperCheckModuleInit = settings.Protection.AntiTamper.CheckModuleInitializer;
+        AntiDecompilerEnabled = settings.Protection.AntiDecompiler.Enabled;
+        InjectJunkTypes = settings.Protection.AntiDecompiler.InjectJunkTypes;
+        AddSuppressIldasmAttribute = settings.Protection.AntiDecompiler.AddSuppressIldasmAttribute;
+        JunkTypeCount = settings.Protection.AntiDecompiler.JunkTypeCount;
+        JunkMethodsPerType = settings.Protection.AntiDecompiler.JunkMethodsPerType;
         AntiDumpEnabled = settings.Protection.AntiDump;
 
         // Metadata

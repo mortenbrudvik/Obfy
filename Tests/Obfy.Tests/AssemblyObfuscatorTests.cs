@@ -1628,4 +1628,275 @@ public class AssemblyObfuscatorTests
     }
 
     #endregion
+
+    #region AntiDecompilerObfuscator Tests
+
+    [Fact]
+    public async Task AntiDecompiler_InjectsSuppressIldasmAttribute()
+    {
+        // Arrange
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, AddSuppressIldasmAttribute = true } }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        var suppressIldasm = module.Assembly.CustomAttributes
+            .FirstOrDefault(a => a.TypeFullName == "System.Runtime.CompilerServices.SuppressIldasmAttribute");
+        suppressIldasm.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_DoesNotDuplicateSuppressIldasmAttribute()
+    {
+        // Arrange
+        var module = CreateTestModule();
+
+        // Add existing SuppressIldasm attribute
+        var attrType = new TypeRefUser(
+            module,
+            "System.Runtime.CompilerServices",
+            "SuppressIldasmAttribute",
+            module.CorLibTypes.AssemblyRef);
+        var ctor = new MemberRefUser(
+            module,
+            ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void),
+            attrType);
+        var attr = new CustomAttribute(ctor);
+        module.Assembly.CustomAttributes.Add(attr);
+
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, AddSuppressIldasmAttribute = true } }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert - Should still only have one SuppressIldasm attribute
+        var suppressIldasmCount = module.Assembly.CustomAttributes
+            .Count(a => a.TypeFullName == "System.Runtime.CompilerServices.SuppressIldasmAttribute");
+        suppressIldasmCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_InjectsJunkTypes()
+    {
+        // Arrange
+        var module = CreateTestModule();
+
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = true, JunkTypeCount = 3 } }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        var initialTypeCount = module.Types.Count;
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        module.Types.Count.ShouldBe(initialTypeCount + 3);
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_JunkTypesHaveMethods()
+    {
+        // Arrange
+        var module = CreateTestModule();
+
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = true, JunkTypeCount = 1, JunkMethodsPerType = 5 } }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        var junkType = module.Types.FirstOrDefault(t => t.Namespace == "Obfy.Internal");
+        junkType.ShouldNotBeNull();
+        // Should have 5 junk methods + 1 static constructor
+        junkType.Methods.Count.ShouldBe(6);
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_JunkTypesHaveFields()
+    {
+        // Arrange
+        var module = CreateTestModule();
+
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = true, JunkTypeCount = 1 } }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        var junkType = module.Types.FirstOrDefault(t => t.Namespace == "Obfy.Internal");
+        junkType.ShouldNotBeNull();
+        junkType.Fields.Count.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_JunkMethodsHaveValidIL()
+    {
+        // Arrange
+        var module = CreateTestModule();
+
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = true, JunkTypeCount = 1, JunkMethodsPerType = 1 } }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        var junkType = module.Types.First(t => t.Namespace == "Obfy.Internal");
+        foreach (var method in junkType.Methods)
+        {
+            method.Body.ShouldNotBeNull();
+            method.Body.Instructions.ShouldNotBeEmpty();
+            // All methods should end with ret
+            method.Body.Instructions.Last().OpCode.ShouldBe(OpCodes.Ret);
+        }
+    }
+
+    [Fact]
+    public void AntiDecompiler_Properties_AreCorrect()
+    {
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        obfuscator.Name.ShouldBe("AntiDecompiler");
+        obfuscator.Priority.ShouldBe(72);
+        obfuscator.SupportsTargetType(TargetType.Assembly).ShouldBeTrue();
+        obfuscator.SupportsTargetType(TargetType.SourceCode).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AntiDecompiler_IsEnabled_RespectsSettings()
+    {
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var enabledSettings = new ObfySettings { Protection = { AntiDecompiler = { Enabled = true } } };
+        var disabledSettings = new ObfySettings { Protection = { AntiDecompiler = { Enabled = false } } };
+
+        obfuscator.IsEnabled(enabledSettings).ShouldBeTrue();
+        obfuscator.IsEnabled(disabledSettings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_SkipsWhenJunkTypesDisabled()
+    {
+        // Arrange
+        var module = CreateTestModule();
+
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = false, AddSuppressIldasmAttribute = false } }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        var initialTypeCount = module.Types.Count;
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        module.Types.Count.ShouldBe(initialTypeCount);
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_RespectsJunkTypeCount()
+    {
+        // Arrange
+        var module = CreateTestModule();
+
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = true, JunkTypeCount = 10, AddSuppressIldasmAttribute = false } }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        var initialTypeCount = module.Types.Count;
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBe(10);
+        module.Types.Count.ShouldBe(initialTypeCount + 10);
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_ReportsCorrectStatistics()
+    {
+        // Arrange
+        var module = CreateTestModule();
+
+        var logger = new Mock<ILogger<AntiDecompilerObfuscator>>();
+        var obfuscator = new AntiDecompilerObfuscator(logger.Object);
+
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = true, JunkTypeCount = 5, AddSuppressIldasmAttribute = true } }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        // Assert
+        result.Success.ShouldBeTrue();
+        // 5 junk types + 1 for SuppressIldasm
+        result.Statistics.ProtectionsApplied.ShouldBe(6);
+    }
+
+    #endregion
 }

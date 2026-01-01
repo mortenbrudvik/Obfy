@@ -97,6 +97,8 @@ Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | ControlFlow | 30 | Flattens control flow with state machines |
 | SymbolRenaming | 50 | Renames types, methods, fields, properties |
 | AntiDebug | 70 | Injects debugger detection |
+| AntiDecompiler | 72 | Injects junk types and methods |
+| AntiTamper | 75 | Verifies assembly integrity at runtime |
 | MetadataRemoval | 90 | Strips debug info and attributes |
 
 ### Source Obfuscators (Roslyn)

@@ -71,7 +71,18 @@ Complete JSON configuration schema for Obfy.
 
   "protection": {
     "antiDebug": true,
-    "antiTamper": false,
+    "antiTamper": {
+      "enabled": false,
+      "checkEntryPoint": true,
+      "checkModuleInitializer": true
+    },
+    "antiDecompiler": {
+      "enabled": false,
+      "injectJunkTypes": true,
+      "addSuppressIldasmAttribute": true,
+      "junkTypeCount": 5,
+      "junkMethodsPerType": 3
+    },
     "antiDump": false
   },
 
@@ -143,7 +154,8 @@ Maximum protection with all techniques enabled.
   "symbolRenaming": { "enabled": true },
   "protection": {
     "antiDebug": true,
-    "antiTamper": true
+    "antiTamper": { "enabled": true },
+    "antiDecompiler": { "enabled": true }
   },
   "metadata": {
     "removeDebugInfo": true,
@@ -271,8 +283,25 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `antiDebug` | bool | `true` | Inject debugger detection checks |
-| `antiTamper` | bool | `false` | Inject anti-tampering checks |
 | `antiDump` | bool | `false` | Inject anti-dump protection |
+
+**antiTamper Settings:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `antiTamper.enabled` | bool | `false` | Enable anti-tampering protection |
+| `antiTamper.checkEntryPoint` | bool | `true` | Verify integrity at entry point |
+| `antiTamper.checkModuleInitializer` | bool | `true` | Verify integrity at module init |
+
+**antiDecompiler Settings:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `antiDecompiler.enabled` | bool | `false` | Enable anti-decompiler protection |
+| `antiDecompiler.injectJunkTypes` | bool | `true` | Inject decoy types with dead code |
+| `antiDecompiler.addSuppressIldasmAttribute` | bool | `true` | Add SuppressIldasm attribute |
+| `antiDecompiler.junkTypeCount` | int | `5` | Number of junk types to inject (1-50) |
+| `antiDecompiler.junkMethodsPerType` | int | `3` | Junk methods per type (1-20) |
 
 ### metadata
 
@@ -375,7 +404,12 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
   },
   "protection": {
     "antiDebug": true,
-    "antiTamper": true,
+    "antiTamper": { "enabled": true },
+    "antiDecompiler": {
+      "enabled": true,
+      "junkTypeCount": 10,
+      "junkMethodsPerType": 5
+    },
     "antiDump": true
   },
   "metadata": {

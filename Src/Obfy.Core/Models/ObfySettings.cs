@@ -94,6 +94,7 @@ public class ObfySettings
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = true;
                 Protection.AntiTamper.Enabled = true;
+                Protection.AntiDecompiler.Enabled = true;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = true;
@@ -287,6 +288,11 @@ public class ProtectionSettings
     public AntiTamperSettings AntiTamper { get; set; } = new();
 
     /// <summary>
+    /// Anti-decompiler protection settings.
+    /// </summary>
+    public AntiDecompilerSettings AntiDecompiler { get; set; } = new();
+
+    /// <summary>
     /// Whether to inject anti-dump protection.
     /// </summary>
     public bool AntiDump { get; set; } = false;
@@ -311,6 +317,39 @@ public class AntiTamperSettings
     /// Whether to check integrity at the module initializer (.cctor).
     /// </summary>
     public bool CheckModuleInitializer { get; set; } = true;
+}
+
+/// <summary>
+/// Settings for anti-decompiler protection.
+/// </summary>
+public class AntiDecompilerSettings
+{
+    /// <summary>
+    /// Whether anti-decompiler protection is enabled.
+    /// </summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>
+    /// Whether to inject junk types and methods to clutter analysis.
+    /// </summary>
+    public bool InjectJunkTypes { get; set; } = true;
+
+    /// <summary>
+    /// Whether to add the SuppressIldasm attribute to block ILDasm.
+    /// </summary>
+    public bool AddSuppressIldasmAttribute { get; set; } = true;
+
+    /// <summary>
+    /// Number of junk types to inject.
+    /// </summary>
+    [Range(1, 50)]
+    public int JunkTypeCount { get; set; } = 5;
+
+    /// <summary>
+    /// Number of junk methods per type.
+    /// </summary>
+    [Range(1, 20)]
+    public int JunkMethodsPerType { get; set; } = 3;
 }
 
 /// <summary>

@@ -112,6 +112,9 @@ Renames types, methods, fields, properties, and parameters to meaningless identi
 ### Anti-Debug Protection
 Injects debugger detection that responds to debugging attempts, deterring runtime analysis.
 
+### Anti-Decompiler Protection
+Injects junk types and methods to clutter decompiler output, making reverse engineering more difficult.
+
 ### Metadata Removal
 Strips debug information, custom attributes, and documentation, reducing attack surface and file size.
 

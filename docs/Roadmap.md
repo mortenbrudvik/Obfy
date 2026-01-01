@@ -32,7 +32,7 @@ A strategic development plan based on competitive analysis against commercial an
 | PF-01 | Resource Encryption | P0 | Low | Medium | ✅ Done |
 | PF-02 | Constant Encryption | P0 | Low | Medium | ✅ Done |
 | PF-03 | Anti-Tamper Detection | P1 | Medium | High | ✅ Done |
-| PF-04 | Anti-Decompiler | P1 | Medium | Medium | Planned |
+| PF-04 | Anti-Decompiler | P1 | Medium | Medium | ✅ Done |
 | PF-05 | Anti-Dump Protection | P2 | Medium | Medium | Backlog |
 | PF-06 | Watermarking | P2 | Low | Low | Backlog |
 | PF-07 | MSIL Encryption | P2 | High | High | Backlog |
@@ -248,7 +248,7 @@ A strategic development plan based on competitive analysis against commercial an
 | Feature | Type | Notes | Status |
 |---------|------|-------|--------|
 | Anti-Tamper Detection (PF-03) | Protection | Runtime integrity checks | ✅ Done |
-| Anti-Decompiler (PF-04) | Protection | Break decompiler tools | Planned |
+| Anti-Decompiler (PF-04) | Protection | Break decompiler tools | ✅ Done |
 | Assembly Merging (UF-01) | Utility | Merge multiple DLLs | Planned |
 
 **Success Metrics:**
@@ -336,6 +336,7 @@ A strategic development plan based on competitive analysis against commercial an
 | Resource Encryption | dnlib | Modify embedded resources |
 | Constant Encryption | dnlib | IL instruction rewriting |
 | Anti-Tamper | dnlib | Hash computation injection |
+| Anti-Decompiler | dnlib | Junk type/method injection |
 | Assembly Merging | ILRepack or custom | Consider existing libraries |
 | GUI | WPF-UI | Windows Fluent Design framework (completed) |
 | VS Extension | VSIX SDK | Visual Studio extensibility |

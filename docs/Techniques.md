@@ -14,6 +14,7 @@ Obfy applies techniques in a specific order (priority):
 | 30 | Control Flow | Flatten control flow |
 | 50 | Symbol Renaming | Rename identifiers |
 | 70 | Anti-Debug | Inject debugger detection |
+| 72 | Anti-Decompiler | Inject junk types and methods |
 | 75 | Anti-Tamper | Verify assembly integrity |
 | 90 | Metadata Removal | Strip debug info |
 
@@ -416,6 +417,95 @@ if (System.Diagnostics.Debugger.IsAttached)
 - Can be bypassed by experienced reverse engineers
 - May cause issues with legitimate profilers
 - Some detection methods can be patched out
+
+---
+
+### Anti-Decompiler Protection
+
+Makes reverse engineering harder by cluttering decompiler output with junk types and methods.
+
+**How It Works:**
+
+1. **SuppressIldasm Attribute**: Adds `[SuppressIldasm]` attribute to block ILDasm and some older tools
+2. **Junk Types**: Injects decoy types with confusing names in the `Obfy.Internal` namespace
+3. **Junk Methods**: Adds methods with complex-looking but dead code (loops, math, branches)
+4. **Junk Fields**: Adds fake fields to junk types
+5. **Confusing Names**: Uses zero-width and look-alike Unicode characters for names
+
+**Injected Junk Type Structure:**
+
+```
+Obfy.Internal._‌‍‏‎ (junk type)
+├── Fields
+│   ├── _‌‍‏‏ (int)
+│   ├── _‌‍‏‐ (string)
+│   └── _‌‍‏‑ (byte[])
+├── Methods
+│   ├── _‌‍‏‒(int, int) → int  (junk math method)
+│   ├── _‌‍‏–(int, int) → int  (junk math method)
+│   └── .cctor()               (static initializer with confusing code)
+```
+
+**Junk Method IL:**
+
+Each junk method contains valid but purposeless IL:
+- Nested loops with counter variables
+- XOR operations and bitwise math
+- Conditional branches that clutter analysis
+- Multiple local variables
+
+```csharp
+// Conceptual representation of junk method IL
+static int JunkMethod(int a, int b)
+{
+    int loc0 = 0, loc1 = 1;
+    while (loc0 < a)
+    {
+        loc1 = (loc1 + loc0) ^ b;
+        loc0++;
+    }
+    return loc1 & 0xFF;
+}
+```
+
+**Effectiveness by Decompiler:**
+
+| Decompiler | SuppressIldasm | Junk Types |
+|------------|----------------|------------|
+| ILDasm | Blocked | N/A |
+| dnSpy | Ignored | Visible (adds noise) |
+| ILSpy | Ignored | Visible (adds noise) |
+| dotPeek | Ignored | Visible (adds noise) |
+
+**Settings:**
+
+```json
+{
+  "protection": {
+    "antiDecompiler": {
+      "enabled": true,
+      "injectJunkTypes": true,
+      "addSuppressIldasmAttribute": true,
+      "junkTypeCount": 5,
+      "junkMethodsPerType": 3
+    }
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enabled` | false | Enable anti-decompiler protection |
+| `injectJunkTypes` | true | Create junk types with dead code |
+| `addSuppressIldasmAttribute` | true | Add SuppressIldasm assembly attribute |
+| `junkTypeCount` | 5 | Number of junk types to inject (1-50) |
+| `junkMethodsPerType` | 3 | Number of junk methods per type (1-20) |
+
+**Limitations:**
+- Modern decompilers (dnSpy, ILSpy) ignore SuppressIldasm
+- Junk code adds to assembly size
+- Experienced analysts can identify and filter junk types
+- Works best when combined with other obfuscation techniques
 
 ---
 

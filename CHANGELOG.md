@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Anti-decompiler protection to make reverse engineering harder (PF-04)
+  - Injects junk types and methods to clutter decompiler output
+  - Adds SuppressIldasm attribute to block ILDasm
+  - Configurable junk type count and methods per type
+  - Uses confusing Unicode characters for junk names
+
 ## [1.1.0] - 2026-01-01
 
 ### Added

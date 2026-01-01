@@ -60,6 +60,10 @@ public class ObfuscationModule : Module
             .As<IObfuscator>()
             .SingleInstance();
 
+        builder.RegisterType<AntiDecompilerObfuscator>()
+            .As<IObfuscator>()
+            .SingleInstance();
+
         builder.RegisterType<AntiTamperObfuscator>()
             .As<IObfuscator>()
             .SingleInstance();

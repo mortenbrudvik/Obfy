@@ -21,6 +21,8 @@ Download and run the Obfy installer, which adds the `obfy` command to your PATH.
 
 ## Quick Start
 
+### Command Line
+
 ```bash
 # Basic obfuscation with standard protection
 obfy MyApp.dll -o output/
@@ -34,6 +36,22 @@ obfy MyApp.dll -c obfy.json -o output/
 # Generate a configuration file
 obfy config generate -o obfy.json
 ```
+
+### Desktop Application
+
+Obfy also includes a modern WPF desktop application with Fluent Design:
+
+```bash
+# Run the UI
+dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
+```
+
+**Features:**
+- Three-panel layout (Settings, Files, Output)
+- Drag-and-drop file support
+- Level presets with expandable advanced settings
+- Real-time progress and color-coded output
+- Results visualization with symbol map export
 
 ## Before & After
 
@@ -137,6 +155,7 @@ Check out the [examples](examples/) folder:
 | [Configuration](docs/Configuration.md) | Full JSON schema and examples |
 | [Techniques](docs/Techniques.md) | How each obfuscation technique works |
 | [Advanced](docs/Advanced.md) | Exclusions, best practices, troubleshooting |
+| [UI Design](docs/obfy-ui-design.md) | Desktop application architecture |
 
 ## Build Integration
 

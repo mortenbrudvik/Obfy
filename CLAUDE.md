@@ -8,6 +8,12 @@ Obfy is a professional .NET obfuscation tool that protects C# assemblies and sou
 Obfy/
 ├── Src/
 │   ├── Obfy.Console/          # CLI entry point (System.CommandLine)
+│   ├── Obfy.UI/               # WPF desktop application (Fluent Design)
+│   │   ├── Views/             # XAML views and controls
+│   │   ├── ViewModels/        # MVVM ViewModels
+│   │   ├── Models/            # UI-specific models
+│   │   ├── Services/          # UI services (dialogs, settings)
+│   │   └── Converters/        # XAML value converters
 │   ├── Obfy.Core/             # Core obfuscation logic
 │   │   ├── DependencyInjection/  # Autofac module registration
 │   │   ├── Models/            # Settings and result models
@@ -23,6 +29,7 @@ Obfy/
 │   ├── Obfy.Tests/            # Unit tests
 │   └── Obfy.Console.Tests/    # Integration tests
 ├── docs/                      # Documentation
+├── installer/                 # Inno Setup installer
 ├── scripts/                   # Build scripts
 └── .claude/                   # Claude Code configuration
 ```
@@ -42,6 +49,9 @@ dotnet test Tests/Obfy.Console.Tests/Obfy.Console.Tests.csproj
 
 # Run CLI
 dotnet run --project Src/Obfy.Console/Obfy.Console.csproj -- --help
+
+# Run UI
+dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
 ```
 
 ## CLI Usage
@@ -62,6 +72,18 @@ obfy config generate -o obfy.json
 # Multiple files
 obfy file1.dll file2.dll -o output/
 ```
+
+## UI Application
+
+The WPF desktop application provides a visual interface for obfuscation:
+
+- **Three-panel layout**: Settings (left), Files (center), Output (bottom)
+- **Drag-and-drop**: Drop .dll/.exe/.cs files directly onto the window
+- **Level presets**: Minimal, Standard, Aggressive, or Custom
+- **Real-time progress**: Color-coded output logs
+- **Results view**: Statistics and symbol map export
+
+Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 
 ## Obfuscation Techniques
 
@@ -103,6 +125,9 @@ Uses Autofac with module-based registration (`ObfuscationModule`).
 | `Obfy.Core/Pipeline/ObfuscationPipeline.cs` | Orchestrates obfuscator execution |
 | `Obfy.Core/Models/ObfySettings.cs` | Complete configuration model |
 | `Obfy.Console/Program.cs` | CLI entry point |
+| `Obfy.UI/Views/MainWindow.xaml` | UI main window (three-panel layout) |
+| `Obfy.UI/ViewModels/MainViewModel.cs` | UI orchestration and obfuscation logic |
+| `Obfy.UI/ViewModels/SettingsViewModel.cs` | UI settings binding to ObfySettings |
 
 ## Development Workflow
 

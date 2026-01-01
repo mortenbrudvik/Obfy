@@ -68,11 +68,6 @@ When committing changes, check if these files need updating:
 5. If feat/fix, add entry to CHANGELOG.md under Unreleased
 6. Commit with:
 ```bash
-git commit -m "$(cat <<'EOF'
-<message>
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-EOF
-)"
+git commit -m "<message>"
 ```
 7. Push: `git push`

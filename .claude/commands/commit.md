@@ -71,8 +71,6 @@ When committing changes, check if these files need updating:
 git commit -m "$(cat <<'EOF'
 <message>
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
 Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"

@@ -101,7 +101,7 @@ A strategic development plan based on competitive analysis against commercial an
 
 | ID | Feature | Priority | Effort | Value | Status |
 |----|---------|----------|--------|-------|--------|
-| DX-01 | Avalonia GUI | P1 | Medium | High | Planned |
+| DX-01 | WPF Desktop Application | P1 | Medium | High | ✅ Done |
 | DX-02 | Visual Studio Extension | P1 | Medium | High | Planned |
 | DX-03 | VS Code Extension | P2 | Low | Medium | Backlog |
 | DX-04 | JetBrains Rider Plugin | P2 | Low | Medium | Backlog |
@@ -110,13 +110,13 @@ A strategic development plan based on competitive analysis against commercial an
 
 #### Feature Details
 
-**DX-01: Avalonia GUI**
-- Cross-platform desktop application
-- Visual configuration editor
+**DX-01: WPF Desktop Application** ✅
+- Windows desktop application with Fluent Design (WPF-UI)
+- Visual configuration editor with level presets
 - Drag-drop file selection
-- Real-time obfuscation preview
-- Profile management
-- *Why Avalonia: Cross-platform, modern, .NET native*
+- Real-time progress and color-coded output logs
+- Export obfuscation reports (HTML/JSON)
+- *Why WPF: Windows-first approach, mature ecosystem, Fluent Design support*
 
 **DX-02: Visual Studio Extension**
 - Right-click "Obfuscate" in Solution Explorer
@@ -224,20 +224,21 @@ A strategic development plan based on competitive analysis against commercial an
 
 ## Roadmap
 
-### Phase 1: Foundation Enhancement (v1.1)
+### Phase 1: Foundation Enhancement (v1.1) ✅
 **Theme:** Quick wins to close obvious gaps
 
-| Feature | Type | Notes |
-|---------|------|-------|
-| Resource Encryption (PF-01) | Protection | Encrypt embedded resources |
-| Constant Encryption (PF-02) | Protection | Encrypt numeric literals |
-| Obfuscation Report (UF-04) | Utility | Detailed statistics output |
+| Feature | Type | Notes | Status |
+|---------|------|-------|--------|
+| Resource Encryption (PF-01) | Protection | Encrypt embedded resources | ✅ Done |
+| Constant Encryption (PF-02) | Protection | Encrypt numeric literals | ✅ Done |
+| Obfuscation Report (UF-04) | Utility | Detailed statistics output | ✅ Done |
+| WPF Desktop Application (DX-01) | Tooling | Visual configuration UI | ✅ Done |
 
 **Success Metrics:**
 - All commercial competitors' basic features covered
 - 80% feature parity with Obfuscar + more
 
-**Target:** Q1 2026
+**Completed:** January 2026
 
 ---
 
@@ -259,19 +260,20 @@ A strategic development plan based on competitive analysis against commercial an
 ---
 
 ### Phase 3: Developer Experience (v1.3)
-**Theme:** Make obfuscation accessible
+**Theme:** IDE integration and tooling
 
 | Feature | Type | Notes |
 |---------|------|-------|
-| Avalonia GUI (DX-01) | Tooling | Cross-platform UI |
 | Visual Studio Extension (DX-02) | Tooling | IDE integration |
 | Configuration Wizard (DX-05) | Tooling | Interactive setup |
 
 **Success Metrics:**
-- Non-CLI users can use Obfy
 - Visual Studio market presence
+- Streamlined configuration experience
 
 **Target:** Q3 2026
+
+*Note: Desktop UI (DX-01) was completed ahead of schedule in v1.1*
 
 ---
 
@@ -335,7 +337,7 @@ A strategic development plan based on competitive analysis against commercial an
 | Constant Encryption | dnlib | IL instruction rewriting |
 | Anti-Tamper | dnlib | Hash computation injection |
 | Assembly Merging | ILRepack or custom | Consider existing libraries |
-| GUI | Avalonia UI | Cross-platform UI framework |
+| GUI | WPF-UI | Windows Fluent Design framework (completed) |
 | VS Extension | VSIX SDK | Visual Studio extensibility |
 
 ### Technical Risks

@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-01-01
+
 ### Added
+- WPF desktop application with Fluent Design (DX-01)
+  - Three-panel layout (Settings, Files, Output)
+  - Drag-and-drop file support
+  - Level presets with expandable advanced settings
+  - Real-time progress and color-coded output
+  - Results visualization with symbol map export
 - Anti-tamper detection to verify assembly integrity at runtime (PF-03)
   - Computes SHA-256 hash of method bodies during obfuscation
   - Injects runtime verification at entry point and/or module initializer

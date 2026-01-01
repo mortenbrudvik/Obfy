@@ -165,7 +165,7 @@ Check out the [examples](examples/) folder:
 | [Configuration](docs/Configuration.md) | Full JSON schema and examples |
 | [Techniques](docs/Techniques.md) | How each obfuscation technique works |
 | [Advanced](docs/Advanced.md) | Exclusions, best practices, troubleshooting |
-| [UI Design](docs/obfy-ui-design.md) | Desktop application architecture |
+| [Roadmap](docs/Roadmap.md) | Feature roadmap and backlog |
 
 ## Build Integration
 

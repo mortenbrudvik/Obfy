@@ -2,10 +2,11 @@
 ; Download Inno Setup from: https://jrsoftware.org/isinfo.php
 
 #define MyAppName "Obfy"
-#define MyAppVersion "1.0.6"
+#define MyAppVersion "1.0.7"
 #define MyAppPublisher "Obfy"
 #define MyAppURL "https://github.com/mortenbrudvik/Obfy"
 #define MyAppExeName "obfy.exe"
+#define MyAppUIExeName "ObfyUI.exe"
 
 [Setup]
 ; Unique application ID - generated GUID for Obfy
@@ -42,17 +43,27 @@ PrivilegesRequired=admin
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-; All application files from publish directory
+; CLI files from publish directory
 Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; UI files from publish-ui directory
+Source: "..\publish-ui\*"; DestDir: "{app}\UI"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 ; Start Menu shortcuts
+Name: "{group}\{#MyAppName}"; Filename: "{app}\UI\{#MyAppUIExeName}"; WorkingDir: "{app}\UI"
 Name: "{group}\{#MyAppName} Command Prompt"; Filename: "{cmd}"; Parameters: "/k ""{app}\{#MyAppExeName}"" --help"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
+; Desktop shortcut
+Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\UI\{#MyAppUIExeName}"; WorkingDir: "{app}\UI"
+
+[Run]
+; Launch UI after installation
+Filename: "{app}\UI\{#MyAppUIExeName}"; Description: "Launch Obfy"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 ; Kill running instances before uninstall
 Filename: "taskkill"; Parameters: "/f /im {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillObfy"
+Filename: "taskkill"; Parameters: "/f /im {#MyAppUIExeName}"; Flags: runhidden; RunOnceId: "KillObfyUI"
 
 [Code]
 const
@@ -130,5 +141,6 @@ var
 begin
   // Try to kill any running instances
   Exec('taskkill', '/f /im obfy.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill', '/f /im ObfyUI.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := True;
 end;

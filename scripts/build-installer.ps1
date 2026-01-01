@@ -10,9 +10,11 @@ param(
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $PublishDir = Join-Path $ProjectRoot "publish"
+$PublishDirUI = Join-Path $ProjectRoot "publish-ui"
 $InstallerDir = Join-Path $ProjectRoot "installer"
 $OutputDir = Join-Path $InstallerDir "installer-output"
 $ConsoleProject = Join-Path $ProjectRoot "Src\Obfy.Console\Obfy.Console.csproj"
+$UIProject = Join-Path $ProjectRoot "Src\Obfy.UI\Obfy.UI.csproj"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Obfy Installer Build Script" -ForegroundColor Cyan
@@ -20,7 +22,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Step 1: Find Inno Setup
-Write-Host "[1/5] Locating Inno Setup..." -ForegroundColor Yellow
+Write-Host "[1/6] Locating Inno Setup..." -ForegroundColor Yellow
 
 if (-not $InnoSetupPath) {
     $SearchPaths = @(
@@ -53,17 +55,22 @@ if (-not $InnoSetupPath -or -not (Test-Path $InnoSetupPath)) {
 
 Write-Host "  Found: $InnoSetupPath" -ForegroundColor Green
 
-# Step 2: Clean publish directory
-Write-Host "[2/5] Cleaning publish directory..." -ForegroundColor Yellow
+# Step 2: Clean publish directories
+Write-Host "[2/6] Cleaning publish directories..." -ForegroundColor Yellow
 
 if (Test-Path $PublishDir) {
     Remove-Item -Path $PublishDir -Recurse -Force
-    Write-Host "  Removed existing publish directory" -ForegroundColor Green
+    Write-Host "  Removed existing CLI publish directory" -ForegroundColor Green
 }
 
-# Step 3: Build and publish
+if (Test-Path $PublishDirUI) {
+    Remove-Item -Path $PublishDirUI -Recurse -Force
+    Write-Host "  Removed existing UI publish directory" -ForegroundColor Green
+}
+
+# Step 3: Build and publish CLI
 if (-not $SkipPublish) {
-    Write-Host "[3/5] Publishing Obfy (self-contained)..." -ForegroundColor Yellow
+    Write-Host "[3/6] Publishing Obfy CLI (self-contained)..." -ForegroundColor Yellow
 
     $publishArgs = @(
         "publish",
@@ -89,22 +96,55 @@ if (-not $SkipPublish) {
     }
 
     $fileCount = (Get-ChildItem -Path $PublishDir -Recurse -File).Count
-    Write-Host "  Published $fileCount files" -ForegroundColor Green
+    Write-Host "  Published $fileCount CLI files" -ForegroundColor Green
 } else {
-    Write-Host "[3/5] Skipping publish (--SkipPublish)" -ForegroundColor Gray
+    Write-Host "[3/6] Skipping CLI publish (--SkipPublish)" -ForegroundColor Gray
 }
 
-# Step 4: Create output directory
-Write-Host "[4/5] Preparing output directory..." -ForegroundColor Yellow
+# Step 4: Build and publish UI
+if (-not $SkipPublish) {
+    Write-Host "[4/6] Publishing Obfy UI (self-contained)..." -ForegroundColor Yellow
+
+    $publishArgsUI = @(
+        "publish",
+        $UIProject,
+        "-c", "Release",
+        "-r", "win-x64",
+        "--self-contained",
+        "-o", $PublishDirUI
+    )
+
+    & dotnet @publishArgsUI
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: dotnet publish UI failed!" -ForegroundColor Red
+        exit 1
+    }
+
+    # Verify ObfyUI.exe exists
+    $UIExePath = Join-Path $PublishDirUI "ObfyUI.exe"
+    if (-not (Test-Path $UIExePath)) {
+        Write-Host "ERROR: ObfyUI.exe not found in publish output!" -ForegroundColor Red
+        exit 1
+    }
+
+    $fileCountUI = (Get-ChildItem -Path $PublishDirUI -Recurse -File).Count
+    Write-Host "  Published $fileCountUI UI files" -ForegroundColor Green
+} else {
+    Write-Host "[4/6] Skipping UI publish (--SkipPublish)" -ForegroundColor Gray
+}
+
+# Step 5: Create output directory
+Write-Host "[5/6] Preparing output directory..." -ForegroundColor Yellow
 
 if (-not (Test-Path $OutputDir)) {
     New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
 }
 Write-Host "  Output: $OutputDir" -ForegroundColor Green
 
-# Step 5: Build installer
+# Step 6: Build installer
 if (-not $SkipBuild) {
-    Write-Host "[5/5] Building installer..." -ForegroundColor Yellow
+    Write-Host "[6/6] Building installer..." -ForegroundColor Yellow
 
     $IssFile = Join-Path $InstallerDir "ObfySetup.iss"
 
@@ -126,7 +166,7 @@ if (-not $SkipBuild) {
         Pop-Location
     }
 } else {
-    Write-Host "[5/5] Skipping installer build (--SkipBuild)" -ForegroundColor Gray
+    Write-Host "[6/6] Skipping installer build (--SkipBuild)" -ForegroundColor Gray
 }
 
 # Report results

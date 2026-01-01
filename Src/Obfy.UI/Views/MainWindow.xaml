@@ -93,7 +93,8 @@
                 </Grid>
             </Border>
 
-            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                           Background="{DynamicResource ControlElevationBorderBrush}"/>
 
             <!-- Right Panel: Files, Results, Output -->
             <Grid Grid.Column="2">
@@ -115,6 +116,7 @@
                     <controls:FilesPanel Grid.Row="0" DataContext="{Binding Files}"/>
 
                     <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"
+                                 Background="{DynamicResource ControlElevationBorderBrush}"
                                  Visibility="{Binding ShowResultsPanel, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                     <!-- Results Panel -->
@@ -123,7 +125,8 @@
                                           MaxHeight="300"/>
                 </Grid>
 
-                <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"/>
+                <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"
+                            Background="{DynamicResource ControlElevationBorderBrush}"/>
 
                 <!-- Output Panel -->
                 <controls:OutputPanel Grid.Row="2" DataContext="{Binding Output}"/>

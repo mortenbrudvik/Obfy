@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supports int, long, float, double constants
   - Configurable thresholds to skip small/common values
   - XOR encryption for fast runtime decryption
+- Obfuscation report generation (UF-04)
+  - Generate detailed HTML reports with visual styling
+  - Generate JSON reports for machine processing
+  - `--report <file>` CLI option (format based on extension)
+  - "Export Report" button in UI results panel
+  - Reports include: statistics, file size comparison, processing times, warnings
+  - Warnings for unused settings, skipped items, and public API changes
 - `--encrypt-resources` CLI option
 - Pattern-based include/exclude for resource encryption
 - Support for AES-256 and XOR algorithms for resources

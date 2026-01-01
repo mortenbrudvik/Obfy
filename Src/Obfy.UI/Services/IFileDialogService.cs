@@ -40,4 +40,10 @@ public interface IFileDialogService
     /// </summary>
     /// <returns>Selected file path, or null if cancelled.</returns>
     string? ShowSaveConfigDialog();
+
+    /// <summary>
+    /// Shows a save file dialog for exporting obfuscation reports.
+    /// </summary>
+    /// <returns>Selected file path, or null if cancelled.</returns>
+    string? ShowSaveReportDialog();
 }

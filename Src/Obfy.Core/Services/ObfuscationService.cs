@@ -93,8 +93,12 @@ public class ObfuscationService : IObfuscationService
 
             return ObfuscationResult.Successful(
                 context.Statistics,
-                effectiveOutput,
-                result.ElapsedTime);
+                inputPath: inputPath,
+                outputPath: effectiveOutput,
+                elapsedTime: result.ElapsedTime,
+                processingTimes: context.ProcessingTimes.ToList(),
+                skippedItems: context.SkippedItems.ToList(),
+                symbolMap: new Dictionary<string, string>(context.SymbolMap));
         }
         catch (Exception ex)
         {

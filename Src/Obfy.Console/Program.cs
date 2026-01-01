@@ -5,6 +5,7 @@ using Logging.Core.DependencyInjection;
 using Obfy.Core.DependencyInjection;
 using Obfy.Core.Models;
 using Obfy.Core.Services;
+using Obfy.Core.Services.Reporting;
 using Spectre.Console;
 
 namespace Obfy.Console;
@@ -69,6 +70,10 @@ public class Program
             name: "--map",
             description: "Output symbol mapping to file");
 
+        var reportOption = new Option<FileInfo?>(
+            name: "--report",
+            description: "Generate obfuscation report (HTML or JSON based on extension)");
+
         var dryRunOption = new Option<bool>(
             name: "--dry-run",
             description: "Analyze only, don't write output");
@@ -96,6 +101,7 @@ public class Program
             encryptResourcesOption,
             preservePublicOption,
             mapOption,
+            reportOption,
             dryRunOption,
             verboseOption,
             noLogoOption
@@ -142,6 +148,7 @@ public class Program
             var encryptResources = context.ParseResult.GetValueForOption(encryptResourcesOption);
             var preservePublic = context.ParseResult.GetValueForOption(preservePublicOption);
             var map = context.ParseResult.GetValueForOption(mapOption);
+            var report = context.ParseResult.GetValueForOption(reportOption);
             var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
             var verbose = context.ParseResult.GetValueForOption(verboseOption);
             var noLogo = context.ParseResult.GetValueForOption(noLogoOption);
@@ -155,7 +162,7 @@ public class Program
                 config, level, stringEncrypt, controlFlow, rename,
                 antiDebug, stripMetadata, encryptResources, preservePublic);
 
-            await RunObfuscationAsync(input, output, settings, map, dryRun, verbose);
+            await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose);
         });
 
         return await rootCommand.InvokeAsync(args);
@@ -225,6 +232,7 @@ public class Program
         DirectoryInfo? output,
         ObfySettings settings,
         FileInfo? mapFile,
+        FileInfo? reportFile,
         bool dryRun,
         bool verbose)
     {
@@ -235,8 +243,10 @@ public class Program
         _container = builder.Build();
 
         var service = _container.Resolve<IObfuscationService>();
+        var reportService = _container.Resolve<IReportService>();
 
         var allSymbols = new Dictionary<string, string>();
+        var successfulResults = new List<(ObfuscationResult Result, ObfySettings Settings)>();
 
         await AnsiConsole.Progress()
             .AutoClear(false)
@@ -279,11 +289,10 @@ public class Program
                     if (result.Success)
                     {
                         DisplaySuccess(input.Name, result);
+                        successfulResults.Add((result, settings));
 
                         // Collect symbols for map
-                        foreach (var (key, value) in result.Statistics.TotalTransformations > 0
-                            ? new Dictionary<string, string>() // Placeholder
-                            : new Dictionary<string, string>())
+                        foreach (var (key, value) in result.SymbolMap)
                         {
                             allSymbols[key] = value;
                         }
@@ -300,6 +309,21 @@ public class Program
         {
             await service.WriteSymbolMapAsync(allSymbols, mapFile.FullName);
             AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
+        }
+
+        // Generate report if requested
+        if (reportFile != null && successfulResults.Count > 0)
+        {
+            var format = Path.GetExtension(reportFile.FullName).ToLowerInvariant() == ".json"
+                ? ReportFormat.Json
+                : ReportFormat.Html;
+
+            // For single file, generate report directly
+            // For multiple files, use the first result (or could aggregate in future)
+            var (result, usedSettings) = successfulResults[0];
+            var report = reportService.BuildReport(result, usedSettings);
+            await reportService.GenerateReportAsync(report, reportFile.FullName, format);
+            AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
         }
 
         AnsiConsole.WriteLine();

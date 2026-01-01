@@ -77,4 +77,17 @@ public class FileDialogService : IFileDialogService
 
         return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
+
+    public string? ShowSaveReportDialog()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export Obfuscation Report",
+            Filter = "HTML Report (*.html)|*.html|JSON Report (*.json)|*.json",
+            DefaultExt = ".html",
+            FileName = "obfuscation-report.html"
+        };
+
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
+    }
 }

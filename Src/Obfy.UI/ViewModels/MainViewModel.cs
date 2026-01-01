@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Obfy.Core.Models;
 using Obfy.Core.Services;
+using Obfy.Core.Services.Reporting;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
 
@@ -17,6 +18,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IObfuscationService _obfuscationService;
     private readonly IFileDialogService _fileDialogService;
     private readonly ISettingsService _settingsService;
+    private readonly IReportService _reportService;
     private CancellationTokenSource? _cancellationTokenSource;
 
     /// <summary>
@@ -58,6 +60,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IObfuscationService obfuscationService,
         IFileDialogService fileDialogService,
         ISettingsService settingsService,
+        IReportService reportService,
         SettingsViewModel settings,
         FilesViewModel files,
         OutputViewModel output,
@@ -66,6 +69,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _obfuscationService = obfuscationService;
         _fileDialogService = fileDialogService;
         _settingsService = settingsService;
+        _reportService = reportService;
         Settings = settings;
         Files = files;
         Output = output;
@@ -102,6 +106,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var allSymbols = new Dictionary<string, string>();
         var totalStats = new ObfuscationStatistics();
         var stopwatch = Stopwatch.StartNew();
+        ObfuscationResult? lastSuccessfulResult = null;
 
         Output.Clear();
         Output.Info("Starting obfuscation...");
@@ -136,9 +141,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (result.Success)
                 {
                     file.Status = FileStatus.Success;
+                    lastSuccessfulResult = result;
                     if (result.Statistics != null)
                     {
                         totalStats = MergeStatistics(totalStats, result.Statistics);
+                    }
+                    // Collect symbols for the results panel
+                    foreach (var (key, value) in result.SymbolMap)
+                    {
+                        allSymbols[key] = value;
                     }
                     Output.Success($"Completed {file.FileName}: {result.Statistics?.TotalTransformations ?? 0} transformations");
                 }
@@ -156,6 +167,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             // Load results
             Results.LoadResults(allSymbols, totalStats, stopwatch.Elapsed);
+
+            // Build and set report for export
+            if (lastSuccessfulResult != null)
+            {
+                var report = _reportService.BuildReport(lastSuccessfulResult, settings);
+                Results.SetReport(report);
+            }
+
             ShowResultsPanel = true;
 
             Output.Success($"Obfuscation completed: {totalStats.TotalTransformations} total transformations in {stopwatch.Elapsed:mm\\:ss\\.fff}");

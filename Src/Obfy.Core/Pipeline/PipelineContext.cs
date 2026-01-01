@@ -57,6 +57,38 @@ public class PipelineContext
     public string? OutputPath { get; set; }
 
     /// <summary>
+    /// Gets the list of items skipped during obfuscation.
+    /// </summary>
+    public List<SkippedItem> SkippedItems
+    {
+        get
+        {
+            if (!SharedData.TryGetValue("SkippedItems", out var items))
+            {
+                items = new List<SkippedItem>();
+                SharedData["SkippedItems"] = items;
+            }
+            return (List<SkippedItem>)items;
+        }
+    }
+
+    /// <summary>
+    /// Gets the processing time entries for each obfuscator.
+    /// </summary>
+    public List<ProcessingTimeEntry> ProcessingTimes
+    {
+        get
+        {
+            if (!SharedData.TryGetValue("ProcessingTimes", out var times))
+            {
+                times = new List<ProcessingTimeEntry>();
+                SharedData["ProcessingTimes"] = times;
+            }
+            return (List<ProcessingTimeEntry>)times;
+        }
+    }
+
+    /// <summary>
     /// Creates a context for assembly obfuscation.
     /// </summary>
     public static PipelineContext ForAssembly(ModuleDef module, ObfySettings settings)

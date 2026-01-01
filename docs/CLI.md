@@ -40,6 +40,7 @@ obfy <input>... [options]
 | `--encrypt-resources` | | Enable resource encryption | Off |
 | `--preserve-public` | | Preserve public API names | Off |
 | `--map <file>` | | Output symbol mapping to file | None |
+| `--report <file>` | | Generate obfuscation report (HTML or JSON based on extension) | None |
 | `--dry-run` | | Analyze only, don't write output | Off |
 | `--verbose` | `-v` | Enable verbose output | Off |
 | `--no-logo` | | Suppress the banner | Off |
@@ -123,6 +124,23 @@ obfy MyApp.dll -o output/ --map symbols.json
 
 # The map file contains original -> obfuscated name mappings
 ```
+
+### Generate Reports
+
+```bash
+# Generate HTML report with visual styling
+obfy MyApp.dll -o output/ --report obfuscation-report.html
+
+# Generate JSON report for CI/CD integration
+obfy MyApp.dll -o output/ --report report.json
+```
+
+**Report Contents:**
+- Summary (level, duration, total transformations)
+- File information (input/output sizes, size change %)
+- Transformation statistics per obfuscator
+- Processing times breakdown
+- Warnings (unused settings, public API changes, skipped items)
 
 ### Dry Run
 

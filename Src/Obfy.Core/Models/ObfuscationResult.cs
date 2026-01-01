@@ -26,6 +26,11 @@ public class ObfuscationResult
     public ObfuscationStatistics Statistics { get; init; } = new();
 
     /// <summary>
+    /// Gets the input file path.
+    /// </summary>
+    public string? InputPath { get; init; }
+
+    /// <summary>
     /// Gets the output file path.
     /// </summary>
     public string? OutputPath { get; init; }
@@ -36,19 +41,42 @@ public class ObfuscationResult
     public TimeSpan ElapsedTime { get; init; }
 
     /// <summary>
+    /// Gets the processing times for each obfuscator (for reporting).
+    /// </summary>
+    public List<ProcessingTimeEntry> ProcessingTimes { get; init; } = new();
+
+    /// <summary>
+    /// Gets the items skipped during obfuscation (for reporting).
+    /// </summary>
+    public List<SkippedItem> SkippedItems { get; init; } = new();
+
+    /// <summary>
+    /// Gets the symbol map of renamed symbols (for reporting).
+    /// </summary>
+    public Dictionary<string, string> SymbolMap { get; init; } = new();
+
+    /// <summary>
     /// Creates a successful result.
     /// </summary>
     public static ObfuscationResult Successful(
         ObfuscationStatistics statistics,
+        string? inputPath = null,
         string? outputPath = null,
-        TimeSpan? elapsedTime = null)
+        TimeSpan? elapsedTime = null,
+        List<ProcessingTimeEntry>? processingTimes = null,
+        List<SkippedItem>? skippedItems = null,
+        Dictionary<string, string>? symbolMap = null)
     {
         return new ObfuscationResult
         {
             Success = true,
             Statistics = statistics,
+            InputPath = inputPath,
             OutputPath = outputPath,
-            ElapsedTime = elapsedTime ?? TimeSpan.Zero
+            ElapsedTime = elapsedTime ?? TimeSpan.Zero,
+            ProcessingTimes = processingTimes ?? new(),
+            SkippedItems = skippedItems ?? new(),
+            SymbolMap = symbolMap ?? new()
         };
     }
 

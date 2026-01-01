@@ -4,6 +4,7 @@ using Obfy.Core.Obfuscators.Assembly;
 using Obfy.Core.Obfuscators.Source;
 using Obfy.Core.Pipeline;
 using Obfy.Core.Services;
+using Obfy.Core.Services.Reporting;
 using Obfy.Core.Utilities;
 
 namespace Obfy.Core.DependencyInjection;
@@ -80,6 +81,20 @@ public class ObfuscationModule : Module
         // Register main service
         builder.RegisterType<ObfuscationService>()
             .As<IObfuscationService>()
+            .SingleInstance();
+
+        // Register report generators
+        builder.RegisterType<HtmlReportGenerator>()
+            .AsSelf()
+            .SingleInstance();
+
+        builder.RegisterType<JsonReportGenerator>()
+            .AsSelf()
+            .SingleInstance();
+
+        // Register report service
+        builder.RegisterType<ReportService>()
+            .As<IReportService>()
             .SingleInstance();
     }
 }

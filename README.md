@@ -35,6 +35,9 @@ obfy MyApp.dll -c obfy.json -o output/
 
 # Generate a configuration file
 obfy config generate -o obfy.json
+
+# Generate an obfuscation report
+obfy MyApp.dll -o output/ --report report.html
 ```
 
 ### Desktop Application
@@ -111,6 +114,13 @@ Injects debugger detection that responds to debugging attempts, deterring runtim
 
 ### Metadata Removal
 Strips debug information, custom attributes, and documentation, reducing attack surface and file size.
+
+### Obfuscation Reports
+Generate detailed HTML or JSON reports with statistics, file size comparison, processing times, and warnings.
+
+```bash
+obfy MyApp.dll -o output/ --report report.html
+```
 
 ## Configuration
 

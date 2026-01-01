@@ -72,6 +72,14 @@ public class ObfuscationPipeline : IObfuscationPipeline
                     // Merge statistics
                     context.Statistics.Merge(result.Statistics);
 
+                    // Track processing time for reporting
+                    context.ProcessingTimes.Add(new ProcessingTimeEntry
+                    {
+                        ObfuscatorName = obfuscator.Name,
+                        Duration = obfuscatorStopwatch.Elapsed,
+                        TransformationsApplied = result.Statistics.TotalTransformations
+                    });
+
                     _logger.LogDebug("Obfuscator {Name} completed in {ElapsedMs}ms with {Transformations} transformations",
                         obfuscator.Name,
                         obfuscatorStopwatch.ElapsedMilliseconds,
@@ -96,8 +104,8 @@ public class ObfuscationPipeline : IObfuscationPipeline
 
             return ObfuscationResult.Successful(
                 context.Statistics,
-                context.OutputPath,
-                stopwatch.Elapsed);
+                outputPath: context.OutputPath,
+                elapsedTime: stopwatch.Elapsed);
         }
         catch (OperationCanceledException)
         {

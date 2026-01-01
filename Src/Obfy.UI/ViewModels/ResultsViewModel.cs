@@ -5,6 +5,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Obfy.Core.Models;
+using Obfy.Core.Services.Reporting;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
 
@@ -16,7 +17,9 @@ namespace Obfy.UI.ViewModels;
 public partial class ResultsViewModel : ObservableObject
 {
     private readonly IFileDialogService _fileDialogService;
+    private readonly IReportService _reportService;
     private Dictionary<string, string> _symbolMap = new();
+    private ObfuscationReport? _currentReport;
 
     /// <summary>
     /// Gets the root nodes of the symbol tree.
@@ -32,9 +35,14 @@ public partial class ResultsViewModel : ObservableObject
     [ObservableProperty]
     private string _searchText = string.Empty;
 
-    public ResultsViewModel(IFileDialogService fileDialogService)
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ExportReportCommand))]
+    private bool _hasReport;
+
+    public ResultsViewModel(IFileDialogService fileDialogService, IReportService reportService)
     {
         _fileDialogService = fileDialogService;
+        _reportService = reportService;
     }
 
     /// <summary>
@@ -59,6 +67,17 @@ public partial class ResultsViewModel : ObservableObject
         ElapsedTime = TimeSpan.Zero;
         _symbolMap.Clear();
         SearchText = string.Empty;
+        _currentReport = null;
+        HasReport = false;
+    }
+
+    /// <summary>
+    /// Sets the obfuscation report for export.
+    /// </summary>
+    public void SetReport(ObfuscationReport report)
+    {
+        _currentReport = report;
+        HasReport = true;
     }
 
     private void BuildSymbolTree()
@@ -122,6 +141,27 @@ public partial class ResultsViewModel : ObservableObject
 
         var json = JsonSerializer.Serialize(_symbolMap, new JsonSerializerOptions { WriteIndented = true });
         await File.WriteAllTextAsync(filePath, json);
+    }
+
+    [RelayCommand(CanExecute = nameof(HasReport))]
+    private async Task ExportReportAsync()
+    {
+        if (_currentReport == null)
+        {
+            return;
+        }
+
+        var filePath = _fileDialogService.ShowSaveReportDialog();
+        if (string.IsNullOrEmpty(filePath))
+        {
+            return;
+        }
+
+        var format = Path.GetExtension(filePath).ToLowerInvariant() == ".json"
+            ? ReportFormat.Json
+            : ReportFormat.Html;
+
+        await _reportService.GenerateReportAsync(_currentReport, filePath, format);
     }
 
     [RelayCommand]

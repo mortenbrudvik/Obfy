@@ -43,9 +43,9 @@ function New-ObfyIcon {
         $innerCircle
     )
 
-    # Clip to left portion (solid part) - up to x=160
+    # Clip to left portion (solid part) - up to x=80
     $leftClip = New-Object System.Windows.Media.RectangleGeometry(
-        (New-Object System.Windows.Rect(0, 0, 160, 256))
+        (New-Object System.Windows.Rect(0, 0, 80, 256))
     )
     $leftPart = New-Object System.Windows.Media.CombinedGeometry(
         [System.Windows.Media.GeometryCombineMode]::Intersect,
@@ -55,16 +55,16 @@ function New-ObfyIcon {
     $context.DrawGeometry($gradient, $null, $leftPart)
 
     # Draw pixelated dissolve on right side
-    $pixelSize = 8
-    if ($Size -eq 16) { $pixelSize = 14 }  # Larger pixels for tiny icon
-    elseif ($Size -eq 32) { $pixelSize = 10 }
-    elseif ($Size -eq 48) { $pixelSize = 9 }
+    $pixelSize = 10
+    if ($Size -eq 16) { $pixelSize = 16 }  # Larger pixels for tiny icon
+    elseif ($Size -eq 32) { $pixelSize = 12 }
+    elseif ($Size -eq 48) { $pixelSize = 11 }
 
     $random = New-Object System.Random(42)  # Fixed seed for consistency
     $pixelGap = $pixelSize - 1
 
-    # Generate pixels in the dissolve zone (x: 140 to 228)
-    for ($x = 140; $x -lt 228; $x += $pixelSize) {
+    # Generate pixels in the dissolve zone (x: 70 to 228)
+    for ($x = 70; $x -lt 228; $x += $pixelSize) {
         for ($y = 28; $y -lt 228; $y += $pixelSize) {
             $px = $x + ($pixelSize / 2)
             $py = $y + ($pixelSize / 2)
@@ -78,7 +78,7 @@ function New-ObfyIcon {
             }
 
             # Probability decreases as we go right (dissolve effect)
-            $progress = ($x - 140) / 88.0  # 0 to 1
+            $progress = ($x - 70) / 158.0  # 0 to 1
             $probability = 1.0 - ($progress * $progress)  # Quadratic falloff
 
             if ($random.NextDouble() -lt $probability) {

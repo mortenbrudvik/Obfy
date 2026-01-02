@@ -24,5 +24,36 @@ jobs:
     - name: Build
       run: dotnet build --no-restore -c Release
 
-    - name: Test
-      run: dotnet test --no-build -c Release --verbosity normal
+    - name: Test with Coverage
+      run: dotnet test --no-build -c Release --collect:"XPlat Code Coverage" --results-directory ./coverage
+
+    - name: Generate Coverage Report
+      run: |
+        dotnet tool install -g dotnet-reportgenerator-globaltool
+        reportgenerator "-reports:coverage/**/coverage.cobertura.xml" "-targetdir:coverage/report" "-reporttypes:Cobertura;HtmlInline;MarkdownSummaryGithub;Badges"
+
+    - name: Upload Coverage Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage/report
+
+    - name: Add Coverage PR Comment
+      if: github.event_name == 'pull_request'
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        recreate: true
+        path: coverage/report/SummaryGithub.md
+
+    - name: Add Coverage to Summary
+      run: cat coverage/report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+      shell: bash
+
+    - name: Check Coverage Threshold
+      run: |
+        COVERAGE=$(grep -oP 'line-rate="[\d.]+"' coverage/report/Cobertura.xml | head -1 | grep -oP '[\d.]+')
+        COVERAGE_PCT=$(echo "$COVERAGE * 100" | bc)
+        echo "Coverage: $COVERAGE_PCT%"
+        if (( $(echo "$COVERAGE_PCT < 80" | bc -l) )); then
+          echo "::warning::Coverage $COVERAGE_PCT% is below 80% threshold"
+        fi

@@ -55,6 +55,9 @@ appsettings.*.json
 build/output/
 build/publish/
 build/publish-ui/
+build/temp-obfy/
+build/obfuscated-cli/
+build/obfuscated-ui/
 
 # Claude Code
 .claude/settings.local.json

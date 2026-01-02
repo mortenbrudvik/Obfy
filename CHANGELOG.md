@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Self-obfuscation in build process to protect Obfy's own assemblies
+  - Obfuscates CLI and UI assemblies before packaging into installer
+  - Uses copy-then-obfuscate approach to solve bootstrap problem
+  - Applies string encryption, symbol renaming, and metadata removal
+  - New `-SkipObfuscation` flag for build-installer.ps1
 - Configuration Wizard for interactive config generation (DX-05)
   - `obfy config wizard` command with Quick and Advanced modes
   - Quick mode: Select application type and protection level

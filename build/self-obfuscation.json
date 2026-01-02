@@ -1,0 +1,37 @@
+{
+  "level": "Aggressive",
+  "stringEncryption": {
+    "enabled": true,
+    "algorithm": "Aes256",
+    "minStringLength": 3
+  },
+  "controlFlow": {
+    "enabled": true,
+    "mode": "Switch",
+    "intensity": 50
+  },
+  "symbolRenaming": {
+    "enabled": true,
+    "mode": "Unreadable",
+    "preservePublicApi": false
+  },
+  "protection": {
+    "antiDebug": true,
+    "antiTamper": {
+      "enabled": true
+    },
+    "antiDecompiler": {
+      "enabled": true,
+      "injectJunkTypes": true
+    }
+  },
+  "metadata": {
+    "removeDebugInfo": true,
+    "removeAttributes": true
+  },
+  "exclusions": {
+    "namespaces": ["Obfy.Runtime*"],
+    "types": ["*Attribute"],
+    "attributes": ["SerializableAttribute", "DataContractAttribute"]
+  }
+}

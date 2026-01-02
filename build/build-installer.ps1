@@ -4,6 +4,7 @@
 param(
     [string]$InnoSetupPath,
     [switch]$SkipPublish,
+    [switch]$SkipObfuscation,
     [switch]$SkipBuild
 )
 
@@ -22,7 +23,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Step 1: Find Inno Setup
-Write-Host "[1/6] Locating Inno Setup..." -ForegroundColor Yellow
+Write-Host "[1/7] Locating Inno Setup..." -ForegroundColor Yellow
 
 if (-not $InnoSetupPath) {
     $SearchPaths = @(
@@ -56,7 +57,7 @@ if (-not $InnoSetupPath -or -not (Test-Path $InnoSetupPath)) {
 Write-Host "  Found: $InnoSetupPath" -ForegroundColor Green
 
 # Step 2: Clean publish directories
-Write-Host "[2/6] Cleaning publish directories..." -ForegroundColor Yellow
+Write-Host "[2/7] Cleaning publish directories..." -ForegroundColor Yellow
 
 if (Test-Path $PublishDir) {
     Remove-Item -Path $PublishDir -Recurse -Force
@@ -70,7 +71,7 @@ if (Test-Path $PublishDirUI) {
 
 # Step 3: Build and publish CLI
 if (-not $SkipPublish) {
-    Write-Host "[3/6] Publishing Obfy CLI (self-contained)..." -ForegroundColor Yellow
+    Write-Host "[3/7] Publishing Obfy CLI (self-contained)..." -ForegroundColor Yellow
 
     $publishArgs = @(
         "publish",
@@ -98,12 +99,12 @@ if (-not $SkipPublish) {
     $fileCount = (Get-ChildItem -Path $PublishDir -Recurse -File).Count
     Write-Host "  Published $fileCount CLI files" -ForegroundColor Green
 } else {
-    Write-Host "[3/6] Skipping CLI publish (--SkipPublish)" -ForegroundColor Gray
+    Write-Host "[3/7] Skipping CLI publish (--SkipPublish)" -ForegroundColor Gray
 }
 
 # Step 4: Build and publish UI
 if (-not $SkipPublish) {
-    Write-Host "[4/6] Publishing Obfy UI (self-contained)..." -ForegroundColor Yellow
+    Write-Host "[4/7] Publishing Obfy UI (self-contained)..." -ForegroundColor Yellow
 
     $publishArgsUI = @(
         "publish",
@@ -131,20 +132,92 @@ if (-not $SkipPublish) {
     $fileCountUI = (Get-ChildItem -Path $PublishDirUI -Recurse -File).Count
     Write-Host "  Published $fileCountUI UI files" -ForegroundColor Green
 } else {
-    Write-Host "[4/6] Skipping UI publish (--SkipPublish)" -ForegroundColor Gray
+    Write-Host "[4/7] Skipping UI publish (--SkipPublish)" -ForegroundColor Gray
 }
 
-# Step 5: Create output directory
-Write-Host "[5/6] Preparing output directory..." -ForegroundColor Yellow
+# Step 5: Obfuscate published binaries
+if (-not $SkipObfuscation -and -not $SkipPublish) {
+    Write-Host "[5/7] Obfuscating assemblies..." -ForegroundColor Yellow
+
+    $TempObfyDir = Join-Path $BuildDir "temp-obfy"
+    $ObfuscatedCliDir = Join-Path $BuildDir "obfuscated-cli"
+    $ObfuscatedUiDir = Join-Path $BuildDir "obfuscated-ui"
+
+    # Create temp directory with copy of obfy for bootstrap
+    if (Test-Path $TempObfyDir) { Remove-Item $TempObfyDir -Recurse -Force }
+    if (Test-Path $ObfuscatedCliDir) { Remove-Item $ObfuscatedCliDir -Recurse -Force }
+    if (Test-Path $ObfuscatedUiDir) { Remove-Item $ObfuscatedUiDir -Recurse -Force }
+
+    Copy-Item $PublishDir $TempObfyDir -Recurse
+    New-Item -Path $ObfuscatedCliDir -ItemType Directory -Force | Out-Null
+    New-Item -Path $ObfuscatedUiDir -ItemType Directory -Force | Out-Null
+
+    $TempObfyExe = Join-Path $TempObfyDir "obfy.exe"
+
+    # Define which assemblies to obfuscate (our own DLLs only - EXEs are native app hosts)
+    $OurAssemblies = @("obfy.dll", "Obfy.Core.dll", "Settings.Core.dll", "Logging.Core.dll")
+
+    # Obfuscate CLI assemblies to separate directory
+    Write-Host "  Obfuscating CLI assemblies..." -ForegroundColor Gray
+    foreach ($asmName in $OurAssemblies) {
+        $asmPath = Join-Path $PublishDir $asmName
+        if (Test-Path $asmPath) {
+            & $TempObfyExe $asmPath -o $ObfuscatedCliDir -l standard --string-encrypt --control-flow --rename --strip-metadata
+            if ($LASTEXITCODE -eq 0) {
+                # Copy obfuscated file back to publish directory
+                $obfuscatedPath = Join-Path $ObfuscatedCliDir $asmName
+                if (Test-Path $obfuscatedPath) {
+                    Copy-Item $obfuscatedPath $PublishDir -Force
+                    Write-Host "    Obfuscated: $asmName" -ForegroundColor Green
+                }
+            } else {
+                Write-Host "    WARNING: Failed to obfuscate $asmName" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    # Obfuscate UI assemblies to separate directory
+    Write-Host "  Obfuscating UI assemblies..." -ForegroundColor Gray
+    foreach ($asmName in $OurAssemblies) {
+        $asmPath = Join-Path $PublishDirUI $asmName
+        if (Test-Path $asmPath) {
+            & $TempObfyExe $asmPath -o $ObfuscatedUiDir -l standard --string-encrypt --control-flow --rename --strip-metadata
+            if ($LASTEXITCODE -eq 0) {
+                # Copy obfuscated file back to publish-ui directory
+                $obfuscatedPath = Join-Path $ObfuscatedUiDir $asmName
+                if (Test-Path $obfuscatedPath) {
+                    Copy-Item $obfuscatedPath $PublishDirUI -Force
+                    Write-Host "    Obfuscated: $asmName" -ForegroundColor Green
+                }
+            } else {
+                Write-Host "    WARNING: Failed to obfuscate UI $asmName" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    # Cleanup temp directories
+    Remove-Item $TempObfyDir -Recurse -Force
+    Remove-Item $ObfuscatedCliDir -Recurse -Force
+    Remove-Item $ObfuscatedUiDir -Recurse -Force
+
+    Write-Host "  Obfuscation complete" -ForegroundColor Green
+} elseif ($SkipObfuscation) {
+    Write-Host "[5/7] Skipping obfuscation (--SkipObfuscation)" -ForegroundColor Gray
+} else {
+    Write-Host "[5/7] Skipping obfuscation (no publish)" -ForegroundColor Gray
+}
+
+# Step 6: Create output directory
+Write-Host "[6/7] Preparing output directory..." -ForegroundColor Yellow
 
 if (-not (Test-Path $OutputDir)) {
     New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
 }
 Write-Host "  Output: $OutputDir" -ForegroundColor Green
 
-# Step 6: Build installer
+# Step 7: Build installer
 if (-not $SkipBuild) {
-    Write-Host "[6/6] Building installer..." -ForegroundColor Yellow
+    Write-Host "[7/7] Building installer..." -ForegroundColor Yellow
 
     $IssFile = Join-Path $BuildDir "ObfySetup.iss"
 
@@ -166,7 +239,7 @@ if (-not $SkipBuild) {
         Pop-Location
     }
 } else {
-    Write-Host "[6/6] Skipping installer build (--SkipBuild)" -ForegroundColor Gray
+    Write-Host "[7/7] Skipping installer build (--SkipBuild)" -ForegroundColor Gray
 }
 
 # Report results

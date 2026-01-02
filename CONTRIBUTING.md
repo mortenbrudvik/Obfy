@@ -47,8 +47,9 @@ Obfy/
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/         # Unit tests
-│   └── Obfy.Console.Tests/ # Integration tests
+│   ├── Obfy.Tests/         # Core unit tests (152 tests)
+│   ├── Obfy.Console.Tests/ # CLI parsing tests (92 tests)
+│   └── Obfy.UI.Tests/      # ViewModel unit tests (59 tests)
 ├── docs/                   # Documentation
 └── examples/               # Example projects
 ```
@@ -90,18 +91,33 @@ Examples:
 
 ### Testing
 
-- Write tests for new features
-- Write regression tests for bug fixes
-- Ensure all tests pass before submitting PR
-- Aim for good test coverage
+We have three test projects:
+
+| Project | Purpose | Tests |
+|---------|---------|-------|
+| `Obfy.Tests` | Core obfuscation logic | 152 |
+| `Obfy.Console.Tests` | CLI argument parsing, help output | 92 |
+| `Obfy.UI.Tests` | ViewModel logic and commands | 59 |
 
 ```bash
 # Run all tests
 dotnet test
 
+# Run specific test project
+dotnet test Tests/Obfy.Tests
+dotnet test Tests/Obfy.Console.Tests
+dotnet test Tests/Obfy.UI.Tests
+
 # Run with coverage
 dotnet test --collect:"XPlat Code Coverage"
 ```
+
+When adding new features:
+- CLI changes → Add tests to `Obfy.Console.Tests`
+- ViewModel changes → Add tests to `Obfy.UI.Tests`
+- Core obfuscation → Add tests to `Obfy.Tests`
+
+See [docs/Testing.md](docs/Testing.md) for comprehensive testing guidelines.
 
 ## Pull Request Process
 

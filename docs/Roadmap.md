@@ -224,6 +224,64 @@ A strategic development plan based on competitive analysis against commercial an
 
 ---
 
+### Quality & Testing
+
+| ID | Feature | Priority | Effort | Value | Status |
+|----|---------|----------|--------|-------|--------|
+| QT-01 | Console CLI Tests | P1 | Medium | High | ✅ Done |
+| QT-02 | ViewModel Unit Tests | P2 | Medium | Medium | ✅ Done |
+| QT-03 | Code Coverage CI | P2 | Low | Medium | Backlog |
+| QT-04 | UI Automation Tests | P3 | High | Low | Future |
+
+#### Feature Details
+
+**QT-01: Console CLI Tests**
+- Test argument parsing with System.CommandLine TestConsole
+- Validate help output generation
+- Test error handling and exit codes
+- Integration tests with temporary files
+- *Files: Tests/Obfy.Console.Tests/*
+- *Closes gap: Empty test project exists but needs implementation*
+
+**QT-02: ViewModel Unit Tests**
+- Create Obfy.UI.Tests project
+- Test MainViewModel obfuscation workflow
+- Test SettingsViewModel binding and presets
+- Test ICommand CanExecute/Execute logic
+- Mock services with Moq
+- *Framework: xUnit + Moq + Shouldly*
+- *MVVM pattern enables isolated ViewModel testing*
+
+**QT-03: Code Coverage CI**
+- Configure Coverlet for coverage collection (already in test projects)
+- Add ReportGenerator for HTML reports
+- Set 80% threshold for business logic
+- Add coverage badges to README
+- *Tool: Coverlet + ReportGenerator*
+
+**QT-04: UI Automation Tests**
+- Use FlaUI for WPF automation (modern replacement for White)
+- Test critical user workflows
+- Application launch and main window
+- File drag-drop functionality
+- *Framework: FlaUI.UIA3*
+- *Note: WinAppDriver development is paused; FlaUI recommended*
+
+#### Current Test Coverage Summary
+
+| Area | Tests | Status |
+|------|-------|--------|
+| Assembly Obfuscators (9 types) | 69+ | ✅ Strong |
+| Source Obfuscators (3 types) | 25+ | ✅ Strong |
+| Services/Pipeline | 35+ | ✅ Good |
+| Utilities | 17 | ✅ Good |
+| Console CLI | 92 | ✅ Strong |
+| WPF UI ViewModels | 59 | ✅ Good |
+
+**Total: ~300 tests**
+
+---
+
 ## Roadmap
 
 ### Phase 1: Foundation Enhancement (v1.1) ✅

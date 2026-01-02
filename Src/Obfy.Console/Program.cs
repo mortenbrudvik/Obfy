@@ -15,10 +15,34 @@ public class Program
 {
     private static IContainer? _container;
 
-    public static async Task<int> Main(string[] args)
+    // Expose options and arguments as internal static for testing
+    internal static Argument<FileInfo[]> InputArgument { get; private set; } = null!;
+    internal static Option<DirectoryInfo?> OutputOption { get; private set; } = null!;
+    internal static Option<FileInfo?> ConfigOption { get; private set; } = null!;
+    internal static Option<string> LevelOption { get; private set; } = null!;
+    internal static Option<bool> StringEncryptOption { get; private set; } = null!;
+    internal static Option<bool> ControlFlowOption { get; private set; } = null!;
+    internal static Option<bool> RenameOption { get; private set; } = null!;
+    internal static Option<bool> AntiDebugOption { get; private set; } = null!;
+    internal static Option<bool> StripMetadataOption { get; private set; } = null!;
+    internal static Option<bool> EncryptResourcesOption { get; private set; } = null!;
+    internal static Option<bool> PreservePublicOption { get; private set; } = null!;
+    internal static Option<FileInfo?> MapOption { get; private set; } = null!;
+    internal static Option<FileInfo?> ReportOption { get; private set; } = null!;
+    internal static Option<bool> DryRunOption { get; private set; } = null!;
+    internal static Option<bool> VerboseOption { get; private set; } = null!;
+    internal static Option<bool> NoLogoOption { get; private set; } = null!;
+    internal static Option<bool> MergeOption { get; private set; } = null!;
+    internal static Option<bool> InternalizeOption { get; private set; } = null!;
+
+    /// <summary>
+    /// Creates the root command with all options and subcommands.
+    /// Exposed for testing purposes.
+    /// </summary>
+    internal static RootCommand CreateRootCommand()
     {
         // Input argument
-        var inputArgument = new Argument<FileInfo[]>(
+        InputArgument = new Argument<FileInfo[]>(
             name: "input",
             description: "Input files to obfuscate (DLL, EXE, or .cs files)")
         {
@@ -26,72 +50,72 @@ public class Program
         };
 
         // Options
-        var outputOption = new Option<DirectoryInfo?>(
+        OutputOption = new Option<DirectoryInfo?>(
             aliases: ["--output", "-o"],
             description: "Output directory for obfuscated files");
 
-        var configOption = new Option<FileInfo?>(
+        ConfigOption = new Option<FileInfo?>(
             aliases: ["--config", "-c"],
             description: "Path to JSON configuration file");
 
-        var levelOption = new Option<string>(
+        LevelOption = new Option<string>(
             aliases: ["--level", "-l"],
             description: "Obfuscation level: minimal, standard, aggressive, or custom",
             getDefaultValue: () => "standard");
 
-        var stringEncryptOption = new Option<bool>(
+        StringEncryptOption = new Option<bool>(
             name: "--string-encrypt",
             description: "Enable string encryption");
 
-        var controlFlowOption = new Option<bool>(
+        ControlFlowOption = new Option<bool>(
             name: "--control-flow",
             description: "Enable control flow obfuscation");
 
-        var renameOption = new Option<bool>(
+        RenameOption = new Option<bool>(
             name: "--rename",
             description: "Enable symbol renaming");
 
-        var antiDebugOption = new Option<bool>(
+        AntiDebugOption = new Option<bool>(
             name: "--anti-debug",
             description: "Enable anti-debugging protection");
 
-        var stripMetadataOption = new Option<bool>(
+        StripMetadataOption = new Option<bool>(
             name: "--strip-metadata",
             description: "Remove debug metadata");
 
-        var encryptResourcesOption = new Option<bool>(
+        EncryptResourcesOption = new Option<bool>(
             name: "--encrypt-resources",
             description: "Enable resource encryption");
 
-        var preservePublicOption = new Option<bool>(
+        PreservePublicOption = new Option<bool>(
             name: "--preserve-public",
             description: "Preserve public API names");
 
-        var mapOption = new Option<FileInfo?>(
+        MapOption = new Option<FileInfo?>(
             name: "--map",
             description: "Output symbol mapping to file");
 
-        var reportOption = new Option<FileInfo?>(
+        ReportOption = new Option<FileInfo?>(
             name: "--report",
             description: "Generate obfuscation report (HTML or JSON based on extension)");
 
-        var dryRunOption = new Option<bool>(
+        DryRunOption = new Option<bool>(
             name: "--dry-run",
             description: "Analyze only, don't write output");
 
-        var verboseOption = new Option<bool>(
+        VerboseOption = new Option<bool>(
             aliases: ["--verbose", "-v"],
             description: "Enable verbose output");
 
-        var noLogoOption = new Option<bool>(
+        NoLogoOption = new Option<bool>(
             name: "--no-logo",
             description: "Suppress the banner");
 
-        var mergeOption = new Option<bool>(
+        MergeOption = new Option<bool>(
             name: "--merge",
             description: "Merge all input assemblies into one before obfuscating");
 
-        var internalizeOption = new Option<bool>(
+        InternalizeOption = new Option<bool>(
             name: "--internalize",
             description: "Make merged types internal (improves obfuscation)",
             getDefaultValue: () => true);
@@ -99,24 +123,24 @@ public class Program
         // Root command
         var rootCommand = new RootCommand("Obfy - C# Obfuscation Tool")
         {
-            inputArgument,
-            outputOption,
-            configOption,
-            levelOption,
-            stringEncryptOption,
-            controlFlowOption,
-            renameOption,
-            antiDebugOption,
-            stripMetadataOption,
-            encryptResourcesOption,
-            preservePublicOption,
-            mapOption,
-            reportOption,
-            dryRunOption,
-            verboseOption,
-            noLogoOption,
-            mergeOption,
-            internalizeOption
+            InputArgument,
+            OutputOption,
+            ConfigOption,
+            LevelOption,
+            StringEncryptOption,
+            ControlFlowOption,
+            RenameOption,
+            AntiDebugOption,
+            StripMetadataOption,
+            EncryptResourcesOption,
+            PreservePublicOption,
+            MapOption,
+            ReportOption,
+            DryRunOption,
+            VerboseOption,
+            NoLogoOption,
+            MergeOption,
+            InternalizeOption
         };
 
         // Config generate command
@@ -165,27 +189,38 @@ public class Program
 
         rootCommand.AddCommand(configCommand);
 
+        // Set a default handler for the root command
+        // This enables parsing to recognize the root command as valid
+        rootCommand.SetHandler(() => { });
+
+        return rootCommand;
+    }
+
+    public static async Task<int> Main(string[] args)
+    {
+        var rootCommand = CreateRootCommand();
+
         // Main handler
         rootCommand.SetHandler(async (context) =>
         {
-            var input = context.ParseResult.GetValueForArgument(inputArgument);
-            var output = context.ParseResult.GetValueForOption(outputOption);
-            var config = context.ParseResult.GetValueForOption(configOption);
-            var level = context.ParseResult.GetValueForOption(levelOption);
-            var stringEncrypt = context.ParseResult.GetValueForOption(stringEncryptOption);
-            var controlFlow = context.ParseResult.GetValueForOption(controlFlowOption);
-            var rename = context.ParseResult.GetValueForOption(renameOption);
-            var antiDebug = context.ParseResult.GetValueForOption(antiDebugOption);
-            var stripMetadata = context.ParseResult.GetValueForOption(stripMetadataOption);
-            var encryptResources = context.ParseResult.GetValueForOption(encryptResourcesOption);
-            var preservePublic = context.ParseResult.GetValueForOption(preservePublicOption);
-            var map = context.ParseResult.GetValueForOption(mapOption);
-            var report = context.ParseResult.GetValueForOption(reportOption);
-            var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
-            var verbose = context.ParseResult.GetValueForOption(verboseOption);
-            var noLogo = context.ParseResult.GetValueForOption(noLogoOption);
-            var merge = context.ParseResult.GetValueForOption(mergeOption);
-            var internalize = context.ParseResult.GetValueForOption(internalizeOption);
+            var input = context.ParseResult.GetValueForArgument(InputArgument);
+            var output = context.ParseResult.GetValueForOption(OutputOption);
+            var config = context.ParseResult.GetValueForOption(ConfigOption);
+            var level = context.ParseResult.GetValueForOption(LevelOption);
+            var stringEncrypt = context.ParseResult.GetValueForOption(StringEncryptOption);
+            var controlFlow = context.ParseResult.GetValueForOption(ControlFlowOption);
+            var rename = context.ParseResult.GetValueForOption(RenameOption);
+            var antiDebug = context.ParseResult.GetValueForOption(AntiDebugOption);
+            var stripMetadata = context.ParseResult.GetValueForOption(StripMetadataOption);
+            var encryptResources = context.ParseResult.GetValueForOption(EncryptResourcesOption);
+            var preservePublic = context.ParseResult.GetValueForOption(PreservePublicOption);
+            var map = context.ParseResult.GetValueForOption(MapOption);
+            var report = context.ParseResult.GetValueForOption(ReportOption);
+            var dryRun = context.ParseResult.GetValueForOption(DryRunOption);
+            var verbose = context.ParseResult.GetValueForOption(VerboseOption);
+            var noLogo = context.ParseResult.GetValueForOption(NoLogoOption);
+            var merge = context.ParseResult.GetValueForOption(MergeOption);
+            var internalize = context.ParseResult.GetValueForOption(InternalizeOption);
 
             if (!noLogo)
             {

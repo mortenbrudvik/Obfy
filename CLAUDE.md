@@ -26,8 +26,9 @@ Obfy/
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/            # Unit tests
-│   └── Obfy.Console.Tests/    # Integration tests
+│   ├── Obfy.Tests/            # Core unit tests (152 tests)
+│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (92 tests)
+│   └── Obfy.UI.Tests/         # ViewModel unit tests (59 tests)
 ├── docs/                      # Documentation
 ├── build/                     # Build scripts and installer
 │   ├── build-installer.ps1    # Installer build automation
@@ -48,6 +49,7 @@ dotnet build Obfy.sln -c Release
 # Run tests
 dotnet test Tests/Obfy.Tests/Obfy.Tests.csproj
 dotnet test Tests/Obfy.Console.Tests/Obfy.Console.Tests.csproj
+dotnet test Tests/Obfy.UI.Tests/Obfy.UI.Tests.csproj
 
 # Run CLI
 dotnet run --project Src/Obfy.Console/Obfy.Console.csproj -- --help

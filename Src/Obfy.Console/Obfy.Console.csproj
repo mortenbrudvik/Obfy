@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Obfy.Console.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Obfy.Core\Obfy.Core.csproj" />
     <ProjectReference Include="..\Logging.Core\Logging.Core.csproj" />
   </ItemGroup>

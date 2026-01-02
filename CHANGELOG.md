@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Comprehensive test coverage for CLI and UI (QT-01, QT-02)
+  - 92 CLI tests: argument parsing, help output, error handling, integration
+  - 59 UI ViewModel tests: FilesViewModel, SettingsViewModel commands
+  - New Obfy.UI.Tests project with xUnit, Moq, Shouldly
+  - Testing documentation guide at docs/Testing.md
 - Self-obfuscation in build process to protect Obfy's own assemblies
   - Obfuscates CLI and UI assemblies before packaging into installer
   - Uses copy-then-obfuscate approach to solve bootstrap problem

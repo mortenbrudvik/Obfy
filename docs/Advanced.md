@@ -405,6 +405,27 @@ For Visual Studio 2022 users, the Obfy extension provides the easiest integratio
 
 By default, the extension only runs obfuscation for Release builds. Configure this in Tools → Options → Obfy → "Release Only".
 
+### JetBrains Rider Extension
+
+For JetBrains Rider users, the Obfy plugin provides seamless integration:
+
+1. **Install the plugin** from the ZIP file via Settings → Plugins → Install from Disk
+2. **Right-click your project** in Solution Explorer
+3. **Enable Post-Build Obfuscation** to automatically protect on every build
+4. **Configure settings** via the Settings dialog
+
+**Plugin Features:**
+- Right-click → **Obfy** → **Obfuscate** for on-demand protection
+- Right-click → **Obfy** → **Enable Post-Build Obfuscation** for automatic builds
+- Right-click → **Obfy** → **Settings** to configure level and protections
+- **Settings → Tools → Obfy** for global defaults
+- Per-project settings stored in `obfy.json`
+- Tool window shows progress and statistics
+
+**Release-Only Obfuscation:**
+
+By default, the plugin only runs obfuscation for Release builds. Configure this in Settings → Tools → Obfy → "Only obfuscate on Release builds".
+
 ### MSBuild
 
 ```xml

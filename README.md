@@ -13,7 +13,7 @@ Obfy helps protect your .NET applications from reverse engineering by applying m
 - **Configurable** - From minimal to aggressive protection levels
 - **Modern** - Built for .NET 10 with cross-platform support
 - **Extensible** - JSON configuration for fine-grained control
-- **IDE Integration** - Visual Studio 2022 extension with right-click obfuscation
+- **IDE Integration** - Visual Studio 2022 and JetBrains Rider extensions with right-click obfuscation
 - **Fast** - Efficient obfuscation with minimal overhead
 
 ## Installation
@@ -68,6 +68,23 @@ For Visual Studio 2022 users, Obfy provides seamless IDE integration:
 - Per-project configuration stored in `obfy.json`
 - Output window integration for real-time progress
 - Tools → Options → Obfy for global defaults
+
+### JetBrains Rider Extension
+
+For JetBrains Rider users, Obfy provides seamless IDE integration:
+
+**Features:**
+- Right-click project → **Obfy** → **Obfuscate** to protect your output assembly
+- Toggle **Post-Build Obfuscation** for automatic protection on each build
+- **Settings** dialog with level presets (Minimal/Standard/Aggressive/Custom)
+- Per-project configuration stored in `obfy.json`
+- Tool window integration for real-time progress
+- Settings → Tools → Obfy for global defaults
+
+**Installation:**
+1. Download `Obfy.Rider-1.0.0.zip` from releases
+2. In Rider: Settings → Plugins → Gear icon → Install Plugin from Disk
+3. Select the ZIP file and restart Rider
 
 ## Before & After
 

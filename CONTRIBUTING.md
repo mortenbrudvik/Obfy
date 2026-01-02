@@ -9,6 +9,7 @@ Thank you for your interest in contributing to Obfy! This document provides guid
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) or later
 - Git
 - A code editor (VS Code, Visual Studio, Rider, etc.)
+- [Java 21](https://adoptium.net/) (required for Rider plugin development only)
 
 ### Development Setup
 
@@ -37,6 +38,15 @@ Thank you for your interest in contributing to Obfy! This document provides guid
    dotnet run --project Src/Obfy.Console -- --help
    ```
 
+5. **Build the Rider plugin** (optional, requires Java 21)
+
+   ```bash
+   cd Src/Obfy.Rider
+   ./gradlew.bat build
+   ```
+
+   The plugin ZIP will be created at `build/distributions/Obfy.Rider-1.0.0.zip`.
+
 ## Project Structure
 
 ```
@@ -44,6 +54,9 @@ Obfy/
 ├── Src/
 │   ├── Obfy.Console/       # CLI application
 │   ├── Obfy.Core/          # Core obfuscation logic
+│   ├── Obfy.UI/            # WPF desktop application
+│   ├── Obfy.VisualStudio/  # Visual Studio 2022 extension (C#)
+│   ├── Obfy.Rider/         # JetBrains Rider plugin (Kotlin)
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
 ├── Tests/

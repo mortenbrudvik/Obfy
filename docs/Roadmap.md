@@ -104,7 +104,7 @@ A strategic development plan based on competitive analysis against commercial an
 | DX-01 | WPF Desktop Application | P1 | Medium | High | ✅ Done |
 | DX-02 | Visual Studio Extension | P1 | Medium | High | ✅ Done |
 | DX-03 | VS Code Extension | P2 | Low | Medium | Backlog |
-| DX-04 | JetBrains Rider Plugin | P2 | Low | Medium | Backlog |
+| DX-04 | JetBrains Rider Plugin | P2 | Low | Medium | ✅ Done |
 | DX-05 | Configuration Wizard | P2 | Low | Medium | ✅ Done |
 | DX-06 | Real-time Preview | P3 | High | Medium | Future |
 
@@ -133,10 +133,14 @@ A strategic development plan based on competitive analysis against commercial an
 - Problem matcher for obfuscation errors
 - Command palette integration
 
-**DX-04: JetBrains Rider Plugin**
-- Similar to VS extension functionality
-- Run configuration integration
+**DX-04: JetBrains Rider Plugin** ✅
+- Right-click project → Obfy → Obfuscate
+- Toggle post-build obfuscation
+- Settings dialog with level presets
 - Tool window for obfuscation output
+- Per-project `obfy.json` configuration
+- Kotlin + Gradle build system
+- *Architecture: CLI invocation (same as VS extension)*
 
 **DX-05: Configuration Wizard**
 - Interactive CLI wizard for generating config
@@ -325,10 +329,11 @@ A strategic development plan based on competitive analysis against commercial an
 | Feature | Type | Notes | Status |
 |---------|------|-------|--------|
 | Visual Studio Extension (DX-02) | Tooling | IDE integration | ✅ Done |
+| JetBrains Rider Plugin (DX-04) | Tooling | IDE integration | ✅ Done |
 | Configuration Wizard (DX-05) | Tooling | Interactive setup | ✅ Done |
 
 **Success Metrics:**
-- Visual Studio market presence
+- Visual Studio and Rider market presence
 - Streamlined configuration experience
 
 **Completed (January 2026):**
@@ -348,6 +353,16 @@ A strategic development plan based on competitive analysis against commercial an
 - Advanced mode for detailed configuration
 - Use case-based defaults (Desktop, Library, Web, Unity)
 - Spectre.Console integration for rich prompts
+
+**Rider Extension:**
+- Right-click project → Obfy → Obfuscate
+- Toggle post-build obfuscation
+- Settings dialog with level presets (Minimal/Standard/Aggressive/Custom)
+- Settings → Tools → Obfy for global defaults
+- Per-project `obfy.json` settings files
+- Tool window output integration
+- Kotlin + Gradle build system
+- Rider 2024.3+ support
 
 ---
 
@@ -453,7 +468,7 @@ Track feature requests via GitHub Issues. Consider:
 | Feature | Good for Contributors | Notes |
 |---------|----------------------|-------|
 | VS Code Extension | Yes | Standalone project |
-| Rider Plugin | Yes | Standalone project |
+| Rider Plugin | - | ✅ Completed |
 | Documentation | Yes | Always welcome |
 | Test Cases | Yes | Critical for stability |
 | Resource Encryption | Maybe | Core feature, needs review |

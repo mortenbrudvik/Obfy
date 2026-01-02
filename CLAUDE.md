@@ -23,6 +23,8 @@ Obfy/
 │   │   ├── Pipeline/          # Obfuscation pipeline orchestration
 │   │   ├── Services/          # Core services
 │   │   └── Utilities/         # Helper classes
+│   ├── Obfy.VisualStudio/     # Visual Studio 2022 extension (C#)
+│   ├── Obfy.Rider/            # JetBrains Rider plugin (Kotlin)
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
 ├── Tests/

@@ -131,7 +131,7 @@ class ObfuscationService {
         val errorBuilder = StringBuilder()
 
         val processBuilder = ProcessBuilder()
-            .command("cmd", "/c", "$cliPath $args")
+            .command("cmd", "/c", "\"$cliPath\" $args")
             .redirectErrorStream(false)
 
         val process = processBuilder.start()

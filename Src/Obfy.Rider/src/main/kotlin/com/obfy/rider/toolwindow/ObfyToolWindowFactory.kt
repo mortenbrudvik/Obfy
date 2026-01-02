@@ -1,6 +1,7 @@
 package com.obfy.rider.toolwindow
 
 import com.intellij.execution.filters.TextConsoleBuilderFactory
+import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
@@ -24,6 +25,11 @@ class ObfyToolWindowFactory : ToolWindowFactory, DumbAware {
         // Register with output service
         val outputService = project.service<OutputService>()
         outputService.setConsoleView(consoleView)
+
+        // Add welcome message
+        consoleView.print("Obfy .NET Obfuscator\n", ConsoleViewContentType.SYSTEM_OUTPUT)
+        consoleView.print("${"─".repeat(40)}\n", ConsoleViewContentType.SYSTEM_OUTPUT)
+        consoleView.print("Right-click a project → Obfy → Obfuscate to protect your assembly.\n\n", ConsoleViewContentType.NORMAL_OUTPUT)
 
         // Create content and add to tool window
         val content = ContentFactory.getInstance()

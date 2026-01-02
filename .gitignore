@@ -51,10 +51,10 @@ Thumbs.db
 appsettings.*.json
 !appsettings.Development.json.example
 
-# Installer
-installer/installer-output/
-publish/
-publish-ui/
+# Build artifacts
+build/output/
+build/publish/
+build/publish-ui/
 
 # Claude Code
 .claude/settings.local.json

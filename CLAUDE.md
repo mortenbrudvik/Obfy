@@ -29,8 +29,10 @@ Obfy/
 │   ├── Obfy.Tests/            # Unit tests
 │   └── Obfy.Console.Tests/    # Integration tests
 ├── docs/                      # Documentation
-├── installer/                 # Inno Setup installer
-├── scripts/                   # Build scripts
+├── build/                     # Build scripts and installer
+│   ├── build-installer.ps1    # Installer build automation
+│   ├── ObfySetup.iss          # Inno Setup script
+│   └── generate-icon.ps1      # Icon generation
 └── .claude/                   # Claude Code configuration
 ```
 

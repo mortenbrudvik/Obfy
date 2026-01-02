@@ -22,7 +22,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 ; Output settings
-OutputDir=.\installer-output
+OutputDir=.\output
 OutputBaseFilename=ObfySetup-{#MyAppVersion}
 ; Use LZMA2 compression for best compression ratio
 Compression=lzma2/ultra64
@@ -44,9 +44,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 ; CLI files from publish directory
-Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: ".\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; UI files from publish-ui directory
-Source: "..\publish-ui\*"; DestDir: "{app}\UI"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: ".\publish-ui\*"; DestDir: "{app}\UI"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 ; Start Menu shortcuts

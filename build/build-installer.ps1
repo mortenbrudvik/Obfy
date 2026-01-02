@@ -9,10 +9,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$PublishDir = Join-Path $ProjectRoot "publish"
-$PublishDirUI = Join-Path $ProjectRoot "publish-ui"
-$InstallerDir = Join-Path $ProjectRoot "installer"
-$OutputDir = Join-Path $InstallerDir "installer-output"
+$BuildDir = $PSScriptRoot
+$PublishDir = Join-Path $BuildDir "publish"
+$PublishDirUI = Join-Path $BuildDir "publish-ui"
+$OutputDir = Join-Path $BuildDir "output"
 $ConsoleProject = Join-Path $ProjectRoot "Src\Obfy.Console\Obfy.Console.csproj"
 $UIProject = Join-Path $ProjectRoot "Src\Obfy.UI\Obfy.UI.csproj"
 
@@ -146,14 +146,14 @@ Write-Host "  Output: $OutputDir" -ForegroundColor Green
 if (-not $SkipBuild) {
     Write-Host "[6/6] Building installer..." -ForegroundColor Yellow
 
-    $IssFile = Join-Path $InstallerDir "ObfySetup.iss"
+    $IssFile = Join-Path $BuildDir "ObfySetup.iss"
 
     if (-not (Test-Path $IssFile)) {
         Write-Host "ERROR: ObfySetup.iss not found!" -ForegroundColor Red
         exit 1
     }
 
-    Push-Location $InstallerDir
+    Push-Location $BuildDir
     try {
         & $InnoSetupPath $IssFile
 

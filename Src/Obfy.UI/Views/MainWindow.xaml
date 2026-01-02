@@ -40,8 +40,10 @@
                 <!-- Left: Action Buttons -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <ui:Button Icon="{ui:SymbolIcon Play24}" Content="Obfuscate"
+                              AutomationProperties.AutomationId="ObfuscateButton"
                               Appearance="Primary" Command="{Binding ObfuscateCommand}"/>
                     <ui:Button Icon="{ui:SymbolIcon Stop24}" Content="Cancel"
+                              AutomationProperties.AutomationId="CancelButton"
                               Command="{Binding CancelCommand}" Margin="8,0,0,0"
                               Visibility="{Binding IsObfuscating, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                 </StackPanel>
@@ -49,18 +51,23 @@
                 <!-- Center: Progress -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center"
                            Visibility="{Binding IsObfuscating, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <ProgressBar Width="200" Height="8" Value="{Binding OverallProgress}" Maximum="100"/>
-                    <TextBlock Text="{Binding OverallProgress, StringFormat={}{0:F0}%}" Margin="8,0,0,0"
+                    <ProgressBar AutomationProperties.AutomationId="OverallProgressBar"
+                               Width="200" Height="8" Value="{Binding OverallProgress}" Maximum="100"/>
+                    <TextBlock AutomationProperties.AutomationId="ProgressText"
+                              Text="{Binding OverallProgress, StringFormat={}{0:F0}%}" Margin="8,0,0,0"
                               VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Right: Settings Menu -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
                     <ui:Button Icon="{ui:SymbolIcon Save24}" ToolTip="Save Configuration"
+                              AutomationProperties.AutomationId="SaveConfigButton"
                               Command="{Binding SaveConfigurationCommand}" Margin="0,0,4,0"/>
                     <ui:Button Icon="{ui:SymbolIcon FolderOpen24}" ToolTip="Load Configuration"
+                              AutomationProperties.AutomationId="LoadConfigButton"
                               Command="{Binding LoadConfigurationCommand}" Margin="0,0,4,0"/>
                     <ui:Button Icon="{ui:SymbolIcon Info24}" ToolTip="About"
+                              AutomationProperties.AutomationId="AboutButton"
                               Command="{Binding ShowAboutCommand}"/>
                 </StackPanel>
             </Grid>
@@ -142,8 +149,10 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="{Binding Files.Files.Count, StringFormat='{}{0} file(s)'}"
+                <TextBlock Grid.Column="0" AutomationProperties.AutomationId="StatusMessage"
+                          Text="{Binding StatusMessage}" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" AutomationProperties.AutomationId="FileCount"
+                          Text="{Binding Files.Files.Count, StringFormat='{}{0} file(s)'}"
                           VerticalAlignment="Center"/>
             </Grid>
         </Border>

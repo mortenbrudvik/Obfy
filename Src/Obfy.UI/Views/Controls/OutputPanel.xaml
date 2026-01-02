@@ -25,15 +25,19 @@
 
                 <TextBlock Text="Output" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <ui:ToggleSwitch Content="Auto-scroll" IsChecked="{Binding AutoScroll}" Margin="0,0,12,0"/>
-                    <ui:Button Icon="{ui:SymbolIcon Delete24}" ToolTip="Clear" Command="{Binding ClearLogsCommand}" Padding="4"/>
-                    <ui:Button Icon="{ui:SymbolIcon Copy24}" ToolTip="Copy" Command="{Binding CopyLogsCommand}" Margin="4,0,0,0" Padding="4"/>
+                    <ui:ToggleSwitch AutomationProperties.AutomationId="AutoScrollToggle"
+                                  Content="Auto-scroll" IsChecked="{Binding AutoScroll}" Margin="0,0,12,0"/>
+                    <ui:Button AutomationProperties.AutomationId="ClearLogsButton"
+                              Icon="{ui:SymbolIcon Delete24}" ToolTip="Clear" Command="{Binding ClearLogsCommand}" Padding="4"/>
+                    <ui:Button AutomationProperties.AutomationId="CopyLogsButton"
+                              Icon="{ui:SymbolIcon Copy24}" ToolTip="Copy" Command="{Binding CopyLogsCommand}" Margin="4,0,0,0" Padding="4"/>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- Log List -->
-        <ListBox Grid.Row="1" x:Name="LogListBox" ItemsSource="{Binding Logs}"
+        <ListBox AutomationProperties.AutomationId="LogListBox"
+                 Grid.Row="1" x:Name="LogListBox" ItemsSource="{Binding Logs}"
                  FontFamily="Cascadia Mono, Consolas, Courier New" FontSize="12"
                  Background="{DynamicResource ApplicationBackgroundBrush}"
                  BorderThickness="0"

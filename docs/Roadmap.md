@@ -102,7 +102,7 @@ A strategic development plan based on competitive analysis against commercial an
 | ID | Feature | Priority | Effort | Value | Status |
 |----|---------|----------|--------|-------|--------|
 | DX-01 | WPF Desktop Application | P1 | Medium | High | ✅ Done |
-| DX-02 | Visual Studio Extension | P1 | Medium | High | Planned |
+| DX-02 | Visual Studio Extension | P1 | Medium | High | ✅ Done |
 | DX-03 | VS Code Extension | P2 | Low | Medium | Backlog |
 | DX-04 | JetBrains Rider Plugin | P2 | Low | Medium | Backlog |
 | DX-05 | Configuration Wizard | P2 | Low | Medium | Backlog |
@@ -118,12 +118,14 @@ A strategic development plan based on competitive analysis against commercial an
 - Export obfuscation reports (HTML/JSON)
 - *Why WPF: Windows-first approach, mature ecosystem, Fluent Design support*
 
-**DX-02: Visual Studio Extension**
+**DX-02: Visual Studio Extension** ✅
 - Right-click "Obfuscate" in Solution Explorer
 - Build integration (post-build obfuscation)
-- Configuration UI in project properties
-- Output window logging
-- *High demand from enterprise users*
+- Configuration UI (simplified settings dialog with level presets)
+- Output window logging via dedicated "Obfy" pane
+- Tools > Options > Obfy for global defaults
+- Per-project settings stored in `obfy.json`
+- *Architecture: CLI invocation for obfuscation (no .NET Framework compatibility issues)*
 
 **DX-03: VS Code Extension**
 - Task integration for obfuscation
@@ -259,21 +261,28 @@ A strategic development plan based on competitive analysis against commercial an
 
 ---
 
-### Phase 3: Developer Experience (v1.3)
+### Phase 3: Developer Experience (v1.3) - In Progress
 **Theme:** IDE integration and tooling
 
-| Feature | Type | Notes |
-|---------|------|-------|
-| Visual Studio Extension (DX-02) | Tooling | IDE integration |
-| Configuration Wizard (DX-05) | Tooling | Interactive setup |
+| Feature | Type | Notes | Status |
+|---------|------|-------|--------|
+| Visual Studio Extension (DX-02) | Tooling | IDE integration | ✅ Done |
+| Configuration Wizard (DX-05) | Tooling | Interactive setup | Backlog |
 
 **Success Metrics:**
 - Visual Studio market presence
 - Streamlined configuration experience
 
-**Target:** Q3 2026
+**Completed VS Extension (January 2026):**
+- Right-click "Obfuscate" command on projects
+- Toggle post-build obfuscation command
+- Settings dialog with level presets (Minimal/Standard/Aggressive/Custom)
+- Tools > Options > Obfy for global defaults
+- Per-project `obfy.json` settings files
+- Output window integration
+- VS 2022+ (64-bit) support via Community.VisualStudio.Toolkit
 
-*Note: Desktop UI (DX-01) was completed ahead of schedule in v1.1*
+*Note: Configuration Wizard (DX-05) deferred to future release*
 
 ---
 
@@ -339,7 +348,7 @@ A strategic development plan based on competitive analysis against commercial an
 | Anti-Decompiler | dnlib | Junk type/method injection |
 | Assembly Merging | ILRepack or custom | Consider existing libraries |
 | GUI | WPF-UI | Windows Fluent Design framework (completed) |
-| VS Extension | VSIX SDK | Visual Studio extensibility |
+| VS Extension | Community.VisualStudio.Toolkit.17 | Visual Studio 2022 extensibility (completed) |
 
 ### Technical Risks
 

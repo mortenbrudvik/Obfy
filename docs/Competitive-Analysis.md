@@ -6,7 +6,7 @@ A comprehensive comparison of Obfy against leading commercial and open-source .N
 
 Obfy is a modern, open-source .NET obfuscation tool that provides essential protection features comparable to commercial alternatives. While professional tools offer advanced features like code virtualization and native code generation, Obfy delivers solid protection at no cost with a focus on simplicity and modern .NET support.
 
-**Key Finding**: Obfy covers ~85% of typical obfuscation needs. The remaining gap consists primarily of advanced anti-reverse-engineering features (virtualization, native code) that most applications don't require.
+**Key Finding**: Obfy covers ~90% of typical obfuscation needs. The remaining gap consists primarily of advanced anti-reverse-engineering features (virtualization, native code) that most applications don't require.
 
 ---
 
@@ -113,7 +113,7 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 | **CLI** | Yes | Yes | Yes | Yes | Yes |
 | **GUI** | Yes | Yes | Yes | Yes | Yes |
 | **MSBuild Integration** | Yes | Yes | Yes | Yes | Yes |
-| **Visual Studio Plugin** | - | Yes | Yes | Yes | Yes |
+| **Visual Studio Plugin** | Yes | Yes | Yes | Yes | Yes |
 | **VS Code / Rider** | - | - | - | Yes | - |
 | **NuGet Package** | Yes | - | - | - | Yes |
 | **Azure DevOps** | Yes | Yes | Yes | Yes | Yes |
@@ -144,6 +144,7 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 - Modern .NET 10 support (ahead of competitors)
 - Clean, simple CLI interface
 - WPF desktop application with Fluent Design
+- Visual Studio 2022 Extension (right-click obfuscation, post-build automation)
 - Simple installer-based distribution
 - Dual-mode: Assembly (dnlib) + Source (Roslyn) obfuscation
 - Resource, constant, and string encryption
@@ -157,7 +158,6 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 **Weaknesses:**
 - No code virtualization
 - No native code generation
-- No IDE plugins
 - No licensing/DRM features
 - Smaller community (new project)
 
@@ -543,8 +543,7 @@ dotnet tool install --global Obfuscar.GlobalTool
 
 ### Medium-Term (Strategic Features)
 
-3. **Visual Studio Extension** - Integration for broader adoption
-4. **Configuration Wizard** - Interactive CLI wizard for generating config
+3. **Configuration Wizard** - Interactive CLI wizard for generating config
 
 ### Long-Term (Advanced Protection)
 
@@ -553,6 +552,7 @@ dotnet tool install --global Obfuscar.GlobalTool
 
 ### Recently Completed
 
+- **Visual Studio Extension** ✅ - VS 2022 plugin with right-click obfuscation and post-build automation (v1.3.0)
 - **Assembly Merging** ✅ - Merge multiple assemblies into one (v1.2.0)
 - **Anti-Decompiler** ✅ - Junk types/methods injection, SuppressIldasm (v1.2.0)
 - **Anti-Tamper Detection** ✅ - SHA-256 hash verification at runtime (v1.1.0)

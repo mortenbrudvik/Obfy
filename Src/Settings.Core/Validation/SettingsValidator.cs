@@ -15,7 +15,12 @@ public static class SettingsValidator
     /// <exception cref="ValidationException">Thrown when validation fails.</exception>
     public static void Validate<T>(T settings) where T : class
     {
+#if NET6_0_OR_GREATER
         ArgumentNullException.ThrowIfNull(settings);
+#else
+        if (settings == null)
+            throw new ArgumentNullException(nameof(settings));
+#endif
 
         var results = new List<ValidationResult>();
         if (!TryValidate(settings, results))
@@ -34,8 +39,15 @@ public static class SettingsValidator
     /// <returns>True if valid, false otherwise.</returns>
     public static bool TryValidate<T>(T settings, ICollection<ValidationResult> results) where T : class
     {
+#if NET6_0_OR_GREATER
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(results);
+#else
+        if (settings == null)
+            throw new ArgumentNullException(nameof(settings));
+        if (results == null)
+            throw new ArgumentNullException(nameof(results));
+#endif
 
         var context = new ValidationContext(settings);
         var isValid = Validator.TryValidateObject(settings, context, results, validateAllProperties: true);

@@ -384,6 +384,27 @@ The obfuscated code gets bundled into the single-file output.
 
 ## Integration with Build Systems
 
+### Visual Studio Extension
+
+For Visual Studio 2022 users, the Obfy extension provides the easiest integration:
+
+1. **Install the extension** from the VSIX file
+2. **Right-click your project** in Solution Explorer
+3. **Enable Post-Build Obfuscation** to automatically protect on every build
+4. **Configure settings** via the Obfy Settings dialog
+
+**Extension Features:**
+- Right-click → **Obfuscate** for on-demand protection
+- Right-click → **Enable Post-Build Obfuscation** for automatic builds
+- Right-click → **Obfy Settings** to configure level and protections
+- **Tools → Options → Obfy** for global defaults
+- Per-project settings stored in `obfy.json`
+- Output window shows progress and statistics
+
+**Release-Only Obfuscation:**
+
+By default, the extension only runs obfuscation for Release builds. Configure this in Tools → Options → Obfy → "Release Only".
+
 ### MSBuild
 
 ```xml

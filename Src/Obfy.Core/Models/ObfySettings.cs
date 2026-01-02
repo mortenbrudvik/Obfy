@@ -58,6 +58,11 @@ public class ObfySettings
     public ExclusionRules Exclusions { get; set; } = new();
 
     /// <summary>
+    /// Whether post-build obfuscation is enabled (used by VS extension).
+    /// </summary>
+    public bool PostBuildEnabled { get; set; } = false;
+
+    /// <summary>
     /// Creates a settings instance for the specified level.
     /// </summary>
     public static ObfySettings ForLevel(ObfuscationLevel level)

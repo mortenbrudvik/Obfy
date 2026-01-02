@@ -29,7 +29,12 @@ public abstract class SettingsServiceBase<T> : ISettingsService<T> where T : cla
     /// <param name="logger">Optional logger for diagnostics.</param>
     protected SettingsServiceBase(string filePath, ILogger? logger = null)
     {
+#if NET6_0_OR_GREATER
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+#else
+        if (string.IsNullOrWhiteSpace(filePath))
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(filePath));
+#endif
 
         _filePath = filePath;
         _logger = logger;

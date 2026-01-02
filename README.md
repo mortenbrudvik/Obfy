@@ -13,6 +13,7 @@ Obfy helps protect your .NET applications from reverse engineering by applying m
 - **Configurable** - From minimal to aggressive protection levels
 - **Modern** - Built for .NET 10 with cross-platform support
 - **Extensible** - JSON configuration for fine-grained control
+- **IDE Integration** - Visual Studio 2022 extension with right-click obfuscation
 - **Fast** - Efficient obfuscation with minimal overhead
 
 ## Installation
@@ -55,6 +56,18 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
 - Level presets with expandable advanced settings
 - Real-time progress and color-coded output
 - Results visualization with symbol map export
+
+### Visual Studio Extension
+
+For Visual Studio 2022 users, Obfy provides seamless IDE integration:
+
+**Features:**
+- Right-click project → **Obfuscate** to protect your output assembly
+- Toggle **Post-Build Obfuscation** for automatic protection on each build
+- **Obfy Settings** dialog with level presets (Minimal/Standard/Aggressive)
+- Per-project configuration stored in `obfy.json`
+- Output window integration for real-time progress
+- Tools → Options → Obfy for global defaults
 
 ## Before & After
 

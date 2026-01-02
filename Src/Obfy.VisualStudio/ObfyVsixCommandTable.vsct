@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <Extern href="stdidcmd.h"/>
+  <Extern href="vsshlids.h"/>
+
+  <Commands package="guidObfyPackage">
+
+    <!-- Define a menu group for our commands -->
+    <Groups>
+      <Group guid="guidObfyPackageCmdSet" id="ObfyMenuGroup" priority="0x0600">
+        <!-- Parent is the Project node context menu -->
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_PROJNODE"/>
+      </Group>
+    </Groups>
+
+    <!-- Define the buttons (commands) -->
+    <Buttons>
+      <!-- Obfuscate Now command -->
+      <Button guid="guidObfyPackageCmdSet" id="cmdidObfuscate" priority="0x0100" type="Button">
+        <Parent guid="guidObfyPackageCmdSet" id="ObfyMenuGroup"/>
+        <Icon guid="guidImages" id="obfyIcon"/>
+        <Strings>
+          <ButtonText>Obfuscate</ButtonText>
+          <ToolTipText>Obfuscate the project output assembly</ToolTipText>
+        </Strings>
+      </Button>
+
+      <!-- Toggle Post-Build Obfuscation command -->
+      <Button guid="guidObfyPackageCmdSet" id="cmdidTogglePostBuild" priority="0x0200" type="Button">
+        <Parent guid="guidObfyPackageCmdSet" id="ObfyMenuGroup"/>
+        <CommandFlag>TextChanges</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Enable Post-Build Obfuscation</ButtonText>
+          <ToolTipText>Toggle automatic obfuscation after build</ToolTipText>
+        </Strings>
+      </Button>
+
+      <!-- Open Settings Dialog command -->
+      <Button guid="guidObfyPackageCmdSet" id="cmdidOpenSettings" priority="0x0300" type="Button">
+        <Parent guid="guidObfyPackageCmdSet" id="ObfyMenuGroup"/>
+        <Strings>
+          <ButtonText>Obfy Settings...</ButtonText>
+          <ToolTipText>Configure obfuscation settings for this project</ToolTipText>
+        </Strings>
+      </Button>
+    </Buttons>
+
+    <!-- Define bitmaps/images -->
+    <Bitmaps>
+      <Bitmap guid="guidImages" href="Resources\Icon.png" usedList="obfyIcon"/>
+    </Bitmaps>
+
+  </Commands>
+
+  <Symbols>
+    <!-- Package GUID -->
+    <GuidSymbol name="guidObfyPackage" value="{5a9b8c7d-6e5f-4a3b-2c1d-0e9f8a7b6c5d}" />
+
+    <!-- Command Set GUID -->
+    <GuidSymbol name="guidObfyPackageCmdSet" value="{6b0c9d8e-7f6a-5b4c-3d2e-1f0a9b8c7d6e}">
+      <IDSymbol name="ObfyMenuGroup" value="0x1020"/>
+      <IDSymbol name="cmdidObfuscate" value="0x0100"/>
+      <IDSymbol name="cmdidTogglePostBuild" value="0x0101"/>
+      <IDSymbol name="cmdidOpenSettings" value="0x0102"/>
+    </GuidSymbol>
+
+    <!-- Images -->
+    <GuidSymbol name="guidImages" value="{7c1d0e9f-8a7b-6c5d-4e3f-2a1b0c9d8e7f}">
+      <IDSymbol name="obfyIcon" value="1"/>
+    </GuidSymbol>
+  </Symbols>
+
+</CommandTable>

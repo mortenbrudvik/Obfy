@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Text.Json;
 using Autofac;
 using Logging.Core.DependencyInjection;
+using Obfy.Console.Wizard;
 using Obfy.Core.DependencyInjection;
 using Obfy.Core.Models;
 using Obfy.Core.Services;
@@ -137,9 +138,29 @@ public class Program
             await GenerateConfigAsync(output, level);
         }, configOutputOption, configLevelOption);
 
+        // Config wizard command
+        var wizardCommand = new Command("wizard", "Interactive wizard to create a configuration file");
+        var wizardOutputOption = new Option<FileInfo>(
+            aliases: ["--output", "-o"],
+            description: "Output file path",
+            getDefaultValue: () => new FileInfo("obfy.json"));
+        var quickModeOption = new Option<bool>(
+            aliases: ["--quick", "-q"],
+            description: "Quick mode - just select a preset level");
+
+        wizardCommand.AddOption(wizardOutputOption);
+        wizardCommand.AddOption(quickModeOption);
+
+        wizardCommand.SetHandler(async (output, quick) =>
+        {
+            var wizard = new ConfigurationWizard();
+            await wizard.RunAsync(output, quick);
+        }, wizardOutputOption, quickModeOption);
+
         var configCommand = new Command("config", "Configuration file operations")
         {
-            configGenerateCommand
+            configGenerateCommand,
+            wizardCommand
         };
 
         rootCommand.AddCommand(configCommand);

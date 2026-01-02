@@ -7,6 +7,7 @@ Complete command-line interface reference for Obfy.
 ```
 obfy <input>... [options]
 obfy config generate [options]
+obfy config wizard [options]
 ```
 
 ## Commands
@@ -64,6 +65,38 @@ obfy config generate [options]
 | `--output <file>` | `-o` | Output file path | `obfy.json` |
 | `--level <level>` | `-l` | Preset level for the configuration | `standard` |
 
+### config wizard
+
+Interactive wizard to create a configuration file. Guides you through questions about your application type, protection level, and individual settings.
+
+```bash
+obfy config wizard [options]
+```
+
+**Options:**
+
+| Option | Alias | Description | Default |
+|--------|-------|-------------|---------|
+| `--output <file>` | `-o` | Output file path | `obfy.json` |
+| `--quick` | `-q` | Quick mode - just select a preset level | Off |
+
+**Modes:**
+
+- **Quick Mode** (`--quick`): Asks only about application type and protection level
+- **Advanced Mode** (default): Steps through all configuration options interactively
+
+**Use Case Presets:**
+
+The wizard applies sensible defaults based on your application type:
+
+| Use Case | Recommendation |
+|----------|----------------|
+| Desktop Application | Standard protection |
+| Console Application | Standard protection |
+| Class Library / NuGet | Minimal protection, preserves public API |
+| Web Application (ASP.NET) | Standard protection, excludes route attributes |
+| Game (Unity) | Aggressive protection, excludes Unity namespaces |
+
 ## Examples
 
 ### Basic Usage
@@ -113,6 +146,19 @@ obfy config generate -l aggressive -o obfy-aggressive.json
 
 # Use a configuration file
 obfy MyApp.dll -c obfy.json -o output/
+```
+
+### Configuration Wizard
+
+```bash
+# Run the interactive wizard
+obfy config wizard
+
+# Quick mode - just select a level
+obfy config wizard --quick
+
+# Specify output path
+obfy config wizard -o myproject.json
 ```
 
 ### Custom Protection Flags

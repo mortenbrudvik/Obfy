@@ -543,7 +543,7 @@ dotnet tool install --global Obfuscar.GlobalTool
 
 ### Medium-Term (Strategic Features)
 
-3. **Configuration Wizard** - Interactive CLI wizard for generating config
+*All medium-term items completed - see Recently Completed section*
 
 ### Long-Term (Advanced Protection)
 
@@ -552,6 +552,7 @@ dotnet tool install --global Obfuscar.GlobalTool
 
 ### Recently Completed
 
+- **Configuration Wizard** ✅ - Interactive CLI wizard with Quick/Advanced modes (v1.3.0)
 - **Visual Studio Extension** ✅ - VS 2022 plugin with right-click obfuscation and post-build automation (v1.3.0)
 - **Assembly Merging** ✅ - Merge multiple assemblies into one (v1.2.0)
 - **Anti-Decompiler** ✅ - Junk types/methods injection, SuppressIldasm (v1.2.0)

@@ -105,7 +105,7 @@ A strategic development plan based on competitive analysis against commercial an
 | DX-02 | Visual Studio Extension | P1 | Medium | High | ✅ Done |
 | DX-03 | VS Code Extension | P2 | Low | Medium | Backlog |
 | DX-04 | JetBrains Rider Plugin | P2 | Low | Medium | Backlog |
-| DX-05 | Configuration Wizard | P2 | Low | Medium | Backlog |
+| DX-05 | Configuration Wizard | P2 | Low | Medium | ✅ Done |
 | DX-06 | Real-time Preview | P3 | High | Medium | Future |
 
 #### Feature Details
@@ -261,19 +261,21 @@ A strategic development plan based on competitive analysis against commercial an
 
 ---
 
-### Phase 3: Developer Experience (v1.3) - In Progress
+### Phase 3: Developer Experience (v1.3) ✅
 **Theme:** IDE integration and tooling
 
 | Feature | Type | Notes | Status |
 |---------|------|-------|--------|
 | Visual Studio Extension (DX-02) | Tooling | IDE integration | ✅ Done |
-| Configuration Wizard (DX-05) | Tooling | Interactive setup | Backlog |
+| Configuration Wizard (DX-05) | Tooling | Interactive setup | ✅ Done |
 
 **Success Metrics:**
 - Visual Studio market presence
 - Streamlined configuration experience
 
-**Completed VS Extension (January 2026):**
+**Completed (January 2026):**
+
+**VS Extension:**
 - Right-click "Obfuscate" command on projects
 - Toggle post-build obfuscation command
 - Settings dialog with level presets (Minimal/Standard/Aggressive/Custom)
@@ -282,7 +284,12 @@ A strategic development plan based on competitive analysis against commercial an
 - Output window integration
 - VS 2022+ (64-bit) support via Community.VisualStudio.Toolkit
 
-*Note: Configuration Wizard (DX-05) deferred to future release*
+**Configuration Wizard:**
+- Interactive CLI wizard (`obfy config wizard`)
+- Quick mode for fast preset selection
+- Advanced mode for detailed configuration
+- Use case-based defaults (Desktop, Library, Web, Unity)
+- Spectre.Console integration for rich prompts
 
 ---
 

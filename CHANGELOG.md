@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Configuration Wizard for interactive config generation (DX-05)
+  - `obfy config wizard` command with Quick and Advanced modes
+  - Quick mode: Select application type and protection level
+  - Advanced mode: Step through all settings interactively
+  - Use case presets for Desktop, Library, Web, Console, Unity
+  - Spectre.Console rich prompts and summary table
+- Visual Studio 2022 Extension for IDE integration (DX-02)
+  - Right-click "Obfuscate" command on projects
+  - Toggle post-build obfuscation per-project
+  - Settings dialog with level presets
+  - Output window integration
 - Assembly merging to combine multiple DLLs into one (UF-01)
   - Merge multiple assemblies before obfuscation for single-file output
   - Internalize merged types (makes public types internal for better obfuscation)

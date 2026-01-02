@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- UI automation tests with FlaUI (QT-04)
+  - Test project: Tests/Obfy.UI.AutomationTests
+  - FlaUI.UIA3 framework for WPF automation
+  - AutomationIds added to all key XAML controls
+  - Tests for application launch, settings panel, about dialog
+  - Page object model with MainWindowElements helper
+  - Local-only execution (requires interactive Windows desktop)
+- Code coverage CI integration (QT-03)
+  - Coverage collection with Coverlet during CI builds
+  - HTML coverage reports via ReportGenerator
+  - Coverage summary in GitHub Actions job summary
+  - PR comments with coverage details
+  - Coverage report artifacts downloadable from CI
+  - CI status badge in README
 - Comprehensive test coverage for CLI and UI (QT-01, QT-02)
   - 92 CLI tests: argument parsing, help output, error handling, integration
   - 59 UI ViewModel tests: FilesViewModel, SettingsViewModel commands

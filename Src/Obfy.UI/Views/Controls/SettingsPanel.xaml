@@ -11,12 +11,14 @@
     <StackPanel Margin="12">
         <!-- Level Selector -->
         <TextBlock Text="Obfuscation Level" FontWeight="SemiBold" Margin="0,0,0,8"/>
-        <ComboBox ItemsSource="{Binding AvailableLevels}" SelectedItem="{Binding Level}" Margin="0,0,0,16"/>
+        <ComboBox AutomationProperties.AutomationId="LevelSelector"
+                  ItemsSource="{Binding AvailableLevels}" SelectedItem="{Binding Level}" Margin="0,0,0,16"/>
 
         <!-- String Encryption -->
         <Expander Header="String Encryption" IsExpanded="True" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
-                <ui:ToggleSwitch Content="Enabled" IsChecked="{Binding StringEncryptionEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="StringEncryptionToggle"
+                               Content="Enabled" IsChecked="{Binding StringEncryptionEnabled}"/>
                 <StackPanel Visibility="{Binding StringEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
@@ -30,7 +32,8 @@
         <!-- Constant Encryption -->
         <Expander Header="Constant Encryption" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
-                <ui:ToggleSwitch Content="Enabled" IsChecked="{Binding ConstantEncryptionEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="ConstantEncryptionToggle"
+                               Content="Enabled" IsChecked="{Binding ConstantEncryptionEnabled}"/>
                 <StackPanel Visibility="{Binding ConstantEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
@@ -56,7 +59,8 @@
         <!-- Control Flow -->
         <Expander Header="Control Flow" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
-                <ui:ToggleSwitch Content="Enabled" IsChecked="{Binding ControlFlowEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="ControlFlowToggle"
+                               Content="Enabled" IsChecked="{Binding ControlFlowEnabled}"/>
                 <StackPanel Visibility="{Binding ControlFlowEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Mode" Margin="0,0,0,4"/>
@@ -70,7 +74,8 @@
         <!-- Symbol Renaming -->
         <Expander Header="Symbol Renaming" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
-                <ui:ToggleSwitch Content="Enabled" IsChecked="{Binding SymbolRenamingEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="SymbolRenamingToggle"
+                               Content="Enabled" IsChecked="{Binding SymbolRenamingEnabled}"/>
                 <StackPanel Visibility="{Binding SymbolRenamingEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Naming Mode" Margin="0,0,0,4"/>
@@ -88,9 +93,12 @@
         <!-- Protection -->
         <Expander Header="Protection" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
-                <ui:ToggleSwitch Content="Anti-Debug" IsChecked="{Binding AntiDebugEnabled}"/>
-                <ui:ToggleSwitch Content="Anti-Tamper" IsChecked="{Binding AntiTamperEnabled}"/>
-                <ui:ToggleSwitch Content="Anti-Dump" IsChecked="{Binding AntiDumpEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDebugToggle"
+                               Content="Anti-Debug" IsChecked="{Binding AntiDebugEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="AntiTamperToggle"
+                               Content="Anti-Tamper" IsChecked="{Binding AntiTamperEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDumpToggle"
+                               Content="Anti-Dump" IsChecked="{Binding AntiDumpEnabled}"/>
             </StackPanel>
         </Expander>
 
@@ -106,7 +114,8 @@
         <!-- Resource Encryption -->
         <Expander Header="Resource Encryption" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
-                <ui:ToggleSwitch Content="Enabled" IsChecked="{Binding ResourceEncryptionEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="ResourceEncryptionToggle"
+                               Content="Enabled" IsChecked="{Binding ResourceEncryptionEnabled}"/>
                 <StackPanel Visibility="{Binding ResourceEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Algorithm" Margin="0,0,0,4"/>

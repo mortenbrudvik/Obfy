@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/)
+[![CI](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml/badge.svg)](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml)
 
 **Professional .NET obfuscation tool for protecting C# assemblies and source code.**
 

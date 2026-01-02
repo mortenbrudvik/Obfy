@@ -234,8 +234,8 @@ A strategic development plan based on competitive analysis against commercial an
 |----|---------|----------|--------|-------|--------|
 | QT-01 | Console CLI Tests | P1 | Medium | High | ✅ Done |
 | QT-02 | ViewModel Unit Tests | P2 | Medium | Medium | ✅ Done |
-| QT-03 | Code Coverage CI | P2 | Low | Medium | Backlog |
-| QT-04 | UI Automation Tests | P3 | High | Low | Future |
+| QT-03 | Code Coverage CI | P2 | Low | Medium | ✅ Done |
+| QT-04 | UI Automation Tests | P3 | High | Low | ✅ Done |
 
 #### Feature Details
 

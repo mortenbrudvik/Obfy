@@ -27,13 +27,16 @@
 
                 <StackPanel>
                     <TextBlock Text="Obfuscation Results" FontWeight="SemiBold" FontSize="14"/>
-                    <TextBlock Text="{Binding ElapsedTime, StringFormat='Completed in {0:mm\\:ss\\.fff}'}"
+                    <TextBlock AutomationProperties.AutomationId="ElapsedTimeText"
+                              Text="{Binding ElapsedTime, StringFormat='Completed in {0:mm\\:ss\\.fff}'}"
                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <ui:Button Icon="{ui:SymbolIcon DocumentBriefcase24}" Content="Export Report"
+                    <ui:Button AutomationProperties.AutomationId="ExportReportButton"
+                              Icon="{ui:SymbolIcon DocumentBriefcase24}" Content="Export Report"
                               Command="{Binding ExportReportCommand}" Margin="0,0,8,0"/>
-                    <ui:Button Icon="{ui:SymbolIcon Save24}" Content="Export Map"
+                    <ui:Button AutomationProperties.AutomationId="ExportMapButton"
+                              Icon="{ui:SymbolIcon Save24}" Content="Export Map"
                               Command="{Binding ExportSymbolMapCommand}"/>
                 </StackPanel>
             </Grid>
@@ -72,11 +75,13 @@
         </Border>
 
         <!-- Search -->
-        <ui:TextBox Grid.Row="2" Margin="12,8,12,0" PlaceholderText="Search symbols..."
+        <ui:TextBox AutomationProperties.AutomationId="SymbolSearchBox"
+                   Grid.Row="2" Margin="12,8,12,0" PlaceholderText="Search symbols..."
                    Icon="{ui:SymbolIcon Search24}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
 
         <!-- Tree View -->
-        <TreeView Grid.Row="3" ItemsSource="{Binding RootNodes}" Margin="12,8,12,12"
+        <TreeView AutomationProperties.AutomationId="SymbolTree"
+                  Grid.Row="3" ItemsSource="{Binding RootNodes}" Margin="12,8,12,12"
                   Background="Transparent" BorderThickness="0"
                   VirtualizingPanel.IsVirtualizing="True">
             <TreeView.ItemTemplate>

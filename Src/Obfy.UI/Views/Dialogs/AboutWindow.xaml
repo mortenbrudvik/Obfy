@@ -33,7 +33,8 @@
         </StackPanel>
 
         <!-- Close Button -->
-        <ui:Button Grid.Row="2" Content="Close" HorizontalAlignment="Center"
+        <ui:Button AutomationProperties.AutomationId="CloseAboutButton"
+                  Grid.Row="2" Content="Close" HorizontalAlignment="Center"
                   Click="CloseButton_Click" Width="100"/>
     </Grid>
 </ui:FluentWindow>

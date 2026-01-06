@@ -173,6 +173,10 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (type.Namespace == "Obfy.Runtime")
             return true;
 
+        // Skip Obfy's own model types (required for JSON serialization)
+        if (type.Namespace == "Obfy.Core.Models")
+            return true;
+
         // Skip module type
         if (type.IsGlobalModuleType)
             return true;

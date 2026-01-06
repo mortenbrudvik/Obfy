@@ -468,6 +468,38 @@ public class AssemblyObfuscatorTests
         obfuscator.SupportsTargetType(TargetType.SourceCode).ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task SymbolRenaming_SkipsObfyCoreModelsNamespace()
+    {
+        // Arrange - create a type in the Obfy.Core.Models namespace
+        var module = CreateTestModule();
+        var typeDef = new TypeDefUser(
+            "Obfy.Core.Models",
+            "ObfySettings",
+            module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            Attributes = TypeAttributes.Public | TypeAttributes.Class
+        };
+        module.Types.Add(typeDef);
+
+        var logger = new Mock<ILogger<SymbolRenamingObfuscator>>();
+        var nameGenerator = new NameGenerator();
+        var obfuscator = new SymbolRenamingObfuscator(nameGenerator, logger.Object);
+
+        var settings = new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameTypes = true, Mode = NamingMode.Sequential }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        // Act
+        await obfuscator.ObfuscateAsync(context);
+
+        // Assert - type should NOT be renamed (excluded for JSON serialization)
+        typeDef.Name.String.ShouldBe("ObfySettings");
+        typeDef.Namespace.String.ShouldBe("Obfy.Core.Models");
+    }
+
     #endregion
 
     #region ControlFlowObfuscator Tests

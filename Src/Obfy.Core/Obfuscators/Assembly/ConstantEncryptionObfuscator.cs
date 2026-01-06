@@ -706,6 +706,10 @@ public class ConstantEncryptionObfuscator : IObfuscator
         if (type.Namespace == "Obfy.Runtime")
             return true;
 
+        // Skip Obfy's own model types (required for JSON serialization)
+        if (type.Namespace == "Obfy.Core.Models")
+            return true;
+
         return rules.Namespaces.Any(n => MatchesPattern(type.Namespace, n)) ||
                rules.Types.Any(t => MatchesPattern(type.Name, t));
     }

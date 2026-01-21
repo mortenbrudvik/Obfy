@@ -2,7 +2,7 @@
 ; Download Inno Setup from: https://jrsoftware.org/isinfo.php
 
 #define MyAppName "Obfy"
-#define MyAppVersion "1.0.7"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Obfy"
 #define MyAppURL "https://github.com/mortenbrudvik/Obfy"
 #define MyAppExeName "obfy.exe"

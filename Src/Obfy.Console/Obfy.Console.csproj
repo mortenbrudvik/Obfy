@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>obfy</AssemblyName>
 
-    <Version>1.0.6</Version>
+    <Version>1.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

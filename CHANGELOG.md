@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-01-21
+
 ### Added
+- JetBrains Rider plugin for IDE integration (DX-04)
+  - Right-click "Obfuscate" command on projects
+  - Tool window with obfuscation output
+  - Settings panel with level presets
 - UI automation tests with FlaUI (QT-04)
   - Test project: Tests/Obfy.UI.AutomationTests
   - FlaUI.UIA3 framework for WPF automation
@@ -54,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Adds SuppressIldasm attribute to block ILDasm
   - Configurable junk type count and methods per type
   - Uses confusing Unicode characters for junk names
+
+### Fixed
+- Exclude Obfy.Core.Models namespace from self-obfuscation
+- Rider plugin CLI path quoting and blank tool window
 
 ## [1.1.0] - 2026-01-01
 

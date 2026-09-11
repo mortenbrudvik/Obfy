@@ -4,7 +4,7 @@
     <Identity Id="Obfy.VisualStudio.5a9b8c7d-6e5f-4a3b-2c1d-0e9f8a7b6c5d" Version="1.3.0" Language="en-US" Publisher="Obfy" />
     <DisplayName>Obfy .NET Obfuscator</DisplayName>
     <Description xml:space="preserve">Obfuscate .NET assemblies directly from Visual Studio. Right-click any C# project to obfuscate, configure post-build obfuscation, and manage settings.</Description>
-    <MoreInfo>https://github.com/obfy/obfy</MoreInfo>
+    <MoreInfo>https://github.com/mortenbrudvik/Obfy</MoreInfo>
     <License>LICENSE.txt</License>
     <Icon>Resources\Icon.png</Icon>
     <PreviewImage>Resources\Icon.png</PreviewImage>

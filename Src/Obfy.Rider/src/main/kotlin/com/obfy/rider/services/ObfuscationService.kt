@@ -41,7 +41,8 @@ class ObfuscationService {
         return try {
             val result = runCli(cliPath, args, outputService)
             val elapsedTime = System.currentTimeMillis() - startTime
-            result.copy(elapsedTimeMs = elapsedTime)
+            val resolvedOutput = if (result.success) (outputPath ?: assemblyPath) else result.outputPath
+            result.copy(elapsedTimeMs = elapsedTime, outputPath = resolvedOutput)
         } catch (e: Exception) {
             logger.error("CLI execution failed", e)
             ObfuscationResult.failure(e.message ?: "Unknown error")
@@ -57,15 +58,16 @@ class ObfuscationService {
 
         val userHome = System.getProperty("user.home")
         val programFiles = System.getenv("ProgramFiles") ?: "C:\\Program Files"
+        val programFilesX86 = System.getenv("ProgramFiles(x86)")
 
-        val possiblePaths = listOf(
-            // Installed via dotnet tool
-            "$userHome\\.dotnet\\tools\\obfy.exe",
-            // Installed to Program Files
-            "$programFiles\\Obfy\\obfy.exe",
-            // Local development
-            File(System.getProperty("user.dir"), "obfy.exe").absolutePath
-        )
+        // Global dotnet tool install was removed; search it last as a fallback only.
+        val possiblePaths = buildList {
+            add("$programFiles\\Obfy\\obfy.exe")
+            if (!programFilesX86.isNullOrBlank()) {
+                add("$programFilesX86\\Obfy\\obfy.exe")
+            }
+            add(File(System.getProperty("user.dir"), "obfy.exe").absolutePath)
+        }
 
         for (path in possiblePaths) {
             if (File(path).exists()) {
@@ -75,15 +77,24 @@ class ObfuscationService {
             }
         }
 
-        // Search PATH
-        val pathEnv = System.getenv("PATH") ?: return null
-        for (dir in pathEnv.split(File.pathSeparator)) {
-            val exePath = File(dir, "obfy.exe")
-            if (exePath.exists()) {
-                cachedCliPath = exePath.absolutePath
-                logger.info("Found Obfy CLI in PATH: ${exePath.absolutePath}")
-                return cachedCliPath
+        val pathEnv = System.getenv("PATH")
+        if (pathEnv != null) {
+            for (dir in pathEnv.split(File.pathSeparator)) {
+                if (dir.isBlank()) continue
+                val exePath = File(dir, "obfy.exe")
+                if (exePath.exists()) {
+                    cachedCliPath = exePath.absolutePath
+                    logger.info("Found Obfy CLI in PATH: ${exePath.absolutePath}")
+                    return cachedCliPath
+                }
             }
+        }
+
+        val dotnetTool = File(userHome, ".dotnet/tools/obfy.exe")
+        if (dotnetTool.exists()) {
+            cachedCliPath = dotnetTool.absolutePath
+            logger.info("Found Obfy CLI at fallback dotnet tool path: ${dotnetTool.absolutePath}")
+            return cachedCliPath
         }
 
         logger.warn("Obfy CLI not found")
@@ -115,9 +126,14 @@ class ObfuscationService {
             if (!settings.stringEncryption) sb.append(" --no-string-encryption")
             if (!settings.symbolRenaming) sb.append(" --no-symbol-renaming")
             if (settings.controlFlow) sb.append(" --control-flow")
+            else sb.append(" --no-control-flow")
             if (settings.antiDebug) sb.append(" --anti-debug")
+            if (settings.antiDump) sb.append(" --anti-dump")
+            if (settings.referenceProxy) sb.append(" --reference-proxy")
             if (settings.antiTamper) sb.append(" --anti-tamper")
             if (settings.antiDecompiler) sb.append(" --anti-decompiler")
+            if (settings.constantEncryption) sb.append(" --encrypt-constants")
+            if (settings.resourceEncryption) sb.append(" --encrypt-resources")
         }
 
         return sb.toString()

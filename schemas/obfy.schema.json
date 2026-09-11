@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json",
+  "title": "Obfy Settings",
+  "description": "JSON configuration for the Obfy .NET obfuscator (Obfy.Core.Models.ObfySettings).",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema URL used by editors for validation and autocomplete.",
+      "default": "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json"
+    },
+    "level": {
+      "type": "string",
+      "description": "Global obfuscation level preset.",
+      "enum": ["minimal", "standard", "aggressive", "custom", "Minimal", "Standard", "Aggressive", "Custom"],
+      "default": "standard"
+    },
+    "stringEncryption": {
+      "type": "object",
+      "description": "String encryption settings.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "algorithm": { "$ref": "#/$defs/encryptionAlgorithm", "default": "Aes256" },
+        "encryptConstantStrings": { "type": "boolean", "default": true },
+        "encryptResourceStrings": { "type": "boolean", "default": true },
+        "minStringLength": { "type": "integer", "minimum": 1, "maximum": 100, "default": 3 }
+      }
+    },
+    "controlFlow": {
+      "type": "object",
+      "description": "Control flow obfuscation settings.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "mode": {
+          "type": "string",
+          "enum": ["Switch", "OpaquePredicate", "Combined"],
+          "default": "Switch"
+        },
+        "intensity": { "type": "integer", "minimum": 0, "maximum": 100, "default": 50 }
+      }
+    },
+    "symbolRenaming": {
+      "type": "object",
+      "description": "Symbol renaming settings.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "mode": {
+          "type": "string",
+          "enum": ["Unreadable", "Sequential", "Hash", "Random"],
+          "default": "Unreadable"
+        },
+        "renameTypes": { "type": "boolean", "default": true },
+        "renameMethods": { "type": "boolean", "default": true },
+        "renameProperties": { "type": "boolean", "default": true },
+        "renameFields": { "type": "boolean", "default": true },
+        "renameParameters": { "type": "boolean", "default": true },
+        "renameEvents": { "type": "boolean", "default": true },
+        "renameNamespaces": { "type": "boolean", "default": true },
+        "preservePublicApi": { "type": "boolean", "default": false }
+      }
+    },
+    "protection": {
+      "type": "object",
+      "description": "Runtime protection settings.",
+      "additionalProperties": true,
+      "properties": {
+        "antiDebug": { "type": "boolean", "default": false },
+        "antiDump": { "type": "boolean", "default": false },
+        "referenceProxy": { "type": "boolean", "default": false },
+        "antiTamper": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "checkEntryPoint": { "type": "boolean", "default": true },
+            "checkModuleInitializer": { "type": "boolean", "default": true }
+          }
+        },
+        "antiDecompiler": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "injectJunkTypes": { "type": "boolean", "default": true },
+            "addSuppressIldasmAttribute": { "type": "boolean", "default": true },
+            "junkTypeCount": { "type": "integer", "minimum": 1, "maximum": 50, "default": 5 },
+            "junkMethodsPerType": { "type": "integer", "minimum": 1, "maximum": 20, "default": 3 }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Metadata removal settings.",
+      "additionalProperties": true,
+      "properties": {
+        "removeDebugInfo": { "type": "boolean", "default": true },
+        "removeAttributes": { "type": "boolean", "default": true },
+        "stripDocumentation": { "type": "boolean", "default": true }
+      }
+    },
+    "resourceEncryption": {
+      "type": "object",
+      "description": "Embedded resource encryption settings.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "algorithm": { "$ref": "#/$defs/encryptionAlgorithm", "default": "Aes256" },
+        "includePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["*"]
+        },
+        "excludePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["*.resources"]
+        }
+      }
+    },
+    "constantEncryption": {
+      "type": "object",
+      "description": "Numeric constant encryption settings.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "algorithm": { "$ref": "#/$defs/encryptionAlgorithm", "default": "Xor" },
+        "encryptIntegers": { "type": "boolean", "default": true },
+        "encryptLongs": { "type": "boolean", "default": true },
+        "encryptFloats": { "type": "boolean", "default": true },
+        "encryptDoubles": { "type": "boolean", "default": true },
+        "integerThreshold": { "type": "integer", "minimum": 0, "maximum": 1000, "default": 2 },
+        "longThreshold": { "type": "integer", "minimum": 0, "maximum": 1000, "default": 2 },
+        "skipCommonFloats": { "type": "boolean", "default": true },
+        "skipCommonDoubles": { "type": "boolean", "default": true }
+      }
+    },
+    "assemblyMerge": {
+      "type": "object",
+      "description": "Assembly merging settings.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "internalize": { "type": "boolean", "default": true },
+        "preserveDebugInfo": { "type": "boolean", "default": false },
+        "searchDirectories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "excludePatterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      }
+    },
+    "exclusions": {
+      "type": "object",
+      "description": "Exclusion rules (types, methods, namespaces to skip).",
+      "additionalProperties": true,
+      "properties": {
+        "namespaces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "types": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "methods": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "attributes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [
+            "SerializableAttribute",
+            "DataContractAttribute",
+            "DataMemberAttribute"
+          ]
+        }
+      }
+    },
+    "postBuildEnabled": {
+      "type": "boolean",
+      "description": "Whether post-build obfuscation is enabled (used by the Visual Studio extension).",
+      "default": false
+    }
+  },
+  "$defs": {
+    "encryptionAlgorithm": {
+      "type": "string",
+      "enum": ["Xor", "Aes256"]
+    }
+  }
+}

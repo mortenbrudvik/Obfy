@@ -71,7 +71,8 @@ Console.WriteLine(StringDecryptor.Decrypt(0));
 - Strings shorter than `minStringLength` are not encrypted
 - Empty strings are skipped
 - Adds slight runtime overhead for first access
-- Methods with exception handlers and compiler-generated methods are encrypted (inserts keep handler bounds)
+- Methods with exception handlers and compiler-generated methods **and types** (async state machines, display classes, iterators) are encrypted
+- Resource strings shorter than `minStringLength` stay plaintext; encrypted resource strings are prefixed so `GetString` does not try to decrypt them
 
 ---
 
@@ -539,14 +540,14 @@ Verifies assembly integrity at runtime by computing and comparing cryptographic 
    - Injects a runtime class (`Obfy.Runtime.<AntiTamper>`)
    - Creates a placeholder hash field (32 zero bytes)
    - Adds verification calls at entry point and/or module initializer
-   - After writing the assembly, computes SHA-256 hash of all method bodies
+   - After writing the assembly, computes SHA-256 of the whole file with the hash slot zeroed
    - Patches the placeholder with the actual hash
 
 2. At runtime:
-   - Reads the assembly file from disk
-   - Recomputes the hash of method bodies
+   - Reads the assembly file from disk (`Assembly.Location`, then `Environment.ProcessPath`)
+   - Recomputes the whole-file hash with the hash slot zeroed
    - Compares with the stored expected hash
-   - Exits if mismatch is detected
+   - Exits if mismatch is detected. Memory-only / empty-path loads still skip the check.
 
 **Two-Pass Process:**
 
@@ -555,7 +556,7 @@ The hash must be computed after all obfuscation is complete, but the verificatio
 ```
 1. Inject <AntiTamper> type with placeholder (32 zero bytes)
 2. Write module to temp file
-3. Compute hash of all method bodies (excluding <AntiTamper> type)
+3. Compute SHA-256 of the file with the hash slot zeroed
 4. Patch placeholder with actual hash
 5. Write final file
 ```

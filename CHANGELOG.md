@@ -13,9 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Symbol renaming for events, accessors, and namespaces
 - CFG control-flow flattening for methods with branches
 - Opaque predicates based on `Environment.TickCount` instead of foldable constants
+- CLI flags `--anti-dump`, `--reference-proxy`, `--encrypt-constants`, `--no-control-flow`
+- JSON Schema for `obfy.json` (`schemas/obfy.schema.json`); `obfy config generate` writes `$schema`
+- Directory.Build.props, `.editorconfig`, and `version.json`
 
 ### Changed
-- String and constant encryption now cover try/catch and compiler-generated methods
+- String and constant encryption now cover try/catch, compiler-generated methods, and compiler-generated types (async/iterator/lambda display classes)
+- Anti-dump wipes MZ, checksum, import, debug, and IAT directory slots (not only PE checksum)
+- Anti-tamper falls back to `Environment.ProcessPath` when `Assembly.Location` is empty; `Verify` is assembly-visible
+- Anti-tamper magic marker is no longer the ASCII string `OBFY_AT_MAGIC!!`
+- Resource-string encryption prefixes ciphertext so `ResourceManager.GetString` leaves short/plaintext values readable
+- IDE `obfy.json` uses the same nested schema as the CLI
+- VS Obfuscate writes into the project output directory; Rider post-build actually runs after a successful build
+- WPF app bootstraps with `IHost`, follows the system theme, and uses Fluent snackbar/content dialogs
 - Runtime helpers are renamed and use encoded keys; ciphertext is stored as byte arrays
 - Hash naming is salted per run so original names are not a dictionary oracle
 - Resource encryption rewrites `GetManifestResourceStream(Type, string)` and `Module` overloads
@@ -47,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Source switch flattening skips methods with locals/`break`/`continue`
 - Missing config files, invalid `--level`, and `--merge` with one file now error instead of silently continuing
 - CI runs on Windows so WPF projects can build
+- Resource-string decrypt hook no longer `FromBase64String`s unencrypted short strings (would throw at runtime)
+- UI last-output-directory / symbol-map preferences are saved and restored
+- VS/Rider Custom mode can enable anti-dump, reference proxy, and constant encryption
+- VS Generate Symbol Map option now passes `--map`
 
 ## [1.2.0] - 2026-01-21
 

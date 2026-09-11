@@ -71,10 +71,6 @@ public class ConstantEncryptionObfuscator : IObfuscator
                 if (IsExcluded(type, context.Settings.Exclusions))
                     continue;
 
-                // Skip compiler-generated types
-                if (IsCompilerGenerated(type))
-                    continue;
-
                 foreach (var method in type.Methods)
                 {
                     if (!method.HasBody)

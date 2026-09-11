@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Community.VisualStudio.Toolkit;
 using Microsoft.VisualStudio.Shell;
@@ -14,12 +13,6 @@ public class ProjectSettingsService : IProjectSettingsService
 {
     private const string SettingsFileName = "obfy.json";
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
-    };
-
     public async Task<ObfySettings?> LoadSettingsAsync(Project project)
     {
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -30,7 +23,7 @@ public class ProjectSettingsService : IProjectSettingsService
             return null;
         }
 
-        return await LoadSettingsFromDirectoryAsync(projectDir);
+        return await LoadSettingsFromDirectoryAsync(projectDir!);
     }
 
     public async Task<ObfySettings?> LoadSettingsFromDirectoryAsync(string projectDirectory)
@@ -45,7 +38,7 @@ public class ProjectSettingsService : IProjectSettingsService
         try
         {
             var json = await ReadFileAsync(filePath);
-            return JsonSerializer.Deserialize<ObfySettings>(json, JsonOptions);
+            return ObfySettingsJson.Parse(json);
         }
         catch (Exception ex)
         {
@@ -61,14 +54,14 @@ public class ProjectSettingsService : IProjectSettingsService
         var projectDir = await GetProjectDirectoryAsync(project);
         if (!string.IsNullOrEmpty(projectDir))
         {
-            await SaveSettingsToDirectoryAsync(projectDir, settings);
+            await SaveSettingsToDirectoryAsync(projectDir!, settings);
         }
     }
 
     public async Task SaveSettingsToDirectoryAsync(string projectDirectory, ObfySettings settings)
     {
         var filePath = GetSettingsFilePath(projectDirectory);
-        var json = JsonSerializer.Serialize(settings, JsonOptions);
+        var json = ObfySettingsJson.Serialize(settings);
         await WriteFileAsync(filePath, json);
     }
 
@@ -82,7 +75,7 @@ public class ProjectSettingsService : IProjectSettingsService
             return false;
         }
 
-        var filePath = GetSettingsFilePath(projectDir);
+        var filePath = GetSettingsFilePath(projectDir!);
         return File.Exists(filePath);
     }
 

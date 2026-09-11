@@ -57,6 +57,30 @@ public class ProtectionStep : WizardStep
             WriteInfo("Junk code will be added to confuse decompilers.");
         }
 
+        // Anti-Dump
+        AnsiConsole.WriteLine();
+        var antiDump = AnsiConsole.Confirm(
+            "Enable anti-dump protection?",
+            defaultValue: context.Settings.Protection.AntiDump);
+        context.Settings.Protection.AntiDump = antiDump;
+
+        if (antiDump)
+        {
+            WriteInfo("PE headers will be wiped from memory at runtime (Windows).");
+        }
+
+        // Reference Proxy
+        AnsiConsole.WriteLine();
+        var referenceProxy = AnsiConsole.Confirm(
+            "Enable reference proxy?",
+            defaultValue: context.Settings.Protection.ReferenceProxy);
+        context.Settings.Protection.ReferenceProxy = referenceProxy;
+
+        if (referenceProxy)
+        {
+            WriteInfo("Call targets will be hidden behind proxy methods.");
+        }
+
         // Resource Encryption
         AnsiConsole.WriteLine();
         var resourceEncryption = AnsiConsole.Confirm(

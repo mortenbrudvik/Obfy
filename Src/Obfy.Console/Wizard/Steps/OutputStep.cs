@@ -33,7 +33,7 @@ public class OutputStep : WizardStep
             return;
         }
 
-        var written = await ConfigurationWizard.GenerateConfigAsync(context);
+        var written = await ConfigurationWizard.GenerateConfigAsync(context).ConfigureAwait(false);
         if (!written)
         {
             context.Cancelled = true;

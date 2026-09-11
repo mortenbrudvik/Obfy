@@ -76,8 +76,12 @@
                                               TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
                                 <ProgressBar Grid.Column="2" Width="80" Value="{Binding Progress}" Maximum="100" Margin="8,0"
+                                            AutomationProperties.Name="File obfuscation progress"
                                             Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                 <ui:Button Grid.Column="3" Icon="{ui:SymbolIcon Dismiss24}"
+                                          AutomationProperties.Name="Remove file"
+                                          ToolTip="Remove file"
+                                          MinWidth="40" MinHeight="40"
                                           Command="{Binding DataContext.RemoveFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                           CommandParameter="{Binding}" Appearance="Secondary" Padding="4"/>
                             </Grid>
@@ -102,6 +106,9 @@
             <ui:TextBox AutomationProperties.AutomationId="OutputDirectoryTextBox"
                        Grid.Row="1" Grid.Column="0" Text="{Binding OutputDirectory}" PlaceholderText="Same as input"/>
             <ui:Button AutomationProperties.AutomationId="BrowseOutputButton"
+                      AutomationProperties.Name="Browse output directory"
+                      ToolTip="Browse output directory"
+                      MinWidth="40" MinHeight="40"
                       Grid.Row="1" Grid.Column="1" Icon="{ui:SymbolIcon FolderOpen24}"
                       Command="{Binding BrowseOutputDirectoryCommand}" Margin="8,0,0,0"/>
         </Grid>

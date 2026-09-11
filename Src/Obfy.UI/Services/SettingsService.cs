@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
 
 namespace Obfy.UI.Services;
@@ -9,16 +10,23 @@ namespace Obfy.UI.Services;
 /// </summary>
 public class SettingsService : ISettingsService
 {
-    private static readonly string PreferencesPath = Path.Combine(
+    private readonly string _preferencesPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Obfy",
         "ui-preferences.json");
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
+
+    private readonly ILogger<SettingsService> _logger;
+
+    public SettingsService(ILogger<SettingsService> logger)
+    {
+        _logger = logger;
+    }
 
     public string? LastOutputDirectory { get; set; }
     public bool GenerateSymbolMap { get; set; }
@@ -31,7 +39,7 @@ public class SettingsService : ISettingsService
             Directory.CreateDirectory(directory);
         }
 
-        var json = JsonSerializer.Serialize(settings, JsonOptions);
+        var json = JsonSerializer.Serialize(settings, _jsonOptions);
         await File.WriteAllTextAsync(filePath, json);
     }
 
@@ -43,12 +51,12 @@ public class SettingsService : ISettingsService
         }
 
         var json = await File.ReadAllTextAsync(filePath);
-        return JsonSerializer.Deserialize<ObfySettings>(json, JsonOptions);
+        return JsonSerializer.Deserialize<ObfySettings>(json, _jsonOptions);
     }
 
     public async Task SavePreferencesAsync()
     {
-        var directory = Path.GetDirectoryName(PreferencesPath);
+        var directory = Path.GetDirectoryName(_preferencesPath);
         if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
         {
             Directory.CreateDirectory(directory);
@@ -60,30 +68,34 @@ public class SettingsService : ISettingsService
             GenerateSymbolMap = GenerateSymbolMap
         };
 
-        var json = JsonSerializer.Serialize(preferences, JsonOptions);
-        await File.WriteAllTextAsync(PreferencesPath, json);
+        var json = JsonSerializer.Serialize(preferences, _jsonOptions);
+        await File.WriteAllTextAsync(_preferencesPath, json);
     }
 
     public async Task LoadPreferencesAsync()
     {
-        if (!File.Exists(PreferencesPath))
+        if (!File.Exists(_preferencesPath))
         {
             return;
         }
 
         try
         {
-            var json = await File.ReadAllTextAsync(PreferencesPath);
-            var preferences = JsonSerializer.Deserialize<UiPreferences>(json, JsonOptions);
+            var json = await File.ReadAllTextAsync(_preferencesPath);
+            var preferences = JsonSerializer.Deserialize<UiPreferences>(json, _jsonOptions);
             if (preferences != null)
             {
                 LastOutputDirectory = preferences.LastOutputDirectory;
                 GenerateSymbolMap = preferences.GenerateSymbolMap;
             }
         }
-        catch
+        catch (JsonException ex)
         {
-            // Ignore corrupted preferences file
+            _logger.LogWarning(ex, "Failed to load UI preferences from {Path}", _preferencesPath);
+        }
+        catch (IOException ex)
+        {
+            _logger.LogWarning(ex, "Failed to load UI preferences from {Path}", _preferencesPath);
         }
     }
 

@@ -33,7 +33,7 @@ A strategic development plan based on competitive analysis against commercial an
 | PF-02 | Constant Encryption | P0 | Low | Medium | ✅ Done |
 | PF-03 | Anti-Tamper Detection | P1 | Medium | High | ✅ Done |
 | PF-04 | Anti-Decompiler | P1 | Medium | Medium | ✅ Done |
-| PF-05 | Anti-Dump Protection | P2 | Medium | Medium | ✅ Done |
+| PF-05 | Anti-Dump Protection | P2 | Medium | Medium | ✅ Done (PE header wipe; not dumper-hook parity with ConfuserEx) |
 | PF-06 | Watermarking | P2 | Low | Low | Backlog |
 | PF-07 | MSIL Encryption | P2 | High | High | Backlog |
 | PF-08 | Code Virtualization | P3 | Very High | High | Future |
@@ -389,7 +389,7 @@ A strategic development plan based on competitive analysis against commercial an
 | Feature | Type | Notes |
 |---------|------|-------|
 | MSIL Encryption (PF-07) | Protection | Encrypted method bodies |
-| Anti-Dump (PF-05) | Protection | Memory protection |
+| Anti-Dump (PF-05) | Protection | ✅ PE header wipe shipped; further dumper-hook work remains |
 | Watermarking (PF-06) | Protection | Build tracking |
 
 **Success Metrics:**

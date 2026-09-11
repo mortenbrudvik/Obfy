@@ -16,12 +16,13 @@
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
         <!-- TitleBar -->
         <ui:TitleBar Grid.Row="0" Title="Obfy - .NET Obfuscator">
@@ -47,6 +48,7 @@
                               Appearance="Primary" Command="{Binding ObfuscateCommand}"/>
                     <ui:Button Icon="{ui:SymbolIcon Stop24}" Content="Cancel"
                               AutomationProperties.AutomationId="CancelButton"
+                              Appearance="Secondary"
                               Command="{Binding CancelCommand}" Margin="8,0,0,0"
                               Visibility="{Binding IsObfuscating, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                 </StackPanel>
@@ -55,6 +57,7 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center"
                            Visibility="{Binding IsObfuscating, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <ProgressBar AutomationProperties.AutomationId="OverallProgressBar"
+                               AutomationProperties.Name="Obfuscation progress"
                                Width="200" Height="8" Value="{Binding OverallProgress}" Maximum="100"/>
                     <TextBlock AutomationProperties.AutomationId="ProgressText"
                               Text="{Binding OverallProgress, StringFormat={}{0:F0}%}" Margin="8,0,0,0"
@@ -66,14 +69,17 @@
                     <ui:Button Icon="{ui:SymbolIcon Save24}" ToolTip="Save Configuration"
                               AutomationProperties.Name="Save Configuration"
                               AutomationProperties.AutomationId="SaveConfigButton"
+                              MinWidth="40" MinHeight="40"
                               Command="{Binding SaveConfigurationCommand}" Margin="0,0,4,0"/>
                     <ui:Button Icon="{ui:SymbolIcon FolderOpen24}" ToolTip="Load Configuration"
                               AutomationProperties.Name="Load Configuration"
                               AutomationProperties.AutomationId="LoadConfigButton"
+                              MinWidth="40" MinHeight="40"
                               Command="{Binding LoadConfigurationCommand}" Margin="0,0,4,0"/>
                     <ui:Button Icon="{ui:SymbolIcon Info24}" ToolTip="About"
                               AutomationProperties.Name="About"
                               AutomationProperties.AutomationId="AboutButton"
+                              MinWidth="40" MinHeight="40"
                               Command="{Binding ShowAboutCommand}"/>
                 </StackPanel>
             </Grid>
@@ -107,6 +113,7 @@
             </Border>
 
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                           AutomationProperties.Name="Resize settings panel"
                            Background="{DynamicResource ControlElevationBorderBrush}"/>
 
             <!-- Right Panel: Files, Results, Output -->
@@ -129,6 +136,7 @@
                     <controls:FilesPanel Grid.Row="0" DataContext="{Binding Files}"/>
 
                     <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"
+                                 AutomationProperties.Name="Resize results panel"
                                  Background="{DynamicResource ControlElevationBorderBrush}"
                                  Visibility="{Binding ShowResultsPanel, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
@@ -139,6 +147,7 @@
                 </Grid>
 
                 <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="Resize output panel"
                             Background="{DynamicResource ControlElevationBorderBrush}"/>
 
                 <!-- Output Panel -->
@@ -156,11 +165,17 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Grid.Column="0" AutomationProperties.AutomationId="StatusMessage"
+                          AutomationProperties.Name="Status"
+                          AutomationProperties.LiveSetting="Polite"
                           Text="{Binding StatusMessage}" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" AutomationProperties.AutomationId="FileCount"
                           Text="{Binding Files.Files.Count, StringFormat='{}{0} file(s)'}"
                           VerticalAlignment="Center"/>
             </Grid>
         </Border>
+        </Grid>
+
+        <ui:SnackbarPresenter x:Name="SnackbarPresenter"/>
+        <ContentPresenter x:Name="RootContentDialogPresenter"/>
     </Grid>
 </ui:FluentWindow>

@@ -88,7 +88,7 @@ public class ReportService : IReportService
             _ => throw new ArgumentException($"Unsupported report format: {format}", nameof(format))
         };
 
-        await generator.GenerateAsync(report, outputPath, cancellationToken);
+        await generator.GenerateAsync(report, outputPath, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>

@@ -54,7 +54,7 @@ public class SourceStringEncryptor : IObfuscator
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var root = await tree.GetRootAsync(cancellationToken);
+                var root = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
                 var rewriter = new StringEncryptionRewriter(settings, key, encryptedStrings);
                 var newRoot = rewriter.Visit(root);
 

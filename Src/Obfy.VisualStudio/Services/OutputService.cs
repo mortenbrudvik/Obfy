@@ -78,9 +78,9 @@ public class OutputService : IOutputService
 
             await _pane.WriteLineAsync(formattedMessage);
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently ignore output failures
+            System.Diagnostics.Debug.WriteLine($"Failed to write to Obfy output pane: {ex.Message}");
         }
     }
 }

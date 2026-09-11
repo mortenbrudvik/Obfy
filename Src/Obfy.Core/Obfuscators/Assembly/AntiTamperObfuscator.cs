@@ -226,7 +226,7 @@ public class AntiTamperObfuscator : IObfuscator
         var method = new MethodDefUser(
             "Verify",
             MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Public | MethodAttributes.Static);
+            MethodAttributes.Assembly | MethodAttributes.Static);
 
         var body = new CilBody { InitLocals = true };
         method.Body = body;
@@ -255,6 +255,8 @@ public class AntiTamperObfuscator : IObfuscator
             MethodSig.CreateStatic(new ClassSig(assemblyType)), assemblyType);
         var getLocation = new MemberRefUser(module, "get_Location",
             MethodSig.CreateInstance(module.CorLibTypes.String), assemblyType);
+        var getProcessPath = new MemberRefUser(module, "get_ProcessPath",
+            MethodSig.CreateStatic(module.CorLibTypes.String), environmentType);
         var isNullOrEmpty = new MemberRefUser(module, "IsNullOrEmpty",
             MethodSig.CreateStatic(module.CorLibTypes.Boolean, module.CorLibTypes.String),
             new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef));
@@ -289,11 +291,18 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getExecutingAssembly));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getLocation));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
+        var havePath = Instruction.Create(OpCodes.Ldloc, pathLocal);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, havePath));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getProcessPath));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
         body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, skipLabel));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
+        body.Instructions.Add(havePath);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readAllBytes));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, bytesLocal));
 

@@ -4,6 +4,7 @@ using Obfy.Core.DependencyInjection;
 using Obfy.UI.Services;
 using Obfy.UI.ViewModels;
 using Obfy.UI.Views;
+using Obfy.UI.Views.Dialogs;
 
 namespace Obfy.UI.DependencyInjection;
 
@@ -28,6 +29,14 @@ public class AppModule : Module
 
         builder.RegisterType<SettingsService>()
             .As<ISettingsService>()
+            .SingleInstance();
+
+        builder.RegisterType<WpfUiDispatcher>()
+            .As<IUiDispatcher>()
+            .SingleInstance();
+
+        builder.RegisterType<WpfClipboardService>()
+            .As<IClipboardService>()
             .SingleInstance();
 
         // Register child ViewModels
@@ -56,5 +65,9 @@ public class AppModule : Module
         builder.RegisterType<MainWindow>()
             .AsSelf()
             .SingleInstance();
+
+        builder.RegisterType<AboutWindow>()
+            .AsSelf()
+            .InstancePerDependency();
     }
 }

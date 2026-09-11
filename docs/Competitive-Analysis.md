@@ -114,8 +114,8 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 | **GUI** | Yes | Yes | Yes | Yes | Yes |
 | **MSBuild Integration** | Yes | Yes | Yes | Yes | Yes |
 | **Visual Studio Plugin** | Yes | Yes | Yes | Yes | Yes |
-| **VS Code / Rider** | - | - | - | Yes | - |
-| **NuGet Package** | Yes | - | - | - | Yes |
+| **VS Code / Rider** | Rider | - | - | Yes | - |
+| **NuGet Package** | - | - | - | - | Yes |
 | **Azure DevOps** | Yes | Yes | Yes | Yes | Yes |
 | **GitHub Actions** | Yes | Yes | - | Yes | Yes |
 | **Symbol Mapping** | Yes | Yes | Yes | Yes | Encrypted |

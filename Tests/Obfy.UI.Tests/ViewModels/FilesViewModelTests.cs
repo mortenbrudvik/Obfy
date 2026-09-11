@@ -39,7 +39,12 @@ public class FilesViewModelTests : IDisposable
                 Directory.Delete(_tempDirectory, recursive: true);
             }
         }
-        catch { }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private string CreateTestFile(string name)
@@ -98,6 +103,29 @@ public class FilesViewModelTests : IDisposable
         var viewModel = new FilesViewModel(_mockFileDialogService.Object, mockSettings.Object);
 
         // Assert
+        viewModel.GenerateSymbolMap.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ApplyPreferences_CopiesLoadedValuesFromSettings()
+    {
+        // Arrange — ctor snapshots empty values; ApplyPreferences is the post-load fix
+        var mockSettings = new Mock<ISettingsService>();
+        mockSettings.Setup(s => s.LastOutputDirectory).Returns((string?)null);
+        mockSettings.Setup(s => s.GenerateSymbolMap).Returns(false);
+
+        var viewModel = new FilesViewModel(_mockFileDialogService.Object, mockSettings.Object);
+        viewModel.OutputDirectory.ShouldBe(string.Empty);
+        viewModel.GenerateSymbolMap.ShouldBeFalse();
+
+        mockSettings.Setup(s => s.LastOutputDirectory).Returns(@"C:\Loaded\Output");
+        mockSettings.Setup(s => s.GenerateSymbolMap).Returns(true);
+
+        // Act
+        viewModel.ApplyPreferences();
+
+        // Assert
+        viewModel.OutputDirectory.ShouldBe(@"C:\Loaded\Output");
         viewModel.GenerateSymbolMap.ShouldBeTrue();
     }
 
@@ -346,6 +374,21 @@ public class FilesViewModelTests : IDisposable
 
         // Assert
         _mockSettingsService.VerifySet(s => s.LastOutputDirectory = @"C:\Selected\Output", Times.Once);
+    }
+
+    [Fact]
+    public async Task BrowseOutputDirectoryCommand_CallsSavePreferencesAsync()
+    {
+        // Arrange
+        _mockFileDialogService.Setup(s => s.ShowFolderBrowserDialog())
+            .Returns(@"C:\Selected\Output");
+        _mockSettingsService.Setup(s => s.SavePreferencesAsync()).Returns(Task.CompletedTask);
+
+        // Act
+        await _viewModel.BrowseOutputDirectoryCommand.ExecuteAsync(null);
+
+        // Assert
+        _mockSettingsService.Verify(s => s.SavePreferencesAsync(), Times.Once);
     }
 
     [Fact]

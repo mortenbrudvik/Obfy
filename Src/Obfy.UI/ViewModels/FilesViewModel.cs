@@ -14,6 +14,7 @@ public partial class FilesViewModel : ObservableObject
 {
     private readonly IFileDialogService _fileDialogService;
     private readonly ISettingsService _settingsService;
+    private bool _suppressPreferenceSave;
 
     /// <summary>
     /// Gets the collection of files to obfuscate.
@@ -44,14 +45,53 @@ public partial class FilesViewModel : ObservableObject
         _fileDialogService = fileDialogService;
         _settingsService = settingsService;
 
-        OutputDirectory = _settingsService.LastOutputDirectory ?? string.Empty;
-        GenerateSymbolMap = _settingsService.GenerateSymbolMap;
+        _suppressPreferenceSave = true;
+        try
+        {
+            OutputDirectory = _settingsService.LastOutputDirectory ?? string.Empty;
+            GenerateSymbolMap = _settingsService.GenerateSymbolMap;
+        }
+        finally
+        {
+            _suppressPreferenceSave = false;
+        }
 
         Files.CollectionChanged += (s, e) =>
         {
             OnPropertyChanged(nameof(HasFiles));
             OnPropertyChanged(nameof(HasNoFiles));
         };
+    }
+
+    /// <summary>
+    /// Copies persisted preference values from <see cref="ISettingsService"/> onto this ViewModel.
+    /// Call after <see cref="ISettingsService.LoadPreferencesAsync"/> so the ctor snapshot is replaced
+    /// with values loaded from disk.
+    /// </summary>
+    public void ApplyPreferences()
+    {
+        _suppressPreferenceSave = true;
+        try
+        {
+            OutputDirectory = _settingsService.LastOutputDirectory ?? string.Empty;
+            GenerateSymbolMap = _settingsService.GenerateSymbolMap;
+        }
+        finally
+        {
+            _suppressPreferenceSave = false;
+        }
+    }
+
+    /// <summary>
+    /// Writes the current UI preference values back to the settings service and persists them.
+    /// </summary>
+    public Task PersistPreferencesAsync()
+    {
+        _settingsService.LastOutputDirectory = string.IsNullOrWhiteSpace(OutputDirectory)
+            ? null
+            : OutputDirectory;
+        _settingsService.GenerateSymbolMap = GenerateSymbolMap;
+        return _settingsService.SavePreferencesAsync();
     }
 
     [RelayCommand]
@@ -84,13 +124,14 @@ public partial class FilesViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void BrowseOutputDirectory()
+    private async Task BrowseOutputDirectoryAsync()
     {
         var folder = _fileDialogService.ShowFolderBrowserDialog();
         if (!string.IsNullOrEmpty(folder))
         {
             OutputDirectory = folder;
             _settingsService.LastOutputDirectory = folder;
+            await _settingsService.SavePreferencesAsync();
         }
     }
 
@@ -132,5 +173,16 @@ public partial class FilesViewModel : ObservableObject
             file.Progress = 0;
             file.ErrorMessage = null;
         }
+    }
+
+    partial void OnGenerateSymbolMapChanged(bool value)
+    {
+        if (_suppressPreferenceSave)
+        {
+            return;
+        }
+
+        _settingsService.GenerateSymbolMap = value;
+        _ = _settingsService.SavePreferencesAsync();
     }
 }

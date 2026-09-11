@@ -72,8 +72,8 @@ public class ObfuscationService : IObfuscationService
         {
             context = target.TargetType switch
             {
-                TargetType.Assembly => await _assemblyProcessor.LoadAsync(inputPath, settings, cancellationToken),
-                TargetType.SourceCode => await _sourceProcessor.LoadAsync(inputPath, settings, cancellationToken),
+                TargetType.Assembly => await _assemblyProcessor.LoadAsync(inputPath, settings, cancellationToken).ConfigureAwait(false),
+                TargetType.SourceCode => await _sourceProcessor.LoadAsync(inputPath, settings, cancellationToken).ConfigureAwait(false),
                 _ => throw new ArgumentException($"Unsupported target type: {target.TargetType}")
             };
 
@@ -91,7 +91,7 @@ public class ObfuscationService : IObfuscationService
         try
         {
             // Execute the pipeline
-            var result = await _pipeline.ExecuteAsync(context, cancellationToken);
+            var result = await _pipeline.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
 
             if (!result.Success)
             {
@@ -106,10 +106,10 @@ public class ObfuscationService : IObfuscationService
                 switch (target.TargetType)
                 {
                     case TargetType.Assembly:
-                        await _assemblyProcessor.SaveAsync(context, effectiveOutput, cancellationToken);
+                        await _assemblyProcessor.SaveAsync(context, effectiveOutput, cancellationToken).ConfigureAwait(false);
                         break;
                     case TargetType.SourceCode:
-                        await _sourceProcessor.SaveAsync(context, effectiveOutput, cancellationToken);
+                        await _sourceProcessor.SaveAsync(context, effectiveOutput, cancellationToken).ConfigureAwait(false);
                         break;
                 }
 
@@ -157,7 +157,7 @@ public class ObfuscationService : IObfuscationService
             cancellationToken.ThrowIfCancellationRequested();
 
             var outputPath = Path.Combine(outputDirectory, Path.GetFileName(inputPath));
-            var result = await ObfuscateAsync(inputPath, outputPath, settings, cancellationToken);
+            var result = await ObfuscateAsync(inputPath, outputPath, settings, cancellationToken).ConfigureAwait(false);
             results.Add(result);
         }
 
@@ -173,7 +173,7 @@ public class ObfuscationService : IObfuscationService
         };
 
         var json = JsonSerializer.Serialize(symbolMap, options);
-        await File.WriteAllTextAsync(outputPath, json);
+        await File.WriteAllTextAsync(outputPath, json).ConfigureAwait(false);
 
         _logger.LogInformation("Symbol map written to {OutputPath} with {Count} entries",
             outputPath, symbolMap.Count);
@@ -207,7 +207,7 @@ public class ObfuscationService : IObfuscationService
                 inputList,
                 tempMergedPath,
                 settings.AssemblyMerge,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             if (!mergeResult.Success)
             {
@@ -225,7 +225,7 @@ public class ObfuscationService : IObfuscationService
                 tempMergedPath,
                 outputPath,
                 settings,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             // Add merge info to the result
             if (obfuscationResult.Success)

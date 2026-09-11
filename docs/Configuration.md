@@ -6,6 +6,7 @@ Complete JSON configuration schema for Obfy.
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json",
   "level": "standard",
   "stringEncryption": { ... },
   "constantEncryption": { ... },
@@ -15,14 +16,18 @@ Complete JSON configuration schema for Obfy.
   "protection": { ... },
   "metadata": { ... },
   "assemblyMerge": { ... },
-  "exclusions": { ... }
+  "exclusions": { ... },
+  "postBuildEnabled": false
 }
 ```
+
+Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](../schemas/obfy.schema.json) so editors can validate and autocomplete. Extra properties such as `$schema` are ignored when loading.
 
 ## Complete Schema
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json",
   "level": "minimal | standard | aggressive | custom",
 
   "stringEncryption": {
@@ -50,11 +55,11 @@ Complete JSON configuration schema for Obfy.
     "enabled": false,
     "algorithm": "Aes256 | Xor",
     "includePatterns": ["*"],
-    "excludePatterns": []
+    "excludePatterns": ["*.resources"]
   },
 
   "controlFlow": {
-    "enabled": true,
+    "enabled": false,
     "mode": "Switch | OpaquePredicate | Combined",
     "intensity": 50
   },
@@ -73,7 +78,7 @@ Complete JSON configuration schema for Obfy.
   },
 
   "protection": {
-    "antiDebug": true,
+    "antiDebug": false,
     "antiTamper": {
       "enabled": false,
       "checkEntryPoint": true,
@@ -113,7 +118,9 @@ Complete JSON configuration schema for Obfy.
       "DataContractAttribute",
       "DataMemberAttribute"
     ]
-  }
+  },
+
+  "postBuildEnabled": false
 }
 ```
 
@@ -167,7 +174,9 @@ Maximum protection with all techniques enabled.
   "protection": {
     "antiDebug": true,
     "antiTamper": { "enabled": true },
-    "antiDecompiler": { "enabled": true }
+    "antiDecompiler": { "enabled": true },
+    "antiDump": true,
+    "referenceProxy": true
   },
   "metadata": {
     "removeDebugInfo": true,
@@ -238,7 +247,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `enabled` | bool | `false` | Enable resource encryption |
 | `algorithm` | enum | `Aes256` | Encryption algorithm: `Aes256` or `Xor` |
 | `includePatterns` | string[] | `["*"]` | Glob patterns for resources to include |
-| `excludePatterns` | string[] | `[]` | Glob patterns for resources to exclude |
+| `excludePatterns` | string[] | `["*.resources"]` | Glob patterns for resources to exclude |
 
 **Pattern Examples:**
 
@@ -256,7 +265,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `enabled` | bool | `true` | Enable control flow obfuscation |
+| `enabled` | bool | `false` | Enable control flow obfuscation |
 | `mode` | enum | `Switch` | Obfuscation mode |
 | `intensity` | int | `50` | Complexity level (0-100) |
 
@@ -296,7 +305,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `antiDebug` | bool | `true` | Inject debugger detection checks |
+| `antiDebug` | bool | `false` | Inject debugger detection checks |
 | `antiDump` | bool | `false` | Wipe PE headers in memory at load (Windows) |
 | `referenceProxy` | bool | `false` | Hide in-module call targets behind proxy methods |
 
@@ -443,7 +452,8 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
       "junkTypeCount": 10,
       "junkMethodsPerType": 5
     },
-    "antiDump": true
+    "antiDump": true,
+    "referenceProxy": true
   },
   "metadata": {
     "removeDebugInfo": true,
@@ -465,6 +475,8 @@ obfy config generate -l aggressive -o obfy-aggressive.json
 # Generate minimal configuration
 obfy config generate -l minimal -o obfy-minimal.json
 ```
+
+Generated files include a `$schema` property pointing at `https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json` for editor validation.
 
 ## See Also
 

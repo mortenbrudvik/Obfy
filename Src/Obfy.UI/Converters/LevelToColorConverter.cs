@@ -28,7 +28,10 @@ public class LevelToColorConverter : IValueConverter
         if (Application.Current?.TryFindResource(key) is Brush brush)
             return brush;
 
-        return Brushes.Gray;
+        if (Application.Current?.TryFindResource("TextFillColorPrimaryBrush") is Brush primary)
+            return primary;
+
+        return SystemColors.GrayTextBrush;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

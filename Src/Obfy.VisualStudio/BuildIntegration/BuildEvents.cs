@@ -85,7 +85,7 @@ public static class BuildEvents
             await VS.StatusBar.ShowProgressAsync("Post-build obfuscation...", 1, 2);
 
             var cts = new CancellationTokenSource();
-            var result = await obfuscator.ObfuscateAsync(assemblyPath, assemblyPath, settings, cts.Token);
+            var result = await obfuscator.ObfuscateAsync(assemblyPath!, assemblyPath, settings, cts.Token);
 
             await VS.StatusBar.ClearAsync();
 

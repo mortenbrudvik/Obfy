@@ -73,7 +73,7 @@ public class ObfySettings
         return settings;
     }
 
-    private static readonly JsonSerializerOptions CloneJsonOptions = new()
+    private static readonly JsonSerializerOptions _cloneJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
@@ -85,8 +85,8 @@ public class ObfySettings
     /// </summary>
     public ObfySettings Clone()
     {
-        var json = JsonSerializer.Serialize(this, CloneJsonOptions);
-        return JsonSerializer.Deserialize<ObfySettings>(json, CloneJsonOptions)
+        var json = JsonSerializer.Serialize(this, _cloneJsonOptions);
+        return JsonSerializer.Deserialize<ObfySettings>(json, _cloneJsonOptions)
             ?? throw new InvalidOperationException("Failed to clone obfuscation settings.");
     }
 

@@ -59,7 +59,7 @@ public class ConfigurationWizard
         else
         {
             // First step determines if user wants quick or advanced
-            await _advancedModeSteps[0].ExecuteAsync(context);
+            await _advancedModeSteps[0].ExecuteAsync(context).ConfigureAwait(false);
             if (context.Cancelled)
             {
                 return 1;
@@ -71,7 +71,7 @@ public class ConfigurationWizard
         // Execute steps
         foreach (var step in steps)
         {
-            await step.ExecuteAsync(context);
+            await step.ExecuteAsync(context).ConfigureAwait(false);
 
             if (context.Cancelled)
             {
@@ -130,7 +130,7 @@ public class ConfigurationWizard
         {
             // Ensure directory exists
             context.OutputFile.Directory?.Create();
-            await File.WriteAllTextAsync(context.OutputFile.FullName, json);
+            await File.WriteAllTextAsync(context.OutputFile.FullName, json).ConfigureAwait(false);
 
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine($"[green]Configuration saved to:[/] {context.OutputFile.FullName}");

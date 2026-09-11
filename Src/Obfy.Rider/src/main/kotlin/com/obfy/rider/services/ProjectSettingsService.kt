@@ -1,7 +1,5 @@
 package com.obfy.rider.services
 
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -16,7 +14,6 @@ import java.io.File
 class ProjectSettingsService(private val project: Project) {
 
     private val logger = Logger.getInstance(ProjectSettingsService::class.java)
-    private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
     private val settingsFileName = "obfy.json"
 
     /**
@@ -35,8 +32,7 @@ class ProjectSettingsService(private val project: Project) {
 
         return if (settingsFile.exists()) {
             try {
-                gson.fromJson(settingsFile.readText(), ObfySettings::class.java)
-                    ?: throw IllegalStateException("obfy.json deserialized to null")
+                ObfySettings.fromJson(settingsFile.readText())
             } catch (e: Exception) {
                 logger.warn("Failed to parse obfy.json: ${e.message}")
                 throw e
@@ -60,7 +56,7 @@ class ProjectSettingsService(private val project: Project) {
     fun saveSettingsForPath(projectDirPath: String, settings: ObfySettings) {
         try {
             val settingsFile = File(projectDirPath, settingsFileName)
-            settingsFile.writeText(gson.toJson(settings))
+            settingsFile.writeText(settings.toJson())
             logger.info("Saved settings to ${settingsFile.absolutePath}")
         } catch (e: Exception) {
             logger.error("Failed to save obfy.json: ${e.message}")

@@ -63,7 +63,7 @@ public class SourceSymbolRenamer : IObfuscator
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var model = compilation.GetSemanticModel(tree);
-                var root = await tree.GetRootAsync(cancellationToken);
+                var root = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
 
                 foreach (var node in root.DescendantNodes())
                 {
@@ -107,7 +107,7 @@ public class SourceSymbolRenamer : IObfuscator
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var model = compilation.GetSemanticModel(tree);
-                var root = await tree.GetRootAsync(cancellationToken);
+                var root = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
 
                 var tokenRenames = new Dictionary<SyntaxToken, string>();
 

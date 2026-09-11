@@ -50,11 +50,12 @@ jobs:
       shell: bash
 
     - name: Check Coverage Threshold
-      shell: bash
+      shell: pwsh
       run: |
-        COVERAGE=$(grep -oP 'line-rate="[\d.]+"' coverage/report/Cobertura.xml | head -1 | grep -oP '[\d.]+')
-        COVERAGE_PCT=$(echo "$COVERAGE * 100" | bc)
-        echo "Coverage: $COVERAGE_PCT%"
-        if (( $(echo "$COVERAGE_PCT < 80" | bc -l) )); then
-          echo "::warning::Coverage $COVERAGE_PCT% is below 80% threshold"
-        fi
+        [xml]$cobertura = Get-Content coverage/report/Cobertura.xml
+        $rate = [double]$cobertura.coverage.'line-rate'
+        $pct = [math]::Round($rate * 100, 2)
+        Write-Host "Coverage: $pct%"
+        if ($pct -lt 80) {
+          Write-Host "::warning::Coverage $pct% is below 80% threshold"
+        }

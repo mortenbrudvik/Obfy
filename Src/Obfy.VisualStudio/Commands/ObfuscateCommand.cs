@@ -76,7 +76,8 @@ internal sealed class ObfuscateCommand : BaseCommand<ObfuscateCommand>
             await VS.StatusBar.ShowProgressAsync("Obfuscating...", 1, 2);
 
             var cts = new CancellationTokenSource();
-            var result = await obfuscator.ObfuscateAsync(outputPath, null, settings, cts.Token);
+            var assemblyPath = outputPath!;
+            var result = await obfuscator.ObfuscateAsync(assemblyPath, assemblyPath, settings, cts.Token);
 
             await VS.StatusBar.ClearAsync();
 

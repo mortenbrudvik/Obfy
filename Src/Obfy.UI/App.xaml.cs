@@ -1,10 +1,14 @@
 using System.Windows;
 using System.Windows.Threading;
 using Autofac;
+using Autofac.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Obfy.UI.DependencyInjection;
+using Obfy.UI.Services;
 using Obfy.UI.ViewModels;
-using Obfy.UI.Views;
+using Wpf.Ui;
 
 namespace Obfy.UI;
 
@@ -13,7 +17,7 @@ namespace Obfy.UI;
 /// </summary>
 public partial class App : Application
 {
-    private IContainer? _container;
+    private IHost? _host;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -25,16 +29,18 @@ public partial class App : Application
 
         try
         {
-            var builder = new ContainerBuilder();
-            builder.RegisterModule<AppModule>();
-            _container = builder.Build();
+            _host = Host.CreateDefaultBuilder()
+                .UseServiceProviderFactory(new AutofacServiceProviderFactory())
+                .ConfigureContainer<ContainerBuilder>(builder => builder.RegisterModule<AppModule>())
+                .ConfigureServices(services =>
+                {
+                    services.AddHostedService<ApplicationHostService>();
+                    services.AddSingleton<ISnackbarService, SnackbarService>();
+                    services.AddSingleton<IContentDialogService, ContentDialogService>();
+                })
+                .Build();
 
-            var mainViewModel = _container.Resolve<MainViewModel>();
-            await mainViewModel.InitializeAsync();
-
-            var mainWindow = _container.Resolve<MainWindow>();
-            mainWindow.DataContext = mainViewModel;
-            mainWindow.Show();
+            await _host.StartAsync();
         }
         catch (Exception ex)
         {
@@ -66,24 +72,36 @@ public partial class App : Application
     {
         try
         {
-            _container?.Resolve<ILogger<App>>().LogError(ex, message);
+            _host?.Services.GetService<ILogger<App>>()?.LogError(ex, message);
         }
-        catch
+        catch (Exception logEx)
         {
-            System.Diagnostics.Debug.WriteLine($"{message}: {ex}");
+            System.Diagnostics.Debug.WriteLine($"{message}: {ex} (logger failed: {logEx.Message})");
         }
     }
 
-    protected override void OnExit(ExitEventArgs e)
+    protected override async void OnExit(ExitEventArgs e)
     {
-        // Dispose MainViewModel if it implements IDisposable
-        if (_container != null)
+        if (_host is not null)
         {
-            var mainViewModel = _container.Resolve<MainViewModel>();
-            (mainViewModel as IDisposable)?.Dispose();
+            try
+            {
+                var files = _host.Services.GetService<FilesViewModel>();
+                if (files is not null)
+                    await files.PersistPreferencesAsync();
+
+                _host.Services.GetService<MainViewModel>()?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                TryLog(ex, "Failed to save preferences on exit");
+            }
+
+            await _host.StopAsync();
+            _host.Dispose();
+            _host = null;
         }
 
-        _container?.Dispose();
         base.OnExit(e);
     }
 }

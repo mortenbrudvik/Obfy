@@ -38,4 +38,12 @@ public class IntegrityHashTests
                 File.Delete(path);
         }
     }
+
+    [Fact]
+    public void Magic_IsNotPlainAsciiFingerprint()
+    {
+        var ascii = System.Text.Encoding.ASCII.GetString(AssemblyHashComputer.Magic);
+        ascii.ShouldNotContain("OBFY");
+        AssemblyHashComputer.Magic.ShouldContain(b => b > 0x7F);
+    }
 }

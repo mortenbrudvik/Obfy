@@ -57,7 +57,7 @@ public class ObfuscationPipeline : IObfuscationPipeline
 
                 try
                 {
-                    var result = await obfuscator.ObfuscateAsync(context, cancellationToken);
+                    var result = await obfuscator.ObfuscateAsync(context, cancellationToken).ConfigureAwait(false);
 
                     obfuscatorStopwatch.Stop();
 

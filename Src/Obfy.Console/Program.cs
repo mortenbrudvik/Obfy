@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Autofac;
 using Logging.Core.DependencyInjection;
 using Obfy.Console.Wizard;
@@ -26,10 +27,14 @@ public class Program
     internal static Option<bool> AntiDebugOption { get; private set; } = null!;
     internal static Option<bool> AntiTamperOption { get; private set; } = null!;
     internal static Option<bool> AntiDecompilerOption { get; private set; } = null!;
+    internal static Option<bool> AntiDumpOption { get; private set; } = null!;
+    internal static Option<bool> ReferenceProxyOption { get; private set; } = null!;
     internal static Option<bool> NoStringEncryptOption { get; private set; } = null!;
     internal static Option<bool> NoRenameOption { get; private set; } = null!;
+    internal static Option<bool> NoControlFlowOption { get; private set; } = null!;
     internal static Option<bool> StripMetadataOption { get; private set; } = null!;
     internal static Option<bool> EncryptResourcesOption { get; private set; } = null!;
+    internal static Option<bool> EncryptConstantsOption { get; private set; } = null!;
     internal static Option<bool> PreservePublicOption { get; private set; } = null!;
     internal static Option<FileInfo?> MapOption { get; private set; } = null!;
     internal static Option<FileInfo?> ReportOption { get; private set; } = null!;
@@ -91,6 +96,14 @@ public class Program
             name: "--anti-decompiler",
             description: "Enable anti-decompiler protection");
 
+        AntiDumpOption = new Option<bool>(
+            name: "--anti-dump",
+            description: "Enable anti-dump protection");
+
+        ReferenceProxyOption = new Option<bool>(
+            name: "--reference-proxy",
+            description: "Enable reference proxy");
+
         NoStringEncryptOption = new Option<bool>(
             name: "--no-string-encryption",
             description: "Disable string encryption");
@@ -99,6 +112,10 @@ public class Program
             name: "--no-symbol-renaming",
             description: "Disable symbol renaming");
 
+        NoControlFlowOption = new Option<bool>(
+            name: "--no-control-flow",
+            description: "Disable control flow obfuscation");
+
         StripMetadataOption = new Option<bool>(
             name: "--strip-metadata",
             description: "Remove debug metadata");
@@ -106,6 +123,10 @@ public class Program
         EncryptResourcesOption = new Option<bool>(
             name: "--encrypt-resources",
             description: "Enable resource encryption");
+
+        EncryptConstantsOption = new Option<bool>(
+            name: "--encrypt-constants",
+            description: "Enable constant encryption");
 
         PreservePublicOption = new Option<bool>(
             name: "--preserve-public",
@@ -153,10 +174,14 @@ public class Program
             AntiDebugOption,
             AntiTamperOption,
             AntiDecompilerOption,
+            AntiDumpOption,
+            ReferenceProxyOption,
             NoStringEncryptOption,
             NoRenameOption,
+            NoControlFlowOption,
             StripMetadataOption,
             EncryptResourcesOption,
+            EncryptConstantsOption,
             PreservePublicOption,
             MapOption,
             ReportOption,
@@ -183,7 +208,7 @@ public class Program
 
         configGenerateCommand.SetHandler(async (output, level) =>
         {
-            await GenerateConfigAsync(output, level);
+            await GenerateConfigAsync(output, level).ConfigureAwait(false);
         }, configOutputOption, configLevelOption);
 
         // Config wizard command
@@ -202,7 +227,7 @@ public class Program
         wizardCommand.SetHandler(async (output, quick) =>
         {
             var wizard = new ConfigurationWizard();
-            await wizard.RunAsync(output, quick);
+            await wizard.RunAsync(output, quick).ConfigureAwait(false);
         }, wizardOutputOption, quickModeOption);
 
         var configCommand = new Command("config", "Configuration file operations")
@@ -237,10 +262,14 @@ public class Program
             var antiDebug = context.ParseResult.GetValueForOption(AntiDebugOption);
             var antiTamper = context.ParseResult.GetValueForOption(AntiTamperOption);
             var antiDecompiler = context.ParseResult.GetValueForOption(AntiDecompilerOption);
+            var antiDump = context.ParseResult.GetValueForOption(AntiDumpOption);
+            var referenceProxy = context.ParseResult.GetValueForOption(ReferenceProxyOption);
             var noStringEncrypt = context.ParseResult.GetValueForOption(NoStringEncryptOption);
             var noRename = context.ParseResult.GetValueForOption(NoRenameOption);
+            var noControlFlow = context.ParseResult.GetValueForOption(NoControlFlowOption);
             var stripMetadata = context.ParseResult.GetValueForOption(StripMetadataOption);
             var encryptResources = context.ParseResult.GetValueForOption(EncryptResourcesOption);
+            var encryptConstants = context.ParseResult.GetValueForOption(EncryptConstantsOption);
             var preservePublic = context.ParseResult.GetValueForOption(PreservePublicOption);
             var map = context.ParseResult.GetValueForOption(MapOption);
             var report = context.ParseResult.GetValueForOption(ReportOption);
@@ -258,9 +287,10 @@ public class Program
             try
             {
                 var settings = await BuildSettingsAsync(
-                    config, level, stringEncrypt, controlFlow, rename,
+                    config, level ?? "standard", stringEncrypt, controlFlow, rename,
                     antiDebug, stripMetadata, encryptResources, preservePublic,
-                    antiTamper, antiDecompiler, noStringEncrypt, noRename);
+                    antiTamper, antiDecompiler, noStringEncrypt, noRename,
+                    antiDump, referenceProxy, encryptConstants, noControlFlow).ConfigureAwait(false);
 
                 if (merge)
                 {
@@ -268,7 +298,7 @@ public class Program
                     settings.AssemblyMerge.Internalize = internalize;
                 }
 
-                context.ExitCode = await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose, merge);
+                context.ExitCode = await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose, merge).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or IOException)
             {
@@ -277,7 +307,7 @@ public class Program
             }
         });
 
-        return await rootCommand.InvokeAsync(args);
+        return await rootCommand.InvokeAsync(args).ConfigureAwait(false);
     }
 
     private static void PrintBanner()
@@ -301,7 +331,11 @@ public class Program
         bool antiTamper = false,
         bool antiDecompiler = false,
         bool noStringEncrypt = false,
-        bool noRename = false)
+        bool noRename = false,
+        bool antiDump = false,
+        bool referenceProxy = false,
+        bool encryptConstants = false,
+        bool noControlFlow = false)
     {
         ObfySettings settings;
 
@@ -310,7 +344,7 @@ public class Program
             if (!configFile.Exists)
                 throw new FileNotFoundException($"Config file not found: {configFile.FullName}");
 
-            var json = await File.ReadAllTextAsync(configFile.FullName);
+            var json = await File.ReadAllTextAsync(configFile.FullName).ConfigureAwait(false);
             settings = JsonSerializer.Deserialize<ObfySettings>(json, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -328,18 +362,23 @@ public class Program
 
         var anyOverride = stringEncrypt || controlFlow || rename || antiDebug || stripMetadata
             || encryptResources || preservePublic || antiTamper || antiDecompiler
-            || noStringEncrypt || noRename;
+            || noStringEncrypt || noRename
+            || antiDump || referenceProxy || encryptConstants || noControlFlow;
 
         if (stringEncrypt) settings.StringEncryption.Enabled = true;
         if (noStringEncrypt) settings.StringEncryption.Enabled = false;
         if (controlFlow) settings.ControlFlow.Enabled = true;
+        if (noControlFlow) settings.ControlFlow.Enabled = false;
         if (rename) settings.SymbolRenaming.Enabled = true;
         if (noRename) settings.SymbolRenaming.Enabled = false;
         if (antiDebug) settings.Protection.AntiDebug = true;
         if (antiTamper) settings.Protection.AntiTamper.Enabled = true;
         if (antiDecompiler) settings.Protection.AntiDecompiler.Enabled = true;
+        if (antiDump) settings.Protection.AntiDump = true;
+        if (referenceProxy) settings.Protection.ReferenceProxy = true;
         if (stripMetadata) settings.Metadata.RemoveDebugInfo = true;
         if (encryptResources) settings.ResourceEncryption.Enabled = true;
+        if (encryptConstants) settings.ConstantEncryption.Enabled = true;
         if (preservePublic) settings.SymbolRenaming.PreservePublicApi = true;
 
         if (anyOverride)
@@ -389,17 +428,17 @@ public class Program
 
         if (merge)
         {
-            anyFailed = await RunMergeObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun);
+            anyFailed = await RunMergeObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun).ConfigureAwait(false);
         }
         else
         {
-            anyFailed = await RunStandardObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun);
+            anyFailed = await RunStandardObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun).ConfigureAwait(false);
         }
 
         // Write symbol map if requested
         if (mapFile != null && allSymbols.Count > 0)
         {
-            await service.WriteSymbolMapAsync(allSymbols, mapFile.FullName);
+            await service.WriteSymbolMapAsync(allSymbols, mapFile.FullName).ConfigureAwait(false);
             AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
         }
 
@@ -414,7 +453,7 @@ public class Program
             // For multiple files, use the first result (or could aggregate in future)
             var (result, usedSettings) = successfulResults[0];
             var report = reportService.BuildReport(result, usedSettings);
-            await reportService.GenerateReportAsync(report, reportFile.FullName, format);
+            await reportService.GenerateReportAsync(report, reportFile.FullName, format).ConfigureAwait(false);
             AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
         }
 
@@ -464,7 +503,7 @@ public class Program
                 var result = await service.MergeAndObfuscateAsync(
                     inputPaths,
                     outputPath,
-                    settings);
+                    settings).ConfigureAwait(false);
 
                 if (result.Success)
                 {
@@ -481,7 +520,7 @@ public class Program
                     DisplayError("Merge", result);
                     failed = true;
                 }
-            });
+            }).ConfigureAwait(false);
         return failed;
     }
 
@@ -530,7 +569,7 @@ public class Program
                     var result = await service.ObfuscateAsync(
                         input.FullName,
                         outputPath,
-                        settings);
+                        settings).ConfigureAwait(false);
 
                     task.Increment(100);
 
@@ -550,7 +589,7 @@ public class Program
                         failed = true;
                     }
                 }
-            });
+            }).ConfigureAwait(false);
         return failed;
     }
 
@@ -622,7 +661,9 @@ public class Program
         };
 
         var json = JsonSerializer.Serialize(settings, options);
-        await File.WriteAllTextAsync(output.FullName, json);
+        var node = JsonNode.Parse(json)!.AsObject();
+        node.Insert(0, "$schema", "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json");
+        await File.WriteAllTextAsync(output.FullName, node.ToJsonString(options)).ConfigureAwait(false);
 
         AnsiConsole.MarkupLine($"[green]Configuration file created: {output.FullName}[/]");
     }

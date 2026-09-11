@@ -21,15 +21,17 @@ public class AssemblyProcessor : IAssemblyProcessor
     }
 
     /// <inheritdoc/>
-    public Task<PipelineContext> LoadAsync(string path, ObfySettings settings, CancellationToken cancellationToken = default)
+    public async Task<PipelineContext> LoadAsync(string path, ObfySettings settings, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Loading assembly from {Path}", path);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var moduleContext = ModuleDef.CreateModuleContext();
         // Load from an in-memory byte copy rather than the path directly: ModuleDefMD.Load(path)
         // memory-maps and locks the file for the module's lifetime, which blocks in-place output and
         // leaves the input locked if a later stage fails. Reading the bytes up front avoids the lock.
-        var module = ModuleDefMD.Load(File.ReadAllBytes(path), moduleContext);
+        var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+        var module = ModuleDefMD.Load(bytes, moduleContext);
 
         _logger.LogDebug("Loaded assembly {Name} with {TypeCount} types",
             module.Name, module.Types.Count);
@@ -37,7 +39,7 @@ public class AssemblyProcessor : IAssemblyProcessor
         var context = PipelineContext.ForAssembly(module, settings);
         context.InputPath = path;
 
-        return Task.FromResult(context);
+        return context;
     }
 
     /// <inheritdoc/>
@@ -48,6 +50,7 @@ public class AssemblyProcessor : IAssemblyProcessor
             throw new InvalidOperationException("No module in context");
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         _logger.LogDebug("Saving obfuscated assembly to {Path}", outputPath);
 
         // Ensure output directory exists

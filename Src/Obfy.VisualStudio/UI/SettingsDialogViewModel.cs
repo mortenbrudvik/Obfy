@@ -12,11 +12,15 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
     private ObfuscationLevel _level;
     private bool _postBuildEnabled;
     private bool _antiDebug;
+    private bool _antiDump;
+    private bool _referenceProxy;
     private bool _antiTamper;
     private bool _antiDecompiler;
     private bool _stringEncryption;
     private bool _controlFlow;
     private bool _symbolRenaming;
+    private bool _constantEncryption;
+    private bool _resourceEncryption;
     private string _projectName;
 
     public SettingsDialogViewModel(ObfySettings settings, string projectName)
@@ -27,11 +31,15 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
         _level = settings.Level;
         _postBuildEnabled = settings.PostBuildEnabled;
         _antiDebug = settings.AntiDebug;
+        _antiDump = settings.AntiDump;
+        _referenceProxy = settings.ReferenceProxy;
         _antiTamper = settings.AntiTamper;
         _antiDecompiler = settings.AntiDecompiler;
         _stringEncryption = settings.StringEncryption;
         _controlFlow = settings.ControlFlow;
         _symbolRenaming = settings.SymbolRenaming;
+        _constantEncryption = settings.ConstantEncryption;
+        _resourceEncryption = settings.ResourceEncryption;
     }
 
     public string ProjectName
@@ -95,6 +103,54 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool AntiDump
+    {
+        get => _antiDump;
+        set
+        {
+            if (SetProperty(ref _antiDump, value))
+            {
+                SetLevelToCustom();
+            }
+        }
+    }
+
+    public bool ReferenceProxy
+    {
+        get => _referenceProxy;
+        set
+        {
+            if (SetProperty(ref _referenceProxy, value))
+            {
+                SetLevelToCustom();
+            }
+        }
+    }
+
+    public bool ConstantEncryption
+    {
+        get => _constantEncryption;
+        set
+        {
+            if (SetProperty(ref _constantEncryption, value))
+            {
+                SetLevelToCustom();
+            }
+        }
+    }
+
+    public bool ResourceEncryption
+    {
+        get => _resourceEncryption;
+        set
+        {
+            if (SetProperty(ref _resourceEncryption, value))
+            {
+                SetLevelToCustom();
+            }
+        }
+    }
+
     public bool StringEncryption
     {
         get => _stringEncryption;
@@ -152,11 +208,15 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
             Level = _level,
             PostBuildEnabled = _postBuildEnabled,
             AntiDebug = _antiDebug,
+            AntiDump = _antiDump,
+            ReferenceProxy = _referenceProxy,
             AntiTamper = _antiTamper,
             AntiDecompiler = _antiDecompiler,
             StringEncryption = _stringEncryption,
             ControlFlow = _controlFlow,
-            SymbolRenaming = _symbolRenaming
+            SymbolRenaming = _symbolRenaming,
+            ConstantEncryption = _constantEncryption,
+            ResourceEncryption = _resourceEncryption
         };
     }
 
@@ -166,19 +226,27 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
 
         // Temporarily disable the custom level switch
         _antiDebug = levelSettings.AntiDebug;
+        _antiDump = levelSettings.AntiDump;
+        _referenceProxy = levelSettings.ReferenceProxy;
         _antiTamper = levelSettings.AntiTamper;
         _antiDecompiler = levelSettings.AntiDecompiler;
         _stringEncryption = levelSettings.StringEncryption;
         _controlFlow = levelSettings.ControlFlow;
         _symbolRenaming = levelSettings.SymbolRenaming;
+        _constantEncryption = levelSettings.ConstantEncryption;
+        _resourceEncryption = levelSettings.ResourceEncryption;
 
         // Notify all properties changed
         OnPropertyChanged(nameof(AntiDebug));
+        OnPropertyChanged(nameof(AntiDump));
+        OnPropertyChanged(nameof(ReferenceProxy));
         OnPropertyChanged(nameof(AntiTamper));
         OnPropertyChanged(nameof(AntiDecompiler));
         OnPropertyChanged(nameof(StringEncryption));
         OnPropertyChanged(nameof(ControlFlow));
         OnPropertyChanged(nameof(SymbolRenaming));
+        OnPropertyChanged(nameof(ConstantEncryption));
+        OnPropertyChanged(nameof(ResourceEncryption));
     }
 
     private void SetLevelToCustom()

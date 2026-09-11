@@ -55,7 +55,7 @@ intellijPlatform {
 
         vendor {
             name = "Obfy"
-            url = "https://github.com/obfy/obfy"
+            url = "https://github.com/mortenbrudvik/Obfy"
         }
     }
 

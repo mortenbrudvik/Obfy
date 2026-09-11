@@ -12,7 +12,7 @@ public class JsonReportGenerator : IReportGenerator
 {
     private readonly ILogger<JsonReportGenerator> _logger;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -33,7 +33,7 @@ public class JsonReportGenerator : IReportGenerator
     /// <inheritdoc/>
     public async Task GenerateAsync(ObfuscationReport report, string outputPath, CancellationToken cancellationToken = default)
     {
-        var json = await GenerateToStringAsync(report, cancellationToken);
+        var json = await GenerateToStringAsync(report, cancellationToken).ConfigureAwait(false);
 
         var directory = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(directory))
@@ -41,14 +41,14 @@ public class JsonReportGenerator : IReportGenerator
             Directory.CreateDirectory(directory);
         }
 
-        await File.WriteAllTextAsync(outputPath, json, cancellationToken);
+        await File.WriteAllTextAsync(outputPath, json, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("JSON report written to {OutputPath}", outputPath);
     }
 
     /// <inheritdoc/>
     public Task<string> GenerateToStringAsync(ObfuscationReport report, CancellationToken cancellationToken = default)
     {
-        var json = JsonSerializer.Serialize(report, JsonOptions);
+        var json = JsonSerializer.Serialize(report, _jsonOptions);
         return Task.FromResult(json);
     }
 }

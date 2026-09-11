@@ -10,14 +10,11 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vfs.VirtualFile
-import com.jetbrains.rider.projectView.workspace.ProjectModelEntity
-import com.jetbrains.rider.projectView.workspace.getProjectModelEntities
+import com.obfy.rider.services.AssemblyLocator
 import com.obfy.rider.services.ObfuscationService
-import com.obfy.rider.services.ObfySettings
 import com.obfy.rider.services.OutputService
 import com.obfy.rider.services.ProjectSettingsService
 import com.obfy.rider.settings.ObfySettingsState
-import java.io.File
 
 /**
  * Action that obfuscates the selected project's output assembly.
@@ -29,7 +26,7 @@ class ObfuscateAction : AnAction() {
         val project = e.project ?: return
         val virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
 
-        val projectDir = getProjectDirectory(virtualFile) ?: run {
+        val projectDir = AssemblyLocator.findProjectDirectory(virtualFile) ?: run {
             showError(project, "Could not determine project directory")
             return
         }
@@ -66,8 +63,7 @@ class ObfuscateAction : AnAction() {
                 indicator.fraction = 0.2
                 indicator.text = "Finding output assembly..."
 
-                // Find output assembly
-                val assemblyPath = findOutputAssembly(projectDir)
+                val assemblyPath = AssemblyLocator.findOutputAssembly(projectDir)
                 if (assemblyPath == null) {
                     outputService.error("Output assembly not found. Build the project first.")
                     showError(project, "Output assembly not found. Please build the project first.")
@@ -79,10 +75,9 @@ class ObfuscateAction : AnAction() {
                 indicator.fraction = 0.3
                 indicator.text = "Running obfuscation..."
 
-                // Run obfuscation
                 val result = obfuscationService.obfuscate(
                     assemblyPath,
-                    null,
+                    assemblyPath,
                     settings,
                     outputService
                 )
@@ -91,6 +86,7 @@ class ObfuscateAction : AnAction() {
 
                 if (result.success) {
                     outputService.success("Obfuscation complete!")
+                    outputService.info("  Output: ${result.outputPath ?: assemblyPath}")
                     outputService.info("  Total transformations: ${result.statistics.totalTransformations}")
                     outputService.info("  Strings encrypted: ${result.statistics.stringsEncrypted}")
                     outputService.info("  Symbols renamed: ${result.statistics.symbolsRenamed}")
@@ -112,73 +108,8 @@ class ObfuscateAction : AnAction() {
 
     private fun isSupportedProject(file: VirtualFile): Boolean {
         val name = file.name.lowercase()
-        return name.endsWith(".csproj") ||
-               name.endsWith(".vbproj") ||
-               name.endsWith(".fsproj") ||
-               (file.isDirectory && file.children.any {
-                   it.name.endsWith(".csproj") ||
-                   it.name.endsWith(".vbproj") ||
-                   it.name.endsWith(".fsproj")
-               })
-    }
-
-    private fun getProjectDirectory(file: VirtualFile): VirtualFile? {
-        // If it's a project file, return its parent directory
-        if (file.name.endsWith(".csproj") ||
-            file.name.endsWith(".vbproj") ||
-            file.name.endsWith(".fsproj")) {
-            return file.parent
-        }
-        // If it's a directory containing a project file, return it
-        if (file.isDirectory) {
-            return file
-        }
-        return null
-    }
-
-    private fun findOutputAssembly(projectDir: VirtualFile): String? {
-        val projectName = findProjectName(projectDir) ?: projectDir.name
-        val basePath = projectDir.path
-
-        // Try common output paths
-        val possiblePaths = listOf(
-            // .NET 10/9/8 Release
-            "$basePath/bin/Release/net10.0/$projectName.dll",
-            "$basePath/bin/Release/net9.0/$projectName.dll",
-            "$basePath/bin/Release/net8.0/$projectName.dll",
-            // .NET 10/9/8 Debug
-            "$basePath/bin/Debug/net10.0/$projectName.dll",
-            "$basePath/bin/Debug/net9.0/$projectName.dll",
-            "$basePath/bin/Debug/net8.0/$projectName.dll",
-            // Legacy paths
-            "$basePath/bin/Release/$projectName.dll",
-            "$basePath/bin/Debug/$projectName.dll",
-            // Executable
-            "$basePath/bin/Release/net10.0/$projectName.exe",
-            "$basePath/bin/Release/net9.0/$projectName.exe",
-            "$basePath/bin/Release/net8.0/$projectName.exe",
-            "$basePath/bin/Debug/net10.0/$projectName.exe",
-            "$basePath/bin/Debug/net9.0/$projectName.exe",
-            "$basePath/bin/Debug/net8.0/$projectName.exe"
-        )
-
-        for (path in possiblePaths) {
-            if (File(path).exists()) {
-                return path
-            }
-        }
-
-        return null
-    }
-
-    private fun findProjectName(projectDir: VirtualFile): String? {
-        // Find the .csproj file and extract the name
-        val projectFile = projectDir.children.firstOrNull {
-            it.name.endsWith(".csproj") ||
-            it.name.endsWith(".vbproj") ||
-            it.name.endsWith(".fsproj")
-        }
-        return projectFile?.nameWithoutExtension
+        return AssemblyLocator.isProjectFileName(name) ||
+               (file.isDirectory && file.children.any { AssemblyLocator.isProjectFileName(it.name) })
     }
 
     private fun showError(project: com.intellij.openapi.project.Project, message: String) {

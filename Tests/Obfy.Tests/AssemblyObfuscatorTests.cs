@@ -2825,5 +2825,123 @@ public class AssemblyObfuscatorTests
         called.DeclaringType.Name.String.ShouldBe("<RefProxy>");
     }
 
+    [Fact]
+    public async Task StringEncryption_EncryptsCompilerGeneratedTypes()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "<>c");
+        var attrType = module.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", "CompilerGeneratedAttribute");
+        type.CustomAttributes.Add(new CustomAttribute(new MemberRefUser(
+            module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void), attrType)));
+        var method = CreateMethodWithString(type, "MoveNext", "AsyncCapturedSecret");
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.StringsEncrypted.ShouldBe(1);
+        method.Body.Instructions.ShouldNotContain(i =>
+            i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "AsyncCapturedSecret");
+    }
+
+    [Fact]
+    public async Task StringEncryption_ResourceHookLeavesShortStringsReadable()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Strings", isPublic: true);
+        var rmType = new TypeRefUser(module, "System.Resources", "ResourceManager", module.CorLibTypes.AssemblyRef);
+        var getString = new MemberRefUser(module, "GetString",
+            MethodSig.CreateInstance(module.CorLibTypes.String, module.CorLibTypes.String), rmType);
+
+        var method = new MethodDefUser(
+            "Read",
+            MethodSig.CreateStatic(module.CorLibTypes.String, new ClassSig(rmType), module.CorLibTypes.String),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getString));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        method.Body = body;
+        type.Methods.Add(method);
+
+        using var output = new MemoryStream();
+        using (var writer = new System.Resources.ResourceWriter(output))
+        {
+            writer.AddResource("short", "Hi");
+            writer.AddResource("long", "LongEnoughSecret");
+            writer.Generate();
+        }
+
+        module.Resources.Add(new EmbeddedResource("TestNamespace.Strings.resources", output.ToArray()));
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, EncryptResourceStrings = true, MinStringLength = 3 }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.StringsEncrypted.ShouldBeGreaterThan(0);
+
+        var resource = module.Resources.OfType<EmbeddedResource>()
+            .First(r => r.Name.String.EndsWith(".resources", StringComparison.OrdinalIgnoreCase));
+        using var input = new MemoryStream(resource.CreateReader().ToArray());
+        using var reader = new System.Resources.ResourceReader(input);
+        var values = new Dictionary<string, string>();
+        var enumerator = reader.GetEnumerator();
+        while (enumerator.MoveNext())
+            values[enumerator.Key.ToString()!] = (string)enumerator.Value!;
+
+        values["short"].ShouldBe("Hi");
+        values["long"].ShouldNotBe("LongEnoughSecret");
+        values["long"][0].ShouldBe('\u0001');
+
+        var hookCall = method.Body.Instructions.First(i => i.OpCode == OpCodes.Call || i.OpCode == OpCodes.Callvirt);
+        ((IMethod)hookCall.Operand).Name.String.ShouldBe("Ds");
+    }
+
+    [Fact]
+    public async Task AntiDump_WipeTouchesMoreThanChecksum()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new AntiDumpObfuscator(new Mock<ILogger<AntiDumpObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDump = true } });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+
+        var wipe = module.Types.First(t => t.Name == "<AntiDump>").FindMethod("Wipe")!;
+        var writeCount = wipe.Body.Instructions.Count(i =>
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "WriteInt32");
+        writeCount.ShouldBeGreaterThan(1);
+    }
+
+    [Fact]
+    public async Task AntiTamper_VerifyFallsBackToProcessPath()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new AntiTamperObfuscator(new Mock<ILogger<AntiTamperObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Protection = { AntiTamper = { Enabled = true, CheckEntryPoint = true } }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+
+        var verify = module.Types.First(t => t.Name.String.Contains("AntiTamper")).FindMethod("Verify")!;
+        var usesProcessPath = verify.Body.Instructions.Any(i =>
+            i.Operand is IMethod m && m.Name == "get_ProcessPath");
+        usesProcessPath.ShouldBeTrue();
+        verify.IsPublic.ShouldBeFalse();
+    }
+
     #endregion
 }

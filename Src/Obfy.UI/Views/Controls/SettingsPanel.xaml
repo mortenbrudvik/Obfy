@@ -12,6 +12,7 @@
         <!-- Level Selector -->
         <TextBlock Text="Obfuscation Level" FontWeight="SemiBold" Margin="0,0,0,8"/>
         <ComboBox AutomationProperties.AutomationId="LevelSelector"
+                  AutomationProperties.Name="Obfuscation level"
                   ItemsSource="{Binding AvailableLevels}" SelectedItem="{Binding Level}" Margin="0,0,0,16"/>
 
         <!-- String Encryption -->
@@ -22,9 +23,11 @@
                 <StackPanel Visibility="{Binding StringEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
-                    <ComboBox ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding StringEncryptionAlgorithm}"/>
+                    <ComboBox AutomationProperties.Name="String encryption algorithm"
+                              ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding StringEncryptionAlgorithm}"/>
                     <TextBlock Text="Min String Length" Margin="0,12,0,4"/>
-                    <ui:NumberBox Value="{Binding MinStringLength}" Minimum="1" Maximum="100" SpinButtonPlacementMode="Compact"/>
+                    <ui:NumberBox AutomationProperties.Name="Min string length"
+                                  Value="{Binding MinStringLength}" Minimum="1" Maximum="100" SpinButtonPlacementMode="Compact"/>
                 </StackPanel>
             </StackPanel>
         </Expander>
@@ -37,7 +40,8 @@
                 <StackPanel Visibility="{Binding ConstantEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
-                    <ComboBox ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding ConstantEncryptionAlgorithm}"/>
+                    <ComboBox AutomationProperties.Name="Constant encryption algorithm"
+                              ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding ConstantEncryptionAlgorithm}"/>
 
                     <TextBlock Text="Types to Encrypt" FontWeight="SemiBold" Margin="0,12,0,8"/>
                     <CheckBox Content="Integers (int)" IsChecked="{Binding EncryptIntegers}"/>
@@ -47,7 +51,8 @@
 
                     <TextBlock Text="Thresholds" FontWeight="SemiBold" Margin="0,12,0,8"/>
                     <TextBlock Text="Integer Threshold" Margin="0,0,0,4"/>
-                    <ui:NumberBox Value="{Binding IntegerThreshold}" Minimum="0" Maximum="1000" SpinButtonPlacementMode="Compact"/>
+                    <ui:NumberBox AutomationProperties.Name="Integer threshold"
+                                  Value="{Binding IntegerThreshold}" Minimum="0" Maximum="1000" SpinButtonPlacementMode="Compact"/>
                     <TextBlock Text="Skip integers with |value| &lt; threshold" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,8"/>
 
                     <CheckBox Content="Skip common floats (0, 1, -1)" IsChecked="{Binding SkipCommonFloats}"/>
@@ -64,9 +69,11 @@
                 <StackPanel Visibility="{Binding ControlFlowEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Mode" Margin="0,0,0,4"/>
-                    <ComboBox ItemsSource="{Binding AvailableModes}" SelectedItem="{Binding ControlFlowMode}"/>
+                    <ComboBox AutomationProperties.Name="Control flow mode"
+                              ItemsSource="{Binding AvailableModes}" SelectedItem="{Binding ControlFlowMode}"/>
                     <TextBlock Text="{Binding ControlFlowIntensity, StringFormat='Intensity: {0}%'}" Margin="0,12,0,4"/>
-                    <Slider Value="{Binding ControlFlowIntensity}" Minimum="0" Maximum="100"/>
+                    <Slider AutomationProperties.Name="Control flow intensity"
+                            Value="{Binding ControlFlowIntensity}" Minimum="0" Maximum="100"/>
                 </StackPanel>
             </StackPanel>
         </Expander>
@@ -79,7 +86,8 @@
                 <StackPanel Visibility="{Binding SymbolRenamingEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Naming Mode" Margin="0,0,0,4"/>
-                    <ComboBox ItemsSource="{Binding AvailableNamingModes}" SelectedItem="{Binding NamingMode}"/>
+                    <ComboBox AutomationProperties.Name="Naming mode"
+                              ItemsSource="{Binding AvailableNamingModes}" SelectedItem="{Binding NamingMode}"/>
                     <CheckBox Content="Rename Types" IsChecked="{Binding RenameTypes}" Margin="0,8,0,0"/>
                     <CheckBox Content="Rename Methods" IsChecked="{Binding RenameMethods}"/>
                     <CheckBox Content="Rename Fields" IsChecked="{Binding RenameFields}"/>
@@ -123,7 +131,8 @@
                 <StackPanel Visibility="{Binding ResourceEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
-                    <ComboBox ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding ResourceAlgorithm}"/>
+                    <ComboBox AutomationProperties.Name="Resource encryption algorithm"
+                              ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding ResourceAlgorithm}"/>
                 </StackPanel>
             </StackPanel>
         </Expander>

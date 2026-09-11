@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.obfy.rider</id>
     <name>Obfy .NET Obfuscator</name>
-    <vendor email="support@obfy.com" url="https://github.com/obfy/obfy">Obfy</vendor>
+    <vendor email="support@obfy.com" url="https://github.com/mortenbrudvik/Obfy">Obfy</vendor>
 
     <description><![CDATA[
         Obfuscate .NET assemblies directly from JetBrains Rider.
@@ -100,5 +100,9 @@
     <extensions defaultExtensionNs="com.intellij">
         <postStartupActivity
             implementation="com.obfy.rider.listeners.BuildListenerStartupActivity"/>
+
+        <!-- Rider MSBuild finished hook (CompilerTopics often does not fire for Rider) -->
+        <rd.solutionExtListener endpoint="IDE Frontend"
+                                listener="com.obfy.rider.listeners.ObfyBuildSessionListener"/>
     </extensions>
 </idea-plugin>

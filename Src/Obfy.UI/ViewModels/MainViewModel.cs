@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Obfy.Core.Models;
@@ -7,6 +8,8 @@ using Obfy.Core.Services;
 using Obfy.Core.Services.Reporting;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
+using Wpf.Ui;
+using Wpf.Ui.Extensions;
 
 namespace Obfy.UI.ViewModels;
 
@@ -19,6 +22,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IFileDialogService _fileDialogService;
     private readonly ISettingsService _settingsService;
     private readonly IReportService _reportService;
+    private readonly IContentDialogService _contentDialogService;
     private CancellationTokenSource? _cancellationTokenSource;
 
     /// <summary>
@@ -62,6 +66,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IFileDialogService fileDialogService,
         ISettingsService settingsService,
         IReportService reportService,
+        IContentDialogService contentDialogService,
         SettingsViewModel settings,
         FilesViewModel files,
         OutputViewModel output,
@@ -71,6 +76,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _fileDialogService = fileDialogService;
         _settingsService = settingsService;
         _reportService = reportService;
+        _contentDialogService = contentDialogService;
         Settings = settings;
         Files = files;
         Output = output;
@@ -84,6 +90,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task InitializeAsync()
     {
         await _settingsService.LoadPreferencesAsync();
+        Files.ApplyPreferences();
         Output.Info("Obfy UI initialized. Add files and configure settings to begin.");
     }
 
@@ -287,14 +294,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void ShowAbout()
+    private async Task ShowAboutAsync()
     {
-        var about = new Obfy.UI.Views.Dialogs.AboutWindow();
-        if (System.Windows.Application.Current?.MainWindow != null)
+        var version = Assembly.GetExecutingAssembly().GetName().Version;
+        var versionText = version is null
+            ? "1.2.0"
+            : $"{version.Major}.{version.Minor}.{version.Build}";
+
+        await _contentDialogService.ShowSimpleDialogAsync(new SimpleContentDialogCreateOptions
         {
-            about.Owner = System.Windows.Application.Current.MainWindow;
-        }
-        about.ShowDialog();
+            Title = "About Obfy",
+            Content = $"Version {versionText}\n\n.NET Obfuscation Tool that protects C# assemblies and source code.",
+            CloseButtonText = "Close"
+        });
     }
 
     public void Dispose()

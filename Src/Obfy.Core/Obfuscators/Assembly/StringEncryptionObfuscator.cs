@@ -58,9 +58,6 @@ public class StringEncryptionObfuscator : IObfuscator
                 if (ObfuscatorHelpers.IsRuntimeOrExcluded(type, context.Settings.Exclusions))
                     continue;
 
-                if (ObfuscatorHelpers.IsCompilerGenerated(type))
-                    continue;
-
                 foreach (var method in type.Methods)
                 {
                     if (!method.HasBody)
@@ -121,7 +118,7 @@ public class StringEncryptionObfuscator : IObfuscator
             }
 
             if (settings.EncryptResourceStrings)
-                EncryptResourceStrings(module, decryptorType, key, settings, encryptedStrings, stats, context);
+                EncryptResourceStrings(module, decryptorType, key, settings, stats, context);
 
             StoreEncryptedStrings(decryptorType, encryptedStrings);
 
@@ -208,15 +205,17 @@ public class StringEncryptionObfuscator : IObfuscator
         body.UpdateInstructionOffsets();
     }
 
+    internal const char ResourceCipherPrefix = '\u0001';
+
     private void EncryptResourceStrings(
         ModuleDef module,
         TypeDef decryptorType,
         byte[] key,
         StringEncryptionSettings settings,
-        List<byte[]> encryptedStrings,
         ObfuscationStatistics stats,
         PipelineContext context)
     {
+        var encryptedAny = false;
         for (var i = 0; i < module.Resources.Count; i++)
         {
             if (module.Resources[i] is not EmbeddedResource embedded)
@@ -227,18 +226,22 @@ public class StringEncryptionObfuscator : IObfuscator
                 continue;
 
             var data = embedded.CreateReader().ToArray();
-            if (!TryEncryptResourceFile(data, key, settings, out var rewritten, out var count))
+            if (!TryEncryptResourceFile(data, key, settings, out var rewritten, out var count, out var error))
             {
+                if (error != null)
+                    _logger.LogWarning(error, "Failed to rewrite resource strings in {Name}", name);
                 context.SkippedItems.Add(SkippedItem.ResourceExcluded(name));
                 continue;
             }
 
             module.Resources[i] = new EmbeddedResource(embedded.Name, rewritten, embedded.Attributes);
             stats.StringsEncrypted += count;
+            encryptedAny = true;
             _logger.LogDebug("Encrypted {Count} resource strings in {Name}", count, name);
         }
 
-        RewriteResourceManagerGetString(module, decryptorType);
+        if (encryptedAny)
+            RewriteResourceManagerGetString(module, decryptorType);
     }
 
     private static bool TryEncryptResourceFile(
@@ -246,10 +249,12 @@ public class StringEncryptionObfuscator : IObfuscator
         byte[] key,
         StringEncryptionSettings settings,
         out byte[] rewritten,
-        out int count)
+        out int count,
+        out Exception? error)
     {
         rewritten = data;
         count = 0;
+        error = null;
         try
         {
             using var input = new MemoryStream(data, writable: false);
@@ -263,7 +268,9 @@ public class StringEncryptionObfuscator : IObfuscator
                 var value = enumerator.Value;
                 if (value is string s && s.Length >= settings.MinStringLength)
                 {
-                    writer.AddResource(enumerator.Key.ToString()!, EncryptionHelper.EncryptToBase64(s, key, settings.Algorithm));
+                    writer.AddResource(
+                        enumerator.Key.ToString()!,
+                        ResourceCipherPrefix + EncryptionHelper.EncryptToBase64(s, key, settings.Algorithm));
                     count++;
                 }
                 else
@@ -276,8 +283,9 @@ public class StringEncryptionObfuscator : IObfuscator
             rewritten = output.ToArray();
             return count > 0;
         }
-        catch
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or BadImageFormatException or System.Resources.MissingManifestResourceException)
         {
+            error = ex;
             return false;
         }
     }
@@ -289,8 +297,12 @@ public class StringEncryptionObfuscator : IObfuscator
         if (bytesDecrypt == null || keyField == null)
             return;
 
-        var hook = CreateResourceStringHook(module, bytesDecrypt, keyField);
+        var decode = CreateResourceStringDecode(module, bytesDecrypt, keyField);
+        decryptorType.Methods.Add(decode);
+        var hook = CreateResourceStringHook(module, decode, paramCount: 1);
+        var hook2 = CreateResourceStringHook(module, decode, paramCount: 2);
         decryptorType.Methods.Add(hook);
+        decryptorType.Methods.Add(hook2);
 
         foreach (var type in module.GetTypes())
         {
@@ -313,11 +325,12 @@ public class StringEncryptionObfuscator : IObfuscator
                         continue;
                     if (called.DeclaringType?.Name != "ResourceManager")
                         continue;
-                    if ((called.MethodSig?.Params.Count ?? 0) != 1)
+                    var paramCount = called.MethodSig?.Params.Count ?? 0;
+                    if (paramCount is not (1 or 2))
                         continue;
 
                     instr.OpCode = OpCodes.Call;
-                    instr.Operand = hook;
+                    instr.Operand = paramCount == 1 ? hook : hook2;
                     modified = true;
                 }
 
@@ -327,46 +340,115 @@ public class StringEncryptionObfuscator : IObfuscator
         }
     }
 
-    private static MethodDef CreateResourceStringHook(ModuleDef module, MethodDef bytesDecrypt, FieldDef keyField)
+    private static MethodDef CreateResourceStringHook(ModuleDef module, MethodDef decode, int paramCount)
     {
         var rmType = new TypeRefUser(module, "System.Resources", "ResourceManager", module.CorLibTypes.AssemblyRef);
-        var encodingType = new TypeRefUser(module, "System.Text", "Encoding", module.CorLibTypes.AssemblyRef);
-        var convertType = new TypeRefUser(module, "System", "Convert", module.CorLibTypes.AssemblyRef);
+        var cultureType = new TypeRefUser(module, "System.Globalization", "CultureInfo", module.CorLibTypes.AssemblyRef);
+
+        MethodSig sig = paramCount == 1
+            ? MethodSig.CreateStatic(module.CorLibTypes.String, new ClassSig(rmType), module.CorLibTypes.String)
+            : MethodSig.CreateStatic(module.CorLibTypes.String, new ClassSig(rmType), module.CorLibTypes.String, new ClassSig(cultureType));
 
         var method = new MethodDefUser(
-            "Ds",
-            MethodSig.CreateStatic(module.CorLibTypes.String, new ClassSig(rmType), module.CorLibTypes.String),
+            paramCount == 1 ? "Ds" : "Ds2",
+            sig,
             MethodAttributes.Assembly | MethodAttributes.Static);
         var body = new CilBody { InitLocals = true };
         method.Body = body;
-        var sLocal = new Local(module.CorLibTypes.String);
-        body.Variables.Add(sLocal);
 
-        var getString = new MemberRefUser(module, "GetString",
-            MethodSig.CreateInstance(module.CorLibTypes.String, module.CorLibTypes.String), rmType);
+        MemberRef getString = paramCount == 1
+            ? new MemberRefUser(module, "GetString",
+                MethodSig.CreateInstance(module.CorLibTypes.String, module.CorLibTypes.String), rmType)
+            : new MemberRefUser(module, "GetString",
+                MethodSig.CreateInstance(module.CorLibTypes.String, module.CorLibTypes.String, new ClassSig(cultureType)), rmType);
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
+        if (paramCount == 2)
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getString));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, decode));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        return method;
+    }
+
+    private static MethodDef CreateResourceStringDecode(ModuleDef module, MethodDef bytesDecrypt, FieldDef keyField)
+    {
+        var encodingType = new TypeRefUser(module, "System.Text", "Encoding", module.CorLibTypes.AssemblyRef);
+        var convertType = new TypeRefUser(module, "System", "Convert", module.CorLibTypes.AssemblyRef);
+        var stringType = new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef);
+
+        var method = new MethodDefUser(
+            "Dr",
+            MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.String),
+            MethodAttributes.Private | MethodAttributes.Static);
+        var body = new CilBody { InitLocals = true };
+        method.Body = body;
+        var sLocal = new Local(module.CorLibTypes.String);
+        var resultLocal = new Local(module.CorLibTypes.String);
+        body.Variables.Add(sLocal);
+        body.Variables.Add(resultLocal);
+
         var fromBase64 = new MemberRefUser(module, "FromBase64String",
             MethodSig.CreateStatic(new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.String), convertType);
         var getUtf8 = new MemberRefUser(module, "get_UTF8",
             MethodSig.CreateStatic(new ClassSig(encodingType)), encodingType);
         var getStringBytes = new MemberRefUser(module, "GetString",
             MethodSig.CreateInstance(module.CorLibTypes.String, new SZArraySig(module.CorLibTypes.Byte)), encodingType);
+        var getLength = new MemberRefUser(module, "get_Length",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32), stringType);
+        var getChars = new MemberRefUser(module, "get_Chars",
+            MethodSig.CreateInstance(module.CorLibTypes.Char, module.CorLibTypes.Int32), stringType);
+        var substring = new MemberRefUser(module, "Substring",
+            MethodSig.CreateInstance(module.CorLibTypes.String, module.CorLibTypes.Int32), stringType);
 
-        var retNull = Instruction.Create(OpCodes.Ldloc, sLocal);
+        var retPlain = Instruction.Create(OpCodes.Ldloc, sLocal);
+        var catchPop = Instruction.Create(OpCodes.Pop);
+        var tryStart = Instruction.Create(OpCodes.Call, getUtf8);
+
         body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
-        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getString));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, sLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, retNull));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, getUtf8));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, retPlain));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getLength));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ble, retPlain));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getChars));
+        body.Instructions.Add(Instruction.CreateLdcI4(ResourceCipherPrefix));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, retPlain));
+
+        body.Instructions.Add(tryStart);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, substring));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, fromBase64));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, bytesDecrypt));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getStringBytes));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, resultLocal));
+        var afterTry = Instruction.Create(OpCodes.Ldloc, resultLocal);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
+
+        body.Instructions.Add(catchPop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, retPlain));
+        body.Instructions.Add(retPlain);
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-        body.Instructions.Add(retNull);
+        body.Instructions.Add(afterTry);
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+        {
+            TryStart = tryStart,
+            TryEnd = catchPop,
+            HandlerStart = catchPop,
+            HandlerEnd = retPlain,
+            CatchType = module.CorLibTypes.Object.ToTypeDefOrRef()
+        });
+
         body.UpdateInstructionOffsets();
         return method;
     }

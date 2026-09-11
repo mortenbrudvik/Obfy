@@ -154,9 +154,46 @@ public class AntiDumpObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, peLocal));
 
+        // Zero DOS MZ signature (dumpers look for it)
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+
+        // Optional-header CheckSum (PE32+ offset 64)
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
         body.Instructions.Add(Instruction.CreateLdcI4(24 + 64));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+
+        // Import directory RVA/Size (data directory 1 at optional+120)
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(24 + 120));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(24 + 124));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+
+        // Debug directory RVA
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(24 + 160));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+
+        // IAT RVA
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(24 + 208));
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));

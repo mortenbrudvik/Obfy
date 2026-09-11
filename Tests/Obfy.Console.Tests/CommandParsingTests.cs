@@ -171,6 +171,10 @@ public class CommandParsingTests : IDisposable
     [InlineData("--control-flow")]
     [InlineData("--rename")]
     [InlineData("--anti-debug")]
+    [InlineData("--anti-dump")]
+    [InlineData("--reference-proxy")]
+    [InlineData("--encrypt-constants")]
+    [InlineData("--no-control-flow")]
     [InlineData("--strip-metadata")]
     [InlineData("--encrypt-resources")]
     [InlineData("--preserve-public")]
@@ -226,6 +230,34 @@ public class CommandParsingTests : IDisposable
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --anti-tamper");
         parseResult.GetValueForOption(Program.AntiTamperOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Parse_AntiDumpOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --anti-dump");
+        parseResult.GetValueForOption(Program.AntiDumpOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Parse_ReferenceProxyOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --reference-proxy");
+        parseResult.GetValueForOption(Program.ReferenceProxyOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Parse_EncryptConstantsOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --encrypt-constants");
+        parseResult.GetValueForOption(Program.EncryptConstantsOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Parse_NoControlFlowOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --no-control-flow");
+        parseResult.GetValueForOption(Program.NoControlFlowOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -521,7 +553,7 @@ public class CommandParsingTests : IDisposable
     {
         // Arrange & Act
         var parseResult = _rootCommand.Parse(
-            $"\"{_testDll}\" --string-encrypt --control-flow --rename --anti-debug --strip-metadata --encrypt-resources --preserve-public");
+            $"\"{_testDll}\" --string-encrypt --control-flow --rename --anti-debug --anti-dump --reference-proxy --encrypt-constants --no-control-flow --strip-metadata --encrypt-resources --preserve-public");
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
@@ -529,6 +561,10 @@ public class CommandParsingTests : IDisposable
         parseResult.GetValueForOption(Program.ControlFlowOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.RenameOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.AntiDebugOption).ShouldBeTrue();
+        parseResult.GetValueForOption(Program.AntiDumpOption).ShouldBeTrue();
+        parseResult.GetValueForOption(Program.ReferenceProxyOption).ShouldBeTrue();
+        parseResult.GetValueForOption(Program.EncryptConstantsOption).ShouldBeTrue();
+        parseResult.GetValueForOption(Program.NoControlFlowOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.StripMetadataOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.EncryptResourcesOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.PreservePublicOption).ShouldBeTrue();

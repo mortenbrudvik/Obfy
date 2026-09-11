@@ -48,7 +48,7 @@ public class SourceControlFlowObfuscator : IObfuscator
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var root = await tree.GetRootAsync(cancellationToken);
+                var root = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
                 var rewriter = new ControlFlowRewriter(settings);
                 var newRoot = rewriter.Visit(root);
 

@@ -1,8 +1,8 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -59,11 +59,15 @@ public class ObfySettings
     public ObfuscationLevel Level { get; set; } = ObfuscationLevel.Standard;
     public bool PostBuildEnabled { get; set; }
     public bool AntiDebug { get; set; }
+    public bool AntiDump { get; set; }
+    public bool ReferenceProxy { get; set; }
     public bool AntiTamper { get; set; }
     public bool AntiDecompiler { get; set; }
     public bool StringEncryption { get; set; } = true;
     public bool ControlFlow { get; set; }
     public bool SymbolRenaming { get; set; } = true;
+    public bool ConstantEncryption { get; set; }
+    public bool ResourceEncryption { get; set; }
 
     public static ObfySettings ForLevel(ObfuscationLevel level)
     {
@@ -76,20 +80,36 @@ public class ObfySettings
                 settings.SymbolRenaming = true;
                 settings.ControlFlow = false;
                 settings.AntiDebug = false;
+                settings.AntiDump = false;
+                settings.ReferenceProxy = false;
+                settings.AntiTamper = false;
+                settings.AntiDecompiler = false;
+                settings.ConstantEncryption = false;
+                settings.ResourceEncryption = false;
                 break;
             case ObfuscationLevel.Standard:
                 settings.StringEncryption = true;
                 settings.SymbolRenaming = true;
                 settings.ControlFlow = false;
                 settings.AntiDebug = false;
+                settings.AntiDump = false;
+                settings.ReferenceProxy = false;
+                settings.AntiTamper = false;
+                settings.AntiDecompiler = false;
+                settings.ConstantEncryption = false;
+                settings.ResourceEncryption = false;
                 break;
             case ObfuscationLevel.Aggressive:
                 settings.StringEncryption = true;
                 settings.SymbolRenaming = true;
                 settings.ControlFlow = true;
                 settings.AntiDebug = true;
+                settings.AntiDump = true;
+                settings.ReferenceProxy = true;
                 settings.AntiTamper = true;
                 settings.AntiDecompiler = true;
+                settings.ConstantEncryption = true;
+                settings.ResourceEncryption = true;
                 break;
         }
 
@@ -134,7 +154,7 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
             _outputService.Info($"Executing: obfy {args}");
 
             // Run the CLI
-            var result = await RunCliAsync(cliPath, args, cancellationToken);
+            var result = await RunCliAsync(cliPath!, args, cancellationToken);
 
             stopwatch.Stop();
             result.ElapsedTime = stopwatch.Elapsed;
@@ -164,17 +184,12 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
             return _cliPath;
         }
 
-        // Check common installation locations
+        // Global dotnet tool install was removed; search it last as a fallback only.
         var possiblePaths = new[]
         {
-            // Installed via dotnet tool
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "tools", "obfy.exe"),
-            // Installed to Program Files
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Obfy", "obfy.exe"),
-            // Local development
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Obfy", "obfy.exe"),
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "obfy.exe"),
-            // In PATH
-            "obfy.exe"
         };
 
         foreach (var path in possiblePaths)
@@ -186,16 +201,27 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
             }
         }
 
-        // Try to find in PATH
         var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
         foreach (var dir in pathEnv.Split(Path.PathSeparator))
         {
+            if (string.IsNullOrWhiteSpace(dir))
+            {
+                continue;
+            }
+
             var exePath = Path.Combine(dir, "obfy.exe");
             if (File.Exists(exePath))
             {
                 _cliPath = exePath;
                 return exePath;
             }
+        }
+
+        var dotnetTool = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "tools", "obfy.exe");
+        if (File.Exists(dotnetTool))
+        {
+            _cliPath = dotnetTool;
+            return dotnetTool;
         }
 
         return null;
@@ -227,9 +253,25 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
             if (!settings.StringEncryption) sb.Append(" --no-string-encryption");
             if (!settings.SymbolRenaming) sb.Append(" --no-symbol-renaming");
             if (settings.ControlFlow) sb.Append(" --control-flow");
+            else sb.Append(" --no-control-flow");
             if (settings.AntiDebug) sb.Append(" --anti-debug");
+            if (settings.AntiDump) sb.Append(" --anti-dump");
+            if (settings.ReferenceProxy) sb.Append(" --reference-proxy");
             if (settings.AntiTamper) sb.Append(" --anti-tamper");
             if (settings.AntiDecompiler) sb.Append(" --anti-decompiler");
+            if (settings.ConstantEncryption) sb.Append(" --encrypt-constants");
+            if (settings.ResourceEncryption) sb.Append(" --encrypt-resources");
+        }
+
+        if (ObfyPackage.Options?.GenerateSymbolMap == true)
+        {
+            var assemblyDir = Path.GetDirectoryName(assemblyPath);
+            var assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
+            if (!string.IsNullOrEmpty(assemblyDir) && !string.IsNullOrEmpty(assemblyName))
+            {
+                var mapPath = Path.Combine(assemblyDir, assemblyName + ".map.json");
+                sb.Append($" --map \"{mapPath}\"");
+            }
         }
 
         return sb.ToString();
@@ -282,7 +324,16 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    try { process.Kill(); } catch { }
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch (Win32Exception)
+                    {
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
                     throw new OperationCanceledException();
                 }
             }

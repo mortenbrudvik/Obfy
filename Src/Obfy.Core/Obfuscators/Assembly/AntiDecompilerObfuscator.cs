@@ -15,7 +15,7 @@ public class AntiDecompilerObfuscator : IObfuscator
     private readonly Random _random = new();
 
     // Characters that look similar or are hard to read (for junk names)
-    private static readonly char[] ConfusingChars = new[]
+    private static readonly char[] _confusingChars =
     {
         '\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF',
         'l', '1', 'I', 'O', '0',
@@ -318,7 +318,7 @@ public class AntiDecompilerObfuscator : IObfuscator
 
         for (var i = 1; i < length; i++)
         {
-            chars[i] = ConfusingChars[localRandom.Next(ConfusingChars.Length)];
+            chars[i] = _confusingChars[localRandom.Next(_confusingChars.Length)];
         }
 
         return new string(chars);

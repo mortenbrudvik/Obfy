@@ -114,6 +114,25 @@ public class IntegrationTests : IDisposable
         settings.StringEncryption.Enabled.ShouldBeTrue();
         settings.ControlFlow.Enabled.ShouldBeTrue();
         settings.SymbolRenaming.Enabled.ShouldBeTrue();
+        settings.Protection.AntiDump.ShouldBeTrue();
+        settings.Protection.ReferenceProxy.ShouldBeTrue();
+        settings.ConstantEncryption.Enabled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ConfigGenerate_IncludesSchemaProperty()
+    {
+        var outputPath = Path.Combine(_tempDirectory, "schema-config.json");
+        var rootCommand = Program.CreateRootCommand();
+        var console = new TestConsole();
+
+        var exitCode = await rootCommand.InvokeAsync($"config generate -o {outputPath}", console);
+
+        exitCode.ShouldBe(0);
+        var json = await File.ReadAllTextAsync(outputPath);
+        using var document = JsonDocument.Parse(json);
+        document.RootElement.TryGetProperty("$schema", out var schema).ShouldBeTrue();
+        schema.GetString().ShouldBe("https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json");
     }
 
     #endregion

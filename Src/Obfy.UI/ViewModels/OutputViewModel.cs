@@ -1,9 +1,9 @@
 using System.Collections.ObjectModel;
 using System.Text;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Obfy.UI.Models;
+using Obfy.UI.Services;
 
 namespace Obfy.UI.ViewModels;
 
@@ -12,6 +12,9 @@ namespace Obfy.UI.ViewModels;
 /// </summary>
 public partial class OutputViewModel : ObservableObject
 {
+    private readonly IUiDispatcher _dispatcher;
+    private readonly IClipboardService _clipboard;
+
     /// <summary>
     /// Gets the collection of log entries.
     /// </summary>
@@ -23,12 +26,18 @@ public partial class OutputViewModel : ObservableObject
     [ObservableProperty]
     private bool _showTimestamps = true;
 
+    public OutputViewModel(IUiDispatcher dispatcher, IClipboardService clipboard)
+    {
+        _dispatcher = dispatcher;
+        _clipboard = clipboard;
+    }
+
     /// <summary>
     /// Adds a log entry with the specified message and level.
     /// </summary>
     public void AddLog(string message, LogLevel level = LogLevel.Info)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        _dispatcher.Invoke(() =>
         {
             Logs.Add(LogEntry.Create(message, level));
         });
@@ -64,7 +73,7 @@ public partial class OutputViewModel : ObservableObject
     /// </summary>
     public void Clear()
     {
-        Logs.Clear();
+        _dispatcher.Invoke(Logs.Clear);
     }
 
     [RelayCommand]
@@ -88,6 +97,6 @@ public partial class OutputViewModel : ObservableObject
                 sb.AppendLine($"[{log.Level}] {log.Message}");
             }
         }
-        Clipboard.SetText(sb.ToString());
+        _clipboard.SetText(sb.ToString());
     }
 }

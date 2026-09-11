@@ -50,7 +50,7 @@ public class NameGenerator : INameGenerator
     private readonly HashSet<string> _used = new(StringComparer.Ordinal);
 
     // Characters that look similar or are hard to read
-    private static readonly char[] UnreadableChars = new[]
+    private static readonly char[] _unreadableChars =
     {
         '\u200B', // Zero-width space
         '\u200C', // Zero-width non-joiner
@@ -64,12 +64,12 @@ public class NameGenerator : INameGenerator
     };
 
     // Standard alphanumeric for random mode
-    private static readonly char[] AlphanumericChars =
+    private static readonly char[] _alphanumericChars =
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".ToCharArray();
 
     // C# reserved keywords. Sequential (base-26) names can land on one of these (e.g. "do", "if",
     // "int"); using such a name for a renamed source symbol would not compile, so they are rejected.
-    private static readonly HashSet<string> CSharpKeywords = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> _cSharpKeywords = new(StringComparer.Ordinal)
     {
         "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked",
         "class", "const", "continue", "decimal", "default", "delegate", "do", "double", "else",
@@ -152,7 +152,7 @@ public class NameGenerator : INameGenerator
     }
 
     // A name is acceptable if it is not a C# keyword and has not already been handed out.
-    private bool IsAcceptable(string candidate) => !CSharpKeywords.Contains(candidate) && _used.Add(candidate);
+    private bool IsAcceptable(string candidate) => !_cSharpKeywords.Contains(candidate) && _used.Add(candidate);
 
     private string GenerateUnreadable()
     {
@@ -164,7 +164,7 @@ public class NameGenerator : INameGenerator
 
         for (var i = 1; i < length; i++)
         {
-            chars[i] = UnreadableChars[Rng.Next(UnreadableChars.Length)];
+            chars[i] = _unreadableChars[Rng.Next(_unreadableChars.Length)];
         }
 
         return new string(chars);
@@ -182,11 +182,11 @@ public class NameGenerator : INameGenerator
         var chars = new char[length];
 
         // First character must be a letter or underscore
-        chars[0] = AlphanumericChars[Rng.Next(52)]; // Only letters
+        chars[0] = _alphanumericChars[Rng.Next(52)]; // Only letters
 
         for (var i = 1; i < length; i++)
         {
-            chars[i] = AlphanumericChars[Rng.Next(AlphanumericChars.Length)];
+            chars[i] = _alphanumericChars[Rng.Next(_alphanumericChars.Length)];
         }
 
         return new string(chars);

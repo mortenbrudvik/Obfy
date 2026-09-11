@@ -39,10 +39,14 @@ obfy <input>... [options]
 | `--anti-debug` | | Enable anti-debugging protection | Off |
 | `--anti-tamper` | | Enable anti-tamper protection | Off |
 | `--anti-decompiler` | | Enable anti-decompiler protection | Off |
+| `--anti-dump` | | Enable anti-dump protection | Off |
+| `--reference-proxy` | | Enable reference proxy | Off |
 | `--no-string-encryption` | | Disable string encryption | Off |
 | `--no-symbol-renaming` | | Disable symbol renaming | Off |
+| `--no-control-flow` | | Disable control flow obfuscation | Off |
 | `--strip-metadata` | | Remove debug metadata | Off |
 | `--encrypt-resources` | | Enable resource encryption | Off |
+| `--encrypt-constants` | | Enable constant encryption | Off |
 | `--preserve-public` | | Preserve public API names | Off |
 | `--merge` | | Merge all input assemblies into one before obfuscating | Off |
 | `--internalize` | | Make merged types internal (improves obfuscation) | On |
@@ -172,7 +176,7 @@ obfy config wizard -o myproject.json
 obfy MyApp.dll --string-encrypt --rename -o output/
 
 # Enable all protections manually
-obfy MyApp.dll --string-encrypt --control-flow --rename --anti-debug --strip-metadata --encrypt-resources -o output/
+obfy MyApp.dll --string-encrypt --control-flow --rename --anti-debug --anti-dump --reference-proxy --strip-metadata --encrypt-resources --encrypt-constants -o output/
 
 # Enable renaming but preserve public API
 obfy MyApp.dll --rename --preserve-public -o output/

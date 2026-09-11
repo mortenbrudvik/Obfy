@@ -27,8 +27,12 @@ class SettingsDialog(
     private var symbolRenaming = initialSettings.symbolRenaming
     private var controlFlow = initialSettings.controlFlow
     private var antiDebug = initialSettings.antiDebug
+    private var antiDump = initialSettings.antiDump
+    private var referenceProxy = initialSettings.referenceProxy
     private var antiTamper = initialSettings.antiTamper
     private var antiDecompiler = initialSettings.antiDecompiler
+    private var constantEncryption = initialSettings.constantEncryption
+    private var resourceEncryption = initialSettings.resourceEncryption
 
     init {
         title = "Obfy Settings"
@@ -78,6 +82,18 @@ class SettingsDialog(
                     .onChanged { updateLevelIfChanged() }
             }
             row {
+                checkBox("Anti-Dump")
+                    .bindSelected(::antiDump)
+                    .comment("Wipe PE headers in memory to hinder dumping")
+                    .onChanged { updateLevelIfChanged() }
+            }
+            row {
+                checkBox("Reference Proxy")
+                    .bindSelected(::referenceProxy)
+                    .comment("Hide in-module call targets behind proxy methods")
+                    .onChanged { updateLevelIfChanged() }
+            }
+            row {
                 checkBox("Anti-Tamper")
                     .bindSelected(::antiTamper)
                     .comment("Verify assembly integrity at runtime")
@@ -87,6 +103,18 @@ class SettingsDialog(
                 checkBox("Anti-Decompiler")
                     .bindSelected(::antiDecompiler)
                     .comment("Add junk code to confuse decompilers")
+                    .onChanged { updateLevelIfChanged() }
+            }
+            row {
+                checkBox("Constant Encryption")
+                    .bindSelected(::constantEncryption)
+                    .comment("Encrypt numeric constants in the assembly")
+                    .onChanged { updateLevelIfChanged() }
+            }
+            row {
+                checkBox("Resource Encryption")
+                    .bindSelected(::resourceEncryption)
+                    .comment("Encrypt embedded resources")
                     .onChanged { updateLevelIfChanged() }
             }
         }
@@ -109,8 +137,12 @@ class SettingsDialog(
         symbolRenaming = preset.symbolRenaming
         controlFlow = preset.controlFlow
         antiDebug = preset.antiDebug
+        antiDump = preset.antiDump
+        referenceProxy = preset.referenceProxy
         antiTamper = preset.antiTamper
         antiDecompiler = preset.antiDecompiler
+        constantEncryption = preset.constantEncryption
+        resourceEncryption = preset.resourceEncryption
     }
 
     /**
@@ -123,8 +155,12 @@ class SettingsDialog(
                 symbolRenaming != preset.symbolRenaming ||
                 controlFlow != preset.controlFlow ||
                 antiDebug != preset.antiDebug ||
+                antiDump != preset.antiDump ||
+                referenceProxy != preset.referenceProxy ||
                 antiTamper != preset.antiTamper ||
-                antiDecompiler != preset.antiDecompiler) {
+                antiDecompiler != preset.antiDecompiler ||
+                constantEncryption != preset.constantEncryption ||
+                resourceEncryption != preset.resourceEncryption) {
                 level = ObfuscationLevel.Custom
             }
         }
@@ -140,7 +176,11 @@ class SettingsDialog(
         symbolRenaming = symbolRenaming,
         controlFlow = controlFlow,
         antiDebug = antiDebug,
+        antiDump = antiDump,
+        referenceProxy = referenceProxy,
         antiTamper = antiTamper,
-        antiDecompiler = antiDecompiler
+        antiDecompiler = antiDecompiler,
+        constantEncryption = constantEncryption,
+        resourceEncryption = resourceEncryption
     )
 }

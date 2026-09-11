@@ -28,7 +28,7 @@ public class SourceProcessor : ISourceProcessor
         if (File.Exists(path))
         {
             // Single file
-            var sourceText = await File.ReadAllTextAsync(path, cancellationToken);
+            var sourceText = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
             var syntaxTree = CSharpSyntaxTree.ParseText(sourceText, path: path);
             syntaxTrees.Add(syntaxTree);
         }
@@ -38,7 +38,7 @@ public class SourceProcessor : ISourceProcessor
             var files = Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories);
             foreach (var file in files)
             {
-                var sourceText = await File.ReadAllTextAsync(file, cancellationToken);
+                var sourceText = await File.ReadAllTextAsync(file, cancellationToken).ConfigureAwait(false);
                 var syntaxTree = CSharpSyntaxTree.ParseText(sourceText, path: file);
                 syntaxTrees.Add(syntaxTree);
             }
@@ -97,7 +97,7 @@ public class SourceProcessor : ISourceProcessor
         {
             var tree = context.Compilation.SyntaxTrees.First();
             var sourceText = tree.GetRoot(cancellationToken).ToFullString();
-            await File.WriteAllTextAsync(outputPath, sourceText, cancellationToken);
+            await File.WriteAllTextAsync(outputPath, sourceText, cancellationToken).ConfigureAwait(false);
         }
         else
         {
@@ -117,7 +117,7 @@ public class SourceProcessor : ISourceProcessor
 
                 var filePath = Path.Combine(outputPath, fileName);
                 var sourceText = tree.GetRoot(cancellationToken).ToFullString();
-                await File.WriteAllTextAsync(filePath, sourceText, cancellationToken);
+                await File.WriteAllTextAsync(filePath, sourceText, cancellationToken).ConfigureAwait(false);
             }
         }
 

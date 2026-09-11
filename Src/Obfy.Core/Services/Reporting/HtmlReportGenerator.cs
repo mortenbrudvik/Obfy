@@ -26,7 +26,7 @@ public class HtmlReportGenerator : IReportGenerator
     /// <inheritdoc/>
     public async Task GenerateAsync(ObfuscationReport report, string outputPath, CancellationToken cancellationToken = default)
     {
-        var html = await GenerateToStringAsync(report, cancellationToken);
+        var html = await GenerateToStringAsync(report, cancellationToken).ConfigureAwait(false);
 
         var directory = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(directory))
@@ -34,7 +34,7 @@ public class HtmlReportGenerator : IReportGenerator
             Directory.CreateDirectory(directory);
         }
 
-        await File.WriteAllTextAsync(outputPath, html, cancellationToken);
+        await File.WriteAllTextAsync(outputPath, html, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("HTML report written to {OutputPath}", outputPath);
     }
 

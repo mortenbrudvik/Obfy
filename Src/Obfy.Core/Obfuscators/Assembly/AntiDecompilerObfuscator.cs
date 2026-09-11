@@ -138,7 +138,7 @@ public class AntiDecompilerObfuscator : IObfuscator
         var typeName = GenerateConfusingName(index);
 
         var typeDef = new TypeDefUser(
-            "Obfy.Internal",
+            GenerateConfusingName(index + 50),
             typeName,
             module.CorLibTypes.Object.TypeDefOrRef);
 

@@ -17,10 +17,9 @@ public interface IObfuscator
     /// <summary>
     /// Gets the execution priority (lower values execute first).
     /// Recommended ranges:
-    /// - 10-20: String encryption (before other transforms)
-    /// - 30-40: Control flow obfuscation
+    /// - 10-20: Encoding and runtime helper injection
+    /// - 30-40: Control flow and reference proxies
     /// - 50-60: Symbol renaming
-    /// - 70-80: Protection features
     /// - 90-100: Metadata cleanup (last)
     /// </summary>
     int Priority { get; }

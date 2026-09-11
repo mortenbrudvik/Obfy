@@ -46,7 +46,9 @@ public class ControlFlowObfuscator : IObfuscator
         {
             foreach (var type in module.GetTypes())
             {
-                if (ObfuscatorHelpers.IsRuntimeOrExcluded(type, context.Settings.Exclusions))
+                if (ObfuscatorHelpers.IsRuntimeHelper(type))
+                    continue;
+                if (ObfuscatorHelpers.IsExcluded(type, context.Settings.Exclusions))
                     continue;
 
                 foreach (var method in type.Methods)
@@ -54,28 +56,15 @@ public class ControlFlowObfuscator : IObfuscator
                     cancellationToken.ThrowIfCancellationRequested();
 
                     if (!CanObfuscateMethod(method))
-                    {
-                        // Eligible-looking methods with exception handlers are left in the clear;
-                        // record the skip so CLI/UI do not report a clean run.
-                        if (method.HasBody &&
-                            method.Body.Instructions.Count >= 5 &&
-                            !method.IsConstructor &&
-                            !method.IsStaticConstructor &&
-                            method.Body.HasExceptionHandlers)
-                        {
-                            context.SkippedItems.Add(
-                                SkippedItem.UnsupportedMethod(method.FullName, "Exception handlers"));
-                        }
                         continue;
-                    }
 
                     try
                     {
                         var obfuscated = settings.Mode switch
                         {
-                            ControlFlowMode.Switch => ApplySwitchFlattening(method, settings.Intensity),
+                            ControlFlowMode.Switch => ApplySwitchFlattening(method, settings.Intensity, context),
                             ControlFlowMode.OpaquePredicate => ApplyOpaquePredicates(method, settings.Intensity),
-                            ControlFlowMode.Combined => ApplyCombined(method, settings.Intensity),
+                            ControlFlowMode.Combined => ApplyCombined(method, settings.Intensity, context),
                             _ => false
                         };
 
@@ -115,31 +104,31 @@ public class ControlFlowObfuscator : IObfuscator
         if (method.Body.Instructions.Count < 5)
             return false;
 
-        // Skip methods with exception handlers (complex to transform)
-        if (method.Body.HasExceptionHandlers)
-            return false;
-
-        // Skip constructors
         if (method.IsConstructor || method.IsStaticConstructor)
             return false;
 
         return true;
     }
 
-    private bool ApplySwitchFlattening(MethodDef method, int intensity)
+    private bool ApplySwitchFlattening(MethodDef method, int intensity, PipelineContext context)
     {
-        var body = method.Body;
-        var instructions = body.Instructions;
+        if (method.Body.HasExceptionHandlers)
+        {
+            context.SkippedItems.Add(
+                SkippedItem.UnsupportedMethod(method.FullName, "Exception handlers"));
+            return false;
+        }
 
-        if (instructions.Count < 10)
+        if (method.Body.Instructions.Count < 10)
             return false;
 
         if (_random.Next(100) > intensity)
             return false;
 
-        // Only straight-line code can be safely flattened. Bail on anything that branches, throws,
-        // or returns early (other than the trailing ret handled below): those create extra edges or
-        // dead code that would invalidate the linear stack-depth analysis in FlattenLinearMethod.
+        if (ControlFlowFlattener.Flatten(method, _random))
+            return true;
+
+        var instructions = method.Body.Instructions;
         var lastIndex = instructions.Count - 1;
         for (var i = 0; i < lastIndex; i++)
         {
@@ -243,6 +232,8 @@ public class ControlFlowObfuscator : IObfuscator
         foreach (var instr in rebuilt)
             instructions.Add(instr);
 
+        body.KeepOldMaxStack = true;
+        body.MaxStack = (ushort)Math.Max(body.MaxStack, (ushort)8);
         body.UpdateInstructionOffsets();
         return true;
     }
@@ -257,7 +248,10 @@ public class ControlFlowObfuscator : IObfuscator
         var positions = new List<int>();
         for (var i = 0; i < instructions.Count - 1; i++)
         {
-            if (_random.Next(100) < intensity / 5) // Scale down intensity
+            if (i > 0 && ObfuscatorHelpers.IsPrefix(instructions[i - 1]))
+                continue;
+
+            if (_random.Next(100) < Math.Max(1, intensity / 4))
             {
                 positions.Add(i);
             }
@@ -271,7 +265,7 @@ public class ControlFlowObfuscator : IObfuscator
             if (pos >= instructions.Count)
                 continue;
 
-            InsertOpaquePredicate(body, pos);
+            InsertOpaquePredicate(method, pos);
             insertCount++;
         }
 
@@ -280,40 +274,43 @@ public class ControlFlowObfuscator : IObfuscator
         return insertCount > 0;
     }
 
-    private bool ApplyCombined(MethodDef method, int intensity)
+    private bool ApplyCombined(MethodDef method, int intensity, PipelineContext context)
     {
-        var result1 = ApplySwitchFlattening(method, intensity);
+        var result1 = ApplySwitchFlattening(method, intensity, context);
         var result2 = ApplyOpaquePredicates(method, intensity / 2);
         return result1 || result2;
     }
 
-    private void InsertOpaquePredicate(CilBody body, int position)
+    private static void InsertOpaquePredicate(MethodDef method, int position)
     {
-        var instructions = body.Instructions;
+        var instructions = method.Body.Instructions;
         var target = instructions[position];
+        var module = method.Module;
 
-        // Create an opaque predicate: (x * x >= 0) is always true
-        // This adds complexity without changing behavior
+        var env = module.CorLibTypes.GetTypeRef("System", "Environment");
+        var getTickCount = new MemberRefUser(
+            module,
+            "get_TickCount",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            env);
 
-        var skipLabel = Instruction.Create(OpCodes.Nop);
-
-        // Insert: if ((random_constant * random_constant) >= 0) goto original
-        // This is always true for any real number
-        var constant = _random.Next(1, 100);
-
-        var newInstructions = new[]
+        // n*(n+1) is always even, so rem 2 is always 0. TickCount is not a compile-time constant.
+        var inserted = new[]
         {
-            Instruction.CreateLdcI4(constant),
-            Instruction.CreateLdcI4(constant),
+            Instruction.Create(OpCodes.Call, getTickCount),
+            Instruction.Create(OpCodes.Dup),
+            Instruction.Create(OpCodes.Ldc_I4_1),
+            Instruction.Create(OpCodes.Add),
             Instruction.Create(OpCodes.Mul),
-            Instruction.CreateLdcI4(0),
-            Instruction.Create(OpCodes.Bge_S, target)
+            Instruction.Create(OpCodes.Ldc_I4_2),
+            Instruction.Create(OpCodes.Rem),
+            Instruction.Create(OpCodes.Brfalse, target),
+            Instruction.Create(OpCodes.Ldc_I4_0),
+            Instruction.Create(OpCodes.Pop),
+            Instruction.Create(OpCodes.Br, target)
         };
 
-        for (var i = newInstructions.Length - 1; i >= 0; i--)
-        {
-            instructions.Insert(position, newInstructions[i]);
-        }
+        for (var i = inserted.Length - 1; i >= 0; i--)
+            instructions.Insert(position, inserted[i]);
     }
-
 }

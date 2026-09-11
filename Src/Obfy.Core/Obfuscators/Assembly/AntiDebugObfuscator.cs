@@ -109,20 +109,23 @@ public class AntiDebugObfuscator : IObfuscator
         var method = new MethodDefUser(
             "Check",
             MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Public | MethodAttributes.Static);
+            MethodAttributes.Assembly | MethodAttributes.Static);
 
         var body = new CilBody { InitLocals = true };
         method.Body = body;
 
-        // Get Debugger.IsAttached property
         var debuggerType = module.CorLibTypes.GetTypeRef("System.Diagnostics", "Debugger");
         var isAttachedGetter = new MemberRefUser(
             module,
             "get_IsAttached",
             MethodSig.CreateStatic(module.CorLibTypes.Boolean),
             debuggerType);
+        var isLogging = new MemberRefUser(
+            module,
+            "IsLogging",
+            MethodSig.CreateStatic(module.CorLibTypes.Boolean),
+            debuggerType);
 
-        // Get Environment.Exit method
         var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
         var exitMethod = new MemberRefUser(
             module,
@@ -130,11 +133,16 @@ public class AntiDebugObfuscator : IObfuscator
             MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32),
             environmentType);
 
-        // Create instructions: if (Debugger.IsAttached) Environment.Exit(1);
         var skipExit = Instruction.Create(OpCodes.Ret);
+        var afterAttached = Instruction.Create(OpCodes.Call, isLogging);
 
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isAttachedGetter));
-        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse_S, skipExit));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterAttached));
+        body.Instructions.Add(Instruction.CreateLdcI4(1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
+
+        body.Instructions.Add(afterAttached);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, skipExit));
         body.Instructions.Add(Instruction.CreateLdcI4(1));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
         body.Instructions.Add(skipExit);

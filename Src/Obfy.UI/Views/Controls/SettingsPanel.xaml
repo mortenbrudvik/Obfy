@@ -85,6 +85,8 @@
                     <CheckBox Content="Rename Fields" IsChecked="{Binding RenameFields}"/>
                     <CheckBox Content="Rename Properties" IsChecked="{Binding RenameProperties}"/>
                     <CheckBox Content="Rename Parameters" IsChecked="{Binding RenameParameters}"/>
+                    <CheckBox Content="Rename Events" IsChecked="{Binding RenameEvents}"/>
+                    <CheckBox Content="Rename Namespaces" IsChecked="{Binding RenameNamespaces}"/>
                     <ui:ToggleSwitch Content="Preserve Public API" IsChecked="{Binding PreservePublicApi}" Margin="0,8,0,0"/>
                 </StackPanel>
             </StackPanel>
@@ -99,6 +101,8 @@
                                Content="Anti-Tamper" IsChecked="{Binding AntiTamperEnabled}"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDumpToggle"
                                Content="Anti-Dump" IsChecked="{Binding AntiDumpEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="ReferenceProxyToggle"
+                               Content="Reference Proxy" IsChecked="{Binding ReferenceProxyEnabled}"/>
             </StackPanel>
         </Expander>
 

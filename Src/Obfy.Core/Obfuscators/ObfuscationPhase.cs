@@ -19,20 +19,26 @@ public enum ObfuscationPhase
     /// <summary>Encrypt embedded resources.</summary>
     ResourceEncryption = 15,
 
-    /// <summary>Obfuscate control flow.</summary>
+    /// <summary>Inject anti-debugging checks (before control flow/renaming so helpers are obfuscated).</summary>
+    AntiDebug = 18,
+
+    /// <summary>Inject anti-dump PE-header wipe (before control flow/renaming).</summary>
+    AntiDump = 19,
+
+    /// <summary>Inject anti-decompiler junk (before renaming).</summary>
+    AntiDecompiler = 20,
+
+    /// <summary>Inject anti-tamper verification (before renaming).</summary>
+    AntiTamper = 22,
+
+    /// <summary>Obfuscate control flow, including injected helpers.</summary>
     ControlFlow = 30,
 
-    /// <summary>Rename symbols.</summary>
+    /// <summary>Hide call targets behind proxy methods.</summary>
+    ReferenceProxy = 40,
+
+    /// <summary>Rename symbols, including injected helpers.</summary>
     SymbolRenaming = 50,
-
-    /// <summary>Inject anti-debugging checks.</summary>
-    AntiDebug = 70,
-
-    /// <summary>Inject anti-decompiler junk.</summary>
-    AntiDecompiler = 72,
-
-    /// <summary>Inject anti-tamper verification.</summary>
-    AntiTamper = 75,
 
     /// <summary>Strip metadata (runs last).</summary>
     MetadataRemoval = 90

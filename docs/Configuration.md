@@ -67,6 +67,8 @@ Complete JSON configuration schema for Obfy.
     "renameProperties": true,
     "renameFields": true,
     "renameParameters": true,
+    "renameEvents": true,
+    "renameNamespaces": true,
     "preservePublicApi": false
   },
 
@@ -84,7 +86,8 @@ Complete JSON configuration schema for Obfy.
       "junkTypeCount": 5,
       "junkMethodsPerType": 3
     },
-    "antiDump": false
+    "antiDump": false,
+    "referenceProxy": false
   },
 
   "metadata": {
@@ -276,6 +279,8 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `renameProperties` | bool | `true` | Rename properties |
 | `renameFields` | bool | `true` | Rename fields |
 | `renameParameters` | bool | `true` | Rename method parameters |
+| `renameEvents` | bool | `true` | Rename events and add_/remove_ accessors |
+| `renameNamespaces` | bool | `true` | Rename namespaces (public namespaces kept when `preservePublicApi`) |
 | `preservePublicApi` | bool | `false` | Keep public members unchanged |
 
 **Naming Modes:**
@@ -284,7 +289,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 |------|----------------|-------------|
 | `Unreadable` | `_‌‌‍‏‌` | Zero-width and confusing characters |
 | `Sequential` | `a`, `b`, `aa` | Short, sequential names |
-| `Hash` | `_8a5f2c1d` | SHA-256 hash of original name |
+| `Hash` | `_8a5f2c1d` | Salted SHA-256 of original name (per run) |
 | `Random` | `kQzX7pL9mNv` | Random alphanumeric strings |
 
 ### protection
@@ -292,7 +297,8 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `antiDebug` | bool | `true` | Inject debugger detection checks |
-| `antiDump` | bool | `false` | Inject anti-dump protection |
+| `antiDump` | bool | `false` | Wipe PE headers in memory at load (Windows) |
+| `referenceProxy` | bool | `false` | Hide in-module call targets behind proxy methods |
 
 **antiTamper Settings:**
 

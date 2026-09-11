@@ -111,6 +111,7 @@ public class ObfySettings
                 Protection.AntiTamper.Enabled = false;
                 Protection.AntiDecompiler.Enabled = false;
                 Protection.AntiDump = false;
+                Protection.ReferenceProxy = false;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = false;
                 ResourceEncryption.Enabled = false;
@@ -127,6 +128,7 @@ public class ObfySettings
                 Protection.AntiTamper.Enabled = false;
                 Protection.AntiDecompiler.Enabled = false;
                 Protection.AntiDump = false;
+                Protection.ReferenceProxy = false;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = false;
@@ -142,7 +144,8 @@ public class ObfySettings
                 Protection.AntiDebug = true;
                 Protection.AntiTamper.Enabled = true;
                 Protection.AntiDecompiler.Enabled = true;
-                Protection.AntiDump = false;
+                Protection.AntiDump = true;
+                Protection.ReferenceProxy = true;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = true;
@@ -313,6 +316,16 @@ public class SymbolRenamingSettings
     public bool RenameParameters { get; set; } = true;
 
     /// <summary>
+    /// Whether to rename events (and their add_/remove_ accessors).
+    /// </summary>
+    public bool RenameEvents { get; set; } = true;
+
+    /// <summary>
+    /// Whether to rename namespaces. Public namespaces are kept when PreservePublicApi is set.
+    /// </summary>
+    public bool RenameNamespaces { get; set; } = true;
+
+    /// <summary>
     /// Whether to preserve public API names (types and members with public visibility).
     /// </summary>
     public bool PreservePublicApi { get; set; } = false;
@@ -365,9 +378,14 @@ public class ProtectionSettings
     public AntiDecompilerSettings AntiDecompiler { get; set; } = new();
 
     /// <summary>
-    /// Whether to inject anti-dump protection. Reserved; not implemented.
+    /// Whether to inject anti-dump protection (in-memory PE header wipe on Windows).
     /// </summary>
     public bool AntiDump { get; set; } = false;
+
+    /// <summary>
+    /// Whether to hide method call targets behind proxy methods.
+    /// </summary>
+    public bool ReferenceProxy { get; set; } = false;
 }
 
 /// <summary>

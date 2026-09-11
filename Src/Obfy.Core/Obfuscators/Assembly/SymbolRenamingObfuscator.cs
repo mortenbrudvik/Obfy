@@ -50,6 +50,8 @@ public class SymbolRenamingObfuscator : IObfuscator
             var methodRenames = new Dictionary<MethodDef, string>();
             var fieldRenames = new Dictionary<FieldDef, string>();
             var propertyRenames = new Dictionary<PropertyDef, string>();
+            var eventRenames = new Dictionary<EventDef, string>();
+            var namespaceRenames = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var type in module.GetTypes())
             {
@@ -71,7 +73,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 {
                     foreach (var method in type.Methods)
                     {
-                        if (CanRenameMethod(method, settings))
+                        if (CanRenameMethod(method, settings, context.Settings.Exclusions))
                         {
                             var newName = _nameGenerator.Generate(method.Name, settings.Mode);
                             methodRenames[method] = newName;
@@ -94,7 +96,6 @@ public class SymbolRenamingObfuscator : IObfuscator
                     }
                 }
 
-                // Rename properties
                 if (settings.RenameProperties)
                 {
                     foreach (var property in type.Properties)
@@ -104,7 +105,42 @@ public class SymbolRenamingObfuscator : IObfuscator
                             var newName = _nameGenerator.Generate(property.Name, settings.Mode);
                             propertyRenames[property] = newName;
                             context.SymbolMap[$"Property:{type.FullName}.{property.Name}"] = newName;
+                            if (property.GetMethod != null)
+                                methodRenames[property.GetMethod] = "get_" + newName;
+                            if (property.SetMethod != null)
+                                methodRenames[property.SetMethod] = "set_" + newName;
                         }
+                    }
+                }
+
+                if (settings.RenameEvents)
+                {
+                    foreach (var evt in type.Events)
+                    {
+                        if (CanRenameEvent(evt, settings))
+                        {
+                            var newName = _nameGenerator.Generate(evt.Name, settings.Mode);
+                            eventRenames[evt] = newName;
+                            context.SymbolMap[$"Event:{type.FullName}.{evt.Name}"] = newName;
+                            if (evt.AddMethod != null)
+                                methodRenames[evt.AddMethod] = "add_" + newName;
+                            if (evt.RemoveMethod != null)
+                                methodRenames[evt.RemoveMethod] = "remove_" + newName;
+                        }
+                    }
+                }
+
+                if (settings.RenameNamespaces &&
+                    !string.IsNullOrEmpty(type.Namespace) &&
+                    type.Namespace != "Obfy.Core.Models" &&
+                    !(settings.PreservePublicApi && type.IsPublic))
+                {
+                    var originalNs = type.Namespace.String;
+                    if (!namespaceRenames.ContainsKey(originalNs))
+                    {
+                        var newNs = _nameGenerator.Generate(originalNs, settings.Mode);
+                        namespaceRenames[originalNs] = newNs;
+                        context.SymbolMap[$"Namespace:{originalNs}"] = newNs;
                     }
                 }
             }
@@ -134,6 +170,36 @@ public class SymbolRenamingObfuscator : IObfuscator
                 stats.PropertiesRenamed++;
             }
 
+            foreach (var (evt, newName) in eventRenames)
+            {
+                evt.Name = newName;
+                stats.EventsRenamed++;
+            }
+
+            var preservedNamespaces = new HashSet<string>(StringComparer.Ordinal);
+            if (settings.PreservePublicApi)
+            {
+                foreach (var type in module.GetTypes())
+                {
+                    if (type.IsPublic && !string.IsNullOrEmpty(type.Namespace))
+                        preservedNamespaces.Add(type.Namespace.String);
+                }
+            }
+
+            foreach (var (originalNs, newNs) in namespaceRenames)
+            {
+                if (preservedNamespaces.Contains(originalNs))
+                    continue;
+
+                foreach (var type in module.GetTypes())
+                {
+                    if (type.Namespace == originalNs)
+                        type.Namespace = newNs;
+                }
+
+                stats.NamespacesRenamed++;
+            }
+
             // Rename parameters if enabled
             if (settings.RenameParameters)
             {
@@ -150,7 +216,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                         // points, virtuals/overrides/interface impls, and public methods when
                         // PreservePublicApi is set. Named-argument / reflection callers of public APIs
                         // are only safe with PreservePublicApi = true (the default is false).
-                        if (!CanRenameMethod(method, settings))
+                        if (!CanRenameMethod(method, settings, context.Settings.Exclusions))
                             continue;
 
                         foreach (var param in method.Parameters)
@@ -166,9 +232,9 @@ public class SymbolRenamingObfuscator : IObfuscator
             }
 
             _logger.LogInformation(
-                "Renamed {Types} types, {Methods} methods, {Fields} fields, {Properties} properties, {Parameters} parameters",
+                "Renamed {Types} types, {Methods} methods, {Fields} fields, {Properties} properties, {Parameters} parameters, {Events} events, {Namespaces} namespaces",
                 stats.TypesRenamed, stats.MethodsRenamed, stats.FieldsRenamed,
-                stats.PropertiesRenamed, stats.ParametersRenamed);
+                stats.PropertiesRenamed, stats.ParametersRenamed, stats.EventsRenamed, stats.NamespacesRenamed);
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
@@ -181,11 +247,6 @@ public class SymbolRenamingObfuscator : IObfuscator
 
     private bool ShouldSkipType(TypeDef type, SymbolRenamingSettings settings, ExclusionRules exclusions)
     {
-        // Skip runtime-injected types
-        if (type.Namespace == "Obfy.Runtime")
-            return true;
-
-        // Skip Obfy's own model types (required for JSON serialization)
         if (type.Namespace == "Obfy.Core.Models")
             return true;
 
@@ -223,41 +284,64 @@ public class SymbolRenamingObfuscator : IObfuscator
         return true;
     }
 
-    private bool CanRenameMethod(MethodDef method, SymbolRenamingSettings settings)
+    private bool CanRenameMethod(MethodDef method, SymbolRenamingSettings settings, ExclusionRules exclusions)
     {
-        // Don't rename constructors
         if (method.IsConstructor || method.IsStaticConstructor)
             return false;
 
-        // Don't rename entry points
         if (method.DeclaringType.Module.EntryPoint == method)
             return false;
 
-        // Preserve public API if configured
         if (settings.PreservePublicApi && method.IsPublic)
             return false;
 
-        // Don't rename special methods
         if (method.IsRuntimeSpecialName || method.IsSpecialName)
             return false;
 
-        if (method.IsVirtual)
+        if (ObfuscatorHelpers.MethodMatchesExclusion(method, exclusions))
             return false;
 
         if (method.HasOverrides)
             return false;
 
-        if (method.DeclaringType.Interfaces.Count > 0)
+        if (ImplementsInterface(method))
+            return false;
+
+        if (method.IsVirtual &&
+            !method.DeclaringType.IsSealed &&
+            (method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly))
         {
-            foreach (var iface in method.DeclaringType.Interfaces)
-            {
-                var resolved = iface.Interface.ResolveTypeDef();
-                if (resolved == null)
-                    continue;
-                if (resolved.Methods.Any(m => m.Name == method.Name && m.MethodSig.Equals(method.MethodSig)))
-                    return false;
-            }
+            return false;
         }
+
+        return true;
+    }
+
+    private static bool ImplementsInterface(MethodDef method)
+    {
+        if (method.DeclaringType.Interfaces.Count == 0)
+            return false;
+
+        foreach (var iface in method.DeclaringType.Interfaces)
+        {
+            var resolved = iface.Interface.ResolveTypeDef();
+            if (resolved == null)
+                continue;
+            if (resolved.Methods.Any(m => m.Name == method.Name && m.MethodSig.Equals(method.MethodSig)))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool CanRenameEvent(EventDef evt, SymbolRenamingSettings settings)
+    {
+        var isPublic = (evt.AddMethod?.IsPublic ?? false) || (evt.RemoveMethod?.IsPublic ?? false);
+        if (settings.PreservePublicApi && isPublic)
+            return false;
+
+        if (evt.IsSpecialName || evt.IsRuntimeSpecialName)
+            return false;
 
         return true;
     }

@@ -155,14 +155,42 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
         var loadResource = CreateLoadResourceStreamMethod(module, bytesDecrypt, keyField, namesField);
         typeDef.Methods.Add(loadResource);
+        loadResource.Attributes = MethodAttributes.Assembly | MethodAttributes.Static;
+
+        var loadTyped = CreateLoadResourceStreamTypedMethod(module, loadResource);
+        typeDef.Methods.Add(loadTyped);
+
+        var loadModule = CreateLoadResourceStreamModuleMethod(module, loadResource);
+        typeDef.Methods.Add(loadModule);
 
         // Static constructor initializes the key and encrypted-resource-name table.
-        var cctor = CreateStaticConstructor(module, keyField, namesField, key, encryptedResourceNames);
+        var cctor = new MethodDefUser(
+            ".cctor",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Private | MethodAttributes.Static |
+            MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
+        var cctorBody = new CilBody { InitLocals = true };
+        cctor.Body = cctorBody;
+        DecryptorIl.EmitEncodedKey(cctorBody, module, keyField, key);
+
+        cctorBody.Instructions.Add(Instruction.CreateLdcI4(encryptedResourceNames.Count));
+        cctorBody.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.String.TypeDefOrRef));
+        for (var i = 0; i < encryptedResourceNames.Count; i++)
+        {
+            cctorBody.Instructions.Add(Instruction.Create(OpCodes.Dup));
+            cctorBody.Instructions.Add(Instruction.CreateLdcI4(i));
+            cctorBody.Instructions.Add(Instruction.Create(OpCodes.Ldstr, encryptedResourceNames[i]));
+            cctorBody.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
+        }
+
+        cctorBody.Instructions.Add(Instruction.Create(OpCodes.Stsfld, namesField));
+        cctorBody.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        cctorBody.UpdateInstructionOffsets();
         typeDef.Methods.Add(cctor);
 
         module.Types.Add(typeDef);
 
-        if (RewriteResourceLoads(module, loadResource, context) == 0)
+        if (RewriteResourceLoads(module, loadResource, loadTyped, loadModule, context) == 0)
         {
             context.Warnings.Add(
                 "ResourceEncryption: resources were encrypted but no Assembly.GetManifestResourceStream(string) call sites were rewritten. Encrypted resources loaded any other way will be ciphertext.");
@@ -282,68 +310,105 @@ public class ResourceEncryptionObfuscator : IObfuscator
         return method;
     }
 
-    private static MethodDef CreateStaticConstructor(
-        ModuleDef module,
-        FieldDef keyField,
-        FieldDef namesField,
-        byte[] key,
-        List<string> resourceNames)
+    private static MethodDef CreateLoadResourceStreamTypedMethod(ModuleDef module, MethodDef loadResource)
     {
-        var cctor = new MethodDefUser(
-            ".cctor",
-            MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Private | MethodAttributes.Static |
-            MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
+        var streamType = new TypeRefUser(module, "System.IO", "Stream", module.CorLibTypes.AssemblyRef);
+        var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
+        var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
+        var stringType = new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef);
 
-        var body = new CilBody();
-        cctor.Body = body;
+        var method = new MethodDefUser(
+            "LoadResourceStreamTyped",
+            MethodSig.CreateStatic(
+                new ClassSig(streamType),
+                new ClassSig(assemblyType),
+                new ClassSig(typeType),
+                module.CorLibTypes.String),
+            MethodAttributes.Assembly | MethodAttributes.Static);
 
-        // Initialize key array
-        body.Instructions.Add(Instruction.CreateLdcI4(key.Length));
-        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
+        var body = new CilBody { InitLocals = true };
+        method.Body = body;
+        var nameLocal = new Local(module.CorLibTypes.String);
+        body.Variables.Add(nameLocal);
 
-        for (var i = 0; i < key.Length; i++)
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.CreateLdcI4(key[i]));
-            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
-        }
+        var getNamespace = new MemberRefUser(module, "get_Namespace",
+            MethodSig.CreateInstance(module.CorLibTypes.String), typeType);
+        var concat = new MemberRefUser(module, "Concat",
+            MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.String, module.CorLibTypes.String, module.CorLibTypes.String),
+            stringType);
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, keyField));
+        var typeNull = Instruction.Create(OpCodes.Ldarg_0);
+        var nsNull = Instruction.Create(OpCodes.Ldarg_0);
+        var resolved = Instruction.Create(OpCodes.Ldarg_0);
 
-        // Initialize encrypted-resource-name array
-        body.Instructions.Add(Instruction.CreateLdcI4(resourceNames.Count));
-        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.String.TypeDefOrRef));
-
-        for (var i = 0; i < resourceNames.Count; i++)
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, resourceNames[i]));
-            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
-        }
-
-        body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, namesField));
+        // if (type == null) return Load(asm, name);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, nsNull));
+        body.Instructions.Add(typeNull);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, loadResource));
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 
-        body.UpdateInstructionOffsets();
+        // ns = type.Namespace; if (ns == null) return Load(asm, name);
+        body.Instructions.Add(nsNull);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getNamespace));
+        body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, nameLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, resolved));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, loadResource));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 
-        return cctor;
+        // return Load(asm, ns + "." + name);
+        body.Instructions.Add(resolved);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, nameLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "."));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, concat));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, loadResource));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        return method;
     }
 
-    /// <summary>
-    /// Replaces <c>Assembly.GetManifestResourceStream(string)</c> (matched by declaring type name
-    /// and arity 1) with a call to the injected name-aware loader. The <c>(Type, string)</c>
-    /// overload and <c>Module.GetManifestResourceStream</c> are not intercepted and will observe
-    /// ciphertext; those call sites are recorded as warnings.
-    /// </summary>
-    private static int RewriteResourceLoads(ModuleDef module, MethodDef loadResource, PipelineContext context)
+    private static MethodDef CreateLoadResourceStreamModuleMethod(ModuleDef module, MethodDef loadResource)
+    {
+        var streamType = new TypeRefUser(module, "System.IO", "Stream", module.CorLibTypes.AssemblyRef);
+        var moduleType = new TypeRefUser(module, "System.Reflection", "Module", module.CorLibTypes.AssemblyRef);
+        var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
+
+        var method = new MethodDefUser(
+            "LoadResourceStreamModule",
+            MethodSig.CreateStatic(new ClassSig(streamType), new ClassSig(moduleType), module.CorLibTypes.String),
+            MethodAttributes.Assembly | MethodAttributes.Static);
+        var body = new CilBody();
+        method.Body = body;
+
+        var getAssembly = new MemberRefUser(module, "get_Assembly",
+            MethodSig.CreateInstance(new ClassSig(assemblyType)), moduleType);
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getAssembly));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, loadResource));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        return method;
+    }
+
+    private static int RewriteResourceLoads(
+        ModuleDef module,
+        MethodDef loadResource,
+        MethodDef loadTyped,
+        MethodDef loadModule,
+        PipelineContext context)
     {
         var rewritten = 0;
         foreach (var type in module.GetTypes())
         {
-            if (type.Namespace == "Obfy.Runtime")
+            if (ObfuscatorHelpers.IsRuntimeHelper(type))
                 continue;
 
             foreach (var method in type.Methods)
@@ -367,12 +432,30 @@ public class ResourceEncryptionObfuscator : IObfuscator
                     var declaring = called.DeclaringType?.Name?.String;
                     var arity = called.MethodSig?.Params.Count ?? -1;
                     var isAssembly = declaring is "Assembly" or "RuntimeAssembly";
+                    var isModule = declaring is "Module" or "RuntimeModule";
 
                     if (isAssembly && arity == 1)
                     {
-                        // Rewrite in place to preserve any branch targets pointing at this instruction.
                         instr.OpCode = OpCodes.Call;
                         instr.Operand = loadResource;
+                        modified = true;
+                        rewritten++;
+                        continue;
+                    }
+
+                    if (isAssembly && arity == 2)
+                    {
+                        instr.OpCode = OpCodes.Call;
+                        instr.Operand = loadTyped;
+                        modified = true;
+                        rewritten++;
+                        continue;
+                    }
+
+                    if (isModule && arity == 1)
+                    {
+                        instr.OpCode = OpCodes.Call;
+                        instr.Operand = loadModule;
                         modified = true;
                         rewritten++;
                         continue;

@@ -193,18 +193,30 @@ public class SourceControlFlowObfuscator : IObfuscator
 
         private StatementSyntax CreateOpaquePredicate(StatementSyntax originalStatement)
         {
-            // Create: if ((x * x) >= 0) { originalStatement } else { /* dead code */ }
-            // This is always true for any real number
+            // n*(n+1) is always even. TickCount is not a compile-time constant, so the C# compiler
+            // and decompilers cannot fold the branch.
+            var tick = SyntaxFactory.MemberAccessExpression(
+                SyntaxKind.SimpleMemberAccessExpression,
+                SyntaxFactory.ParseTypeName("System.Environment"),
+                SyntaxFactory.IdentifierName("TickCount"));
 
-            var constant = _random.Next(1, 100);
-
-            // (constant * constant) >= 0
             var condition = SyntaxFactory.BinaryExpression(
-                SyntaxKind.GreaterThanOrEqualExpression,
+                SyntaxKind.EqualsExpression,
                 SyntaxFactory.BinaryExpression(
-                    SyntaxKind.MultiplyExpression,
-                    SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(constant)),
-                    SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(constant))),
+                    SyntaxKind.ModuloExpression,
+                    SyntaxFactory.ParenthesizedExpression(
+                        SyntaxFactory.BinaryExpression(
+                            SyntaxKind.MultiplyExpression,
+                            tick,
+                            SyntaxFactory.ParenthesizedExpression(
+                                SyntaxFactory.BinaryExpression(
+                                    SyntaxKind.AddExpression,
+                                    SyntaxFactory.MemberAccessExpression(
+                                        SyntaxKind.SimpleMemberAccessExpression,
+                                        SyntaxFactory.ParseTypeName("System.Environment"),
+                                        SyntaxFactory.IdentifierName("TickCount")),
+                                    SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(1)))))),
+                    SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(2))),
                 SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(0)));
 
             // if (condition) { original } else { /* unreachable dead code */ }

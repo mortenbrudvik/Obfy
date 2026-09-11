@@ -167,6 +167,9 @@ public class SourceStringEncryptor : IObfuscator
 
             var value = node.Token.ValueText;
 
+            if (!_settings.EncryptConstantStrings)
+                return base.VisitLiteralExpression(node);
+
             if (string.IsNullOrEmpty(value) || value.Length < _settings.MinStringLength)
                 return base.VisitLiteralExpression(node);
 
@@ -175,8 +178,69 @@ public class SourceStringEncryptor : IObfuscator
             _encryptedStrings.Add((value, encrypted));
             EncryptedCount++;
 
-            // Replace with: Obfy.Runtime.__ObfyStringDecryptor.Decrypt("encrypted")
-            var decryptCall = SyntaxFactory.InvocationExpression(
+            return CreateDecryptCall(encrypted).WithTriviaFrom(node);
+        }
+
+        public override SyntaxNode? VisitInterpolatedStringExpression(InterpolatedStringExpressionSyntax node)
+        {
+            if (!_settings.EncryptConstantStrings)
+                return base.VisitInterpolatedStringExpression(node);
+
+            if (node.Contents.OfType<InterpolationSyntax>().Any(i => i.AlignmentClause != null || i.FormatClause != null))
+                return base.VisitInterpolatedStringExpression(node);
+
+            ExpressionSyntax? combined = null;
+            var encryptedAny = false;
+
+            foreach (var content in node.Contents)
+            {
+                ExpressionSyntax piece;
+                if (content is InterpolatedStringTextSyntax text)
+                {
+                    var value = text.TextToken.ValueText;
+                    if (string.IsNullOrEmpty(value) || value.Length < _settings.MinStringLength)
+                    {
+                        piece = SyntaxFactory.LiteralExpression(
+                            SyntaxKind.StringLiteralExpression,
+                            SyntaxFactory.Literal(value));
+                    }
+                    else
+                    {
+                        var encrypted = EncryptionHelper.EncryptToBase64(value, _key, _settings.Algorithm);
+                        _encryptedStrings.Add((value, encrypted));
+                        EncryptedCount++;
+                        encryptedAny = true;
+                        piece = CreateDecryptCall(encrypted);
+                    }
+                }
+                else if (content is InterpolationSyntax interpolation)
+                {
+                    piece = SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(
+                            SyntaxKind.SimpleMemberAccessExpression,
+                            interpolation.Expression,
+                            SyntaxFactory.IdentifierName("ToString")))
+                        .WithArgumentList(SyntaxFactory.ArgumentList());
+                }
+                else
+                {
+                    return base.VisitInterpolatedStringExpression(node);
+                }
+
+                combined = combined == null
+                    ? piece
+                    : SyntaxFactory.BinaryExpression(SyntaxKind.AddExpression, combined, piece);
+            }
+
+            if (!encryptedAny || combined == null)
+                return base.VisitInterpolatedStringExpression(node);
+
+            return combined.WithTriviaFrom(node);
+        }
+
+        private static InvocationExpressionSyntax CreateDecryptCall(string encrypted)
+        {
+            return SyntaxFactory.InvocationExpression(
                 SyntaxFactory.MemberAccessExpression(
                     SyntaxKind.SimpleMemberAccessExpression,
                     SyntaxFactory.MemberAccessExpression(
@@ -193,15 +257,6 @@ public class SourceStringEncryptor : IObfuscator
                             SyntaxFactory.LiteralExpression(
                                 SyntaxKind.StringLiteralExpression,
                                 SyntaxFactory.Literal(encrypted))))));
-
-            return decryptCall.WithTriviaFrom(node);
-        }
-
-        public override SyntaxNode? VisitInterpolatedStringExpression(InterpolatedStringExpressionSyntax node)
-        {
-            // For interpolated strings, we could potentially encrypt the constant parts
-            // For now, skip them as they're more complex
-            return base.VisitInterpolatedStringExpression(node);
         }
     }
 }

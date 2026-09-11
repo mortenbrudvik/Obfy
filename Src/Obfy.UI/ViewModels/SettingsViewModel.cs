@@ -56,7 +56,16 @@ public partial class SettingsViewModel : ObservableObject
     private bool _renameParameters = true;
 
     [ObservableProperty]
+    private bool _renameEvents = true;
+
+    [ObservableProperty]
+    private bool _renameNamespaces = true;
+
+    [ObservableProperty]
     private bool _preservePublicApi = false;
+
+    [ObservableProperty]
+    private bool _referenceProxyEnabled = false;
 
     // Protection
     [ObservableProperty]
@@ -255,6 +264,8 @@ public partial class SettingsViewModel : ObservableObject
                 RenameFields = RenameFields,
                 RenameProperties = RenameProperties,
                 RenameParameters = RenameParameters,
+                RenameEvents = RenameEvents,
+                RenameNamespaces = RenameNamespaces,
                 PreservePublicApi = PreservePublicApi
             },
             Protection = new ProtectionSettings
@@ -274,7 +285,8 @@ public partial class SettingsViewModel : ObservableObject
                     JunkTypeCount = JunkTypeCount,
                     JunkMethodsPerType = JunkMethodsPerType
                 },
-                AntiDump = AntiDumpEnabled
+                AntiDump = AntiDumpEnabled,
+                ReferenceProxy = ReferenceProxyEnabled
             },
             Metadata = new MetadataSettings
             {
@@ -342,6 +354,8 @@ public partial class SettingsViewModel : ObservableObject
         RenameFields = settings.SymbolRenaming.RenameFields;
         RenameProperties = settings.SymbolRenaming.RenameProperties;
         RenameParameters = settings.SymbolRenaming.RenameParameters;
+        RenameEvents = settings.SymbolRenaming.RenameEvents;
+        RenameNamespaces = settings.SymbolRenaming.RenameNamespaces;
         PreservePublicApi = settings.SymbolRenaming.PreservePublicApi;
 
         // Protection
@@ -355,6 +369,7 @@ public partial class SettingsViewModel : ObservableObject
         JunkTypeCount = settings.Protection.AntiDecompiler.JunkTypeCount;
         JunkMethodsPerType = settings.Protection.AntiDecompiler.JunkMethodsPerType;
         AntiDumpEnabled = settings.Protection.AntiDump;
+        ReferenceProxyEnabled = settings.Protection.ReferenceProxy;
 
         // Metadata
         RemoveDebugInfo = settings.Metadata.RemoveDebugInfo;

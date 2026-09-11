@@ -650,7 +650,7 @@ namespace Test
     }
 
     [Fact]
-    public async Task ObfuscationService_WarnsWhenAntiDumpEnabled()
+    public async Task ObfuscationService_DoesNotWarnThatAntiDumpIsUnimplemented()
     {
         var assemblyPath = CreateTestAssembly("AntiDump.dll");
         var outputPath = Path.Combine(_tempDirectory, "AntiDump.out.dll");
@@ -688,7 +688,7 @@ namespace Test
         var result = await service.ObfuscateAsync(assemblyPath, outputPath, settings);
 
         result.Success.ShouldBeTrue();
-        result.Warnings.ShouldContain(w => w.Contains("Anti-dump is not implemented"));
+        result.Warnings.ShouldNotContain(w => w.Contains("Anti-dump is not implemented"));
     }
 
     [Fact]

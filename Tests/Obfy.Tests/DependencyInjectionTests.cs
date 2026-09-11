@@ -44,14 +44,16 @@ public class DependencyInjectionTests
 
         var obfuscators = container.Resolve<IEnumerable<IObfuscator>>().ToList();
 
-        // 9 assembly + 3 source obfuscators are registered.
-        obfuscators.Count.ShouldBe(12);
+        // 11 assembly + 3 source obfuscators are registered.
+        obfuscators.Count.ShouldBe(14);
 
         var names = obfuscators.Select(o => o.Name).ToList();
         names.Distinct().Count().ShouldBe(names.Count); // Name is the identity used in errors/stats
 
         obfuscators.ShouldContain(o => o.Name == "StringEncryption");
         obfuscators.ShouldContain(o => o.Name == "AntiTamper");
+        obfuscators.ShouldContain(o => o.Name == "AntiDump");
+        obfuscators.ShouldContain(o => o.Name == "ReferenceProxy");
         obfuscators.ShouldContain(o => o.Name == "SourceSymbolRenaming");
     }
 

@@ -103,4 +103,26 @@ public class NameGeneratorTests
         name.ShouldStartWith("_");
         name.Length.ShouldBeGreaterThan(1);
     }
+
+    [Fact]
+    public void Generate_Sequential_NeverProducesCSharpKeyword()
+    {
+        // Sequential base-26 names would otherwise land on keywords like "do"/"if"/"int", which would
+        // not compile if used to rename a source symbol. They must be skipped.
+        var generator = new NameGenerator();
+        var keywords = new HashSet<string>
+        {
+            "do", "if", "in", "is", "for", "int", "new", "out", "ref", "try", "void", "null",
+            "true", "case", "else", "enum", "goto", "long", "this", "base", "lock", "byte"
+        };
+
+        var generated = Enumerable.Range(0, 3000)
+            .Select(_ => generator.Generate(NamingMode.Sequential))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var keyword in keywords)
+        {
+            generated.ShouldNotContain(keyword);
+        }
+    }
 }

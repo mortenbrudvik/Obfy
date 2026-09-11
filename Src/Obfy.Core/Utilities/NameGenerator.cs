@@ -65,6 +65,21 @@ public class NameGenerator : INameGenerator
     private static readonly char[] AlphanumericChars =
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".ToCharArray();
 
+    // C# reserved keywords. Sequential (base-26) names can land on one of these (e.g. "do", "if",
+    // "int"); using such a name for a renamed source symbol would not compile, so they are rejected.
+    private static readonly HashSet<string> CSharpKeywords = new(StringComparer.Ordinal)
+    {
+        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked",
+        "class", "const", "continue", "decimal", "default", "delegate", "do", "double", "else",
+        "enum", "event", "explicit", "extern", "false", "finally", "fixed", "float", "for",
+        "foreach", "goto", "if", "implicit", "in", "int", "interface", "internal", "is", "lock",
+        "long", "namespace", "new", "null", "object", "operator", "out", "override", "params",
+        "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed", "short",
+        "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true",
+        "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "virtual",
+        "void", "volatile", "while"
+    };
+
     /// <inheritdoc/>
     public string Generate(NamingMode mode)
     {
@@ -113,7 +128,7 @@ public class NameGenerator : INameGenerator
             for (var attempt = 0; attempt < 16; attempt++)
             {
                 var candidate = generator();
-                if (_used.Add(candidate))
+                if (IsAcceptable(candidate))
                     return candidate;
             }
 
@@ -123,10 +138,13 @@ public class NameGenerator : INameGenerator
             do
             {
                 suffixed = baseName + ToBase26(counter++);
-            } while (!_used.Add(suffixed));
+            } while (!IsAcceptable(suffixed));
             return suffixed;
         }
     }
+
+    // A name is acceptable if it is not a C# keyword and has not already been handed out.
+    private bool IsAcceptable(string candidate) => !CSharpKeywords.Contains(candidate) && _used.Add(candidate);
 
     private string GenerateUnreadable()
     {

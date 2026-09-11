@@ -118,6 +118,12 @@ Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | SourceControlFlow | 30 | Adds opaque predicates and transforms control flow |
 | SourceSymbolRenaming | 50 | Renames identifiers in source code |
 
+> **Security note:** String/constant/resource "encryption" is *obfuscation*, not confidentiality.
+> The decryption key is embedded in the output assembly and is recoverable by anyone who runs or
+> inspects it — XOR trivially, AES-256 with a little more effort. These techniques raise the cost of
+> casual reverse engineering; they are not a substitute for encrypting secrets that must stay secret.
+> Do not ship real secrets (keys, tokens, credentials) inside an assembly and rely on obfuscation.
+
 ## Architecture
 
 ### Pipeline Pattern

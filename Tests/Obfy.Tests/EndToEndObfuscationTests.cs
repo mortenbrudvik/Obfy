@@ -8,6 +8,7 @@ using Obfy.Core.Models;
 using Obfy.Core.Obfuscators.Assembly;
 using Obfy.Core.Pipeline;
 using Obfy.Core.Services;
+using Obfy.Core.Utilities;
 using Shouldly;
 
 namespace Obfy.Tests;
@@ -127,6 +128,92 @@ public class EndToEndObfuscationTests
 
             // If Verify() threw a TypeLoadException or falsely detected tampering, this would fail.
             LoadAndInvoke(output, "Lib", "Get").ShouldBe(4242);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_RewritesReferences_AndRunsOnRealAssembly()
+    {
+        // Renames private members and rewrites every reference; the public API is preserved so the
+        // result can be invoked by its original name and must still compute correctly.
+        const string source = """
+            public static class Calc
+            {
+                private static int Factor = 3;
+                private static int Triple(int x) => x * Factor;
+                public static int Run() => Triple(14) + 1;
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "RenameLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                SymbolRenaming =
+                {
+                    Enabled = true,
+                    RenameMethods = true,
+                    RenameFields = true,
+                    PreservePublicApi = true,
+                    Mode = NamingMode.Sequential
+                }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            var renamer = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+
+            var result = await renamer.ObfuscateAsync(context);
+            result.Success.ShouldBeTrue();
+            (result.Statistics.MethodsRenamed + result.Statistics.FieldsRenamed).ShouldBeGreaterThan(0);
+
+            var output = Path.Combine(dir, "RenameLib.obf.dll");
+            module.Write(output);
+
+            LoadAndInvoke(output, "Calc", "Run").ShouldBe((14 * 3) + 1);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task AntiDebug_UndebuggedRun_Proceeds_OnRealAssembly()
+    {
+        // With no debugger attached, the injected Check() is a no-op and the method runs normally.
+        // (Under a debugger the injected code calls Environment.Exit — tests run without one.)
+        const string source = "public static class Lib { public static int Get() => 7; }";
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "AntiDebugLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Protection = { AntiDebug = true }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+
+            var obfuscator = new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object);
+            (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "AntiDebugLib.obf.dll");
+            module.Write(output);
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(7);
         }
         finally
         {

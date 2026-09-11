@@ -11,11 +11,13 @@ Obfy applies techniques in a specific order (priority):
 | 10 | String Encryption | Encrypt string literals |
 | 11 | Constant Encryption | Encrypt numeric constants |
 | 15 | Resource Encryption | Encrypt embedded resources |
+| 18 | Anti-Debug | Inject debugger detection |
+| 19 | Anti-Dump | Wipe PE headers in memory |
+| 20 | Anti-Decompiler | Inject junk types and methods |
+| 22 | Anti-Tamper | Verify assembly integrity |
 | 30 | Control Flow | Flatten control flow |
+| 40 | Reference Proxy | Hide call targets behind proxies |
 | 50 | Symbol Renaming | Rename identifiers |
-| 70 | Anti-Debug | Inject debugger detection |
-| 72 | Anti-Decompiler | Inject junk types and methods |
-| 75 | Anti-Tamper | Verify assembly integrity |
 | 90 | Metadata Removal | Strip debug info |
 
 ## Assembly Obfuscation (dnlib)
@@ -69,6 +71,7 @@ Console.WriteLine(StringDecryptor.Decrypt(0));
 - Strings shorter than `minStringLength` are not encrypted
 - Empty strings are skipped
 - Adds slight runtime overhead for first access
+- Methods with exception handlers and compiler-generated methods are encrypted (inserts keep handler bounds)
 
 ---
 
@@ -287,7 +290,7 @@ The `intensity` setting (0-100) controls how aggressively the technique is appli
 
 **Skipped Methods:**
 - Constructors
-- Methods with exception handlers (try/catch)
+- Switch-flattening of methods with exception handlers (opaque predicates still apply)
 - Very short methods (<5 instructions)
 
 **Settings:**
@@ -340,7 +343,7 @@ public class _‌‌‍‏‌
 |------|--------|----------|
 | **Unreadable** | `_‌‌‍‏‌` | Maximum obfuscation. Uses zero-width characters. |
 | **Sequential** | `a`, `b`, `aa` | Smallest output size. Predictable naming. |
-| **Hash** | `_8a5f2c1d` | Consistent names per symbol. Useful for debugging. |
+| **Hash** | `_8a5f2c1d` | Salted hash per run. Not a dictionary of the original name. |
 | **Random** | `kQzX7pL9` | Unpredictable names. Good general choice. |
 
 **What Gets Renamed:**
@@ -350,9 +353,11 @@ public class _‌‌‍‏‌
 | Classes/Structs | Yes | Unless public + `preservePublicApi` |
 | Enums | Yes | Unless public + `preservePublicApi` |
 | Methods | Yes | Except constructors, entry points |
-| Properties | Yes | |
+| Properties | Yes | Getters/setters renamed in lockstep |
+| Events | Yes | add_/remove_ accessors renamed in lockstep |
 | Fields | Yes | Except const/literal fields |
 | Parameters | Yes | |
+| Namespaces | Yes | Public namespaces kept when `preservePublicApi` |
 | Local Variables | No | IL doesn't preserve local names |
 
 **Automatically Preserved:**
@@ -393,11 +398,9 @@ Injects code that detects and responds to debugging attempts.
 
 **Detection Method:**
 ```csharp
-if (System.Diagnostics.Debugger.IsAttached)
+if (System.Diagnostics.Debugger.IsAttached || System.Diagnostics.Debugger.IsLogging())
 {
     Environment.Exit(1);
-    // or
-    Environment.FailFast("Security violation");
 }
 ```
 
@@ -408,7 +411,8 @@ if (System.Diagnostics.Debugger.IsAttached)
   "protection": {
     "antiDebug": true,
     "antiTamper": false,
-    "antiDump": false
+    "antiDump": false,
+    "referenceProxy": false
   }
 }
 ```
@@ -420,6 +424,22 @@ if (System.Diagnostics.Debugger.IsAttached)
 
 ---
 
+### Anti-Dump Protection
+
+Wipes in-memory PE header fields at module load so dumpers that reconstruct the image from the loaded module get a corrupted header. Failures (missing `kernel32`, non-Windows) are swallowed.
+
+Enabled in the Aggressive preset.
+
+---
+
+### Reference Proxy
+
+Replaces in-module `call`/`callvirt` targets with small static proxy methods so call sites no longer name the original method. Framework methods are left alone.
+
+Enabled in the Aggressive preset.
+
+---
+
 ### Anti-Decompiler Protection
 
 Makes reverse engineering harder by cluttering decompiler output with junk types and methods.
@@ -427,7 +447,7 @@ Makes reverse engineering harder by cluttering decompiler output with junk types
 **How It Works:**
 
 1. **SuppressIldasm Attribute**: Adds `[SuppressIldasm]` attribute to block ILDasm and some older tools
-2. **Junk Types**: Injects decoy types with confusing names in the `Obfy.Internal` namespace
+2. **Junk Types**: Injects decoy types with confusing names in generated namespaces (not a recognizable `Obfy.*` prefix)
 3. **Junk Methods**: Adds methods with complex-looking but dead code (loops, math, branches)
 4. **Junk Fields**: Adds fake fields to junk types
 5. **Confusing Names**: Uses zero-width and look-alike Unicode characters for names
@@ -435,7 +455,7 @@ Makes reverse engineering harder by cluttering decompiler output with junk types
 **Injected Junk Type Structure:**
 
 ```
-Obfy.Internal._‌‍‏‎ (junk type)
+_‌‍‏‎._‌‍‏‏ (junk type)
 ├── Fields
 │   ├── _‌‍‏‏ (int)
 │   ├── _‌‍‏‐ (string)

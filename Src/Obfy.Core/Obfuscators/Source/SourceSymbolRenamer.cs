@@ -221,6 +221,7 @@ public class SourceSymbolRenamer : IObfuscator
             case RecordDeclarationSyntax r: token = r.Identifier; break;
             case MethodDeclarationSyntax m: token = m.Identifier; break;
             case PropertyDeclarationSyntax p: token = p.Identifier; break;
+            case EventDeclarationSyntax ev: token = ev.Identifier; break;
             case ParameterSyntax pa: token = pa.Identifier; break;
             case VariableDeclaratorSyntax v: token = v.Identifier; break;
             default: return false;
@@ -244,6 +245,9 @@ public class SourceSymbolRenamer : IObfuscator
             case PropertyDeclarationSyntax:
                 if (!settings.RenameProperties) return false;
                 break;
+            case EventDeclarationSyntax:
+                if (!settings.RenameEvents) return false;
+                break;
             case ParameterSyntax:
                 if (!settings.RenameParameters) return false;
                 break;
@@ -252,9 +256,12 @@ public class SourceSymbolRenamer : IObfuscator
                 {
                     if (!settings.RenameFields) return false;
                 }
+                else if (v.Parent?.Parent is EventFieldDeclarationSyntax)
+                {
+                    if (!settings.RenameEvents) return false;
+                }
                 else if (v.Parent?.Parent is not LocalDeclarationStatementSyntax)
                 {
-                    // Not a field or a local (e.g. event fields or `for`/`using` declarators).
                     return false;
                 }
                 break;
@@ -372,6 +379,9 @@ public class SourceSymbolRenamer : IObfuscator
                 break;
             case SymbolKind.Parameter:
                 stats.ParametersRenamed++;
+                break;
+            case SymbolKind.Event:
+                stats.EventsRenamed++;
                 break;
         }
     }

@@ -214,17 +214,13 @@ internal static class DecryptorIl
         var method = new MethodDefUser(
             "Decrypt",
             MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.Int32),
-            MethodAttributes.Public | MethodAttributes.Static);
+            MethodAttributes.Assembly | MethodAttributes.Static);
 
         var body = new CilBody { InitLocals = true };
         method.Body = body;
 
-        var convertType = new TypeRefUser(module, "System", "Convert", module.CorLibTypes.AssemblyRef);
         var encodingType = new TypeRefUser(module, "System.Text", "Encoding", module.CorLibTypes.AssemblyRef);
 
-        var fromBase64 = new MemberRefUser(module, "FromBase64String",
-            MethodSig.CreateStatic(new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.String),
-            convertType);
         var getUtf8 = new MemberRefUser(module, "get_UTF8",
             MethodSig.CreateStatic(new ClassSig(encodingType)), encodingType);
         var getString = new MemberRefUser(module, "GetString",
@@ -248,12 +244,11 @@ internal static class DecryptorIl
         body.Instructions.Add(Instruction.Create(OpCodes.Pop));
 
         body.Instructions.Add(decryptLabel);
-        // result = Encoding.UTF8.GetString(DecryptBytes(Convert.FromBase64String(_s[index]), _k))
+        // result = Encoding.UTF8.GetString(DecryptBytes(_s[index], _k))
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getUtf8));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, stringsField));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, fromBase64));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, bytesDecrypt));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getString));
@@ -282,5 +277,63 @@ internal static class DecryptorIl
 
         body.UpdateInstructionOffsets();
         return method;
+    }
+
+    /// <summary>
+    /// Emits IL that stores <paramref name="key"/> into <paramref name="keyField"/> after XOR-decoding
+    /// each byte with <c>mask ^ index</c>, so the raw key bytes are not a contiguous literal dump.
+    /// </summary>
+    public static void EmitEncodedKey(CilBody body, ModuleDef module, FieldDef keyField, byte[] key)
+    {
+        var mask = (byte)((key.Length * 17 + 0x5A) & 0xFF);
+
+        body.Instructions.Add(Instruction.CreateLdcI4(key.Length));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
+
+        for (var i = 0; i < key.Length; i++)
+        {
+            var encoded = (byte)(key[i] ^ mask ^ (byte)i);
+            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+            body.Instructions.Add(Instruction.CreateLdcI4(i));
+            body.Instructions.Add(Instruction.CreateLdcI4(encoded));
+            body.Instructions.Add(Instruction.CreateLdcI4(mask));
+            body.Instructions.Add(Instruction.Create(OpCodes.Xor));
+            body.Instructions.Add(Instruction.CreateLdcI4(i));
+            body.Instructions.Add(Instruction.Create(OpCodes.Xor));
+            body.Instructions.Add(Instruction.Create(OpCodes.Conv_U1));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
+        }
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, keyField));
+    }
+
+    /// <summary>
+    /// Emits IL that builds a <c>byte[][]</c> from <paramref name="blobs"/> and stores it in
+    /// <paramref name="field"/>.
+    /// </summary>
+    public static void EmitByteArrayArray(CilBody body, ModuleDef module, FieldDef field, IReadOnlyList<byte[]> blobs)
+    {
+        body.Instructions.Add(Instruction.CreateLdcI4(blobs.Count));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, new SZArraySig(module.CorLibTypes.Byte).ToTypeDefOrRef()));
+
+        for (var index = 0; index < blobs.Count; index++)
+        {
+            var data = blobs[index];
+            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+            body.Instructions.Add(Instruction.CreateLdcI4(index));
+            body.Instructions.Add(Instruction.CreateLdcI4(data.Length));
+            body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
+            for (var i = 0; i < data.Length; i++)
+            {
+                body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+                body.Instructions.Add(Instruction.CreateLdcI4(i));
+                body.Instructions.Add(Instruction.CreateLdcI4(data[i]));
+                body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
+            }
+
+            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
+        }
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, field));
     }
 }

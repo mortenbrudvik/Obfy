@@ -44,6 +44,8 @@ public class ObfySettingsTests
         settings.SymbolRenaming.Enabled.ShouldBeTrue();
         settings.Protection.AntiDebug.ShouldBeTrue();
         settings.Protection.AntiTamper.Enabled.ShouldBeTrue();
+        settings.Protection.AntiDump.ShouldBeTrue();
+        settings.Protection.ReferenceProxy.ShouldBeTrue();
     }
 
     [Fact]

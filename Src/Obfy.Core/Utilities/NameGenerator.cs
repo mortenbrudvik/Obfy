@@ -37,6 +37,7 @@ public interface INameGenerator
 public class NameGenerator : INameGenerator
 {
     private int _sequentialCounter;
+    private byte[] _hashSalt = RandomNumberGenerator.GetBytes(16);
     private static Random Rng => Random.Shared;
 
     // Guards the mutable state (_sequentialCounter, _used) so the generator is safe to share across
@@ -107,7 +108,7 @@ public class NameGenerator : INameGenerator
             NamingMode.Unreadable => EnsureUnique(GenerateUnreadable),
             NamingMode.Sequential => EnsureUnique(GenerateSequential),
             NamingMode.Random => EnsureUnique(GenerateRandom),
-            NamingMode.Hash => EnsureUnique(() => GenerateHash(originalName)),
+            NamingMode.Hash => EnsureUnique(() => GenerateHash(originalName, _hashSalt)),
             _ => EnsureUnique(GenerateRandom)
         };
     }
@@ -118,6 +119,7 @@ public class NameGenerator : INameGenerator
         lock (_lock)
         {
             _sequentialCounter = 0;
+            _hashSalt = RandomNumberGenerator.GetBytes(16);
             _used.Clear();
         }
     }
@@ -190,12 +192,15 @@ public class NameGenerator : INameGenerator
         return new string(chars);
     }
 
-    private static string GenerateHash(string originalName)
+    private static string GenerateHash(string originalName, byte[] salt)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(originalName));
+        var nameBytes = Encoding.UTF8.GetBytes(originalName);
+        var data = new byte[salt.Length + nameBytes.Length];
+        Buffer.BlockCopy(salt, 0, data, 0, salt.Length);
+        Buffer.BlockCopy(nameBytes, 0, data, salt.Length, nameBytes.Length);
+        var hash = SHA256.HashData(data);
         var sb = new StringBuilder("_");
 
-        // Take first 8 bytes of hash
         for (var i = 0; i < 8; i++)
         {
             sb.Append(hash[i].ToString("x2"));

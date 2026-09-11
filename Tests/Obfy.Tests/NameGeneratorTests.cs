@@ -40,15 +40,28 @@ public class NameGeneratorTests
     }
 
     [Fact]
-    public void Generate_Hash_IsDeterministicAcrossRuns()
+    public void Generate_Hash_IsSaltedPerGenerator()
     {
-        // The same original name yields the same hash name on a fresh generator, so a given input
-        // assembly produces a reproducible symbol map.
+        // Hash mode must not be a dictionary oracle of the original name. A fresh generator uses a
+        // new salt, so the same input does not produce a stable, reversible digest.
         var name1 = new NameGenerator().Generate("TestMethod", NamingMode.Hash);
         var name2 = new NameGenerator().Generate("TestMethod", NamingMode.Hash);
 
-        name1.ShouldBe(name2);
         name1.ShouldStartWith("_");
+        name1.ShouldNotBe(name2);
+    }
+
+    [Fact]
+    public void Generate_Hash_IsStableWithinOneGenerator()
+    {
+        var generator = new NameGenerator();
+        var first = generator.Generate("Alpha", NamingMode.Hash);
+        generator.Reset();
+        var afterReset = generator.Generate("Alpha", NamingMode.Hash);
+
+        first.ShouldStartWith("_");
+        afterReset.ShouldStartWith("_");
+        first.ShouldNotBe(afterReset);
     }
 
     [Fact]

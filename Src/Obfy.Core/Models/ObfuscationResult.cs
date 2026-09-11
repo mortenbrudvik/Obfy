@@ -143,6 +143,16 @@ public class ObfuscationStatistics
     public int ParametersRenamed { get; set; }
 
     /// <summary>
+    /// Number of events renamed.
+    /// </summary>
+    public int EventsRenamed { get; set; }
+
+    /// <summary>
+    /// Number of namespaces renamed.
+    /// </summary>
+    public int NamespacesRenamed { get; set; }
+
+    /// <summary>
     /// Number of methods with obfuscated control flow.
     /// </summary>
     public int MethodsControlFlowObfuscated { get; set; }
@@ -178,6 +188,8 @@ public class ObfuscationStatistics
         FieldsRenamed +
         PropertiesRenamed +
         ParametersRenamed +
+        EventsRenamed +
+        NamespacesRenamed +
         MethodsControlFlowObfuscated +
         ProtectionsApplied +
         MetadataItemsRemoved +
@@ -195,6 +207,8 @@ public class ObfuscationStatistics
         FieldsRenamed += other.FieldsRenamed;
         PropertiesRenamed += other.PropertiesRenamed;
         ParametersRenamed += other.ParametersRenamed;
+        EventsRenamed += other.EventsRenamed;
+        NamespacesRenamed += other.NamespacesRenamed;
         MethodsControlFlowObfuscated += other.MethodsControlFlowObfuscated;
         ProtectionsApplied += other.ProtectionsApplied;
         MetadataItemsRemoved += other.MetadataItemsRemoved;

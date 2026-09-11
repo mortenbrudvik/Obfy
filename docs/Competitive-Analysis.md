@@ -57,7 +57,7 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 | **MSIL Encryption** | - | - | - | Yes | Yes | - |
 | **Anti-Debug** | Yes | Yes | - | Yes | Yes | Yes |
 | **Anti-Tamper** | Yes | Yes | Yes | Yes | Yes | - |
-| **Anti-Dump** | - | - | - | Yes | Yes | - |
+| **Anti-Dump** | Yes | - | - | Yes | Yes | - |
 | **Watermarking** | - | Yes | - | Yes | - | - |
 
 ### Naming Modes

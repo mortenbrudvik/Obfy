@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Anti-dump PE-header wipe at module load (Aggressive preset)
+- Reference proxy for in-module method calls (Aggressive preset)
+- Symbol renaming for events, accessors, and namespaces
+- CFG control-flow flattening for methods with branches
+- Opaque predicates based on `Environment.TickCount` instead of foldable constants
+
+### Changed
+- String and constant encryption now cover try/catch and compiler-generated methods
+- Runtime helpers are renamed and use encoded keys; ciphertext is stored as byte arrays
+- Hash naming is salted per run so original names are not a dictionary oracle
+- Resource encryption rewrites `GetManifestResourceStream(Type, string)` and `Module` overloads
+- Anti-debug also checks `Debugger.IsLogging()`
+- Junk types no longer live in the `Obfy.Internal` namespace
+
 ### Fixed
+- `exclusions.Methods` is honored by assembly symbol renaming
+- `encryptConstantStrings` / `encryptResourceStrings` settings now take effect
+- Source interpolated string parts are encrypted
 - Obfuscation no longer mutates the caller's settings object when applying a level preset
 - Aggressive and AES obfuscation now produce loadable, runnable assemblies (constant decryptors, empty-stack control-flow splits, crypto types referenced from their real assemblies)
 - Source switch flattening no longer emits CS0161, wraps declarations, or splits `out var` / local functions across cases
@@ -17,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Control-flow fails the run instead of returning success after a half-rewritten method body, and does not split IL prefixes
 - Anti-debug warns when no call site could be instrumented; anti-tamper fail-closes if the hash blob is missing
 - Skips and warnings are shown in CLI/UI output and exported reports, not only in `--report`
-- Anti-dump enabled produces an explicit “not implemented” warning; UI overall status reports file failures
+- UI overall status reports file failures
 - Assembly string encryption now decrypts at runtime (AES-256 and XOR) instead of returning ciphertext
 - Anti-tamper hash excludes the stored digest so Aggressive builds no longer exit on startup
 - Resource encryption keeps embedded resources and unwraps `GetManifestResourceStream`

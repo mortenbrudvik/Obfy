@@ -46,6 +46,31 @@ public class SourceObfuscatorTests
     }
 
     [Fact]
+    public async Task SourceStringEncryptor_EncryptsInterpolatedStringParts()
+    {
+        var sourceCode = """
+            class Test
+            {
+                public string Greet(string name) => $"Hello {name} world";
+            }
+            """;
+
+        var compilation = CreateCompilation(sourceCode);
+        var encryptor = new SourceStringEncryptor(new Mock<ILogger<SourceStringEncryptor>>().Object);
+        var context = PipelineContext.ForSourceCode(compilation, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 }
+        });
+
+        var result = await encryptor.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.StringsEncrypted.ShouldBeGreaterThan(0);
+        var newSource = context.Compilation!.SyntaxTrees.First().ToString();
+        newSource.ShouldNotContain("Hello ");
+        newSource.ShouldContain("__ObfyStringDecryptor");
+    }
+
+    [Fact]
     public async Task SourceStringEncryptor_SkipsShortStrings()
     {
         // Arrange

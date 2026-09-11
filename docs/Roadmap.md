@@ -8,7 +8,7 @@ A strategic development plan based on competitive analysis against commercial an
 
 **Make Obfy the go-to open-source .NET obfuscator** by closing the feature gap with commercial tools while maintaining simplicity, modern .NET support, and excellent developer experience.
 
-**Target:** Cover 90% of typical obfuscation needs (currently at ~70%)
+**Target:** Cover 90% of typical obfuscation needs (currently at ~85%)
 
 ---
 
@@ -33,7 +33,7 @@ A strategic development plan based on competitive analysis against commercial an
 | PF-02 | Constant Encryption | P0 | Low | Medium | ✅ Done |
 | PF-03 | Anti-Tamper Detection | P1 | Medium | High | ✅ Done |
 | PF-04 | Anti-Decompiler | P1 | Medium | Medium | ✅ Done |
-| PF-05 | Anti-Dump Protection | P2 | Medium | Medium | Backlog |
+| PF-05 | Anti-Dump Protection | P2 | Medium | Medium | ✅ Done |
 | PF-06 | Watermarking | P2 | Low | Low | Backlog |
 | PF-07 | MSIL Encryption | P2 | High | High | Backlog |
 | PF-08 | Code Virtualization | P3 | Very High | High | Future |

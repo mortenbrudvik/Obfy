@@ -80,12 +80,7 @@ public class ObfuscationService : IObfuscationService
             context.InputPath = inputPath;
             context.OutputPath = target.EffectiveOutputPath;
 
-            if (settings.Protection.AntiDump)
-            {
-                const string warning = "Anti-dump is not implemented and was ignored.";
-                context.Warnings.Add(warning);
-                _logger.LogWarning("{Warning}", warning);
-            }
+
         }
         catch (Exception ex)
         {

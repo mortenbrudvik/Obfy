@@ -80,16 +80,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
                     if (!method.HasBody)
                         continue;
 
-                    // Skip methods with exception handlers to avoid corrupting handler boundaries
-                    if (method.Body.HasExceptionHandlers)
-                    {
-                        context.SkippedItems.Add(
-                            SkippedItem.UnsupportedMethod(method.FullName, "Exception handlers"));
-                        continue;
-                    }
-
-                    // Skip compiler-generated methods
-                    if (IsCompilerGeneratedMethod(method))
+                    if (ObfuscatorHelpers.MethodMatchesExclusion(method, context.Settings.Exclusions))
                         continue;
 
                     var body = method.Body;
@@ -351,8 +342,16 @@ public class ConstantEncryptionObfuscator : IObfuscator
         typeDef.Methods.Add(CreateNumericDecryptMethod(module, "DecryptSingle", module.CorLibTypes.Single, "ToSingle", keyField, dataField, bytesDecrypt));
         typeDef.Methods.Add(CreateNumericDecryptMethod(module, "DecryptDouble", module.CorLibTypes.Double, "ToDouble", keyField, dataField, bytesDecrypt));
 
-        // Add static constructor to initialize key
-        var cctor = CreateStaticConstructor(module, keyField, key);
+        var cctor = new MethodDefUser(
+            ".cctor",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Private | MethodAttributes.Static |
+            MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
+        var cctorBody = new CilBody { InitLocals = true };
+        cctor.Body = cctorBody;
+        DecryptorIl.EmitEncodedKey(cctorBody, module, keyField, key);
+        cctorBody.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        cctorBody.UpdateInstructionOffsets();
         typeDef.Methods.Add(cctor);
 
         module.Types.Add(typeDef);
@@ -378,7 +377,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
         var method = new MethodDefUser(
             methodName,
             MethodSig.CreateStatic(returnType, module.CorLibTypes.Int32),
-            MethodAttributes.Public | MethodAttributes.Static);
+            MethodAttributes.Assembly | MethodAttributes.Static);
 
         var body = new CilBody();
         method.Body = body;
@@ -402,37 +401,6 @@ public class ConstantEncryptionObfuscator : IObfuscator
 
         body.UpdateInstructionOffsets();
         return method;
-    }
-
-    private MethodDef CreateStaticConstructor(ModuleDef module, FieldDef keyField, byte[] key)
-    {
-        var cctor = new MethodDefUser(
-            ".cctor",
-            MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Private | MethodAttributes.Static |
-            MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
-
-        var body = new CilBody();
-        cctor.Body = body;
-
-        // Initialize key array
-        body.Instructions.Add(Instruction.CreateLdcI4(key.Length));
-        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
-
-        for (var i = 0; i < key.Length; i++)
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.CreateLdcI4(key[i]));
-            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
-        }
-
-        body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, keyField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-
-        body.UpdateInstructionOffsets();
-
-        return cctor;
     }
 
     private void StoreEncryptedConstants(TypeDef decryptorType, List<EncryptedConstant> constants)

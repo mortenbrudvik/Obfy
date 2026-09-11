@@ -4,6 +4,7 @@ using dnlib.DotNet.Emit;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Obfy.Core.Models;
+using Obfy.Core.Obfuscators;
 using Obfy.Core.Obfuscators.Assembly;
 using Obfy.Core.Pipeline;
 using Obfy.Core.Utilities;
@@ -303,7 +304,7 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
-    public async Task StringEncryption_SkipsAndRecordsExceptionHandlerMethods()
+    public async Task StringEncryption_EncryptsExceptionHandlerMethods()
     {
         var module = CreateTestModule();
         var type = CreateTestType(module, "TestClass");
@@ -319,14 +320,11 @@ public class AssemblyObfuscatorTests
 
         var result = await obfuscator.ObfuscateAsync(context);
         result.Success.ShouldBeTrue();
-        result.Statistics.StringsEncrypted.ShouldBeGreaterThan(0);
+        result.Statistics.StringsEncrypted.ShouldBeGreaterThanOrEqualTo(2);
 
-        handled.Body.Instructions.ShouldContain(i => i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "ALongEnoughString");
+        handled.Body.Instructions.ShouldNotContain(i => i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "ALongEnoughString");
         sibling.Body.Instructions.ShouldNotContain(i => i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "AnotherLongString");
-        context.SkippedItems.ShouldContain(s =>
-            s.Reason == SkipReason.UnsupportedConstruct &&
-            s.ItemType == SkippedItemType.Method &&
-            s.Details == "Exception handlers");
+        handled.Body.HasExceptionHandlers.ShouldBeTrue();
     }
 
     [Fact]
@@ -1097,7 +1095,7 @@ public class AssemblyObfuscatorTests
         var obfuscator = new AntiDebugObfuscator(logger.Object);
 
         obfuscator.Name.ShouldBe("AntiDebug");
-        obfuscator.Priority.ShouldBe(70);
+        obfuscator.Priority.ShouldBe((int)ObfuscationPhase.AntiDebug);
         obfuscator.SupportsTargetType(TargetType.Assembly).ShouldBeTrue();
         obfuscator.SupportsTargetType(TargetType.SourceCode).ShouldBeFalse();
     }
@@ -1318,7 +1316,7 @@ public class AssemblyObfuscatorTests
         var obfuscator = new AntiTamperObfuscator(logger.Object);
 
         obfuscator.Name.ShouldBe("AntiTamper");
-        obfuscator.Priority.ShouldBe(75);
+        obfuscator.Priority.ShouldBe((int)ObfuscationPhase.AntiTamper);
         obfuscator.SupportsTargetType(TargetType.Assembly).ShouldBeTrue();
         obfuscator.SupportsTargetType(TargetType.SourceCode).ShouldBeFalse();
     }
@@ -2168,7 +2166,7 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
-    public async Task ConstantEncryption_SkipsAndRecordsExceptionHandlerMethods()
+    public async Task ConstantEncryption_EncryptsExceptionHandlerMethods()
     {
         var module = CreateTestModule();
         var type = CreateTestType(module, "TestClass");
@@ -2221,11 +2219,8 @@ public class AssemblyObfuscatorTests
         var result = await obfuscator.ObfuscateAsync(context);
         result.Success.ShouldBeTrue();
         result.Statistics.ConstantsEncrypted.ShouldBeGreaterThan(0);
-        tryStart.OpCode.ShouldBe(OpCodes.Ldc_I4); // still a literal in the try body
-        context.SkippedItems.ShouldContain(s =>
-            s.Reason == SkipReason.UnsupportedConstruct &&
-            s.ItemType == SkippedItemType.Method &&
-            s.Details == "Exception handlers");
+        tryStart.OpCode.ShouldNotBe(OpCodes.Ldc_I4);
+        handled.Body.HasExceptionHandlers.ShouldBeTrue();
     }
 
     [Fact]
@@ -2463,9 +2458,9 @@ public class AssemblyObfuscatorTests
         await obfuscator.ObfuscateAsync(context);
 
         // Assert
-        var junkType = module.Types.FirstOrDefault(t => t.Namespace == "Obfy.Internal");
+        var junkType = module.Types.FirstOrDefault(t => !t.IsGlobalModuleType);
         junkType.ShouldNotBeNull();
-        // Should have 5 junk methods + 1 static constructor
+        junkType.Namespace.String.ShouldNotBe("Obfy.Internal");
         junkType.Methods.Count.ShouldBe(6);
     }
 
@@ -2488,7 +2483,7 @@ public class AssemblyObfuscatorTests
         await obfuscator.ObfuscateAsync(context);
 
         // Assert
-        var junkType = module.Types.FirstOrDefault(t => t.Namespace == "Obfy.Internal");
+        var junkType = module.Types.FirstOrDefault(t => !t.IsGlobalModuleType);
         junkType.ShouldNotBeNull();
         junkType.Fields.Count.ShouldBeGreaterThan(0);
     }
@@ -2512,7 +2507,7 @@ public class AssemblyObfuscatorTests
         await obfuscator.ObfuscateAsync(context);
 
         // Assert
-        var junkType = module.Types.First(t => t.Namespace == "Obfy.Internal");
+        var junkType = module.Types.First(t => !t.IsGlobalModuleType);
         foreach (var method in junkType.Methods)
         {
             method.Body.ShouldNotBeNull();
@@ -2529,7 +2524,7 @@ public class AssemblyObfuscatorTests
         var obfuscator = new AntiDecompilerObfuscator(logger.Object);
 
         obfuscator.Name.ShouldBe("AntiDecompiler");
-        obfuscator.Priority.ShouldBe(72);
+        obfuscator.Priority.ShouldBe((int)ObfuscationPhase.AntiDecompiler);
         obfuscator.SupportsTargetType(TargetType.Assembly).ShouldBeTrue();
         obfuscator.SupportsTargetType(TargetType.SourceCode).ShouldBeFalse();
     }
@@ -2620,6 +2615,214 @@ public class AssemblyObfuscatorTests
         result.Success.ShouldBeTrue();
         // 5 junk types + 1 for SuppressIldasm
         result.Statistics.ProtectionsApplied.ShouldBe(6);
+    }
+
+    #endregion
+
+    #region Coverage and hardening
+
+    [Fact]
+    public async Task StringEncryption_EncryptsCompilerGeneratedMethods()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var method = CreateMethodWithString(type, "<GetMessage>b__0", "LambdaCapturedSecret");
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.StringsEncrypted.ShouldBe(1);
+        method.Body.Instructions.ShouldNotContain(i =>
+            i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "LambdaCapturedSecret");
+    }
+
+    [Fact]
+    public async Task StringEncryption_HonorsEncryptConstantStringsOff()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        CreateMethodWithString(type, "GetMessage", "LeaveThisPlain");
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, EncryptConstantStrings = false, MinStringLength = 3 }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.StringsEncrypted.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_RenamesPropertyAccessorsWithProperty()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var property = CreateTestProperty(type, "PrivateProperty", isPublic: false);
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameProperties = true, Mode = NamingMode.Sequential }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        property.Name.String.ShouldNotBe("PrivateProperty");
+        property.GetMethod.Name.String.ShouldBe("get_" + property.Name.String);
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_RenamesEventsAndAccessors()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var handler = new TypeRefUser(module, "System", "EventHandler", module.CorLibTypes.AssemblyRef);
+        var add = new MethodDefUser("add_Changed", MethodSig.CreateInstance(module.CorLibTypes.Void, new ClassSig(handler)),
+            MethodAttributes.Private | MethodAttributes.SpecialName | MethodAttributes.HideBySig);
+        add.Body = new CilBody();
+        add.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(add);
+        var evt = new EventDefUser("Changed", handler);
+        evt.AddMethod = add;
+        type.Events.Add(evt);
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameEvents = true, Mode = NamingMode.Sequential }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.EventsRenamed.ShouldBe(1);
+        evt.Name.String.ShouldNotBe("Changed");
+        add.Name.String.ShouldBe("add_" + evt.Name.String);
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_RenamesNamespaces()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Hidden", isPublic: false);
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameNamespaces = true, Mode = NamingMode.Sequential }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.NamespacesRenamed.ShouldBe(1);
+        type.Namespace.String.ShouldNotBe("TestNamespace");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_HonorsMethodExclusions()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var kept = CreateTestMethod(type, "KeepMe");
+        var renamed = CreateTestMethod(type, "HideMe");
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameMethods = true, Mode = NamingMode.Sequential },
+            Exclusions = { Methods = { "KeepMe" } }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        kept.Name.String.ShouldBe("KeepMe");
+        renamed.Name.String.ShouldNotBe("HideMe");
+    }
+
+    [Fact]
+    public async Task ControlFlow_FlattensBranchedMethods()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var method = new MethodDefUser("Branchy", MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            MethodImplAttributes.IL, MethodAttributes.Private | MethodAttributes.Static);
+        var body = new CilBody { InitLocals = true };
+        var local = new Local(module.CorLibTypes.Int32);
+        body.Variables.Add(local);
+        var elseLabel = Instruction.Create(OpCodes.Ldc_I4_3);
+        var endLabel = Instruction.Create(OpCodes.Ldloc, local);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, local));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, local));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, elseLabel));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, local));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, endLabel));
+        body.Instructions.Add(elseLabel);
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, local));
+        body.Instructions.Add(endLabel);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        method.Body = body;
+        type.Methods.Add(method);
+
+        var obfuscator = new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.MethodsControlFlowObfuscated.ShouldBe(1);
+        method.Body.Instructions.ShouldContain(i => i.OpCode == OpCodes.Beq || i.OpCode == OpCodes.Switch);
+    }
+
+    [Fact]
+    public async Task AntiDump_InjectsWipeAtModuleInitializer()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new AntiDumpObfuscator(new Mock<ILogger<AntiDumpObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDump = true } });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBe(1);
+        var dumpType = module.Types.First(t => t.Name == "<AntiDump>");
+        dumpType.FindMethod("Wipe").ShouldNotBeNull();
+        var cctor = module.GlobalType.FindMethod(".cctor");
+        cctor.ShouldNotBeNull();
+        cctor!.Body.Instructions[0].OpCode.ShouldBe(OpCodes.Call);
+    }
+
+    [Fact]
+    public async Task ReferenceProxy_RewritesCallSites()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Calc");
+        var target = CreateTestMethod(type, "Add");
+        target.Body.Instructions.Clear();
+        target.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        var caller = CreateTestMethod(type, "Run");
+        caller.Body.Instructions.Clear();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Call, target));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        var obfuscator = new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { ReferenceProxy = true } });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
+        var called = (IMethod)caller.Body.Instructions[0].Operand;
+        called.DeclaringType.Name.String.ShouldBe("<RefProxy>");
     }
 
     #endregion

@@ -61,9 +61,15 @@ public static class ObfuscatorHelpers
         return false;
     }
 
+    public static bool IsRuntimeHelper(TypeDef type)
+    {
+        var ns = type.Namespace.String;
+        return ns == "Obfy.Runtime" || ns.StartsWith("Obfy.Runtime.", StringComparison.Ordinal);
+    }
+
     public static bool IsRuntimeOrExcluded(TypeDef type, ExclusionRules exclusions)
     {
-        if (type.Namespace == "Obfy.Runtime" || type.Namespace == "Obfy.Core.Models")
+        if (IsRuntimeHelper(type) || type.Namespace == "Obfy.Core.Models")
             return true;
 
         if (exclusions.Namespaces.Any(n => MatchesPattern(type.Namespace, n)))
@@ -74,6 +80,26 @@ public static class ObfuscatorHelpers
 
         return HasExcludedAttribute(type, exclusions);
     }
+
+    public static bool IsExcluded(TypeDef type, ExclusionRules exclusions)
+    {
+        if (type.Namespace == "Obfy.Core.Models")
+            return true;
+
+        if (exclusions.Namespaces.Any(n => MatchesPattern(type.Namespace, n)))
+            return true;
+
+        if (exclusions.Types.Any(t => MatchesPattern(type.Name, t)))
+            return true;
+
+        return HasExcludedAttribute(type, exclusions);
+    }
+
+    public static bool MethodMatchesExclusion(MethodDef method, ExclusionRules exclusions) =>
+        exclusions.Methods.Any(m => MatchesPattern(method.Name, m));
+
+    public static bool IsPrefix(Instruction instruction) =>
+        instruction.OpCode.FlowControl == FlowControl.Meta;
 
     public static bool IsCompilerGenerated(TypeDef type)
     {

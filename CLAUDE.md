@@ -103,11 +103,13 @@ Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | StringEncryption | 10 | Encrypts string literals (XOR or AES-256) |
 | ConstantEncryption | 11 | Encrypts numeric constants (int, long, float, double; XOR or AES-256) |
 | ResourceEncryption | 15 | Encrypts embedded resources (XOR or AES-256) |
-| ControlFlow | 30 | Switch-dispatches straight-line (branch-free) methods and/or inserts opaque predicates |
-| SymbolRenaming | 50 | Renames types, methods, fields, properties |
-| AntiDebug | 70 | Injects debugger detection |
-| AntiDecompiler | 72 | Injects junk types and methods |
-| AntiTamper | 75 | Verifies assembly integrity at runtime |
+| AntiDebug | 18 | Injects debugger detection |
+| AntiDump | 19 | Wipes PE headers in memory (Windows) |
+| AntiDecompiler | 20 | Injects junk types and methods |
+| AntiTamper | 22 | Verifies assembly integrity at runtime |
+| ControlFlow | 30 | Switch-dispatches basic blocks and/or inserts opaque predicates |
+| ReferenceProxy | 40 | Hides in-module call targets behind proxy methods |
+| SymbolRenaming | 50 | Renames types, methods, fields, properties, events, namespaces |
 | MetadataRemoval | 90 | Strips debug info and attributes |
 
 ### Source Obfuscators (Roslyn)

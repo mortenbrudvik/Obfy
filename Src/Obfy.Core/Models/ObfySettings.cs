@@ -148,7 +148,7 @@ public class ObfySettings
                 Protection.AntiDecompiler.Enabled = true;
                 Protection.AntiDump = true;
                 Protection.ReferenceProxy = true;
-                Protection.MethodEncryption = false;
+                Protection.MethodEncryption = true;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = true;

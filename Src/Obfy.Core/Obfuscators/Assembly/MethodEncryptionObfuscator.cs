@@ -59,7 +59,19 @@ public class MethodEncryptionObfuscator : IObfuscator
             }
 
             var xorKey = (byte)Random.Shared.Next(1, 256);
-            InjectDecryptor(module, targets.Count, xorKey);
+            var decryptor = InjectDecryptor(module, targets.Count, xorKey);
+            var decrypt = decryptor.FindMethod("DecryptBodies")
+                ?? throw new InvalidOperationException("Method-encryption decryptor was not injected.");
+
+            var initializer = FindOrCreateModuleInitializer(module);
+            initializer.Body!.Instructions.Insert(0, Instruction.Create(OpCodes.Call, decrypt));
+            initializer.Body.UpdateInstructionOffsets();
+
+            context.MethodEncryptionMetadata = new MethodEncryptionMetadata
+            {
+                Methods = targets,
+                XorKey = xorKey
+            };
 
             stats.ProtectionsApplied = targets.Count;
             _logger.LogInformation("Prepared {Count} methods for IL encryption", targets.Count);
@@ -164,6 +176,7 @@ public class MethodEncryptionObfuscator : IObfuscator
         var moduleType = new TypeRefUser(module, "System.Reflection", "Module", module.CorLibTypes.AssemblyRef);
         var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
         var runtimeTypeHandle = new TypeRefUser(module, "System", "RuntimeTypeHandle", module.CorLibTypes.AssemblyRef);
+        var intPtrType = new TypeRefUser(module, "System", "IntPtr", module.CorLibTypes.AssemblyRef);
 
         var getTypeFromHandle = new MemberRefUser(module, "GetTypeFromHandle",
             MethodSig.CreateStatic(new ClassSig(typeType), new ValueTypeSig(runtimeTypeHandle)), typeType);
@@ -171,6 +184,8 @@ public class MethodEncryptionObfuscator : IObfuscator
             MethodSig.CreateInstance(new ClassSig(moduleType)), typeType);
         var getHinstance = new MemberRefUser(module, "GetHINSTANCE",
             MethodSig.CreateStatic(module.CorLibTypes.IntPtr, new ClassSig(moduleType)), marshalType);
+        var intPtrAdd = new MemberRefUser(module, "Add",
+            MethodSig.CreateStatic(module.CorLibTypes.IntPtr, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32), intPtrType);
         var readInt32 = new MemberRefUser(module, "ReadInt32",
             MethodSig.CreateStatic(module.CorLibTypes.Int32, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32), marshalType);
         var readByte = new MemberRefUser(module, "ReadByte",
@@ -179,6 +194,7 @@ public class MethodEncryptionObfuscator : IObfuscator
             MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32, module.CorLibTypes.Byte), marshalType);
 
         var addr = new Local(module.CorLibTypes.IntPtr);
+        var blob = new Local(module.CorLibTypes.IntPtr);
         var i = new Local(module.CorLibTypes.Int32);
         var count = new Local(module.CorLibTypes.Int32);
         var key = new Local(module.CorLibTypes.Int32);
@@ -188,17 +204,20 @@ public class MethodEncryptionObfuscator : IObfuscator
         var j = new Local(module.CorLibTypes.Int32);
         var oldProtect = new Local(module.CorLibTypes.UInt32);
         var entryOff = new Local(module.CorLibTypes.Int32);
+        var byteOff = new Local(module.CorLibTypes.Int32);
         var xorByte = new Local(module.CorLibTypes.Int32);
-        foreach (var local in new[] { addr, i, count, key, rva, header, size, j, oldProtect, entryOff, xorByte })
+        foreach (var local in new[] { addr, blob, i, count, key, rva, header, size, j, oldProtect, entryOff, byteOff, xorByte })
             body.Variables.Add(local);
 
+        var tryStart = Instruction.Create(OpCodes.Ldtoken, declaringType);
         var ret = Instruction.Create(OpCodes.Ret);
+        var catchPop = Instruction.Create(OpCodes.Pop);
+        var leaveEnd = Instruction.Create(OpCodes.Leave, ret);
         var loopCheck = Instruction.Create(OpCodes.Ldloc, i);
         var innerCheck = Instruction.Create(OpCodes.Ldloc, j);
         var next = Instruction.Create(OpCodes.Ldloc, i);
-        var afterAddr = Instruction.Create(OpCodes.Ldloc, addr);
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, declaringType));
+        body.Instructions.Add(tryStart);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getModule));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getHinstance));
@@ -206,17 +225,18 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
-        body.Instructions.Add(Instruction.Create(OpCodes.Beq, ret));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, leaveEnd));
 
-        body.Instructions.Add(afterAddr);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_U));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, blob));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
         body.Instructions.Add(Instruction.CreateLdcI4(16));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, count));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
         body.Instructions.Add(Instruction.CreateLdcI4(20));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readByte));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, key));
@@ -233,22 +253,19 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, entryOff));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, rva));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_4));
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, header));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_8));
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
@@ -257,14 +274,16 @@ public class MethodEncryptionObfuscator : IObfuscator
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, rva));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, next));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, size));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, next));
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, rva));
-        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, intPtrAdd));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, header));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, size));
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
-        body.Instructions.Add(Instruction.Create(OpCodes.Conv_U));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_U4));
         body.Instructions.Add(Instruction.CreateLdcI4(0x40));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, oldProtect));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, virtualProtect));
@@ -274,17 +293,16 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, j));
         body.Instructions.Add(Instruction.Create(OpCodes.Br, innerCheck));
 
-        var innerBody = Instruction.Create(OpCodes.Ldloc, addr);
+        var innerBody = Instruction.Create(OpCodes.Ldloc, rva);
         body.Instructions.Add(innerBody);
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, rva));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, header));
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, j));
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
-        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, entryOff));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, byteOff));
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, byteOff));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readByte));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, key));
         body.Instructions.Add(Instruction.Create(OpCodes.Xor));
@@ -292,7 +310,7 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, xorByte));
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, byteOff));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, xorByte));
         body.Instructions.Add(Instruction.Create(OpCodes.Conv_U1));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, writeByte));
@@ -315,10 +333,20 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, count));
         body.Instructions.Add(Instruction.Create(OpCodes.Blt, loopBody));
 
+        body.Instructions.Add(leaveEnd);
+        body.Instructions.Add(catchPop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, ret));
         body.Instructions.Add(ret);
 
-        body.KeepOldMaxStack = true;
-        body.MaxStack = 8;
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+        {
+            TryStart = tryStart,
+            TryEnd = catchPop,
+            HandlerStart = catchPop,
+            HandlerEnd = ret,
+            CatchType = module.CorLibTypes.Object.ToTypeDefOrRef()
+        });
+
         body.UpdateInstructionOffsets();
         return method;
     }

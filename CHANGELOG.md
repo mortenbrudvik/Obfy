@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Native `IsDebuggerPresent` check in addition to managed debugger APIs
 - `calli` reference proxies (ILSpy cannot inline a `call`+`ret` trampoline)
 - XOR-encoded string decrypt indices so call sites are not `Decrypt(0)`, `Decrypt(1)`, …
+- Method IL encryption: XOR method bodies in the PE and decrypt them at module load (Aggressive)
 - Symbol renaming for events, accessors, and namespaces
 - CFG control-flow flattening for methods with branches
 - Opaque predicates based on `Environment.TickCount` instead of foldable constants

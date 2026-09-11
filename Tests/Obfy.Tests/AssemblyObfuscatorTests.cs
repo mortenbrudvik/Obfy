@@ -3001,6 +3001,8 @@ public class AssemblyObfuscatorTests
         result.Success.ShouldBeTrue();
         result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
         module.Types.ShouldContain(t => t.Name == "<MethodCrypt>");
+        context.MethodEncryptionMetadata.ShouldNotBeNull();
+        context.MethodEncryptionMetadata!.Methods.Count.ShouldBeGreaterThan(0);
     }
 
     #endregion

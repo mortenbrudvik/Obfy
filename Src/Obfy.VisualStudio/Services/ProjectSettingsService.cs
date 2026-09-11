@@ -47,9 +47,10 @@ public class ProjectSettingsService : IProjectSettingsService
             var json = await ReadFileAsync(filePath);
             return JsonSerializer.Deserialize<ObfySettings>(json, JsonOptions);
         }
-        catch
+        catch (Exception ex)
         {
-            return null;
+            System.Diagnostics.Debug.WriteLine($"Failed to parse {filePath}: {ex.Message}");
+            throw;
         }
     }
 

@@ -29,6 +29,7 @@ public partial class AssemblyFile : ObservableObject
     private long _fileSize;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsProcessing))]
     private FileStatus _status = FileStatus.Pending;
 
     [ObservableProperty]

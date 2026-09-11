@@ -1,3 +1,4 @@
+using System.Runtime.Loader;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Microsoft.Extensions.Logging;
@@ -185,6 +186,55 @@ public class AssemblyObfuscatorTests
         var hasOriginalString = method.Body.Instructions.Any(i =>
             i.OpCode == OpCodes.Ldstr && (string)i.Operand == "Hello World - Secret Message");
         hasOriginalString.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public async Task StringEncryption_RuntimeDecryptsOriginalString(EncryptionAlgorithm algorithm)
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Greeter", isPublic: true);
+        var method = CreateMethodWithString(type, "GetMessage", "HelloWorldSecret");
+        method.Attributes = MethodAttributes.Public | MethodAttributes.Static;
+
+        var logger = new Mock<ILogger<StringEncryptionObfuscator>>();
+        var obfuscator = new StringEncryptionObfuscator(logger.Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            StringEncryption = { Enabled = true, Algorithm = algorithm, MinStringLength = 3 }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-str-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "TestAssembly.dll");
+        try
+        {
+            module.Write(path);
+            var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromAssemblyPath(path);
+                var greeter = asm.GetType("TestNamespace.Greeter");
+                greeter.ShouldNotBeNull();
+                var getMessage = greeter!.GetMethod("GetMessage");
+                getMessage.ShouldNotBeNull();
+                var value = (string)getMessage!.Invoke(null, null)!;
+                value.ShouldBe("HelloWorldSecret");
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
     }
 
     [Fact]
@@ -855,9 +905,11 @@ public class AssemblyObfuscatorTests
 
         // Assert
         var antiTamperType = module.Types.First(t => t.Name == "<AntiTamper>");
-        var hashField = antiTamperType.Fields.FirstOrDefault(f => f.Name == "_h");
-        hashField.ShouldNotBeNull();
-        hashField.FieldType.FullName.ShouldBe("System.Byte[]");
+        var blobField = antiTamperType.Fields.FirstOrDefault(f => f.Name == "_blob");
+        blobField.ShouldNotBeNull();
+        blobField.HasFieldRVA.ShouldBeTrue();
+        antiTamperType.FindMethod("Verify").ShouldNotBeNull();
+        antiTamperType.FindMethod("FindHashOffset").ShouldNotBeNull();
     }
 
     [Fact]
@@ -1186,8 +1238,9 @@ public class AssemblyObfuscatorTests
         result.Success.ShouldBeTrue();
         result.Statistics.ResourcesEncrypted.ShouldBe(1);
 
-        // Original resource should be removed
-        module.Resources.ShouldNotContain(r => r.Name == "TestResource.dat");
+        var remaining = module.Resources.OfType<EmbeddedResource>().FirstOrDefault(r => r.Name == "TestResource.dat");
+        remaining.ShouldNotBeNull();
+        remaining.CreateReader().ToArray().ShouldNotBe(resourceData);
 
         // Decryptor type should be injected
         var decryptorType = module.Types.FirstOrDefault(t => t.Name == "<ResourceDecryptor>");

@@ -30,13 +30,21 @@ public class ObfuscationTarget
     /// </summary>
     public static ObfuscationTarget FromFile(string inputPath, string? outputPath = null)
     {
-        var extension = Path.GetExtension(inputPath).ToLowerInvariant();
-        var targetType = extension switch
+        TargetType targetType;
+        if (Directory.Exists(inputPath))
         {
-            ".dll" or ".exe" => TargetType.Assembly,
-            ".cs" => TargetType.SourceCode,
-            _ => throw new ArgumentException($"Unsupported file type: {extension}", nameof(inputPath))
-        };
+            targetType = TargetType.SourceCode;
+        }
+        else
+        {
+            var extension = Path.GetExtension(inputPath).ToLowerInvariant();
+            targetType = extension switch
+            {
+                ".dll" or ".exe" => TargetType.Assembly,
+                ".cs" => TargetType.SourceCode,
+                _ => throw new ArgumentException($"Unsupported file type: {extension}", nameof(inputPath))
+            };
+        }
 
         return new ObfuscationTarget
         {

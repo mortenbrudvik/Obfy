@@ -77,5 +77,33 @@ public class ObfySettingsTests
         settings.StringEncryption.MinStringLength.ShouldBe(3);
         settings.ControlFlow.Intensity.ShouldBe(50);
         settings.SymbolRenaming.Mode.ShouldBe(NamingMode.Unreadable);
+        settings.ControlFlow.Enabled.ShouldBeFalse();
+        settings.Protection.AntiDebug.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ApplyLevel_Minimal_DisablesAggressiveProtections()
+    {
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Aggressive);
+        settings.Level = ObfuscationLevel.Minimal;
+        settings.ApplyLevel();
+
+        settings.Protection.AntiTamper.Enabled.ShouldBeFalse();
+        settings.Protection.AntiDecompiler.Enabled.ShouldBeFalse();
+        settings.ResourceEncryption.Enabled.ShouldBeFalse();
+        settings.ConstantEncryption.Enabled.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ApplyLevel_Custom_DoesNotOverwriteFlags()
+    {
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Standard);
+        settings.Level = ObfuscationLevel.Custom;
+        settings.ControlFlow.Enabled = true;
+
+        settings.ApplyLevel();
+
+        settings.ControlFlow.Enabled.ShouldBeTrue();
+        settings.StringEncryption.Enabled.ShouldBeTrue();
     }
 }

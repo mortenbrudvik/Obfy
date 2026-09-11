@@ -188,12 +188,8 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (exclusions.Types.Any(t => MatchesPattern(type.Name, t)))
             return true;
 
-        // Check for excluded attributes
-        foreach (var attr in type.CustomAttributes)
-        {
-            if (exclusions.Attributes.Contains(attr.TypeFullName))
-                return true;
-        }
+        if (ObfuscatorHelpers.HasExcludedAttribute(type, exclusions))
+            return true;
 
         return false;
     }
@@ -233,13 +229,23 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (method.IsRuntimeSpecialName || method.IsSpecialName)
             return false;
 
-        // Don't rename virtual methods (could break inheritance)
-        if (method.IsVirtual && !method.IsNewSlot)
+        if (method.IsVirtual)
             return false;
 
-        // Don't rename interface implementations
         if (method.HasOverrides)
             return false;
+
+        if (method.DeclaringType.Interfaces.Count > 0)
+        {
+            foreach (var iface in method.DeclaringType.Interfaces)
+            {
+                var resolved = iface.Interface.ResolveTypeDef();
+                if (resolved == null)
+                    continue;
+                if (resolved.Methods.Any(m => m.Name == method.Name && m.MethodSig.Equals(method.MethodSig)))
+                    return false;
+            }
+        }
 
         return true;
     }

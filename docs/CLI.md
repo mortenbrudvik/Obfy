@@ -37,6 +37,10 @@ obfy <input>... [options]
 | `--control-flow` | | Enable control flow obfuscation | Off |
 | `--rename` | | Enable symbol renaming | Off |
 | `--anti-debug` | | Enable anti-debugging protection | Off |
+| `--anti-tamper` | | Enable anti-tamper protection | Off |
+| `--anti-decompiler` | | Enable anti-decompiler protection | Off |
+| `--no-string-encryption` | | Disable string encryption | Off |
+| `--no-symbol-renaming` | | Disable symbol renaming | Off |
 | `--strip-metadata` | | Remove debug metadata | Off |
 | `--encrypt-resources` | | Enable resource encryption | Off |
 | `--preserve-public` | | Preserve public API names | Off |

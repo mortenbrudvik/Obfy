@@ -48,7 +48,7 @@
                     <TextBlock Text="Thresholds" FontWeight="SemiBold" Margin="0,12,0,8"/>
                     <TextBlock Text="Integer Threshold" Margin="0,0,0,4"/>
                     <ui:NumberBox Value="{Binding IntegerThreshold}" Minimum="0" Maximum="1000" SpinButtonPlacementMode="Compact"/>
-                    <TextBlock Text="Skip integers with |value| &lt; threshold" FontSize="11" Foreground="Gray" Margin="0,2,0,8"/>
+                    <TextBlock Text="Skip integers with |value| &lt; threshold" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,8"/>
 
                     <CheckBox Content="Skip common floats (0, 1, -1)" IsChecked="{Binding SkipCommonFloats}"/>
                     <CheckBox Content="Skip common doubles (0, 1, -1)" IsChecked="{Binding SkipCommonDoubles}"/>

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
@@ -47,7 +48,7 @@ public class HtmlReportGenerator : IReportGenerator
         sb.AppendLine("<head>");
         sb.AppendLine("  <meta charset=\"UTF-8\">");
         sb.AppendLine("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-        sb.AppendLine($"  <title>Obfuscation Report - {Path.GetFileName(report.FileInfo.InputPath)}</title>");
+        sb.AppendLine($"  <title>Obfuscation Report - {Encode(Path.GetFileName(report.FileInfo.InputPath))}</title>");
         sb.AppendLine(GetStyles());
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
@@ -245,7 +246,7 @@ public class HtmlReportGenerator : IReportGenerator
         sb.AppendLine("    <div class=\"card\">");
         sb.AppendLine("      <h2>Summary</h2>");
         sb.AppendLine("      <table>");
-        sb.AppendLine($"        <tr><td>Input File</td><td>{Path.GetFileName(report.FileInfo.InputPath)}</td></tr>");
+        sb.AppendLine($"        <tr><td>Input File</td><td>{Encode(Path.GetFileName(report.FileInfo.InputPath))}</td></tr>");
         sb.AppendLine($"        <tr><td>Obfuscation Level</td><td>{report.Metadata.Level}</td></tr>");
         sb.AppendLine($"        <tr><td>Total Duration</td><td>{report.Metadata.TotalElapsedTime:mm\\:ss\\.fff}</td></tr>");
         sb.AppendLine($"        <tr><td>Total Transformations</td><td><strong>{report.Statistics.TotalTransformations:N0}</strong></td></tr>");
@@ -267,8 +268,8 @@ public class HtmlReportGenerator : IReportGenerator
         sb.AppendLine("    <div class=\"card\">");
         sb.AppendLine("      <h2>File Information</h2>");
         sb.AppendLine("      <table>");
-        sb.AppendLine($"        <tr><td>Input Path</td><td>{report.FileInfo.InputPath}</td></tr>");
-        sb.AppendLine($"        <tr><td>Output Path</td><td>{report.FileInfo.OutputPath}</td></tr>");
+        sb.AppendLine($"        <tr><td>Input Path</td><td>{Encode(report.FileInfo.InputPath)}</td></tr>");
+        sb.AppendLine($"        <tr><td>Output Path</td><td>{Encode(report.FileInfo.OutputPath)}</td></tr>");
         sb.AppendLine($"        <tr><td>Input Size</td><td>{FormatBytes(report.FileInfo.InputSizeBytes)}</td></tr>");
         sb.AppendLine($"        <tr><td>Output Size</td><td>{FormatBytes(report.FileInfo.OutputSizeBytes)}</td></tr>");
         sb.AppendLine($"        <tr><td>Size Change</td><td><span class=\"size-change {sizeChangeClass}\">{sizeChangeSign}{FormatBytes(report.FileInfo.SizeDifferenceBytes)} ({sizeChangeSign}{report.FileInfo.SizeChangePercent:F1}%)</span></td></tr>");
@@ -393,11 +394,11 @@ public class HtmlReportGenerator : IReportGenerator
             {
                 var severityClass = warning.Severity.ToString().ToLowerInvariant();
                 sb.AppendLine($"      <div class=\"warning-item {severityClass}\">");
-                sb.AppendLine($"        <div class=\"category\">{warning.Category}</div>");
-                sb.AppendLine($"        <div>{warning.Message}</div>");
+                sb.AppendLine($"        <div class=\"category\">{Encode(warning.Category.ToString())}</div>");
+                sb.AppendLine($"        <div>{Encode(warning.Message)}</div>");
                 if (!string.IsNullOrEmpty(warning.Details))
                 {
-                    sb.AppendLine($"        <div style=\"margin-top:5px;font-size:0.9em;opacity:0.8;\">{warning.Details}</div>");
+                    sb.AppendLine($"        <div style=\"margin-top:5px;font-size:0.9em;opacity:0.8;\">{Encode(warning.Details)}</div>");
                 }
                 sb.AppendLine("      </div>");
             }
@@ -419,7 +420,15 @@ public class HtmlReportGenerator : IReportGenerator
             suffixIndex++;
         }
 
-        var formatted = size < 10 ? $"{size:F2}" : size < 100 ? $"{size:F1}" : $"{size:F0}";
+        string formatted;
+        if (size < 10)
+            formatted = $"{size:F2}";
+        else if (size < 100)
+            formatted = $"{size:F1}";
+        else
+            formatted = $"{size:F0}";
         return $"{(bytes < 0 ? "-" : "")}{formatted} {suffixes[suffixIndex]}";
     }
+
+    private static string Encode(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 }

@@ -3,6 +3,7 @@ using dnlib.DotNet.Emit;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Obfuscators.Assembly;
 
@@ -45,7 +46,7 @@ public class ControlFlowObfuscator : IObfuscator
         {
             foreach (var type in module.GetTypes())
             {
-                if (IsExcluded(type, context.Settings.Exclusions))
+                if (ObfuscatorHelpers.IsRuntimeOrExcluded(type, context.Settings.Exclusions))
                     continue;
 
                 foreach (var method in type.Methods)
@@ -72,7 +73,14 @@ public class ControlFlowObfuscator : IObfuscator
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to obfuscate method {Method}", method.FullName);
+                        _logger.LogError(ex, "Failed to obfuscate method {Method}", method.FullName);
+                        context.SkippedItems.Add(new SkippedItem
+                        {
+                            Reason = SkipReason.UnsupportedConstruct,
+                            ItemType = "Method",
+                            ItemName = method.FullName,
+                            Details = ex.Message
+                        });
                     }
                 }
             }
@@ -115,37 +123,74 @@ public class ControlFlowObfuscator : IObfuscator
         if (instructions.Count < 10)
             return false;
 
-        // Find basic blocks
-        var blocks = IdentifyBasicBlocks(instructions);
-
-        if (blocks.Count < 3)
-            return false;
-
-        // Only flatten a percentage of methods based on intensity
         if (_random.Next(100) > intensity)
             return false;
 
-        // Create state variable
-        var stateVar = new Local(method.Module.CorLibTypes.Int32);
-        body.Variables.Add(stateVar);
-
-        // Assign random state numbers to blocks
-        var stateNumbers = new Dictionary<int, int>();
-        var usedStates = new HashSet<int>();
-        foreach (var blockStart in blocks)
+        if (instructions.Any(i =>
+                i.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch))
         {
-            int state;
-            do
-            {
-                state = _random.Next(1000, 9999);
-            } while (!usedStates.Add(state));
-
-            stateNumbers[blockStart] = state;
+            return false;
         }
 
-        // Insert dispatcher at the beginning
-        InsertSwitchDispatcher(body, stateVar, blocks, stateNumbers);
+        return FlattenLinearMethod(method);
+    }
 
+    private static bool FlattenLinearMethod(MethodDef method)
+    {
+        var body = method.Body;
+        var instructions = body.Instructions;
+        if (instructions.Count < 8)
+            return false;
+
+        var ret = instructions.Last();
+        if (ret.OpCode != OpCodes.Ret)
+            return false;
+
+        const int chunkSize = 4;
+        var work = instructions.Take(instructions.Count - 1).ToList();
+        if (work.Count < 4)
+            return false;
+
+        var chunks = new List<List<Instruction>>();
+        for (var i = 0; i < work.Count; i += chunkSize)
+        {
+            chunks.Add(work.Skip(i).Take(chunkSize).ToList());
+        }
+
+        var stateVar = new Local(method.Module.CorLibTypes.Int32);
+        body.Variables.Add(stateVar);
+        body.InitLocals = true;
+
+        var dispatcher = Instruction.Create(OpCodes.Ldloc, stateVar);
+        var targets = chunks.Select(_ => Instruction.Create(OpCodes.Nop)).ToList();
+        var switchInstr = Instruction.Create(OpCodes.Switch, targets.ToArray());
+
+        var rebuilt = new List<Instruction>
+        {
+            Instruction.Create(OpCodes.Ldc_I4_0),
+            Instruction.Create(OpCodes.Stloc, stateVar),
+            dispatcher,
+            switchInstr
+        };
+
+        for (var c = 0; c < chunks.Count; c++)
+        {
+            rebuilt.Add(targets[c]);
+            rebuilt.AddRange(chunks[c]);
+            if (c + 1 < chunks.Count)
+            {
+                rebuilt.Add(Instruction.CreateLdcI4(c + 1));
+                rebuilt.Add(Instruction.Create(OpCodes.Stloc, stateVar));
+                rebuilt.Add(Instruction.Create(OpCodes.Br, dispatcher));
+            }
+        }
+
+        rebuilt.Add(Instruction.Create(OpCodes.Ret));
+        instructions.Clear();
+        foreach (var instr in rebuilt)
+            instructions.Add(instr);
+
+        body.UpdateInstructionOffsets();
         return true;
     }
 
@@ -189,54 +234,6 @@ public class ControlFlowObfuscator : IObfuscator
         return result1 || result2;
     }
 
-    private List<int> IdentifyBasicBlocks(IList<Instruction> instructions)
-    {
-        var leaders = new HashSet<int> { 0 };
-
-        for (var i = 0; i < instructions.Count; i++)
-        {
-            var instr = instructions[i];
-
-            // After a branch, the next instruction starts a block
-            if (instr.OpCode.FlowControl == FlowControl.Branch ||
-                instr.OpCode.FlowControl == FlowControl.Cond_Branch ||
-                instr.OpCode.FlowControl == FlowControl.Return)
-            {
-                if (i + 1 < instructions.Count)
-                {
-                    leaders.Add(i + 1);
-                }
-            }
-
-            // Branch targets start blocks
-            if (instr.Operand is Instruction target)
-            {
-                var targetIndex = instructions.IndexOf(target);
-                if (targetIndex >= 0)
-                {
-                    leaders.Add(targetIndex);
-                }
-            }
-        }
-
-        return leaders.OrderBy(x => x).ToList();
-    }
-
-    private void InsertSwitchDispatcher(CilBody body, Local stateVar, List<int> blocks, Dictionary<int, int> stateNumbers)
-    {
-        // This is a simplified implementation
-        // A full implementation would restructure the entire method
-
-        var instructions = body.Instructions;
-
-        // Insert state initialization at the beginning
-        var initState = stateNumbers.Values.FirstOrDefault();
-        instructions.Insert(0, Instruction.CreateLdcI4(initState));
-        instructions.Insert(1, Instruction.Create(OpCodes.Stloc, stateVar));
-
-        body.UpdateInstructionOffsets();
-    }
-
     private void InsertOpaquePredicate(CilBody body, int position)
     {
         var instructions = body.Instructions;
@@ -266,28 +263,4 @@ public class ControlFlowObfuscator : IObfuscator
         }
     }
 
-    private bool IsExcluded(TypeDef type, ExclusionRules rules)
-    {
-        if (type.Namespace == "Obfy.Runtime")
-            return true;
-
-        // Skip Obfy's own model types (required for JSON serialization)
-        if (type.Namespace == "Obfy.Core.Models")
-            return true;
-
-        return rules.Namespaces.Any(n => MatchesPattern(type.Namespace, n)) ||
-               rules.Types.Any(t => MatchesPattern(type.Name, t));
-    }
-
-    private static bool MatchesPattern(string value, string pattern)
-    {
-        if (string.IsNullOrEmpty(value))
-            return false;
-
-        if (pattern.EndsWith("*"))
-        {
-            return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
-        }
-        return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
-    }
 }

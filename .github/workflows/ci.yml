@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v4
@@ -50,6 +50,7 @@ jobs:
       shell: bash
 
     - name: Check Coverage Threshold
+      shell: bash
       run: |
         COVERAGE=$(grep -oP 'line-rate="[\d.]+"' coverage/report/Cobertura.xml | head -1 | grep -oP '[\d.]+')
         COVERAGE_PCT=$(echo "$COVERAGE * 100" | bc)

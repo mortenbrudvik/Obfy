@@ -262,6 +262,26 @@ public class SourceSymbolRenamer : IObfuscator
             _settings = settings;
         }
 
+        public override SyntaxNode? VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
+        {
+            var key = $"Type:{node.Identifier.Text}";
+            if (_symbolMap.TryGetValue(key, out var newName))
+            {
+                node = node.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(node.Identifier));
+            }
+            return base.VisitConstructorDeclaration(node);
+        }
+
+        public override SyntaxNode? VisitDestructorDeclaration(DestructorDeclarationSyntax node)
+        {
+            var key = $"Type:{node.Identifier.Text}";
+            if (_symbolMap.TryGetValue(key, out var newName))
+            {
+                node = node.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(node.Identifier));
+            }
+            return base.VisitDestructorDeclaration(node);
+        }
+
         public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node)
         {
             var key = $"Type:{node.Identifier.Text}";

@@ -9,7 +9,7 @@ public class OutputStep : WizardStep
 {
     public override string Title => "Generate Configuration";
 
-    public override Task ExecuteAsync(WizardContext context)
+    public override async Task ExecuteAsync(WizardContext context)
     {
         // Display summary
         ConfigurationWizard.DisplaySummary(context);
@@ -30,12 +30,15 @@ public class OutputStep : WizardStep
         if (action.StartsWith("Cancel"))
         {
             context.Cancelled = true;
-            return Task.CompletedTask;
+            return;
         }
 
-        // Generate the configuration
-        ConfigurationWizard.GenerateConfigAsync(context).GetAwaiter().GetResult();
+        var written = await ConfigurationWizard.GenerateConfigAsync(context);
+        if (!written)
+        {
+            context.Cancelled = true;
+        }
 
-        return Task.CompletedTask;
+        return;
     }
 }

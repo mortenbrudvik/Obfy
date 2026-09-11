@@ -53,8 +53,12 @@ public class AntiDebugObfuscator : IObfuscator
                     stats.ProtectionsApplied++;
                 }
 
-                // Add checks to module initializer if exists
                 var moduleInitializer = FindModuleInitializer(module);
+                if (moduleInitializer == null && module.EntryPoint == null)
+                {
+                    moduleInitializer = CreateModuleInitializer(module);
+                }
+
                 if (moduleInitializer != null)
                 {
                     InjectDebuggerCheck(moduleInitializer, antiDebugType);
@@ -191,5 +195,31 @@ public class AntiDebugObfuscator : IObfuscator
         return globalType.Methods.FirstOrDefault(m =>
             m.IsStaticConstructor ||
             m.Name == ".cctor");
+    }
+
+    private static MethodDef CreateModuleInitializer(ModuleDef module)
+    {
+        var globalType = module.GlobalType;
+        if (globalType == null)
+        {
+            globalType = new TypeDefUser("", "<Module>", null)
+            {
+                Attributes = TypeAttributes.NotPublic
+            };
+            module.Types.Insert(0, globalType);
+        }
+
+        var cctor = new MethodDefUser(
+            ".cctor",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Private | MethodAttributes.Static |
+            MethodAttributes.HideBySig | MethodAttributes.SpecialName |
+            MethodAttributes.RTSpecialName);
+
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        cctor.Body = body;
+        globalType.Methods.Add(cctor);
+        return cctor;
     }
 }

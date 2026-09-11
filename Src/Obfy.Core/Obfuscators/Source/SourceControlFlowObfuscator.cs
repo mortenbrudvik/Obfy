@@ -171,9 +171,58 @@ public class SourceControlFlowObfuscator : IObfuscator
             return ifStatement;
         }
 
+        private static bool CanFlatten(BlockSyntax body)
+        {
+            for (var i = 0; i < body.Statements.Count; i++)
+            {
+                var statement = body.Statements[i];
+                if (statement is ReturnStatementSyntax)
+                {
+                    if (i != body.Statements.Count - 1)
+                        return false;
+                    continue;
+                }
+
+                if (statement is LocalDeclarationStatementSyntax
+                    or BreakStatementSyntax
+                    or ContinueStatementSyntax
+                    or GotoStatementSyntax
+                    or LabeledStatementSyntax
+                    or SwitchStatementSyntax
+                    or WhileStatementSyntax
+                    or ForStatementSyntax
+                    or ForEachStatementSyntax
+                    or DoStatementSyntax
+                    or TryStatementSyntax
+                    or UsingStatementSyntax
+                    or LockStatementSyntax
+                    or CheckedStatementSyntax
+                    or UnsafeStatementSyntax
+                    or YieldStatementSyntax)
+                {
+                    return false;
+                }
+
+                if (statement.DescendantNodes().Any(n =>
+                        n is BreakStatementSyntax
+                            or ContinueStatementSyntax
+                            or GotoStatementSyntax
+                            or YieldStatementSyntax
+                            or LocalDeclarationStatementSyntax))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private BlockSyntax ConvertToSwitchDispatcher(BlockSyntax body)
         {
             if (body.Statements.Count < 3)
+                return body;
+
+            if (!CanFlatten(body))
                 return body;
 
             // Create state variable and switch-based dispatcher

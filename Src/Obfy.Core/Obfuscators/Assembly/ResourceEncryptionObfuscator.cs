@@ -73,8 +73,10 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
                 resourcesToEncrypt.Add((resourceName, encrypted));
 
-                // Remove original resource
-                module.Resources.RemoveAt(i);
+                module.Resources[i] = new EmbeddedResource(
+                    embeddedResource.Name,
+                    encrypted,
+                    embeddedResource.Attributes);
 
                 stats.ResourcesEncrypted++;
                 _logger.LogDebug("Encrypted resource {Name} ({Size} bytes)", resourceName, data.Length);
@@ -164,9 +166,18 @@ public class ResourceEncryptionObfuscator : IObfuscator
             FieldAttributes.Private | FieldAttributes.Static);
         typeDef.Fields.Add(cacheField);
 
-        // Add Decrypt method
-        var decryptMethod = CreateDecryptMethod(module, keyField, dataField, namesField, cacheField, algorithm);
+        var xorHelper = DecryptorIl.CreateXorDecryptBytes(module, "XorDecrypt", MethodAttributes.Private | MethodAttributes.Static);
+        typeDef.Methods.Add(xorHelper);
+        var aesHelper = DecryptorIl.CreateAesDecryptBytes(module, "AesDecrypt", MethodAttributes.Private | MethodAttributes.Static);
+        typeDef.Methods.Add(aesHelper);
+
+        var decryptMethod = CreateDecryptMethod(module, keyField, dataField, namesField, cacheField, algorithm, xorHelper, aesHelper);
         typeDef.Methods.Add(decryptMethod);
+
+        var bytesHelper = algorithm == EncryptionAlgorithm.Xor ? xorHelper : aesHelper;
+        var unwrap = CreateUnwrapStreamMethod(module, bytesHelper, keyField);
+        typeDef.Methods.Add(unwrap);
+        RewriteResourceLoads(module, unwrap);
 
         // Add static constructor to initialize data
         var cctor = CreateStaticConstructor(module, keyField, dataField, namesField, cacheField, key, encryptedResources);
@@ -183,7 +194,9 @@ public class ResourceEncryptionObfuscator : IObfuscator
         FieldDef dataField,
         FieldDef namesField,
         FieldDef cacheField,
-        EncryptionAlgorithm algorithm)
+        EncryptionAlgorithm algorithm,
+        MethodDef xorHelper,
+        MethodDef aesHelper)
     {
         var method = new MethodDefUser(
             "GetResource",
@@ -297,19 +310,8 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
         // For simplicity, we'll implement XOR decryption inline
         // Call a helper that we inject or do inline XOR
-        if (algorithm == EncryptionAlgorithm.Xor)
-        {
-            // Call inline XOR helper
-            var xorHelper = CreateXorDecryptHelper(module);
-            body.Instructions.Add(Instruction.Create(OpCodes.Call, xorHelper));
-        }
-        else
-        {
-            // For AES, we need to call the runtime decryption
-            // This is more complex - we'll inject a simpler approach
-            var aesHelper = CreateAesDecryptHelper(module);
-            body.Instructions.Add(Instruction.Create(OpCodes.Call, aesHelper));
-        }
+        var helper = algorithm == EncryptionAlgorithm.Xor ? xorHelper : aesHelper;
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, helper));
 
         body.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
 
@@ -712,5 +714,95 @@ public class ResourceEncryptionObfuscator : IObfuscator
         pid.NestedTypes.Add(sizeType);
 
         return sizeType;
+    }
+
+    private static MethodDef CreateUnwrapStreamMethod(ModuleDef module, MethodDef bytesDecrypt, FieldDef keyField)
+    {
+        var streamType = new TypeRefUser(module, "System.IO", "Stream", module.CorLibTypes.AssemblyRef);
+        var memoryStreamType = new TypeRefUser(module, "System.IO", "MemoryStream", module.CorLibTypes.AssemblyRef);
+
+        var method = new MethodDefUser(
+            "UnwrapStream",
+            MethodSig.CreateStatic(new ClassSig(streamType), new ClassSig(streamType)),
+            MethodAttributes.Public | MethodAttributes.Static);
+
+        var body = new CilBody { InitLocals = true };
+        method.Body = body;
+
+        var bufferLocal = new Local(new ClassSig(memoryStreamType));
+        body.Variables.Add(bufferLocal);
+
+        var copyTo = new MemberRefUser(module, "CopyTo",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, new ClassSig(streamType)), streamType);
+        var dispose = new MemberRefUser(module, "Dispose",
+            MethodSig.CreateInstance(module.CorLibTypes.Void),
+            new TypeRefUser(module, "System", "IDisposable", module.CorLibTypes.AssemblyRef));
+        var toArray = new MemberRefUser(module, "ToArray",
+            MethodSig.CreateInstance(new SZArraySig(module.CorLibTypes.Byte)), memoryStreamType);
+        var msCtor = new MemberRefUser(module, ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, new SZArraySig(module.CorLibTypes.Byte)),
+            memoryStreamType);
+        var msEmptyCtor = new MemberRefUser(module, ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void), memoryStreamType);
+
+        var retNull = Instruction.Create(OpCodes.Ldnull);
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, retNull));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Newobj, msEmptyCtor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, bufferLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufferLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, copyTo));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, dispose));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufferLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, toArray));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, bytesDecrypt));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newobj, msCtor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        body.Instructions.Add(retNull);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        body.UpdateInstructionOffsets();
+        return method;
+    }
+
+    private static void RewriteResourceLoads(ModuleDef module, MethodDef unwrap)
+    {
+        foreach (var type in module.GetTypes())
+        {
+            if (type.Namespace == "Obfy.Runtime")
+                continue;
+
+            foreach (var method in type.Methods)
+            {
+                if (!method.HasBody)
+                    continue;
+
+                var instructions = method.Body.Instructions;
+                for (var i = 0; i < instructions.Count; i++)
+                {
+                    var instr = instructions[i];
+                    if (instr.OpCode != OpCodes.Call && instr.OpCode != OpCodes.Callvirt)
+                        continue;
+
+                    if (instr.Operand is not IMethod called)
+                        continue;
+
+                    if (called.Name != "GetManifestResourceStream")
+                        continue;
+
+                    instructions.Insert(i + 1, Instruction.Create(OpCodes.Call, unwrap));
+                    i++;
+                }
+
+                method.Body.UpdateInstructionOffsets();
+            }
+        }
     }
 }

@@ -24,6 +24,10 @@ public class Program
     internal static Option<bool> ControlFlowOption { get; private set; } = null!;
     internal static Option<bool> RenameOption { get; private set; } = null!;
     internal static Option<bool> AntiDebugOption { get; private set; } = null!;
+    internal static Option<bool> AntiTamperOption { get; private set; } = null!;
+    internal static Option<bool> AntiDecompilerOption { get; private set; } = null!;
+    internal static Option<bool> NoStringEncryptOption { get; private set; } = null!;
+    internal static Option<bool> NoRenameOption { get; private set; } = null!;
     internal static Option<bool> StripMetadataOption { get; private set; } = null!;
     internal static Option<bool> EncryptResourcesOption { get; private set; } = null!;
     internal static Option<bool> PreservePublicOption { get; private set; } = null!;
@@ -79,6 +83,22 @@ public class Program
             name: "--anti-debug",
             description: "Enable anti-debugging protection");
 
+        AntiTamperOption = new Option<bool>(
+            name: "--anti-tamper",
+            description: "Enable anti-tamper protection");
+
+        AntiDecompilerOption = new Option<bool>(
+            name: "--anti-decompiler",
+            description: "Enable anti-decompiler protection");
+
+        NoStringEncryptOption = new Option<bool>(
+            name: "--no-string-encryption",
+            description: "Disable string encryption");
+
+        NoRenameOption = new Option<bool>(
+            name: "--no-symbol-renaming",
+            description: "Disable symbol renaming");
+
         StripMetadataOption = new Option<bool>(
             name: "--strip-metadata",
             description: "Remove debug metadata");
@@ -131,6 +151,10 @@ public class Program
             ControlFlowOption,
             RenameOption,
             AntiDebugOption,
+            AntiTamperOption,
+            AntiDecompilerOption,
+            NoStringEncryptOption,
+            NoRenameOption,
             StripMetadataOption,
             EncryptResourcesOption,
             PreservePublicOption,
@@ -211,6 +235,10 @@ public class Program
             var controlFlow = context.ParseResult.GetValueForOption(ControlFlowOption);
             var rename = context.ParseResult.GetValueForOption(RenameOption);
             var antiDebug = context.ParseResult.GetValueForOption(AntiDebugOption);
+            var antiTamper = context.ParseResult.GetValueForOption(AntiTamperOption);
+            var antiDecompiler = context.ParseResult.GetValueForOption(AntiDecompilerOption);
+            var noStringEncrypt = context.ParseResult.GetValueForOption(NoStringEncryptOption);
+            var noRename = context.ParseResult.GetValueForOption(NoRenameOption);
             var stripMetadata = context.ParseResult.GetValueForOption(StripMetadataOption);
             var encryptResources = context.ParseResult.GetValueForOption(EncryptResourcesOption);
             var preservePublic = context.ParseResult.GetValueForOption(PreservePublicOption);
@@ -227,18 +255,26 @@ public class Program
                 PrintBanner();
             }
 
-            var settings = await BuildSettingsAsync(
-                config, level, stringEncrypt, controlFlow, rename,
-                antiDebug, stripMetadata, encryptResources, preservePublic);
-
-            // Configure merge settings if --merge is specified
-            if (merge)
+            try
             {
-                settings.AssemblyMerge.Enabled = true;
-                settings.AssemblyMerge.Internalize = internalize;
-            }
+                var settings = await BuildSettingsAsync(
+                    config, level, stringEncrypt, controlFlow, rename,
+                    antiDebug, stripMetadata, encryptResources, preservePublic,
+                    antiTamper, antiDecompiler, noStringEncrypt, noRename);
 
-            await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose, merge);
+                if (merge)
+                {
+                    settings.AssemblyMerge.Enabled = true;
+                    settings.AssemblyMerge.Internalize = internalize;
+                }
+
+                context.ExitCode = await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose, merge);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException)
+            {
+                AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
+                context.ExitCode = 1;
+            }
         });
 
         return await rootCommand.InvokeAsync(args);
@@ -261,49 +297,63 @@ public class Program
         bool antiDebug,
         bool stripMetadata,
         bool encryptResources,
-        bool preservePublic)
+        bool preservePublic,
+        bool antiTamper = false,
+        bool antiDecompiler = false,
+        bool noStringEncrypt = false,
+        bool noRename = false)
     {
         ObfySettings settings;
 
-        if (configFile?.Exists == true)
+        if (configFile != null)
         {
+            if (!configFile.Exists)
+                throw new FileNotFoundException($"Config file not found: {configFile.FullName}");
+
             var json = await File.ReadAllTextAsync(configFile.FullName);
             settings = JsonSerializer.Deserialize<ObfySettings>(json, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            }) ?? new ObfySettings();
+            }) ?? throw new InvalidOperationException("Config file deserialized to null.");
         }
         else
         {
-            var parsedLevel = ParseLevel(level);
-            settings = ObfySettings.ForLevel(parsedLevel);
+            settings = ObfySettings.ForLevel(ParseLevel(level));
         }
 
-        // Override with CLI options
+        var anyOverride = stringEncrypt || controlFlow || rename || antiDebug || stripMetadata
+            || encryptResources || preservePublic || antiTamper || antiDecompiler
+            || noStringEncrypt || noRename;
+
         if (stringEncrypt) settings.StringEncryption.Enabled = true;
+        if (noStringEncrypt) settings.StringEncryption.Enabled = false;
         if (controlFlow) settings.ControlFlow.Enabled = true;
         if (rename) settings.SymbolRenaming.Enabled = true;
+        if (noRename) settings.SymbolRenaming.Enabled = false;
         if (antiDebug) settings.Protection.AntiDebug = true;
+        if (antiTamper) settings.Protection.AntiTamper.Enabled = true;
+        if (antiDecompiler) settings.Protection.AntiDecompiler.Enabled = true;
         if (stripMetadata) settings.Metadata.RemoveDebugInfo = true;
         if (encryptResources) settings.ResourceEncryption.Enabled = true;
         if (preservePublic) settings.SymbolRenaming.PreservePublicApi = true;
+
+        if (anyOverride)
+            settings.Level = ObfuscationLevel.Custom;
 
         return settings;
     }
 
     private static ObfuscationLevel ParseLevel(string level)
     {
-        return level.ToLowerInvariant() switch
+        if (!Enum.TryParse<ObfuscationLevel>(level, ignoreCase: true, out var parsed))
         {
-            "minimal" => ObfuscationLevel.Minimal,
-            "standard" => ObfuscationLevel.Standard,
-            "aggressive" => ObfuscationLevel.Aggressive,
-            "custom" => ObfuscationLevel.Custom,
-            _ => ObfuscationLevel.Standard
-        };
+            throw new ArgumentException($"Unknown obfuscation level '{level}'. Valid values: minimal, standard, aggressive, custom.");
+        }
+
+        return parsed;
     }
 
-    private static async Task RunObfuscationAsync(
+    private static async Task<int> RunObfuscationAsync(
         FileInfo[] inputs,
         DirectoryInfo? output,
         ObfySettings settings,
@@ -324,15 +374,21 @@ public class Program
 
         var allSymbols = new Dictionary<string, string>();
         var successfulResults = new List<(ObfuscationResult Result, ObfySettings Settings)>();
+        var anyFailed = false;
 
-        // Handle merge mode
-        if (merge && inputs.Length >= 2)
+        if (merge && inputs.Length < 2)
         {
-            await RunMergeObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun);
+            AnsiConsole.MarkupLine("[red]Merge requires at least two input assemblies.[/]");
+            return 1;
+        }
+
+        if (merge)
+        {
+            anyFailed = await RunMergeObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun);
         }
         else
         {
-            await RunStandardObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun);
+            anyFailed = await RunStandardObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun);
         }
 
         // Write symbol map if requested
@@ -358,10 +414,17 @@ public class Program
         }
 
         AnsiConsole.WriteLine();
+        if (anyFailed)
+        {
+            AnsiConsole.MarkupLine("[red]Obfuscation finished with errors.[/]");
+            return 1;
+        }
+
         AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
+        return 0;
     }
 
-    private static async Task RunMergeObfuscationAsync(
+    private static async Task<bool> RunMergeObfuscationAsync(
         FileInfo[] inputs,
         DirectoryInfo? output,
         ObfySettings settings,
@@ -383,9 +446,10 @@ public class Program
         if (dryRun)
         {
             AnsiConsole.MarkupLine($"[yellow]Dry run:[/] Would merge and obfuscate {inputs.Length} assemblies");
-            return;
+            return false;
         }
 
+        var failed = false;
         await AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
             .StartAsync("Merging and obfuscating...", async ctx =>
@@ -410,11 +474,13 @@ public class Program
                 else
                 {
                     DisplayError("Merge", result);
+                    failed = true;
                 }
             });
+        return failed;
     }
 
-    private static async Task RunStandardObfuscationAsync(
+    private static async Task<bool> RunStandardObfuscationAsync(
         FileInfo[] inputs,
         DirectoryInfo? output,
         ObfySettings settings,
@@ -423,6 +489,7 @@ public class Program
         IObfuscationService service,
         bool dryRun)
     {
+        var failed = false;
         await AnsiConsole.Progress()
             .AutoClear(false)
             .Columns(
@@ -440,6 +507,7 @@ public class Program
                     {
                         AnsiConsole.MarkupLine($"[red]File not found: {input.FullName}[/]");
                         task.Increment(100);
+                        failed = true;
                         continue;
                     }
 
@@ -474,9 +542,11 @@ public class Program
                     else
                     {
                         DisplayError(input.Name, result);
+                        failed = true;
                     }
                 }
             });
+        return failed;
     }
 
     private static void DisplaySuccess(string fileName, ObfuscationResult result)

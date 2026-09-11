@@ -42,6 +42,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ResultsViewModel Results { get; }
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ObfuscateCommand))]
     private bool _isObfuscating;
 
     [ObservableProperty]
@@ -74,6 +75,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Files = files;
         Output = output;
         Results = results;
+        Files.Files.CollectionChanged += (_, _) => ObfuscateCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -130,10 +132,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ? Path.Combine(outputDir, file.FileName)
                     : null;
 
-                var result = await _obfuscationService.ObfuscateAsync(
-                    file.FilePath,
-                    outputPath,
-                    settings,
+                var result = await Task.Run(
+                    () => _obfuscationService.ObfuscateAsync(
+                        file.FilePath,
+                        outputPath,
+                        settings,
+                        cancellationToken),
                     cancellationToken);
 
                 file.Progress = 100;
@@ -144,7 +148,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     lastSuccessfulResult = result;
                     if (result.Statistics != null)
                     {
-                        totalStats = MergeStatistics(totalStats, result.Statistics);
+                        totalStats.Merge(result.Statistics);
                     }
                     // Collect symbols for the results panel
                     foreach (var (key, value) in result.SymbolMap)
@@ -222,9 +226,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var settings = Settings.ToObfySettings();
-        await _settingsService.SaveSettingsAsync(settings, filePath);
-        Output.Info($"Configuration saved to {filePath}");
+        try
+        {
+            var settings = Settings.ToObfySettings();
+            await _settingsService.SaveSettingsAsync(settings, filePath);
+            Output.Info($"Configuration saved to {filePath}");
+        }
+        catch (Exception ex)
+        {
+            Output.Error($"Failed to save configuration: {ex.Message}");
+        }
     }
 
     [RelayCommand]
@@ -236,40 +247,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var settings = await _settingsService.LoadSettingsAsync(filePath);
-        if (settings != null)
+        try
         {
-            Settings.FromObfySettings(settings);
-            Output.Info($"Configuration loaded from {filePath}");
+            var settings = await _settingsService.LoadSettingsAsync(filePath);
+            if (settings != null)
+            {
+                Settings.FromObfySettings(settings);
+                Output.Info($"Configuration loaded from {filePath}");
+            }
+            else
+            {
+                Output.Error($"Failed to load configuration from {filePath}");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            Output.Error($"Failed to load configuration from {filePath}");
+            Output.Error($"Failed to load configuration: {ex.Message}");
         }
     }
 
     [RelayCommand]
     private void ShowAbout()
     {
-        // About dialog would be shown here
-        Output.Info("Obfy v1.0.0 - .NET Obfuscation Tool");
-    }
-
-    private static ObfuscationStatistics MergeStatistics(ObfuscationStatistics a, ObfuscationStatistics b)
-    {
-        return new ObfuscationStatistics
+        var about = new Obfy.UI.Views.Dialogs.AboutWindow();
+        if (System.Windows.Application.Current?.MainWindow != null)
         {
-            StringsEncrypted = a.StringsEncrypted + b.StringsEncrypted,
-            TypesRenamed = a.TypesRenamed + b.TypesRenamed,
-            MethodsRenamed = a.MethodsRenamed + b.MethodsRenamed,
-            FieldsRenamed = a.FieldsRenamed + b.FieldsRenamed,
-            PropertiesRenamed = a.PropertiesRenamed + b.PropertiesRenamed,
-            ParametersRenamed = a.ParametersRenamed + b.ParametersRenamed,
-            MethodsControlFlowObfuscated = a.MethodsControlFlowObfuscated + b.MethodsControlFlowObfuscated,
-            ProtectionsApplied = a.ProtectionsApplied + b.ProtectionsApplied,
-            MetadataItemsRemoved = a.MetadataItemsRemoved + b.MetadataItemsRemoved,
-            ResourcesEncrypted = a.ResourcesEncrypted + b.ResourcesEncrypted
-        };
+            about.Owner = System.Windows.Application.Current.MainWindow;
+        }
+        about.ShowDialog();
     }
 
     public void Dispose()

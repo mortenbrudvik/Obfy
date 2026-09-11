@@ -75,14 +75,12 @@ public abstract class SettingsServiceBase<T> : ISettingsService<T> where T : cla
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Failed to load settings from {Path}, using defaults", _filePath);
+            _logger?.LogWarning(ex, "Failed to load settings from {Path}, using in-memory defaults without overwriting the file", _filePath);
         }
 
-        // Create default settings
         _settings = CreateDefaultSettings();
         OnSettingsLoaded(_settings);
-        Save();
-        _logger?.LogDebug("Default settings created at {Path}", _filePath);
+        _logger?.LogDebug("Default settings used; existing file at {Path} was not overwritten", _filePath);
     }
 
     /// <inheritdoc/>

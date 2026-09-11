@@ -242,6 +242,16 @@ public class SettingsViewModelTests
     #region ToObfySettings Tests
 
     [Fact]
+    public void TogglingFlag_SetsLevelToCustom()
+    {
+        var viewModel = new SettingsViewModel { Level = ObfuscationLevel.Standard };
+
+        viewModel.ControlFlowEnabled = true;
+
+        viewModel.Level.ShouldBe(ObfuscationLevel.Custom);
+    }
+
+    [Fact]
     public void ToObfySettings_ConvertsLevel()
     {
         // Arrange

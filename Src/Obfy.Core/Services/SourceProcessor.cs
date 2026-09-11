@@ -48,6 +48,11 @@ public class SourceProcessor : ISourceProcessor
             throw new FileNotFoundException($"Source path not found: {path}");
         }
 
+        if (syntaxTrees.Count == 0)
+        {
+            throw new InvalidOperationException($"No C# files found in {path}");
+        }
+
         _logger.LogDebug("Loaded {Count} source files", syntaxTrees.Count);
 
         // Create compilation with basic references

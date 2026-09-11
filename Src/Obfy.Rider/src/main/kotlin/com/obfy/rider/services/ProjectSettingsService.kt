@@ -36,9 +36,10 @@ class ProjectSettingsService(private val project: Project) {
         return if (settingsFile.exists()) {
             try {
                 gson.fromJson(settingsFile.readText(), ObfySettings::class.java)
+                    ?: throw IllegalStateException("obfy.json deserialized to null")
             } catch (e: Exception) {
                 logger.warn("Failed to parse obfy.json: ${e.message}")
-                ObfySettings.default()
+                throw e
             }
         } else {
             ObfySettings.default()

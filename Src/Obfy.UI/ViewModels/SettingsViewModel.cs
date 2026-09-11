@@ -25,7 +25,7 @@ public partial class SettingsViewModel : ObservableObject
 
     // Control Flow
     [ObservableProperty]
-    private bool _controlFlowEnabled = true;
+    private bool _controlFlowEnabled = false;
 
     [ObservableProperty]
     private ControlFlowMode _controlFlowMode = ControlFlowMode.Switch;
@@ -164,8 +164,13 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>
     /// Applies a preset configuration based on the obfuscation level.
     /// </summary>
+    private int _applyingPreset;
+
     public void ApplyPreset(ObfuscationLevel level)
     {
+        _applyingPreset++;
+        try
+        {
         switch (level)
         {
             case ObfuscationLevel.Minimal:
@@ -203,6 +208,22 @@ public partial class SettingsViewModel : ObservableObject
                 ConstantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
                 break;
         }
+        }
+        finally
+        {
+            _applyingPreset--;
+        }
+    }
+
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (_applyingPreset > 0)
+            return;
+        if (e.PropertyName is null or nameof(Level))
+            return;
+        if (Level != ObfuscationLevel.Custom)
+            Level = ObfuscationLevel.Custom;
     }
 
     /// <summary>
@@ -287,7 +308,8 @@ public partial class SettingsViewModel : ObservableObject
             {
                 Namespaces = ExcludedNamespaces.ToList(),
                 Types = ExcludedTypes.ToList(),
-                Methods = ExcludedMethods.ToList()
+                Methods = ExcludedMethods.ToList(),
+                Attributes = new List<string>(new ExclusionRules().Attributes)
             }
         };
     }
@@ -297,6 +319,9 @@ public partial class SettingsViewModel : ObservableObject
     /// </summary>
     public void FromObfySettings(ObfySettings settings)
     {
+        _applyingPreset++;
+        try
+        {
         Level = settings.Level;
 
         // String Encryption
@@ -372,6 +397,11 @@ public partial class SettingsViewModel : ObservableObject
         foreach (var method in settings.Exclusions.Methods)
         {
             ExcludedMethods.Add(method);
+        }
+        }
+        finally
+        {
+            _applyingPreset--;
         }
     }
 }

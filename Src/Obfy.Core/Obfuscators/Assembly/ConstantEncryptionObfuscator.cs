@@ -378,11 +378,6 @@ public class ConstantEncryptionObfuscator : IObfuscator
         // return BitConverter.ToInt32(decrypted, 0);
 
         // For simplicity, we'll implement a direct XOR decryption
-        // Load _d[index]
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, dataField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-
         // Create decrypted array of same length (4 bytes for int)
         body.Instructions.Add(Instruction.CreateLdcI4(4));
         body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));

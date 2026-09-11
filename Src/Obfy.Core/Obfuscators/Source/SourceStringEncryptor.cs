@@ -162,6 +162,9 @@ public class SourceStringEncryptor : IObfuscator
             if (!node.IsKind(SyntaxKind.StringLiteralExpression))
                 return base.VisitLiteralExpression(node);
 
+            if (node.Ancestors().Any(a => a is AttributeArgumentSyntax or AttributeSyntax))
+                return base.VisitLiteralExpression(node);
+
             var value = node.Token.ValueText;
 
             if (string.IsNullOrEmpty(value) || value.Length < _settings.MinStringLength)

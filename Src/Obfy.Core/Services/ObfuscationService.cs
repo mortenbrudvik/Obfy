@@ -39,15 +39,17 @@ public class ObfuscationService : IObfuscationService
     {
         _logger.LogInformation("Starting obfuscation of {InputPath}", inputPath);
 
-        if (!File.Exists(inputPath))
+        if (!File.Exists(inputPath) && !Directory.Exists(inputPath))
         {
             return ObfuscationResult.Failed($"Input file not found: {inputPath}");
         }
 
         var target = ObfuscationTarget.FromFile(inputPath, outputPath);
 
-        // Apply level presets to settings
-        settings.ApplyLevel();
+        if (settings.Level != ObfuscationLevel.Custom)
+        {
+            settings.ApplyLevel();
+        }
 
         PipelineContext context;
 

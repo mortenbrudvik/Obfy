@@ -1,0 +1,175 @@
+using dnlib.DotNet;
+using dnlib.DotNet.Emit;
+using Obfy.Core.Models;
+
+namespace Obfy.Core.Utilities;
+
+/// <summary>
+/// Shared helpers for assembly obfuscators (exclusions, compiler-generated detection, IL emit).
+/// </summary>
+public static class ObfuscatorHelpers
+{
+    public static bool MatchesPattern(string? value, string pattern)
+    {
+        if (string.IsNullOrEmpty(value))
+            return false;
+
+        if (pattern.EndsWith('*'))
+        {
+            return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Matches an attribute type against an exclusion pattern.
+    /// Accepts short names (<c>SerializableAttribute</c>), names without the Attribute suffix,
+    /// and full names (<c>System.SerializableAttribute</c>).
+    /// </summary>
+    public static bool MatchesAttribute(string typeFullName, string pattern)
+    {
+        if (string.IsNullOrEmpty(typeFullName) || string.IsNullOrEmpty(pattern))
+            return false;
+
+        if (MatchesPattern(typeFullName, pattern))
+            return true;
+
+        var shortName = typeFullName;
+        var lastDot = typeFullName.LastIndexOf('.');
+        if (lastDot >= 0 && lastDot < typeFullName.Length - 1)
+            shortName = typeFullName[(lastDot + 1)..];
+
+        if (MatchesPattern(shortName, pattern))
+            return true;
+
+        if (!pattern.EndsWith("Attribute", StringComparison.OrdinalIgnoreCase) &&
+            MatchesPattern(shortName, pattern + "Attribute"))
+            return true;
+
+        if (pattern.EndsWith("Attribute", StringComparison.OrdinalIgnoreCase))
+        {
+            var withoutSuffix = pattern[..^"Attribute".Length];
+            if (MatchesPattern(shortName, withoutSuffix))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool HasExcludedAttribute(IHasCustomAttribute provider, ExclusionRules exclusions)
+    {
+        if (exclusions.Attributes.Count == 0 || !provider.HasCustomAttributes)
+            return false;
+
+        foreach (var attr in provider.CustomAttributes)
+        {
+            var fullName = attr.TypeFullName;
+            if (exclusions.Attributes.Any(pattern => MatchesAttribute(fullName, pattern)))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool IsRuntimeOrExcluded(TypeDef type, ExclusionRules exclusions)
+    {
+        if (type.Namespace == "Obfy.Runtime" || type.Namespace == "Obfy.Core.Models")
+            return true;
+
+        if (exclusions.Namespaces.Any(n => MatchesPattern(type.Namespace, n)))
+            return true;
+
+        if (exclusions.Types.Any(t => MatchesPattern(type.Name, t)))
+            return true;
+
+        return HasExcludedAttribute(type, exclusions);
+    }
+
+    public static bool IsCompilerGenerated(TypeDef type)
+    {
+        if (type.CustomAttributes.Any(a => a.TypeFullName == "System.Runtime.CompilerServices.CompilerGeneratedAttribute"))
+            return true;
+
+        var name = type.Name.String;
+        if (name.StartsWith('<') || name.Contains(">d__") || name.Contains(">c__") ||
+            name.Contains("<>c") || name.Contains("DisplayClass"))
+            return true;
+
+        if (type.Interfaces.Any(i => i.Interface.FullName == "System.Runtime.CompilerServices.IAsyncStateMachine"))
+            return true;
+
+        return false;
+    }
+
+    public static bool IsCompilerGeneratedMethod(MethodDef method)
+    {
+        if (method.CustomAttributes.Any(a => a.TypeFullName == "System.Runtime.CompilerServices.CompilerGeneratedAttribute"))
+            return true;
+
+        var name = method.Name.String;
+        if (name.StartsWith('<') || name.Contains(">b__") || name.Contains(">g__"))
+            return true;
+
+        return false;
+    }
+
+    public static void SetLdcI4(Instruction instruction, int value)
+    {
+        switch (value)
+        {
+            case -1:
+                instruction.OpCode = OpCodes.Ldc_I4_M1;
+                instruction.Operand = null;
+                break;
+            case 0:
+                instruction.OpCode = OpCodes.Ldc_I4_0;
+                instruction.Operand = null;
+                break;
+            case 1:
+                instruction.OpCode = OpCodes.Ldc_I4_1;
+                instruction.Operand = null;
+                break;
+            case 2:
+                instruction.OpCode = OpCodes.Ldc_I4_2;
+                instruction.Operand = null;
+                break;
+            case 3:
+                instruction.OpCode = OpCodes.Ldc_I4_3;
+                instruction.Operand = null;
+                break;
+            case 4:
+                instruction.OpCode = OpCodes.Ldc_I4_4;
+                instruction.Operand = null;
+                break;
+            case 5:
+                instruction.OpCode = OpCodes.Ldc_I4_5;
+                instruction.Operand = null;
+                break;
+            case 6:
+                instruction.OpCode = OpCodes.Ldc_I4_6;
+                instruction.Operand = null;
+                break;
+            case 7:
+                instruction.OpCode = OpCodes.Ldc_I4_7;
+                instruction.Operand = null;
+                break;
+            case 8:
+                instruction.OpCode = OpCodes.Ldc_I4_8;
+                instruction.Operand = null;
+                break;
+            default:
+                if (value is >= sbyte.MinValue and <= sbyte.MaxValue)
+                {
+                    instruction.OpCode = OpCodes.Ldc_I4_S;
+                    instruction.Operand = (sbyte)value;
+                }
+                else
+                {
+                    instruction.OpCode = OpCodes.Ldc_I4;
+                    instruction.Operand = value;
+                }
+                break;
+        }
+    }
+}

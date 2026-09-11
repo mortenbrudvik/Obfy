@@ -67,28 +67,20 @@ public class AssemblyProcessor : IAssemblyProcessor
             writerOptions.WritePdb = false;
         }
 
-        // Check if anti-tamper post-processing is needed
-        if (context.Settings.Protection.AntiTamper.Enabled &&
-            context.SharedData.TryGetValue(AntiTamperObfuscator.HashFieldMetadataKey, out var metadataObj) &&
-            metadataObj is AntiTamperMetadata metadata)
+        if (context.Settings.Protection.AntiTamper.Enabled)
         {
-            // Write to temp file first
+            if (!context.SharedData.ContainsKey(AntiTamperObfuscator.HashFieldMetadataKey))
+            {
+                throw new InvalidOperationException("Anti-tamper is enabled but the runtime type was not injected.");
+            }
+
             var tempPath = Path.Combine(Path.GetTempPath(), $"obfy_{Guid.NewGuid():N}.dll");
 
             try
             {
                 context.Module.Write(tempPath, writerOptions);
-                _logger.LogDebug("Wrote assembly to temp file for anti-tamper processing");
+                AssemblyHashComputer.PatchIntegrityHash(tempPath);
 
-                // Compute hash of the assembly (excluding the placeholder)
-                var hash = AssemblyHashComputer.ComputeAssemblyHash(tempPath);
-                _logger.LogDebug("Computed assembly hash: {Hash}", Convert.ToHexString(hash));
-
-                // Patch the hash into the assembly
-                AssemblyHashComputer.PatchHashFieldByToken(tempPath, metadata.HashFieldToken, hash);
-                _logger.LogDebug("Patched anti-tamper hash into assembly");
-
-                // Move to final output path
                 if (File.Exists(outputPath))
                 {
                     File.Delete(outputPath);
@@ -97,18 +89,28 @@ public class AssemblyProcessor : IAssemblyProcessor
             }
             finally
             {
-                // Clean up temp file if it still exists
                 if (File.Exists(tempPath))
                 {
-                    try { File.Delete(tempPath); }
-                    catch { /* Ignore cleanup errors */ }
+                    try
+                    {
+                        File.Delete(tempPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to delete temp assembly {Path}", tempPath);
+                    }
                 }
             }
         }
         else
         {
-            // Standard save without anti-tamper processing
             context.Module.Write(outputPath, writerOptions);
+        }
+
+        if (context.Module is IDisposable disposable)
+        {
+            disposable.Dispose();
+            context.Module = null;
         }
 
         _logger.LogDebug("Assembly saved successfully");

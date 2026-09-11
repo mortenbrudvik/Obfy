@@ -8,6 +8,9 @@
         xmlns:vm="clr-namespace:Obfy.UI.ViewModels"
         mc:Ignorable="d"
         Title="Obfy" Height="900" Width="1400"
+        MinWidth="900" MinHeight="600"
+        ExtendsContentIntoTitleBar="True"
+        WindowBackdropType="Mica"
         Icon="/Images/app.png"
         WindowStartupLocation="CenterScreen"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
@@ -61,12 +64,15 @@
                 <!-- Right: Settings Menu -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
                     <ui:Button Icon="{ui:SymbolIcon Save24}" ToolTip="Save Configuration"
+                              AutomationProperties.Name="Save Configuration"
                               AutomationProperties.AutomationId="SaveConfigButton"
                               Command="{Binding SaveConfigurationCommand}" Margin="0,0,4,0"/>
                     <ui:Button Icon="{ui:SymbolIcon FolderOpen24}" ToolTip="Load Configuration"
+                              AutomationProperties.Name="Load Configuration"
                               AutomationProperties.AutomationId="LoadConfigButton"
                               Command="{Binding LoadConfigurationCommand}" Margin="0,0,4,0"/>
                     <ui:Button Icon="{ui:SymbolIcon Info24}" ToolTip="About"
+                              AutomationProperties.Name="About"
                               AutomationProperties.AutomationId="AboutButton"
                               Command="{Binding ShowAboutCommand}"/>
                 </StackPanel>

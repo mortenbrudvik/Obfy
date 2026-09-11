@@ -222,6 +222,20 @@ public class CommandParsingTests : IDisposable
     }
 
     [Fact]
+    public void Parse_AntiTamperOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --anti-tamper");
+        parseResult.GetValueForOption(Program.AntiTamperOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Parse_NoStringEncryptionOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --no-string-encryption");
+        parseResult.GetValueForOption(Program.NoStringEncryptOption).ShouldBeTrue();
+    }
+
+    [Fact]
     public void Parse_AntiDebugOption_SetsTrue()
     {
         // Arrange & Act

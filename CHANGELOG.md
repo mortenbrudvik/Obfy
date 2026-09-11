@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Assembly string encryption now decrypts at runtime (AES-256 and XOR) instead of returning ciphertext
+- Anti-tamper hash excludes the stored digest so Aggressive builds no longer exit on startup
+- Resource encryption keeps embedded resources and unwraps `GetManifestResourceStream`
+- Custom CLI flags, UI toggles, and IDE settings are no longer overwritten by level presets
+- CLI exits with code 1 and does not print success when obfuscation fails
+- Added `--anti-tamper`, `--anti-decompiler`, `--no-string-encryption`, and `--no-symbol-renaming` so VS/Rider Custom mode matches the CLI
+- Symbol renaming no longer breaks virtuals or implicit interface implementations
+- Source obfuscation no longer rewrites attribute arguments or leaves constructors unrenamed
+- Source switch flattening skips methods with locals/`break`/`continue`
+- Missing config files, invalid `--level`, and `--merge` with one file now error instead of silently continuing
+- CI runs on Windows so WPF projects can build
+
 ## [1.2.0] - 2026-01-21
 
 ### Added

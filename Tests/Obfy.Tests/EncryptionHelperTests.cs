@@ -75,4 +75,18 @@ public class EncryptionHelperTests
         // Assert
         encrypted1.ShouldNotBe(encrypted2);
     }
+
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public void EncryptBytes_RoundTrip_ReturnsOriginal(EncryptionAlgorithm algorithm)
+    {
+        var original = new byte[] { 0, 1, 2, 255, 16, 32 };
+        var key = EncryptionHelper.GenerateKey(algorithm);
+
+        var encrypted = EncryptionHelper.EncryptBytes(original, key, algorithm);
+        var decrypted = EncryptionHelper.DecryptBytes(encrypted, key, algorithm);
+
+        decrypted.ShouldBe(original);
+    }
 }

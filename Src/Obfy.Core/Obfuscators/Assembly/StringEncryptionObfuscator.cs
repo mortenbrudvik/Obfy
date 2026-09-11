@@ -55,11 +55,10 @@ public class StringEncryptionObfuscator : IObfuscator
             // Process all methods
             foreach (var type in module.GetTypes())
             {
-                if (IsExcluded(type, context.Settings.Exclusions))
+                if (ObfuscatorHelpers.IsRuntimeOrExcluded(type, context.Settings.Exclusions))
                     continue;
 
-                // Skip compiler-generated types (async state machines, closures, etc.)
-                if (IsCompilerGenerated(type))
+                if (ObfuscatorHelpers.IsCompilerGenerated(type))
                     continue;
 
                 foreach (var method in type.Methods)
@@ -69,10 +68,18 @@ public class StringEncryptionObfuscator : IObfuscator
 
                     // Skip methods with exception handlers to avoid corrupting handler boundaries
                     if (method.Body.HasExceptionHandlers)
+                    {
+                        context.SkippedItems.Add(new SkippedItem
+                        {
+                            Reason = SkipReason.UnsupportedConstruct,
+                            ItemType = "Method",
+                            ItemName = method.FullName,
+                            Details = "Exception handlers"
+                        });
                         continue;
+                    }
 
-                    // Skip compiler-generated methods
-                    if (IsCompilerGeneratedMethod(method))
+                    if (ObfuscatorHelpers.IsCompilerGeneratedMethod(method))
                         continue;
 
 
@@ -102,7 +109,7 @@ public class StringEncryptionObfuscator : IObfuscator
                         // Modify instruction IN PLACE to preserve branch targets
                         // Change: ldstr "original" -> ldc.i4 index; call Decrypt
                         var originalInstr = instructions[i];
-                        SetLdcI4(originalInstr, index);
+                        ObfuscatorHelpers.SetLdcI4(originalInstr, index);
                         instructions.Insert(i + 1, Instruction.Create(OpCodes.Call, decryptMethod));
                         i++; // Skip the inserted instruction
                         modified = true;
@@ -172,8 +179,12 @@ public class StringEncryptionObfuscator : IObfuscator
             FieldAttributes.Private | FieldAttributes.Static);
         typeDef.Fields.Add(cacheField);
 
-        // Add Decrypt method
-        var decryptMethod = CreateDecryptMethod(module, keyField, stringsField, cacheField, algorithm);
+        var bytesDecrypt = algorithm == EncryptionAlgorithm.Aes256
+            ? DecryptorIl.CreateAesDecryptBytes(module, "AesDecrypt", MethodAttributes.Private | MethodAttributes.Static)
+            : DecryptorIl.CreateXorDecryptBytes(module, "XorDecrypt", MethodAttributes.Private | MethodAttributes.Static);
+        typeDef.Methods.Add(bytesDecrypt);
+
+        var decryptMethod = DecryptorIl.CreateStringDecrypt(module, keyField, stringsField, cacheField, bytesDecrypt, algorithm);
         typeDef.Methods.Add(decryptMethod);
 
         // Add static constructor to initialize key
@@ -183,33 +194,6 @@ public class StringEncryptionObfuscator : IObfuscator
         module.Types.Add(typeDef);
 
         return typeDef;
-    }
-
-    private MethodDef CreateDecryptMethod(
-        ModuleDef module,
-        FieldDef keyField,
-        FieldDef stringsField,
-        FieldDef cacheField,
-        EncryptionAlgorithm algorithm)
-    {
-        var method = new MethodDefUser(
-            "Decrypt",
-            MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.Int32),
-            MethodAttributes.Public | MethodAttributes.Static);
-
-        var body = new CilBody();
-        method.Body = body;
-
-        // Simple implementation that returns the encrypted string for now
-        // Full implementation would include decryption logic
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, stringsField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-
-        body.UpdateInstructionOffsets();
-
-        return method;
     }
 
     private MethodDef CreateStaticConstructor(ModuleDef module, FieldDef keyField, byte[] key)
@@ -249,7 +233,7 @@ public class StringEncryptionObfuscator : IObfuscator
         var cctor = decryptorType.FindMethod(".cctor");
 
         if (cctor?.Body == null || stringsField == null)
-            return;
+            throw new InvalidOperationException("String decryptor storage is missing; refusing to emit a broken assembly.");
 
         var module = decryptorType.Module;
         var body = cctor.Body;
@@ -278,151 +262,4 @@ public class StringEncryptionObfuscator : IObfuscator
         body.UpdateInstructionOffsets();
     }
 
-    private bool IsExcluded(TypeDef type, ExclusionRules rules)
-    {
-        if (type.Namespace == "Obfy.Runtime")
-            return true;
-
-        // Skip Obfy's own model types (required for JSON serialization)
-        if (type.Namespace == "Obfy.Core.Models")
-            return true;
-
-        return rules.Namespaces.Any(n => MatchesPattern(type.Namespace, n)) ||
-               rules.Types.Any(t => MatchesPattern(type.Name, t));
-    }
-
-    private static bool MatchesPattern(string value, string pattern)
-    {
-        if (pattern.EndsWith("*"))
-        {
-            return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
-        }
-        return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Checks if a type is compiler-generated (async state machines, closures, etc.)
-    /// </summary>
-    private static bool IsCompilerGenerated(TypeDef type)
-    {
-        // Check for CompilerGeneratedAttribute
-        if (type.CustomAttributes.Any(a => a.TypeFullName == "System.Runtime.CompilerServices.CompilerGeneratedAttribute"))
-            return true;
-
-        // Check for common compiler-generated naming patterns
-        var name = type.Name.String;
-        if (name.StartsWith("<") || name.Contains(">d__") || name.Contains(">c__") ||
-            name.Contains("<>c") || name.Contains("DisplayClass"))
-            return true;
-
-        // Check if type implements IAsyncStateMachine (async methods)
-        if (type.Interfaces.Any(i => i.Interface.FullName == "System.Runtime.CompilerServices.IAsyncStateMachine"))
-            return true;
-
-        return false;
-    }
-
-    /// <summary>
-    /// Checks if a method is compiler-generated
-    /// </summary>
-    private static bool IsCompilerGeneratedMethod(MethodDef method)
-    {
-        // Check for CompilerGeneratedAttribute
-        if (method.CustomAttributes.Any(a => a.TypeFullName == "System.Runtime.CompilerServices.CompilerGeneratedAttribute"))
-            return true;
-
-        // Check for common compiler-generated naming patterns
-        var name = method.Name.String;
-        if (name.StartsWith("<") || name.Contains(">b__") || name.Contains(">g__"))
-            return true;
-
-        // Skip property getters/setters with complex patterns
-        if (method.IsSpecialName && (name.StartsWith("get_") || name.StartsWith("set_")))
-        {
-            // Only skip if there's complex IL (branches back to start, etc.)
-            if (method.Body?.Instructions.Count > 0)
-            {
-                var instructions = method.Body.Instructions;
-                // Check for backward branches which indicate loops or complex patterns
-                for (int i = 0; i < instructions.Count; i++)
-                {
-                    if (instructions[i].OpCode.FlowControl == FlowControl.Branch ||
-                        instructions[i].OpCode.FlowControl == FlowControl.Cond_Branch)
-                    {
-                        if (instructions[i].Operand is Instruction target)
-                        {
-                            var targetIndex = instructions.IndexOf(target);
-                            if (targetIndex < i)
-                                return true; // Backward branch - skip this method
-                        }
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Modifies an instruction IN PLACE to become an ldc.i4 instruction.
-    /// This preserves branch target references that point to this instruction.
-    /// </summary>
-    private static void SetLdcI4(Instruction instruction, int value)
-    {
-        switch (value)
-        {
-            case -1:
-                instruction.OpCode = OpCodes.Ldc_I4_M1;
-                instruction.Operand = null;
-                break;
-            case 0:
-                instruction.OpCode = OpCodes.Ldc_I4_0;
-                instruction.Operand = null;
-                break;
-            case 1:
-                instruction.OpCode = OpCodes.Ldc_I4_1;
-                instruction.Operand = null;
-                break;
-            case 2:
-                instruction.OpCode = OpCodes.Ldc_I4_2;
-                instruction.Operand = null;
-                break;
-            case 3:
-                instruction.OpCode = OpCodes.Ldc_I4_3;
-                instruction.Operand = null;
-                break;
-            case 4:
-                instruction.OpCode = OpCodes.Ldc_I4_4;
-                instruction.Operand = null;
-                break;
-            case 5:
-                instruction.OpCode = OpCodes.Ldc_I4_5;
-                instruction.Operand = null;
-                break;
-            case 6:
-                instruction.OpCode = OpCodes.Ldc_I4_6;
-                instruction.Operand = null;
-                break;
-            case 7:
-                instruction.OpCode = OpCodes.Ldc_I4_7;
-                instruction.Operand = null;
-                break;
-            case 8:
-                instruction.OpCode = OpCodes.Ldc_I4_8;
-                instruction.Operand = null;
-                break;
-            default:
-                if (value >= sbyte.MinValue && value <= sbyte.MaxValue)
-                {
-                    instruction.OpCode = OpCodes.Ldc_I4_S;
-                    instruction.Operand = (sbyte)value;
-                }
-                else
-                {
-                    instruction.OpCode = OpCodes.Ldc_I4;
-                    instruction.Operand = value;
-                }
-                break;
-        }
-    }
 }

@@ -84,7 +84,12 @@ public class ObfySettings
                 ControlFlow.Enabled = false;
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = false;
+                Protection.AntiTamper.Enabled = false;
+                Protection.AntiDecompiler.Enabled = false;
+                Protection.AntiDump = false;
                 Metadata.RemoveDebugInfo = true;
+                Metadata.RemoveAttributes = false;
+                ResourceEncryption.Enabled = false;
                 ConstantEncryption.Enabled = false;
                 break;
 
@@ -93,7 +98,11 @@ public class ObfySettings
                 ControlFlow.Enabled = false;
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = false;
+                Protection.AntiTamper.Enabled = false;
+                Protection.AntiDecompiler.Enabled = false;
+                Protection.AntiDump = false;
                 Metadata.RemoveDebugInfo = true;
+                ResourceEncryption.Enabled = false;
                 ConstantEncryption.Enabled = false;
                 break;
 
@@ -105,6 +114,7 @@ public class ObfySettings
                 Protection.AntiDebug = true;
                 Protection.AntiTamper.Enabled = true;
                 Protection.AntiDecompiler.Enabled = true;
+                Protection.AntiDump = false;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = true;
@@ -175,7 +185,7 @@ public class ControlFlowSettings
     /// <summary>
     /// Whether control flow obfuscation is enabled.
     /// </summary>
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
 
     /// <summary>
     /// The control flow obfuscation mode.
@@ -290,7 +300,7 @@ public class ProtectionSettings
     /// <summary>
     /// Whether to inject anti-debugging checks.
     /// </summary>
-    public bool AntiDebug { get; set; } = true;
+    public bool AntiDebug { get; set; } = false;
 
     /// <summary>
     /// Anti-tamper detection settings.
@@ -303,7 +313,7 @@ public class ProtectionSettings
     public AntiDecompilerSettings AntiDecompiler { get; set; } = new();
 
     /// <summary>
-    /// Whether to inject anti-dump protection.
+    /// Whether to inject anti-dump protection. Reserved; not implemented.
     /// </summary>
     public bool AntiDump { get; set; } = false;
 }
@@ -438,8 +448,9 @@ public class ResourceEncryptionSettings
     /// <summary>
     /// Patterns for resources to exclude (supports wildcards: *, ?).
     /// Excluded patterns take precedence over include patterns.
+    /// *.resources is excluded by default so ResourceManager satellite files keep working.
     /// </summary>
-    public List<string> ExcludePatterns { get; set; } = new();
+    public List<string> ExcludePatterns { get; set; } = new() { "*.resources" };
 }
 
 /// <summary>

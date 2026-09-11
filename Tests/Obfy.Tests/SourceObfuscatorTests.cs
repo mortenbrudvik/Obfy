@@ -150,11 +150,11 @@ public class SourceObfuscatorTests
             {
                 public int Calculate(int x)
                 {
-                    var a = x + 1;
-                    var b = a * 2;
-                    var c = b - 3;
-                    var d = c + 4;
-                    return d;
+                    x = x + 1;
+                    x = x * 2;
+                    x = x - 3;
+                    x = x + 4;
+                    return x;
                 }
             }
             """;
@@ -190,11 +190,11 @@ public class SourceObfuscatorTests
             {
                 public int Calculate(int x)
                 {
-                    var a = x + 1;
-                    var b = a * 2;
-                    var c = b - 3;
-                    var d = c + 4;
-                    return d;
+                    x = x + 1;
+                    x = x * 2;
+                    x = x - 3;
+                    x = x + 4;
+                    return x;
                 }
             }
             """;
@@ -668,12 +668,12 @@ public class SourceObfuscatorTests
             {
                 public int Process(int x)
                 {
-                    var a = x + 1;
-                    var b = a * 2;
-                    var c = b - 3;
-                    var d = c + 4;
-                    var e = d * 5;
-                    return e;
+                    x = x + 1;
+                    x = x * 2;
+                    x = x - 3;
+                    x = x + 4;
+                    x = x * 5;
+                    return x;
                 }
             }
             """;

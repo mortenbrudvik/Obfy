@@ -173,6 +173,7 @@ public class CommandParsingTests : IDisposable
     [InlineData("--anti-debug")]
     [InlineData("--anti-dump")]
     [InlineData("--reference-proxy")]
+    [InlineData("--encrypt-methods")]
     [InlineData("--encrypt-constants")]
     [InlineData("--no-control-flow")]
     [InlineData("--strip-metadata")]
@@ -244,6 +245,13 @@ public class CommandParsingTests : IDisposable
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --reference-proxy");
         parseResult.GetValueForOption(Program.ReferenceProxyOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Parse_EncryptMethodsOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --encrypt-methods");
+        parseResult.GetValueForOption(Program.EncryptMethodsOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -553,7 +561,7 @@ public class CommandParsingTests : IDisposable
     {
         // Arrange & Act
         var parseResult = _rootCommand.Parse(
-            $"\"{_testDll}\" --string-encrypt --control-flow --rename --anti-debug --anti-dump --reference-proxy --encrypt-constants --no-control-flow --strip-metadata --encrypt-resources --preserve-public");
+            $"\"{_testDll}\" --string-encrypt --control-flow --rename --anti-debug --anti-dump --reference-proxy --encrypt-methods --encrypt-constants --no-control-flow --strip-metadata --encrypt-resources --preserve-public");
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
@@ -563,6 +571,7 @@ public class CommandParsingTests : IDisposable
         parseResult.GetValueForOption(Program.AntiDebugOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.AntiDumpOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.ReferenceProxyOption).ShouldBeTrue();
+        parseResult.GetValueForOption(Program.EncryptMethodsOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.EncryptConstantsOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.NoControlFlowOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.StripMetadataOption).ShouldBeTrue();

@@ -112,6 +112,7 @@ public class ObfySettings
                 Protection.AntiDecompiler.Enabled = false;
                 Protection.AntiDump = false;
                 Protection.ReferenceProxy = false;
+                Protection.MethodEncryption = false;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = false;
                 ResourceEncryption.Enabled = false;
@@ -129,6 +130,7 @@ public class ObfySettings
                 Protection.AntiDecompiler.Enabled = false;
                 Protection.AntiDump = false;
                 Protection.ReferenceProxy = false;
+                Protection.MethodEncryption = false;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = false;
@@ -146,6 +148,7 @@ public class ObfySettings
                 Protection.AntiDecompiler.Enabled = true;
                 Protection.AntiDump = true;
                 Protection.ReferenceProxy = true;
+                Protection.MethodEncryption = false;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = true;
@@ -386,6 +389,11 @@ public class ProtectionSettings
     /// Whether to hide method call targets behind proxy methods.
     /// </summary>
     public bool ReferenceProxy { get; set; } = false;
+
+    /// <summary>
+    /// Whether to XOR-encrypt method IL in the PE and decrypt it at module load (Windows).
+    /// </summary>
+    public bool MethodEncryption { get; set; } = false;
 }
 
 /// <summary>

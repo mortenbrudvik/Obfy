@@ -29,6 +29,7 @@ public class Program
     internal static Option<bool> AntiDecompilerOption { get; private set; } = null!;
     internal static Option<bool> AntiDumpOption { get; private set; } = null!;
     internal static Option<bool> ReferenceProxyOption { get; private set; } = null!;
+    internal static Option<bool> EncryptMethodsOption { get; private set; } = null!;
     internal static Option<bool> NoStringEncryptOption { get; private set; } = null!;
     internal static Option<bool> NoRenameOption { get; private set; } = null!;
     internal static Option<bool> NoControlFlowOption { get; private set; } = null!;
@@ -104,6 +105,10 @@ public class Program
             name: "--reference-proxy",
             description: "Enable reference proxy");
 
+        EncryptMethodsOption = new Option<bool>(
+            name: "--encrypt-methods",
+            description: "Encrypt method IL in the PE image");
+
         NoStringEncryptOption = new Option<bool>(
             name: "--no-string-encryption",
             description: "Disable string encryption");
@@ -176,6 +181,7 @@ public class Program
             AntiDecompilerOption,
             AntiDumpOption,
             ReferenceProxyOption,
+            EncryptMethodsOption,
             NoStringEncryptOption,
             NoRenameOption,
             NoControlFlowOption,
@@ -264,6 +270,7 @@ public class Program
             var antiDecompiler = context.ParseResult.GetValueForOption(AntiDecompilerOption);
             var antiDump = context.ParseResult.GetValueForOption(AntiDumpOption);
             var referenceProxy = context.ParseResult.GetValueForOption(ReferenceProxyOption);
+            var encryptMethods = context.ParseResult.GetValueForOption(EncryptMethodsOption);
             var noStringEncrypt = context.ParseResult.GetValueForOption(NoStringEncryptOption);
             var noRename = context.ParseResult.GetValueForOption(NoRenameOption);
             var noControlFlow = context.ParseResult.GetValueForOption(NoControlFlowOption);
@@ -290,7 +297,7 @@ public class Program
                     config, level ?? "standard", stringEncrypt, controlFlow, rename,
                     antiDebug, stripMetadata, encryptResources, preservePublic,
                     antiTamper, antiDecompiler, noStringEncrypt, noRename,
-                    antiDump, referenceProxy, encryptConstants, noControlFlow).ConfigureAwait(false);
+                    antiDump, referenceProxy, encryptConstants, noControlFlow, encryptMethods).ConfigureAwait(false);
 
                 if (merge)
                 {
@@ -335,7 +342,8 @@ public class Program
         bool antiDump = false,
         bool referenceProxy = false,
         bool encryptConstants = false,
-        bool noControlFlow = false)
+        bool noControlFlow = false,
+        bool encryptMethods = false)
     {
         ObfySettings settings;
 
@@ -363,7 +371,7 @@ public class Program
         var anyOverride = stringEncrypt || controlFlow || rename || antiDebug || stripMetadata
             || encryptResources || preservePublic || antiTamper || antiDecompiler
             || noStringEncrypt || noRename
-            || antiDump || referenceProxy || encryptConstants || noControlFlow;
+            || antiDump || referenceProxy || encryptConstants || noControlFlow || encryptMethods;
 
         if (stringEncrypt) settings.StringEncryption.Enabled = true;
         if (noStringEncrypt) settings.StringEncryption.Enabled = false;
@@ -376,6 +384,7 @@ public class Program
         if (antiDecompiler) settings.Protection.AntiDecompiler.Enabled = true;
         if (antiDump) settings.Protection.AntiDump = true;
         if (referenceProxy) settings.Protection.ReferenceProxy = true;
+        if (encryptMethods) settings.Protection.MethodEncryption = true;
         if (stripMetadata) settings.Metadata.RemoveDebugInfo = true;
         if (encryptResources) settings.ResourceEncryption.Enabled = true;
         if (encryptConstants) settings.ConstantEncryption.Enabled = true;

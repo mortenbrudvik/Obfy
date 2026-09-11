@@ -72,6 +72,8 @@ Console.WriteLine(StringDecryptor.Decrypt(0));
 - Empty strings are skipped
 - Adds slight runtime overhead for first access
 - Methods with exception handlers and compiler-generated methods **and types** (async state machines, display classes, iterators) are encrypted
+- Control-flow flattening still skips exception-handler methods (rebuilding EH is unsafe); those methods get opaque predicates instead
+- String decrypt call sites pass `index XOR seed`, not the raw index
 - Resource strings shorter than `minStringLength` stay plaintext; encrypted resource strings are prefixed so `GetString` does not try to decrypt them
 
 ---

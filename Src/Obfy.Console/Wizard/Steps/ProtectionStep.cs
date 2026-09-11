@@ -93,6 +93,12 @@ public class ProtectionStep : WizardStep
             WriteInfo("Embedded resources will be encrypted.");
         }
 
+        AnsiConsole.WriteLine();
+        var methodEncryption = AnsiConsole.Confirm(
+            "Encrypt method bodies (Windows, decrypts at load)?",
+            defaultValue: context.Settings.Protection.MethodEncryption);
+        context.Settings.Protection.MethodEncryption = methodEncryption;
+
         // Constant Encryption
         AnsiConsole.WriteLine();
         var constantEncryption = AnsiConsole.Confirm(

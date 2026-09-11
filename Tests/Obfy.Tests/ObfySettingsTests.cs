@@ -46,6 +46,7 @@ public class ObfySettingsTests
         settings.Protection.AntiTamper.Enabled.ShouldBeTrue();
         settings.Protection.AntiDump.ShouldBeTrue();
         settings.Protection.ReferenceProxy.ShouldBeTrue();
+        settings.Protection.MethodEncryption.ShouldBeFalse();
     }
 
     [Fact]

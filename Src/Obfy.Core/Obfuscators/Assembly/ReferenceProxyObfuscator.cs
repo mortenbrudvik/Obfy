@@ -132,6 +132,10 @@ public class ReferenceProxyObfuscator : IObfuscator
         var resolved = called.ResolveMethodDef();
         if (resolved == null || resolved.Module != module)
             return false;
+        if (ObfuscatorHelpers.IsRuntimeHelper(resolved.DeclaringType))
+            return false;
+        if (resolved.IsPinvokeImpl || resolved.IsNative)
+            return false;
 
         return true;
     }
@@ -174,8 +178,16 @@ public class ReferenceProxyObfuscator : IObfuscator
             });
         }
 
-        body.Instructions.Add(Instruction.Create(virt ? OpCodes.Callvirt : OpCodes.Call, target));
+        if (virt && sig.HasThis)
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(virt ? OpCodes.Ldvirtftn : OpCodes.Ldftn, target));
+        var calliSig = sig.HasThis
+            ? MethodSig.CreateInstance(sig.RetType, sig.Params.ToArray())
+            : MethodSig.CreateStatic(sig.RetType, sig.Params.ToArray());
+        body.Instructions.Add(Instruction.Create(OpCodes.Calli, calliSig));
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.KeepOldMaxStack = true;
+        body.MaxStack = (ushort)Math.Max(8, paramTypes.Count + 2);
         body.UpdateInstructionOffsets();
         return proxy;
     }

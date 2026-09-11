@@ -95,8 +95,20 @@ public class AntiDebugObfuscator : IObfuscator
 
         typeDef.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract;
 
-        // Add CheckDebugger method (self-contained: detects a debugger and exits the process)
-        var checkMethod = CreateCheckDebuggerMethod(module);
+        var isDebuggerPresent = new MethodDefUser(
+            "IsDebuggerPresent",
+            MethodSig.CreateStatic(module.CorLibTypes.Boolean),
+            MethodImplAttributes.PreserveSig,
+            MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.PinvokeImpl)
+        {
+            ImplMap = new ImplMapUser(
+                new ModuleRefUser(module, "kernel32"),
+                "IsDebuggerPresent",
+                PInvokeAttributes.SupportsLastError | PInvokeAttributes.CallConvWinapi | PInvokeAttributes.NoMangle)
+        };
+        typeDef.Methods.Add(isDebuggerPresent);
+
+        var checkMethod = CreateCheckDebuggerMethod(module, isDebuggerPresent);
         typeDef.Methods.Add(checkMethod);
 
         module.Types.Add(typeDef);
@@ -104,7 +116,7 @@ public class AntiDebugObfuscator : IObfuscator
         return typeDef;
     }
 
-    private MethodDef CreateCheckDebuggerMethod(ModuleDef module)
+    private static MethodDef CreateCheckDebuggerMethod(ModuleDef module, MethodDef isDebuggerPresent)
     {
         var method = new MethodDefUser(
             "Check",
@@ -116,22 +128,15 @@ public class AntiDebugObfuscator : IObfuscator
 
         var debuggerType = module.CorLibTypes.GetTypeRef("System.Diagnostics", "Debugger");
         var isAttachedGetter = new MemberRefUser(
-            module,
-            "get_IsAttached",
-            MethodSig.CreateStatic(module.CorLibTypes.Boolean),
-            debuggerType);
+            module, "get_IsAttached",
+            MethodSig.CreateStatic(module.CorLibTypes.Boolean), debuggerType);
         var isLogging = new MemberRefUser(
-            module,
-            "IsLogging",
-            MethodSig.CreateStatic(module.CorLibTypes.Boolean),
-            debuggerType);
-
+            module, "IsLogging",
+            MethodSig.CreateStatic(module.CorLibTypes.Boolean), debuggerType);
         var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
         var exitMethod = new MemberRefUser(
-            module,
-            "Exit",
-            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32),
-            environmentType);
+            module, "Exit",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32), environmentType);
 
         var skipExit = Instruction.Create(OpCodes.Ret);
         var afterAttached = Instruction.Create(OpCodes.Call, isLogging);
@@ -142,13 +147,18 @@ public class AntiDebugObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
 
         body.Instructions.Add(afterAttached);
+        var afterLogging = Instruction.Create(OpCodes.Call, isDebuggerPresent);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterLogging));
+        body.Instructions.Add(Instruction.CreateLdcI4(1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
+
+        body.Instructions.Add(afterLogging);
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, skipExit));
         body.Instructions.Add(Instruction.CreateLdcI4(1));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
         body.Instructions.Add(skipExit);
 
         body.UpdateInstructionOffsets();
-
         return method;
     }
 

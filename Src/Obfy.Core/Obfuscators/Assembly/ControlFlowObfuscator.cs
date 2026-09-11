@@ -114,9 +114,9 @@ public class ControlFlowObfuscator : IObfuscator
     {
         if (method.Body.HasExceptionHandlers)
         {
-            context.SkippedItems.Add(
-                SkippedItem.UnsupportedMethod(method.FullName, "Exception handlers"));
-            return false;
+            // Flattening rebuilds the body and would invalidate EH ranges. Opaque predicates
+            // still raise the bar for try/catch/using/await methods.
+            return ApplyOpaquePredicates(method, intensity);
         }
 
         if (method.Body.Instructions.Count < 10)
@@ -251,7 +251,10 @@ public class ControlFlowObfuscator : IObfuscator
             if (i > 0 && ObfuscatorHelpers.IsPrefix(instructions[i - 1]))
                 continue;
 
-            if (_random.Next(100) < Math.Max(1, intensity / 4))
+            if (IsExceptionHandlerBoundary(body, instructions[i]))
+                continue;
+
+            if (_random.Next(100) < Math.Clamp(intensity, 1, 100))
             {
                 positions.Add(i);
             }
@@ -269,6 +272,8 @@ public class ControlFlowObfuscator : IObfuscator
             insertCount++;
         }
 
+        body.KeepOldMaxStack = true;
+        body.MaxStack = (ushort)Math.Max(body.MaxStack, (ushort)8);
         body.UpdateInstructionOffsets();
 
         return insertCount > 0;
@@ -281,7 +286,22 @@ public class ControlFlowObfuscator : IObfuscator
         return result1 || result2;
     }
 
-    private static void InsertOpaquePredicate(MethodDef method, int position)
+    private static bool IsExceptionHandlerBoundary(CilBody body, Instruction instruction)
+    {
+        foreach (var eh in body.ExceptionHandlers)
+        {
+            if (eh.TryStart == instruction || eh.TryEnd == instruction ||
+                eh.HandlerStart == instruction || eh.HandlerEnd == instruction ||
+                eh.FilterStart == instruction)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void InsertOpaquePredicate(MethodDef method, int position)
     {
         var instructions = method.Body.Instructions;
         var target = instructions[position];
@@ -294,22 +314,54 @@ public class ControlFlowObfuscator : IObfuscator
             MethodSig.CreateStatic(module.CorLibTypes.Int32),
             env);
 
-        // n*(n+1) is always even, so rem 2 is always 0. TickCount is not a compile-time constant.
-        var inserted = new[]
+        var dead = new[]
         {
-            Instruction.Create(OpCodes.Call, getTickCount),
-            Instruction.Create(OpCodes.Dup),
-            Instruction.Create(OpCodes.Ldc_I4_1),
-            Instruction.Create(OpCodes.Add),
-            Instruction.Create(OpCodes.Mul),
-            Instruction.Create(OpCodes.Ldc_I4_2),
-            Instruction.Create(OpCodes.Rem),
-            Instruction.Create(OpCodes.Brfalse, target),
-            Instruction.Create(OpCodes.Ldc_I4_0),
+            Instruction.CreateLdcI4(_random.Next(1, 1000)),
             Instruction.Create(OpCodes.Pop),
             Instruction.Create(OpCodes.Br, target)
         };
 
+        // Always-true predicates using a runtime value so ILSpy cannot fold them at compile time.
+        Instruction[] predicate = _random.Next(4) switch
+        {
+            0 =>
+            [
+                Instruction.Create(OpCodes.Call, getTickCount),
+                Instruction.Create(OpCodes.Dup),
+                Instruction.Create(OpCodes.Not),
+                Instruction.Create(OpCodes.Or),
+                Instruction.Create(OpCodes.Ldc_I4_M1),
+                Instruction.Create(OpCodes.Ceq),
+                Instruction.Create(OpCodes.Brtrue, target)
+            ],
+            1 =>
+            [
+                Instruction.Create(OpCodes.Call, getTickCount),
+                Instruction.Create(OpCodes.Dup),
+                Instruction.Create(OpCodes.Xor),
+                Instruction.Create(OpCodes.Brfalse, target)
+            ],
+            2 =>
+            [
+                Instruction.Create(OpCodes.Call, getTickCount),
+                Instruction.Create(OpCodes.Ldc_I4_1),
+                Instruction.Create(OpCodes.Or),
+                Instruction.Create(OpCodes.Brtrue, target)
+            ],
+            _ =>
+            [
+                Instruction.Create(OpCodes.Call, getTickCount),
+                Instruction.Create(OpCodes.Dup),
+                Instruction.Create(OpCodes.Ldc_I4_1),
+                Instruction.Create(OpCodes.Add),
+                Instruction.Create(OpCodes.Mul),
+                Instruction.Create(OpCodes.Ldc_I4_2),
+                Instruction.Create(OpCodes.Rem),
+                Instruction.Create(OpCodes.Brfalse, target)
+            ]
+        };
+
+        var inserted = predicate.Concat(dead).ToArray();
         for (var i = inserted.Length - 1; i >= 0; i--)
             instructions.Insert(position, inserted[i]);
     }

@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Anti-dump PE-header wipe at module load (Aggressive preset)
 - Reference proxy for in-module method calls (Aggressive preset)
+- Native `IsDebuggerPresent` check in addition to managed debugger APIs
+- `calli` reference proxies (ILSpy cannot inline a `call`+`ret` trampoline)
+- XOR-encoded string decrypt indices so call sites are not `Decrypt(0)`, `Decrypt(1)`, …
 - Symbol renaming for events, accessors, and namespaces
 - CFG control-flow flattening for methods with branches
 - Opaque predicates based on `Environment.TickCount` instead of foldable constants
@@ -19,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - String and constant encryption now cover try/catch, compiler-generated methods, and compiler-generated types (async/iterator/lambda display classes)
+- Control flow applies opaque predicates to methods with exception handlers (`using`/`await`/`try`) instead of skipping them
+- Opaque predicates use several always-true forms plus a junk dead branch, not only `n*(n+1)%2`
 - Anti-dump wipes MZ, checksum, import, debug, and IAT directory slots (not only PE checksum)
 - Anti-tamper falls back to `Environment.ProcessPath` when `Assembly.Location` is empty; `Verify` is assembly-visible
 - Anti-tamper magic marker is no longer the ASCII string `OBFY_AT_MAGIC!!`

@@ -85,6 +85,8 @@ public class AssemblyProcessor : IAssemblyProcessor
             try
             {
                 context.Module.Write(tempPath, writerOptions);
+                if (context.MethodEncryptionMetadata is not null)
+                    MethodBodyPeEncryptor.Encrypt(tempPath, context.MethodEncryptionMetadata);
                 AssemblyHashComputer.PatchIntegrityHash(tempPath);
 
                 if (File.Exists(outputPath))
@@ -111,6 +113,8 @@ public class AssemblyProcessor : IAssemblyProcessor
         else
         {
             context.Module.Write(outputPath, writerOptions);
+            if (context.MethodEncryptionMetadata is not null)
+                MethodBodyPeEncryptor.Encrypt(outputPath, context.MethodEncryptionMetadata);
         }
 
         if (context.Module is IDisposable disposable)

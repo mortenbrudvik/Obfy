@@ -106,6 +106,7 @@ public class HelpOutputTests
         output.ShouldContain("--rename");
         output.ShouldContain("--anti-debug");
         output.ShouldContain("--anti-dump");
+        output.ShouldContain("--encrypt-methods");
         output.ShouldContain("--reference-proxy");
         output.ShouldContain("--encrypt-constants");
         output.ShouldContain("--no-control-flow");

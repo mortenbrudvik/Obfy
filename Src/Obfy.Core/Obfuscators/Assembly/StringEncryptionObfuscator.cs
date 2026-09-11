@@ -44,12 +44,13 @@ public class StringEncryptionObfuscator : IObfuscator
         {
             // Generate encryption key for this assembly
             var key = EncryptionHelper.GenerateKey(settings.Algorithm);
+            var indexXor = Random.Shared.Next(0x100, int.MaxValue) | 1;
 
             // Store key and encrypted strings for decryptor injection
             var encryptedStrings = new List<byte[]>();
 
             // Inject decryptor type
-            var decryptorType = InjectDecryptorType(module, key, settings.Algorithm);
+            var decryptorType = InjectDecryptorType(module, key, settings.Algorithm, indexXor);
             var decryptMethod = decryptorType.FindMethod("Decrypt");
 
             // Process all methods
@@ -91,7 +92,7 @@ public class StringEncryptionObfuscator : IObfuscator
                         encryptedStrings.Add(encrypted);
 
                         var originalInstr = instructions[i];
-                        ObfuscatorHelpers.SetLdcI4(originalInstr, index);
+                        ObfuscatorHelpers.SetLdcI4(originalInstr, index ^ indexXor);
                         instructions.Insert(i + 1, Instruction.Create(OpCodes.Call, decryptMethod));
                         i++;
                         modified = true;
@@ -133,7 +134,7 @@ public class StringEncryptionObfuscator : IObfuscator
         }
     }
 
-    private TypeDef InjectDecryptorType(ModuleDef module, byte[] key, EncryptionAlgorithm algorithm)
+    private TypeDef InjectDecryptorType(ModuleDef module, byte[] key, EncryptionAlgorithm algorithm, int indexXor)
     {
         // Create internal static class for decryption
         var typeDef = new TypeDefUser(
@@ -163,12 +164,19 @@ public class StringEncryptionObfuscator : IObfuscator
             FieldAttributes.Private | FieldAttributes.Static);
         typeDef.Fields.Add(cacheField);
 
+        var indexXorField = new FieldDefUser(
+            "_x",
+            new FieldSig(module.CorLibTypes.Int32),
+            FieldAttributes.Private | FieldAttributes.Static);
+        typeDef.Fields.Add(indexXorField);
+
         var bytesDecrypt = algorithm == EncryptionAlgorithm.Aes256
             ? DecryptorIl.CreateAesDecryptBytes(module, "AesDecrypt", MethodAttributes.Private | MethodAttributes.Static)
             : DecryptorIl.CreateXorDecryptBytes(module, "XorDecrypt", MethodAttributes.Private | MethodAttributes.Static);
         typeDef.Methods.Add(bytesDecrypt);
 
-        var decryptMethod = DecryptorIl.CreateStringDecrypt(module, keyField, stringsField, cacheField, bytesDecrypt, algorithm);
+        var decryptMethod = DecryptorIl.CreateStringDecrypt(
+            module, keyField, stringsField, cacheField, indexXorField, bytesDecrypt, algorithm);
         typeDef.Methods.Add(decryptMethod);
 
         var cctor = new MethodDefUser(
@@ -179,6 +187,8 @@ public class StringEncryptionObfuscator : IObfuscator
         var body = new CilBody { InitLocals = true };
         cctor.Body = body;
         DecryptorIl.EmitEncodedKey(body, module, keyField, key);
+        body.Instructions.Add(Instruction.CreateLdcI4(indexXor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, indexXorField));
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
         body.UpdateInstructionOffsets();
         typeDef.Methods.Add(cctor);

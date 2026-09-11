@@ -1,0 +1,353 @@
+using dnlib.DotNet;
+using dnlib.DotNet.Emit;
+using Microsoft.Extensions.Logging;
+using Obfy.Core.Models;
+using Obfy.Core.Pipeline;
+using Obfy.Core.Utilities;
+
+namespace Obfy.Core.Obfuscators.Assembly;
+
+/// <summary>
+/// XOR-encrypts method IL in the PE image. A module-initializer decrypts the IL in memory
+/// before JIT, using VirtualProtect on Windows.
+/// </summary>
+public class MethodEncryptionObfuscator : IObfuscator
+{
+    private readonly ILogger<MethodEncryptionObfuscator> _logger;
+
+    public MethodEncryptionObfuscator(ILogger<MethodEncryptionObfuscator> logger)
+    {
+        _logger = logger;
+    }
+
+    public string Name => "MethodEncryption";
+
+    public int Priority => (int)ObfuscationPhase.MethodEncryption;
+
+    public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
+
+    public bool IsEnabled(ObfySettings settings) => settings.Protection.MethodEncryption;
+
+    public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
+    {
+        var module = context.RequireModule();
+        var stats = new ObfuscationStatistics();
+
+        try
+        {
+            var targets = new List<MethodDef>();
+            foreach (var type in module.GetTypes())
+            {
+                if (ObfuscatorHelpers.IsRuntimeHelper(type))
+                    continue;
+                if (type.IsGlobalModuleType)
+                    continue;
+
+                foreach (var method in type.Methods)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!CanEncrypt(method))
+                        continue;
+                    targets.Add(method);
+                }
+            }
+
+            if (targets.Count == 0)
+            {
+                _logger.LogInformation("Method encryption: no eligible methods");
+                return Task.FromResult(ObfuscationResult.Successful(stats));
+            }
+
+            var xorKey = (byte)Random.Shared.Next(1, 256);
+            InjectDecryptor(module, targets.Count, xorKey);
+
+            stats.ProtectionsApplied = targets.Count;
+            _logger.LogInformation("Prepared {Count} methods for IL encryption", targets.Count);
+            return Task.FromResult(ObfuscationResult.Successful(stats));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Method encryption injection failed");
+            return Task.FromResult(ObfuscationResult.Failed($"Method encryption failed: {ex.Message}", ex));
+        }
+    }
+
+    private static bool CanEncrypt(MethodDef method)
+    {
+        if (!method.HasBody || method.Body.Instructions.Count < 2)
+            return false;
+        if (method.IsAbstract || method.IsPinvokeImpl || method.IsNative || method.IsUnmanaged)
+            return false;
+        if (method.IsStaticConstructor)
+            return false;
+        if (method.HasGenericParameters || method.DeclaringType.HasGenericParameters)
+            return false;
+        return true;
+    }
+
+    private static TypeDef InjectDecryptor(ModuleDef module, int methodCount, byte xorKey)
+    {
+        var typeDef = new TypeDefUser(
+            "Obfy.Runtime",
+            "<MethodCrypt>",
+            module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract
+        };
+
+        var blobType = new TypeDefUser("Obfy.Runtime", "<MethodCryptBlob>",
+            new TypeRefUser(module, "System", "ValueType", module.CorLibTypes.AssemblyRef))
+        {
+            Attributes = TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout |
+                         TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit
+        };
+        var blobSize = 16 + 8 + methodCount * 12;
+        blobType.ClassLayout = new ClassLayoutUser(1, (uint)blobSize);
+        typeDef.NestedTypes.Add(blobType);
+
+        var blob = new byte[blobSize];
+        Buffer.BlockCopy(MethodEncryptionMetadata.Magic, 0, blob, 0, MethodEncryptionMetadata.Magic.Length);
+        blob[20] = xorKey;
+
+        var blobField = new FieldDefUser(
+            "_blob",
+            new FieldSig(blobType.ToTypeSig()),
+            FieldAttributes.Private | FieldAttributes.Static | FieldAttributes.HasFieldRVA)
+        {
+            InitialValue = blob
+        };
+        typeDef.Fields.Add(blobField);
+
+        var virtualProtect = CreateVirtualProtect(module);
+        typeDef.Methods.Add(virtualProtect);
+        typeDef.Methods.Add(CreateDecryptBodies(module, typeDef, blobField, virtualProtect));
+        module.Types.Add(typeDef);
+        return typeDef;
+    }
+
+    private static MethodDef CreateVirtualProtect(ModuleDef module)
+    {
+        var uint32 = module.CorLibTypes.UInt32;
+        return new MethodDefUser(
+            "VirtualProtect",
+            MethodSig.CreateStatic(
+                module.CorLibTypes.Boolean,
+                module.CorLibTypes.IntPtr,
+                uint32,
+                uint32,
+                new ByRefSig(uint32)),
+            MethodImplAttributes.PreserveSig,
+            MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.PinvokeImpl)
+        {
+            ImplMap = new ImplMapUser(
+                new ModuleRefUser(module, "kernel32"),
+                "VirtualProtect",
+                PInvokeAttributes.SupportsLastError | PInvokeAttributes.CallConvWinapi | PInvokeAttributes.NoMangle)
+        };
+    }
+
+    private static MethodDef CreateDecryptBodies(
+        ModuleDef module,
+        TypeDef declaringType,
+        FieldDef blobField,
+        MethodDef virtualProtect)
+    {
+        var method = new MethodDefUser(
+            "DecryptBodies",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Assembly | MethodAttributes.Static);
+
+        var body = new CilBody { InitLocals = true };
+        method.Body = body;
+
+        var marshalType = new TypeRefUser(module, "System.Runtime.InteropServices", "Marshal", module.CorLibTypes.AssemblyRef);
+        var moduleType = new TypeRefUser(module, "System.Reflection", "Module", module.CorLibTypes.AssemblyRef);
+        var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
+        var runtimeTypeHandle = new TypeRefUser(module, "System", "RuntimeTypeHandle", module.CorLibTypes.AssemblyRef);
+
+        var getTypeFromHandle = new MemberRefUser(module, "GetTypeFromHandle",
+            MethodSig.CreateStatic(new ClassSig(typeType), new ValueTypeSig(runtimeTypeHandle)), typeType);
+        var getModule = new MemberRefUser(module, "get_Module",
+            MethodSig.CreateInstance(new ClassSig(moduleType)), typeType);
+        var getHinstance = new MemberRefUser(module, "GetHINSTANCE",
+            MethodSig.CreateStatic(module.CorLibTypes.IntPtr, new ClassSig(moduleType)), marshalType);
+        var readInt32 = new MemberRefUser(module, "ReadInt32",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32), marshalType);
+        var readByte = new MemberRefUser(module, "ReadByte",
+            MethodSig.CreateStatic(module.CorLibTypes.Byte, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32), marshalType);
+        var writeByte = new MemberRefUser(module, "WriteByte",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32, module.CorLibTypes.Byte), marshalType);
+
+        var addr = new Local(module.CorLibTypes.IntPtr);
+        var i = new Local(module.CorLibTypes.Int32);
+        var count = new Local(module.CorLibTypes.Int32);
+        var key = new Local(module.CorLibTypes.Int32);
+        var rva = new Local(module.CorLibTypes.Int32);
+        var header = new Local(module.CorLibTypes.Int32);
+        var size = new Local(module.CorLibTypes.Int32);
+        var j = new Local(module.CorLibTypes.Int32);
+        var oldProtect = new Local(module.CorLibTypes.UInt32);
+        var entryOff = new Local(module.CorLibTypes.Int32);
+        var xorByte = new Local(module.CorLibTypes.Int32);
+        foreach (var local in new[] { addr, i, count, key, rva, header, size, j, oldProtect, entryOff, xorByte })
+            body.Variables.Add(local);
+
+        var ret = Instruction.Create(OpCodes.Ret);
+        var loopCheck = Instruction.Create(OpCodes.Ldloc, i);
+        var innerCheck = Instruction.Create(OpCodes.Ldloc, j);
+        var next = Instruction.Create(OpCodes.Ldloc, i);
+        var afterAddr = Instruction.Create(OpCodes.Ldloc, addr);
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, declaringType));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getModule));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getHinstance));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, addr));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, ret));
+
+        body.Instructions.Add(afterAddr);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.CreateLdcI4(16));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, count));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.CreateLdcI4(20));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, readByte));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, key));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, i));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, loopCheck));
+
+        var loopBody = Instruction.Create(OpCodes.Ldloc, i);
+        body.Instructions.Add(loopBody);
+        body.Instructions.Add(Instruction.CreateLdcI4(12));
+        body.Instructions.Add(Instruction.Create(OpCodes.Mul));
+        body.Instructions.Add(Instruction.CreateLdcI4(24));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, entryOff));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, rva));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, header));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_8));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, size));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, rva));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, next));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, rva));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, header));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, size));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_U));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x40));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, oldProtect));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, virtualProtect));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, j));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, innerCheck));
+
+        var innerBody = Instruction.Create(OpCodes.Ldloc, addr);
+        body.Instructions.Add(innerBody);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, rva));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, header));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, j));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, entryOff));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, readByte));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, key));
+        body.Instructions.Add(Instruction.Create(OpCodes.Xor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_U1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, xorByte));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, xorByte));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_U1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeByte));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, j));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, j));
+
+        body.Instructions.Add(innerCheck);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, size));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, innerBody));
+
+        body.Instructions.Add(next);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, i));
+
+        body.Instructions.Add(loopCheck);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, count));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, loopBody));
+
+        body.Instructions.Add(ret);
+
+        body.KeepOldMaxStack = true;
+        body.MaxStack = 8;
+        body.UpdateInstructionOffsets();
+        return method;
+    }
+
+    private static MethodDef FindOrCreateModuleInitializer(ModuleDef module)
+    {
+        var globalType = module.GlobalType;
+        if (globalType == null)
+        {
+            globalType = new TypeDefUser("", "<Module>", null)
+            {
+                Attributes = TypeAttributes.NotPublic
+            };
+            module.Types.Insert(0, globalType);
+        }
+
+        var cctor = globalType.Methods.FirstOrDefault(m => m.IsStaticConstructor || m.Name == ".cctor");
+        if (cctor != null)
+            return cctor;
+
+        cctor = new MethodDefUser(
+            ".cctor",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Private | MethodAttributes.Static |
+            MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        cctor.Body = body;
+        globalType.Methods.Add(cctor);
+        return cctor;
+    }
+}

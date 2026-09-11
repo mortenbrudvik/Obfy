@@ -826,11 +826,10 @@ public class AssemblyObfuscatorTests
 
         var result = await obfuscator.ObfuscateAsync(context);
         result.Success.ShouldBeTrue();
-        result.Statistics.MethodsControlFlowObfuscated.ShouldBe(0);
-        context.SkippedItems.ShouldContain(s =>
-            s.Reason == SkipReason.UnsupportedConstruct &&
-            s.ItemType == SkippedItemType.Method &&
-            s.Details == "Exception handlers");
+        result.Statistics.MethodsControlFlowObfuscated.ShouldBe(1);
+        var usesTickCount = method.Body.Instructions.Any(i =>
+            i.Operand is IMethod m && m.Name == "get_TickCount");
+        usesTickCount.ShouldBeTrue();
     }
 
     [Fact]
@@ -2823,6 +2822,10 @@ public class AssemblyObfuscatorTests
         result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
         var called = (IMethod)caller.Body.Instructions[0].Operand;
         called.DeclaringType.Name.String.ShouldBe("<RefProxy>");
+        var proxy = called.ResolveMethodDef();
+        proxy.ShouldNotBeNull();
+        proxy!.Body.Instructions.ShouldContain(i => i.OpCode == OpCodes.Calli);
+        proxy.Body.Instructions.ShouldContain(i => i.OpCode == OpCodes.Ldftn);
     }
 
     [Fact]
@@ -2941,6 +2944,63 @@ public class AssemblyObfuscatorTests
             i.Operand is IMethod m && m.Name == "get_ProcessPath");
         usesProcessPath.ShouldBeTrue();
         verify.IsPublic.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task StringEncryption_CallSitesUseEncodedIndex()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var method = CreateMethodWithString(type, "GetMessage", "HelloWorldSecret");
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+
+        var ldc = method.Body.Instructions.First(i => i.OpCode.Code.ToString().StartsWith("Ldc_I4", StringComparison.Ordinal));
+        var value = ldc.OpCode == OpCodes.Ldc_I4_0 ? 0
+            : ldc.OpCode == OpCodes.Ldc_I4_1 ? 1
+            : ldc.Operand is int i ? i
+            : ldc.Operand is sbyte b ? b
+            : int.MinValue;
+        value.ShouldNotBe(0);
+    }
+
+    [Fact]
+    public async Task AntiDebug_InjectsNativeChecks()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var entry = CreateTestMethod(type, "Main", isPublic: true);
+        module.EntryPoint = entry;
+
+        var obfuscator = new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDebug = true } });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var anti = module.Types.First(t => t.Name == "<AntiDebug>");
+        anti.FindMethod("Check").ShouldNotBeNull();
+        anti.FindMethod("IsDebuggerPresent").ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task MethodEncryption_InjectsDecryptor()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Work");
+        var method = CreateMethodWithMultipleInstructions(type, "Go", 12);
+
+        var obfuscator = new MethodEncryptionObfuscator(new Mock<ILogger<MethodEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { MethodEncryption = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
+        module.Types.ShouldContain(t => t.Name == "<MethodCrypt>");
     }
 
     #endregion

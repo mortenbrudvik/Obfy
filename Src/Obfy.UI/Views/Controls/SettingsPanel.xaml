@@ -111,6 +111,8 @@
                                Content="Anti-Dump" IsChecked="{Binding AntiDumpEnabled}"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ReferenceProxyToggle"
                                Content="Reference Proxy" IsChecked="{Binding ReferenceProxyEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="MethodEncryptionToggle"
+                               Content="Method IL Encryption" IsChecked="{Binding MethodEncryptionEnabled}"/>
             </StackPanel>
         </Expander>
 

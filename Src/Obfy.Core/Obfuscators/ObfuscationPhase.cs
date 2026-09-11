@@ -31,6 +31,9 @@ public enum ObfuscationPhase
     /// <summary>Inject anti-tamper verification (before renaming).</summary>
     AntiTamper = 22,
 
+    /// <summary>Encrypt method IL in the PE image; decrypted at module load.</summary>
+    MethodEncryption = 25,
+
     /// <summary>Obfuscate control flow, including injected helpers.</summary>
     ControlFlow = 30,
 

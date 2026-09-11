@@ -67,6 +67,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _referenceProxyEnabled = false;
 
+    [ObservableProperty]
+    private bool _methodEncryptionEnabled = false;
+
     // Protection
     [ObservableProperty]
     private bool _antiDebugEnabled = false;
@@ -286,7 +289,8 @@ public partial class SettingsViewModel : ObservableObject
                     JunkMethodsPerType = JunkMethodsPerType
                 },
                 AntiDump = AntiDumpEnabled,
-                ReferenceProxy = ReferenceProxyEnabled
+                ReferenceProxy = ReferenceProxyEnabled,
+                MethodEncryption = MethodEncryptionEnabled
             },
             Metadata = new MetadataSettings
             {
@@ -369,6 +373,7 @@ public partial class SettingsViewModel : ObservableObject
         JunkTypeCount = settings.Protection.AntiDecompiler.JunkTypeCount;
         JunkMethodsPerType = settings.Protection.AntiDecompiler.JunkMethodsPerType;
         AntiDumpEnabled = settings.Protection.AntiDump;
+        MethodEncryptionEnabled = settings.Protection.MethodEncryption;
         ReferenceProxyEnabled = settings.Protection.ReferenceProxy;
 
         // Metadata

@@ -65,6 +65,11 @@ public class PipelineContext
     public AntiTamperMetadata? AntiTamperMetadata { get; set; }
 
     /// <summary>
+    /// Set when method-body encryption was injected. The writer XOR-encrypts IL after RVAs are known.
+    /// </summary>
+    public MethodEncryptionMetadata? MethodEncryptionMetadata { get; set; }
+
+    /// <summary>
     /// Gets or sets the input file path.
     /// </summary>
     public string? InputPath { get; set; }

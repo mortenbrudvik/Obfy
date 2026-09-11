@@ -207,6 +207,7 @@ internal static class DecryptorIl
         FieldDef keyField,
         FieldDef stringsField,
         FieldDef cacheField,
+        FieldDef indexXorField,
         MethodDef bytesDecrypt,
         EncryptionAlgorithm algorithm)
     {
@@ -228,7 +229,14 @@ internal static class DecryptorIl
             encodingType);
 
         var resultLocal = new Local(module.CorLibTypes.String);
+        var indexLocal = new Local(module.CorLibTypes.Int32);
         body.Variables.Add(resultLocal);
+        body.Variables.Add(indexLocal);
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, indexXorField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Xor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, indexLocal));
 
         var decryptLabel = Instruction.Create(OpCodes.Nop);
         var storeLabel = Instruction.Create(OpCodes.Nop);
@@ -237,7 +245,7 @@ internal static class DecryptorIl
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, cacheField));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, decryptLabel));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, cacheField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, indexLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
         body.Instructions.Add(Instruction.Create(OpCodes.Dup));
         body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, storeLabel));
@@ -247,7 +255,7 @@ internal static class DecryptorIl
         // result = Encoding.UTF8.GetString(DecryptBytes(_s[index], _k))
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getUtf8));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, stringsField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, indexLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, bytesDecrypt));
@@ -266,7 +274,7 @@ internal static class DecryptorIl
         body.Instructions.Add(afterInitCache);
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, cacheField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, indexLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, resultLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, resultLocal));
@@ -275,6 +283,8 @@ internal static class DecryptorIl
         body.Instructions.Add(storeLabel);
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 
+        body.KeepOldMaxStack = true;
+        body.MaxStack = 8;
         body.UpdateInstructionOffsets();
         return method;
     }

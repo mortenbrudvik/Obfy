@@ -9,18 +9,7 @@ namespace Obfy.Core.Utilities;
 /// </summary>
 public static class ObfuscatorHelpers
 {
-    public static bool MatchesPattern(string? value, string pattern)
-    {
-        if (string.IsNullOrEmpty(value))
-            return false;
-
-        if (pattern.EndsWith('*'))
-        {
-            return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
-        }
-
-        return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
-    }
+    public static bool MatchesPattern(string? value, string pattern) => WildcardMatcher.IsMatch(value, pattern);
 
     /// <summary>
     /// Matches an attribute type against an exclusion pattern.

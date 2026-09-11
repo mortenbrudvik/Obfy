@@ -350,14 +350,7 @@ public class SourceSymbolRenamer : IObfuscator
         }
     }
 
-    private static bool MatchesPattern(string value, string pattern)
-    {
-        if (pattern.EndsWith("*", StringComparison.Ordinal))
-        {
-            return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
-        }
-        return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool MatchesPattern(string value, string pattern) => WildcardMatcher.IsMatch(value, pattern);
 
     /// <summary>
     /// Rewrites a fixed set of identifier tokens (identified by position within one tree) to new

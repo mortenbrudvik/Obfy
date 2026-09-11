@@ -47,9 +47,8 @@ public class AntiDebugObfuscator : IObfuscator
                 var antiDebugType = InjectAntiDebugType(module);
 
                 // Add check to entry point
-                if (module.EntryPoint != null)
+                if (module.EntryPoint != null && InjectDebuggerCheck(module.EntryPoint, antiDebugType))
                 {
-                    InjectDebuggerCheck(module.EntryPoint, antiDebugType);
                     stats.ProtectionsApplied++;
                 }
 
@@ -59,9 +58,8 @@ public class AntiDebugObfuscator : IObfuscator
                     moduleInitializer = CreateModuleInitializer(module);
                 }
 
-                if (moduleInitializer != null)
+                if (moduleInitializer != null && InjectDebuggerCheck(moduleInitializer, antiDebugType))
                 {
-                    InjectDebuggerCheck(moduleInitializer, antiDebugType);
                     stats.ProtectionsApplied++;
                 }
             }
@@ -136,14 +134,14 @@ public class AntiDebugObfuscator : IObfuscator
         return method;
     }
 
-    private void InjectDebuggerCheck(MethodDef method, TypeDef antiDebugType)
+    private bool InjectDebuggerCheck(MethodDef method, TypeDef antiDebugType)
     {
         if (!method.HasBody)
-            return;
+            return false;
 
         var checkMethod = antiDebugType.FindMethod("Check");
         if (checkMethod == null)
-            return;
+            return false;
 
         var body = method.Body;
         var instructions = body.Instructions;
@@ -152,6 +150,7 @@ public class AntiDebugObfuscator : IObfuscator
         instructions.Insert(0, Instruction.Create(OpCodes.Call, checkMethod));
 
         body.UpdateInstructionOffsets();
+        return true;
     }
 
     private MethodDef? FindModuleInitializer(ModuleDef module)

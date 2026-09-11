@@ -38,6 +38,10 @@ public class NameGenerator : INameGenerator
     private int _sequentialCounter;
     private static Random Rng => Random.Shared;
 
+    // Guards the mutable state (_sequentialCounter, _used) so the generator is safe to share across
+    // threads even though the pipeline currently drives it sequentially.
+    private readonly object _lock = new();
+
     // Every name handed out during a run is recorded here so no two symbols can be given the same
     // name. Two identical names in one scope (methods/fields in a type, types in a namespace) would
     // produce invalid metadata, and the random/hash modes can otherwise collide.
@@ -90,8 +94,11 @@ public class NameGenerator : INameGenerator
     /// <inheritdoc/>
     public void Reset()
     {
-        _sequentialCounter = 0;
-        _used.Clear();
+        lock (_lock)
+        {
+            _sequentialCounter = 0;
+            _used.Clear();
+        }
     }
 
     /// <summary>
@@ -101,21 +108,24 @@ public class NameGenerator : INameGenerator
     /// </summary>
     private string EnsureUnique(Func<string> generator)
     {
-        for (var attempt = 0; attempt < 16; attempt++)
+        lock (_lock)
         {
-            var candidate = generator();
-            if (_used.Add(candidate))
-                return candidate;
-        }
+            for (var attempt = 0; attempt < 16; attempt++)
+            {
+                var candidate = generator();
+                if (_used.Add(candidate))
+                    return candidate;
+            }
 
-        var baseName = generator();
-        var counter = 0;
-        string suffixed;
-        do
-        {
-            suffixed = baseName + ToBase26(counter++);
-        } while (!_used.Add(suffixed));
-        return suffixed;
+            var baseName = generator();
+            var counter = 0;
+            string suffixed;
+            do
+            {
+                suffixed = baseName + ToBase26(counter++);
+            } while (!_used.Add(suffixed));
+            return suffixed;
+        }
     }
 
     private string GenerateUnreadable()

@@ -40,12 +40,13 @@ public class ObfuscationService : IObfuscationService
     {
         _logger.LogInformation("Starting obfuscation of {InputPath}", inputPath);
 
-        if (!File.Exists(inputPath) && !Directory.Exists(inputPath))
+        var isDirectory = Directory.Exists(inputPath);
+        if (!File.Exists(inputPath) && !isDirectory)
         {
             return ObfuscationResult.Failed($"Input file not found: {inputPath}");
         }
 
-        var target = ObfuscationTarget.FromFile(inputPath, outputPath);
+        var target = ObfuscationTarget.ForFile(inputPath, outputPath, isDirectory);
 
         if (settings.Level != ObfuscationLevel.Custom)
         {

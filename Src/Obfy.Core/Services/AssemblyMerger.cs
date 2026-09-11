@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 using ILRepacking;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
+using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Services;
 
@@ -159,18 +159,8 @@ public class AssemblyMerger : IAssemblyMerger
             return inputPaths;
         }
 
-        var regexPatterns = excludePatterns
-            .Select(p => new Regex(
-                "^" + Regex.Escape(p).Replace("\\*", ".*").Replace("\\?", ".") + "$",
-                RegexOptions.IgnoreCase))
-            .ToList();
-
         return inputPaths
-            .Where(path =>
-            {
-                var fileName = Path.GetFileName(path);
-                return !regexPatterns.Any(r => r.IsMatch(fileName));
-            })
+            .Where(path => !excludePatterns.Any(p => WildcardMatcher.IsMatch(Path.GetFileName(path), p)))
             .ToList();
     }
 

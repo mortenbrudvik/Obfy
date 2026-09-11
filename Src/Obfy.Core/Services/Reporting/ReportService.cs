@@ -116,45 +116,35 @@ public class ReportService : IReportService
         return version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "1.0.0";
     }
 
-    private static FileInfoSection BuildFileInfo(PipelineContext context)
+    private FileInfoSection BuildFileInfo(PipelineContext context)
     {
         var inputPath = context.InputPath ?? string.Empty;
         var outputPath = context.OutputPath ?? string.Empty;
-
-        long inputSize = 0;
-        long outputSize = 0;
-
-        try
-        {
-            if (File.Exists(inputPath))
-            {
-                inputSize = new FileInfo(inputPath).Length;
-            }
-        }
-        catch
-        {
-            // Ignore file access errors
-        }
-
-        try
-        {
-            if (File.Exists(outputPath))
-            {
-                outputSize = new FileInfo(outputPath).Length;
-            }
-        }
-        catch
-        {
-            // Ignore file access errors
-        }
 
         return new FileInfoSection
         {
             InputPath = inputPath,
             OutputPath = outputPath,
-            InputSizeBytes = inputSize,
-            OutputSizeBytes = outputSize
+            InputSizeBytes = TryGetFileSize(inputPath),
+            OutputSizeBytes = TryGetFileSize(outputPath)
         };
+    }
+
+    /// <summary>
+    /// Returns the size of the file at <paramref name="path"/>, or 0 if it does not exist or cannot be
+    /// read. File-access failures are logged at debug rather than silently swallowed.
+    /// </summary>
+    private long TryGetFileSize(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? new FileInfo(path).Length : 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _logger.LogDebug(ex, "Could not read size of {Path} for the report", path);
+            return 0;
+        }
     }
 
     private static SymbolMapSummary BuildSymbolSummary(PipelineContext context, ObfySettings settings)
@@ -332,37 +322,13 @@ public class ReportService : IReportService
         _ => reason.ToString()
     };
 
-    private static FileInfoSection BuildFileInfoFromResult(ObfuscationResult result)
+    private FileInfoSection BuildFileInfoFromResult(ObfuscationResult result)
     {
         var inputPath = result.InputPath ?? string.Empty;
         var outputPath = result.OutputPath ?? string.Empty;
 
-        long inputSize = 0;
-        long outputSize = 0;
-
-        try
-        {
-            if (File.Exists(inputPath))
-            {
-                inputSize = new FileInfo(inputPath).Length;
-            }
-        }
-        catch
-        {
-            // Ignore file access errors
-        }
-
-        try
-        {
-            if (File.Exists(outputPath))
-            {
-                outputSize = new FileInfo(outputPath).Length;
-            }
-        }
-        catch
-        {
-            // Ignore file access errors
-        }
+        var inputSize = TryGetFileSize(inputPath);
+        var outputSize = TryGetFileSize(outputPath);
 
         return new FileInfoSection
         {

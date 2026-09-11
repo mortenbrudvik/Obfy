@@ -51,9 +51,9 @@ public class AntiTamperObfuscator : IObfuscator
             };
 
             // Add check to entry point if configured
-            if (settings.CheckEntryPoint && module.EntryPoint != null)
+            if (settings.CheckEntryPoint && module.EntryPoint != null &&
+                InjectVerificationCall(module.EntryPoint, antiTamperType))
             {
-                InjectVerificationCall(module.EntryPoint, antiTamperType);
                 stats.ProtectionsApplied++;
                 _logger.LogDebug("Injected anti-tamper check at entry point");
             }
@@ -62,9 +62,8 @@ public class AntiTamperObfuscator : IObfuscator
             if (settings.CheckModuleInitializer)
             {
                 var moduleInitializer = FindOrCreateModuleInitializer(module);
-                if (moduleInitializer != null)
+                if (moduleInitializer != null && InjectVerificationCall(moduleInitializer, antiTamperType))
                 {
-                    InjectVerificationCall(moduleInitializer, antiTamperType);
                     stats.ProtectionsApplied++;
                     _logger.LogDebug("Injected anti-tamper check at module initializer");
                 }
@@ -372,14 +371,14 @@ public class AntiTamperObfuscator : IObfuscator
         return method;
     }
 
-    private void InjectVerificationCall(MethodDef method, TypeDef antiTamperType)
+    private bool InjectVerificationCall(MethodDef method, TypeDef antiTamperType)
     {
         if (!method.HasBody)
-            return;
+            return false;
 
         var verifyMethod = antiTamperType.FindMethod("Verify");
         if (verifyMethod == null)
-            return;
+            return false;
 
         var body = method.Body;
         var instructions = body.Instructions;
@@ -388,6 +387,7 @@ public class AntiTamperObfuscator : IObfuscator
         instructions.Insert(0, Instruction.Create(OpCodes.Call, verifyMethod));
 
         body.UpdateInstructionOffsets();
+        return true;
     }
 
     private MethodDef? FindOrCreateModuleInitializer(ModuleDef module)

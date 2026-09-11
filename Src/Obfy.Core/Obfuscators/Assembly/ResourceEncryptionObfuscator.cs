@@ -113,15 +113,7 @@ public class ResourceEncryptionObfuscator : IObfuscator
         return settings.IncludePatterns.Any(p => MatchesPattern(resourceName, p));
     }
 
-    private static bool MatchesPattern(string name, string pattern)
-    {
-        // Convert wildcard pattern to regex
-        var regexPattern = "^" + Regex.Escape(pattern)
-            .Replace("\\*", ".*")
-            .Replace("\\?", ".") + "$";
-
-        return Regex.IsMatch(name, regexPattern, RegexOptions.IgnoreCase);
-    }
+    private static bool MatchesPattern(string name, string pattern) => WildcardMatcher.IsMatch(name, pattern);
 
     private void InjectDecryptorType(
         ModuleDef module,

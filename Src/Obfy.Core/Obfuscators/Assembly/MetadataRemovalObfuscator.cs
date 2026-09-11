@@ -116,10 +116,11 @@ public class MetadataRemovalObfuscator : IObfuscator
     private int RemoveAttributes(ModuleDef module, ExclusionRules exclusions)
     {
         var count = 0;
+        // NOTE: CompilationRelaxationsAttribute and RuntimeCompatibilityAttribute are intentionally
+        // NOT removed. RuntimeCompatibilityAttribute.WrapNonExceptionThrows changes how the runtime
+        // wraps non-Exception throws; stripping it alters runtime behavior for little obfuscation gain.
         var attributesToRemove = new HashSet<string>
         {
-            "System.Runtime.CompilerServices.CompilationRelaxationsAttribute",
-            "System.Runtime.CompilerServices.RuntimeCompatibilityAttribute",
             "System.Runtime.CompilerServices.CompilerGeneratedAttribute",
             "System.Runtime.CompilerServices.NullableAttribute",
             "System.Runtime.CompilerServices.NullableContextAttribute",

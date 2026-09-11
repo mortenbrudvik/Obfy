@@ -294,15 +294,5 @@ public class SymbolRenamingObfuscator : IObfuscator
         return true;
     }
 
-    private static bool MatchesPattern(string value, string pattern)
-    {
-        if (string.IsNullOrEmpty(value))
-            return false;
-
-        if (pattern.EndsWith("*"))
-        {
-            return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
-        }
-        return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool MatchesPattern(string value, string pattern) => WildcardMatcher.IsMatch(value, pattern);
 }

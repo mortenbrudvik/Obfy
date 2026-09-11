@@ -505,14 +505,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
                rules.Types.Any(t => MatchesPattern(type.Name, t));
     }
 
-    private static bool MatchesPattern(string value, string pattern)
-    {
-        if (pattern.EndsWith("*"))
-        {
-            return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
-        }
-        return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool MatchesPattern(string value, string pattern) => WildcardMatcher.IsMatch(value, pattern);
 
     private static bool IsCompilerGenerated(TypeDef type)
     {

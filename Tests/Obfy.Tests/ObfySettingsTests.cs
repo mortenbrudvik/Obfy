@@ -136,4 +136,26 @@ public class ObfySettingsTests
     {
         new ObfySettings().Validate();
     }
+
+    [Fact]
+    public void Clone_IsDeepCopy_AndIndependentAfterApplyLevel()
+    {
+        var original = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            StringEncryption = { Enabled = false, MinStringLength = 7 }
+        };
+
+        var clone = original.Clone();
+        clone.Level = ObfuscationLevel.Aggressive;
+        clone.ApplyLevel();
+
+        original.Level.ShouldBe(ObfuscationLevel.Custom);
+        original.StringEncryption.Enabled.ShouldBeFalse();
+        original.StringEncryption.MinStringLength.ShouldBe(7);
+
+        clone.StringEncryption.Enabled.ShouldBeTrue();
+        clone.ShouldNotBeSameAs(original);
+        clone.StringEncryption.ShouldNotBeSameAs(original.StringEncryption);
+    }
 }

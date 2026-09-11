@@ -691,6 +691,52 @@ namespace Test
         result.Warnings.ShouldContain(w => w.Contains("Anti-dump is not implemented"));
     }
 
+    [Fact]
+    public async Task ObfuscationService_DoesNotMutateCallerSettings()
+    {
+        var assemblyPath = CreateTestAssembly("CloneSettings.dll");
+        var outputPath = Path.Combine(_tempDirectory, "CloneSettings.out.dll");
+
+        var mockContext = PipelineContext.ForAssembly(
+            ModuleDefMD.Load(assemblyPath),
+            new ObfySettings());
+
+        var assemblyProcessor = new Mock<IAssemblyProcessor>();
+        assemblyProcessor
+            .Setup(p => p.LoadAsync(assemblyPath, It.IsAny<ObfySettings>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(mockContext);
+        assemblyProcessor
+            .Setup(p => p.SaveAsync(It.IsAny<PipelineContext>(), outputPath, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var pipeline = new Mock<IObfuscationPipeline>();
+        pipeline
+            .Setup(p => p.ExecuteAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ObfuscationResult.Successful(new ObfuscationStatistics()));
+
+        var service = new ObfuscationService(
+            assemblyProcessor.Object,
+            new Mock<ISourceProcessor>().Object,
+            pipeline.Object,
+            new Mock<IAssemblyMerger>().Object,
+            new Mock<ILogger<ObfuscationService>>().Object);
+
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Aggressive,
+            StringEncryption = { Enabled = false }
+        };
+
+        var result = await service.ObfuscateAsync(assemblyPath, outputPath, settings);
+
+        result.Success.ShouldBeTrue();
+        settings.StringEncryption.Enabled.ShouldBeFalse();
+        assemblyProcessor.Verify(p => p.LoadAsync(
+            assemblyPath,
+            It.Is<ObfySettings>(s => s.StringEncryption.Enabled && !ReferenceEquals(s, settings)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     #endregion
 
     #region AssemblyMerger Tests

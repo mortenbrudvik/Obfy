@@ -48,6 +48,9 @@ public class ObfuscationService : IObfuscationService
 
         var target = ObfuscationTarget.ForFile(inputPath, outputPath, isDirectory);
 
+        // Clone so ApplyLevel cannot mutate the caller's object (UI, batch, or a shared config).
+        settings = settings.Clone();
+
         if (settings.Level != ObfuscationLevel.Custom)
         {
             settings.ApplyLevel();

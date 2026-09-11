@@ -15,11 +15,6 @@ public class AntiTamperObfuscator : IObfuscator
 {
     private readonly ILogger<AntiTamperObfuscator> _logger;
 
-    /// <summary>
-    /// Shared data key for storing hash field metadata for post-processing.
-    /// </summary>
-    public const string HashFieldMetadataKey = "AntiTamper.HashFieldMetadata";
-
     public AntiTamperObfuscator(ILogger<AntiTamperObfuscator> logger)
     {
         _logger = logger;
@@ -29,7 +24,7 @@ public class AntiTamperObfuscator : IObfuscator
     public string Name => "AntiTamper";
 
     /// <inheritdoc/>
-    public int Priority => 75;
+    public int Priority => (int)ObfuscationPhase.AntiTamper;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -40,7 +35,7 @@ public class AntiTamperObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.Protection.AntiTamper;
         var stats = new ObfuscationStatistics();
 
@@ -50,15 +45,12 @@ public class AntiTamperObfuscator : IObfuscator
         {
             var antiTamperType = InjectAntiTamperType(module);
 
-            context.SharedData[HashFieldMetadataKey] = new AntiTamperMetadata
-            {
-                HashFieldToken = antiTamperType.MDToken.Raw
-            };
+            context.AntiTamperMetadata = AntiTamperMetadata.Injected;
 
             // Add check to entry point if configured
-            if (settings.CheckEntryPoint && module.EntryPoint != null)
+            if (settings.CheckEntryPoint && module.EntryPoint != null &&
+                InjectVerificationCall(module.EntryPoint, antiTamperType))
             {
-                InjectVerificationCall(module.EntryPoint, antiTamperType);
                 stats.ProtectionsApplied++;
                 _logger.LogDebug("Injected anti-tamper check at entry point");
             }
@@ -67,15 +59,23 @@ public class AntiTamperObfuscator : IObfuscator
             if (settings.CheckModuleInitializer)
             {
                 var moduleInitializer = FindOrCreateModuleInitializer(module);
-                if (moduleInitializer != null)
+                if (moduleInitializer != null && InjectVerificationCall(moduleInitializer, antiTamperType))
                 {
-                    InjectVerificationCall(moduleInitializer, antiTamperType);
                     stats.ProtectionsApplied++;
                     _logger.LogDebug("Injected anti-tamper check at module initializer");
                 }
             }
 
             _logger.LogInformation("Applied {Count} anti-tamper protections", stats.ProtectionsApplied);
+
+            // Emitted unconditionally: at obfuscation time we cannot know whether the consumer will
+            // publish as single-file. The runtime still skips when Assembly.Location is empty.
+            const string singleFileWarning =
+                "Anti-tamper: the integrity check verifies the assembly file on disk and is skipped for " +
+                "single-file / self-contained deployments (Assembly.Location is empty). Ship a file-based " +
+                "deployment for tamper protection to take effect.";
+            context.Warnings.Add(singleFileWarning);
+            _logger.LogWarning("{Warning}", singleFileWarning);
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
@@ -247,7 +247,8 @@ public class AntiTamperObfuscator : IObfuscator
         var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
         var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
         var fileType = new TypeRefUser(module, "System.IO", "File", module.CorLibTypes.AssemblyRef);
-        var sha256Type = new TypeRefUser(module, "System.Security.Cryptography", "SHA256", module.CorLibTypes.AssemblyRef);
+        // SHA256 lives in the cryptography assembly, not the corlib facade, on modern .NET.
+        var sha256Type = new TypeRefUser(module, "System.Security.Cryptography", "SHA256", FrameworkReferences.Cryptography(module));
         var bufferType = new TypeRefUser(module, "System", "Buffer", module.CorLibTypes.AssemblyRef);
 
         var getExecutingAssembly = new MemberRefUser(module, "GetExecutingAssembly",
@@ -301,7 +302,8 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, offsetLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Blt, skipLabel));
+        // Missing hash blob is tamper (or a failed patch), not the documented single-file skip.
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, exitLabel));
 
         body.Instructions.Add(Instruction.CreateLdcI4(AssemblyHashComputer.HashSize));
         body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
@@ -366,14 +368,14 @@ public class AntiTamperObfuscator : IObfuscator
         return method;
     }
 
-    private void InjectVerificationCall(MethodDef method, TypeDef antiTamperType)
+    private bool InjectVerificationCall(MethodDef method, TypeDef antiTamperType)
     {
         if (!method.HasBody)
-            return;
+            return false;
 
         var verifyMethod = antiTamperType.FindMethod("Verify");
         if (verifyMethod == null)
-            return;
+            return false;
 
         var body = method.Body;
         var instructions = body.Instructions;
@@ -382,6 +384,7 @@ public class AntiTamperObfuscator : IObfuscator
         instructions.Insert(0, Instruction.Create(OpCodes.Call, verifyMethod));
 
         body.UpdateInstructionOffsets();
+        return true;
     }
 
     private MethodDef? FindOrCreateModuleInitializer(ModuleDef module)
@@ -418,15 +421,4 @@ public class AntiTamperObfuscator : IObfuscator
 
         return cctor;
     }
-}
-
-/// <summary>
-/// Metadata for anti-tamper post-processing.
-/// </summary>
-public class AntiTamperMetadata
-{
-    /// <summary>
-    /// Token of the hash field for locating it during patching.
-    /// </summary>
-    public uint HashFieldToken { get; set; }
 }

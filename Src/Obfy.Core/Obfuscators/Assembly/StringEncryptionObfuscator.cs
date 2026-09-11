@@ -23,7 +23,7 @@ public class StringEncryptionObfuscator : IObfuscator
     public string Name => "StringEncryption";
 
     /// <inheritdoc/>
-    public int Priority => 10;
+    public int Priority => (int)ObfuscationPhase.StringEncryption;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -34,7 +34,7 @@ public class StringEncryptionObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.StringEncryption;
         var stats = new ObfuscationStatistics();
 
@@ -69,13 +69,8 @@ public class StringEncryptionObfuscator : IObfuscator
                     // Skip methods with exception handlers to avoid corrupting handler boundaries
                     if (method.Body.HasExceptionHandlers)
                     {
-                        context.SkippedItems.Add(new SkippedItem
-                        {
-                            Reason = SkipReason.UnsupportedConstruct,
-                            ItemType = "Method",
-                            ItemName = method.FullName,
-                            Details = "Exception handlers"
-                        });
+                        context.SkippedItems.Add(
+                            SkippedItem.UnsupportedMethod(method.FullName, "Exception handlers"));
                         continue;
                     }
 

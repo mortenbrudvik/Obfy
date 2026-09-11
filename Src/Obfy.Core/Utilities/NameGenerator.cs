@@ -10,7 +10,8 @@ namespace Obfy.Core.Utilities;
 public interface INameGenerator
 {
     /// <summary>
-    /// Generates a new obfuscated name.
+    /// Generates a new obfuscated name that is unique within this generator instance and is never
+    /// a C# reserved or contextual keyword.
     /// </summary>
     /// <param name="mode">The naming mode to use.</param>
     /// <returns>An obfuscated name.</returns>
@@ -36,7 +37,16 @@ public interface INameGenerator
 public class NameGenerator : INameGenerator
 {
     private int _sequentialCounter;
-    private readonly Random _random = new();
+    private static Random Rng => Random.Shared;
+
+    // Guards the mutable state (_sequentialCounter, _used) so the generator is safe to share across
+    // threads even though the pipeline currently drives it sequentially.
+    private readonly object _lock = new();
+
+    // Every name handed out during a run is recorded here so no two symbols can be given the same
+    // name. Two identical names in one scope (methods/fields in a type, types in a namespace) would
+    // produce invalid metadata, and the random/hash modes can otherwise collide.
+    private readonly HashSet<string> _used = new(StringComparer.Ordinal);
 
     // Characters that look similar or are hard to read
     private static readonly char[] UnreadableChars = new[]
@@ -56,16 +66,36 @@ public class NameGenerator : INameGenerator
     private static readonly char[] AlphanumericChars =
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".ToCharArray();
 
+    // C# reserved keywords. Sequential (base-26) names can land on one of these (e.g. "do", "if",
+    // "int"); using such a name for a renamed source symbol would not compile, so they are rejected.
+    private static readonly HashSet<string> CSharpKeywords = new(StringComparer.Ordinal)
+    {
+        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked",
+        "class", "const", "continue", "decimal", "default", "delegate", "do", "double", "else",
+        "enum", "event", "explicit", "extern", "false", "finally", "fixed", "float", "for",
+        "foreach", "goto", "if", "implicit", "in", "int", "interface", "internal", "is", "lock",
+        "long", "namespace", "new", "null", "object", "operator", "out", "override", "params",
+        "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed", "short",
+        "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true",
+        "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "virtual",
+        "void", "volatile", "while",
+        // Contextual keywords that sequential base-26 names can still emit (e.g. "var", "file").
+        "var", "record", "file", "required", "async", "await", "yield", "dynamic", "nint", "nuint",
+        "nameof", "when", "where", "and", "or", "not", "with", "init", "managed", "unmanaged",
+        "alias", "args", "from", "let", "select", "group", "into", "orderby", "join", "equals",
+        "by", "on", "ascending", "descending"
+    };
+
     /// <inheritdoc/>
     public string Generate(NamingMode mode)
     {
         return mode switch
         {
-            NamingMode.Unreadable => GenerateUnreadable(),
-            NamingMode.Sequential => GenerateSequential(),
-            NamingMode.Random => GenerateRandom(),
-            NamingMode.Hash => GenerateRandom(), // Fall back to random for no-input hash
-            _ => GenerateRandom()
+            NamingMode.Unreadable => EnsureUnique(GenerateUnreadable),
+            NamingMode.Sequential => EnsureUnique(GenerateSequential),
+            NamingMode.Random => EnsureUnique(GenerateRandom),
+            NamingMode.Hash => EnsureUnique(GenerateRandom), // Fall back to random for no-input hash
+            _ => EnsureUnique(GenerateRandom)
         };
     }
 
@@ -74,23 +104,57 @@ public class NameGenerator : INameGenerator
     {
         return mode switch
         {
-            NamingMode.Unreadable => GenerateUnreadable(),
-            NamingMode.Sequential => GenerateSequential(),
-            NamingMode.Random => GenerateRandom(),
-            NamingMode.Hash => GenerateHash(originalName),
-            _ => GenerateRandom()
+            NamingMode.Unreadable => EnsureUnique(GenerateUnreadable),
+            NamingMode.Sequential => EnsureUnique(GenerateSequential),
+            NamingMode.Random => EnsureUnique(GenerateRandom),
+            NamingMode.Hash => EnsureUnique(() => GenerateHash(originalName)),
+            _ => EnsureUnique(GenerateRandom)
         };
     }
 
     /// <inheritdoc/>
     public void Reset()
     {
-        _sequentialCounter = 0;
+        lock (_lock)
+        {
+            _sequentialCounter = 0;
+            _used.Clear();
+        }
     }
+
+    /// <summary>
+    /// Returns a name from <paramref name="generator"/> that has not been handed out in this run.
+    /// Up to 16 attempts for any mode, then a base-26 suffix until the name is unused and not a
+    /// keyword, so termination is guaranteed even if the generator's space is exhausted.
+    /// </summary>
+    private string EnsureUnique(Func<string> generator)
+    {
+        lock (_lock)
+        {
+            for (var attempt = 0; attempt < 16; attempt++)
+            {
+                var candidate = generator();
+                if (IsAcceptable(candidate))
+                    return candidate;
+            }
+
+            var baseName = generator();
+            var counter = 0;
+            string suffixed;
+            do
+            {
+                suffixed = baseName + ToBase26(counter++);
+            } while (!IsAcceptable(suffixed));
+            return suffixed;
+        }
+    }
+
+    // A name is acceptable if it is not a C# keyword and has not already been handed out.
+    private bool IsAcceptable(string candidate) => !CSharpKeywords.Contains(candidate) && _used.Add(candidate);
 
     private string GenerateUnreadable()
     {
-        var length = _random.Next(6, 12);
+        var length = Rng.Next(6, 12);
         var chars = new char[length];
 
         // First character must be a valid identifier start
@@ -98,7 +162,7 @@ public class NameGenerator : INameGenerator
 
         for (var i = 1; i < length; i++)
         {
-            chars[i] = UnreadableChars[_random.Next(UnreadableChars.Length)];
+            chars[i] = UnreadableChars[Rng.Next(UnreadableChars.Length)];
         }
 
         return new string(chars);
@@ -112,15 +176,15 @@ public class NameGenerator : INameGenerator
 
     private string GenerateRandom()
     {
-        var length = _random.Next(8, 16);
+        var length = Rng.Next(8, 16);
         var chars = new char[length];
 
         // First character must be a letter or underscore
-        chars[0] = AlphanumericChars[_random.Next(52)]; // Only letters
+        chars[0] = AlphanumericChars[Rng.Next(52)]; // Only letters
 
         for (var i = 1; i < length; i++)
         {
-            chars[i] = AlphanumericChars[_random.Next(AlphanumericChars.Length)];
+            chars[i] = AlphanumericChars[Rng.Next(AlphanumericChars.Length)];
         }
 
         return new string(chars);

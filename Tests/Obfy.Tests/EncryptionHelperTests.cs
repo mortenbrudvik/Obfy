@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Obfy.Core.Models;
 using Obfy.Core.Utilities;
 using Shouldly;
@@ -88,5 +89,72 @@ public class EncryptionHelperTests
         var decrypted = EncryptionHelper.DecryptBytes(encrypted, key, algorithm);
 
         decrypted.ShouldBe(original);
+    }
+
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public void Encrypt_RoundTrips_EmptyString(EncryptionAlgorithm algorithm)
+    {
+        var key = EncryptionHelper.GenerateKey(algorithm);
+        var encrypted = EncryptionHelper.EncryptToBase64(string.Empty, key, algorithm);
+
+        EncryptionHelper.DecryptFromBase64(encrypted, key, algorithm).ShouldBe(string.Empty);
+    }
+
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public void Encrypt_RoundTrips_UnicodeString(EncryptionAlgorithm algorithm)
+    {
+        const string original = "héllo • 世界 • 🚀 • Ω";
+        var key = EncryptionHelper.GenerateKey(algorithm);
+
+        var encrypted = EncryptionHelper.EncryptToBase64(original, key, algorithm);
+
+        EncryptionHelper.DecryptFromBase64(encrypted, key, algorithm).ShouldBe(original);
+    }
+
+    [Fact]
+    public void DecryptAes_WithWrongKey_DoesNotReturnOriginal()
+    {
+        const string original = "SensitivePayload";
+        var key = EncryptionHelper.GenerateKey(EncryptionAlgorithm.Aes256);
+        var wrongKey = EncryptionHelper.GenerateKey(EncryptionAlgorithm.Aes256);
+
+        var encrypted = EncryptionHelper.EncryptToBase64(original, key, EncryptionAlgorithm.Aes256);
+
+        // AES with PKCS7 padding almost always throws on a wrong key (bad padding); on the rare
+        // occasion it doesn't, the plaintext must still not match. Either outcome is acceptable —
+        // what must never happen is silently recovering the original with the wrong key.
+        try
+        {
+            var decrypted = EncryptionHelper.DecryptFromBase64(encrypted, wrongKey, EncryptionAlgorithm.Aes256);
+            decrypted.ShouldNotBe(original);
+        }
+        catch (CryptographicException)
+        {
+            // Expected: bad padding / invalid block.
+        }
+    }
+
+    [Fact]
+    public void DecryptAes_WithTamperedCiphertext_DoesNotReturnOriginal()
+    {
+        const string original = "IntegrityMatters!";
+        var key = EncryptionHelper.GenerateKey(EncryptionAlgorithm.Aes256);
+
+        var encryptedBytes = EncryptionHelper.Encrypt(original, key, EncryptionAlgorithm.Aes256);
+        encryptedBytes[^1] ^= 0xFF; // flip bits in the final ciphertext block
+
+        try
+        {
+            var decrypted = EncryptionHelper.Decrypt(encryptedBytes, key, EncryptionAlgorithm.Aes256);
+            decrypted.ShouldNotBe(original);
+        }
+        catch (CryptographicException)
+        {
+            // Expected: tampering breaks PKCS7 padding.
+        }
     }
 }

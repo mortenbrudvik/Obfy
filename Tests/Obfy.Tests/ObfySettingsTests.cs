@@ -106,4 +106,34 @@ public class ObfySettingsTests
         settings.ControlFlow.Enabled.ShouldBeTrue();
         settings.StringEncryption.Enabled.ShouldBeTrue();
     }
+
+    [Fact]
+    public void ForLevel_Standard_SetsRemoveAttributesAndResetsAlgorithm()
+    {
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Aggressive);
+        settings.ConstantEncryption.Algorithm.ShouldBe(EncryptionAlgorithm.Xor);
+
+        settings.Level = ObfuscationLevel.Standard;
+        settings.ApplyLevel();
+
+        settings.Metadata.RemoveAttributes.ShouldBeTrue();
+        settings.ConstantEncryption.Enabled.ShouldBeFalse();
+        settings.ConstantEncryption.Algorithm.ShouldBe(EncryptionAlgorithm.Xor);
+    }
+
+    [Fact]
+    public void Validate_ThrowsOnOutOfRangeIntensity()
+    {
+        var settings = new ObfySettings { ControlFlow = { Intensity = 101 } };
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate());
+
+        settings.ControlFlow.Intensity = -1;
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate());
+    }
+
+    [Fact]
+    public void Validate_AcceptsDefaults()
+    {
+        new ObfySettings().Validate();
+    }
 }

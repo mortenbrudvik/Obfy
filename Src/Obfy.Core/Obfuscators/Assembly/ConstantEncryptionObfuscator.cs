@@ -33,7 +33,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
     public string Name => "ConstantEncryption";
 
     /// <inheritdoc/>
-    public int Priority => 11; // After StringEncryption (10), before ResourceEncryption (15)
+    public int Priority => (int)ObfuscationPhase.ConstantEncryption;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -44,7 +44,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.ConstantEncryption;
         var stats = new ObfuscationStatistics();
 
@@ -82,7 +82,11 @@ public class ConstantEncryptionObfuscator : IObfuscator
 
                     // Skip methods with exception handlers to avoid corrupting handler boundaries
                     if (method.Body.HasExceptionHandlers)
+                    {
+                        context.SkippedItems.Add(
+                            SkippedItem.UnsupportedMethod(method.FullName, "Exception handlers"));
                         continue;
+                    }
 
                     // Skip compiler-generated methods
                     if (IsCompilerGeneratedMethod(method))
@@ -333,11 +337,19 @@ public class ConstantEncryptionObfuscator : IObfuscator
             FieldAttributes.Private | FieldAttributes.Static);
         typeDef.Fields.Add(dataField);
 
+        // Algorithm-aware byte[] -> byte[] decryptor that inverts EncryptionHelper.EncryptBytes.
+        // The four numeric decrypt methods below route the stored bytes through this, so the
+        // runtime algorithm always matches the one used at build time (XOR or AES-256).
+        var bytesDecrypt = algorithm == EncryptionAlgorithm.Aes256
+            ? DecryptorIl.CreateAesDecryptBytes(module, "D", MethodAttributes.Private | MethodAttributes.Static)
+            : DecryptorIl.CreateXorDecryptBytes(module, "D", MethodAttributes.Private | MethodAttributes.Static);
+        typeDef.Methods.Add(bytesDecrypt);
+
         // Add decrypt methods for each type
-        typeDef.Methods.Add(CreateDecryptInt32Method(module, keyField, dataField));
-        typeDef.Methods.Add(CreateDecryptInt64Method(module, keyField, dataField));
-        typeDef.Methods.Add(CreateDecryptSingleMethod(module, keyField, dataField));
-        typeDef.Methods.Add(CreateDecryptDoubleMethod(module, keyField, dataField));
+        typeDef.Methods.Add(CreateNumericDecryptMethod(module, "DecryptInt32", module.CorLibTypes.Int32, "ToInt32", keyField, dataField, bytesDecrypt));
+        typeDef.Methods.Add(CreateNumericDecryptMethod(module, "DecryptInt64", module.CorLibTypes.Int64, "ToInt64", keyField, dataField, bytesDecrypt));
+        typeDef.Methods.Add(CreateNumericDecryptMethod(module, "DecryptSingle", module.CorLibTypes.Single, "ToSingle", keyField, dataField, bytesDecrypt));
+        typeDef.Methods.Add(CreateNumericDecryptMethod(module, "DecryptDouble", module.CorLibTypes.Double, "ToDouble", keyField, dataField, bytesDecrypt));
 
         // Add static constructor to initialize key
         var cctor = CreateStaticConstructor(module, keyField, key);
@@ -348,265 +360,44 @@ public class ConstantEncryptionObfuscator : IObfuscator
         return typeDef;
     }
 
-    private MethodDef CreateDecryptInt32Method(ModuleDef module, FieldDef keyField, FieldDef dataField)
+    /// <summary>
+    /// Emits a decrypt method of the form
+    /// <c>static T Decrypt(int index) =&gt; BitConverter.To&lt;T&gt;(bytesDecrypt(_d[index], _k), 0);</c>
+    /// The stored bytes are decrypted through <paramref name="bytesDecrypt"/>, which honors the
+    /// configured algorithm, then reinterpreted as the numeric type via BitConverter.
+    /// </summary>
+    private static MethodDef CreateNumericDecryptMethod(
+        ModuleDef module,
+        string methodName,
+        CorLibTypeSig returnType,
+        string bitConverterMethod,
+        FieldDef keyField,
+        FieldDef dataField,
+        MethodDef bytesDecrypt)
     {
         var method = new MethodDefUser(
-            "DecryptInt32",
-            MethodSig.CreateStatic(module.CorLibTypes.Int32, module.CorLibTypes.Int32),
+            methodName,
+            MethodSig.CreateStatic(returnType, module.CorLibTypes.Int32),
             MethodAttributes.Public | MethodAttributes.Static);
 
         var body = new CilBody();
         method.Body = body;
 
-        // Local for decrypted bytes
-        var decryptedLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
-        body.Variables.Add(decryptedLocal);
-
-        // Get BitConverter.ToInt32 reference
         var bitConverterRef = new TypeRefUser(module, "System", "BitConverter", module.CorLibTypes.AssemblyRef);
-        var toInt32 = new MemberRefUser(
+        var toValue = new MemberRefUser(
             module,
-            "ToInt32",
-            MethodSig.CreateStatic(module.CorLibTypes.Int32, new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.Int32),
+            bitConverterMethod,
+            MethodSig.CreateStatic(returnType, new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.Int32),
             bitConverterRef);
 
-        // Inline XOR decryption:
-        // byte[] encrypted = _d[index];
-        // byte[] decrypted = new byte[encrypted.Length];
-        // for (int i = 0; i < encrypted.Length; i++)
-        //     decrypted[i] = (byte)(encrypted[i] ^ _k[i % _k.Length]);
-        // return BitConverter.ToInt32(decrypted, 0);
-
-        // For simplicity, we'll implement a direct XOR decryption
-        // Create decrypted array of same length (4 bytes for int)
-        body.Instructions.Add(Instruction.CreateLdcI4(4));
-        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
-        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, decryptedLocal));
-
-        // XOR each byte: decrypted[i] = encrypted[i] ^ key[i % key.Length]
-        for (int i = 0; i < 4; i++)
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, decryptedLocal));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-
-            // Load encrypted[i]
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, dataField));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
-
-            // Load key[i % key.Length]
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
-            body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
-            body.Instructions.Add(Instruction.Create(OpCodes.Rem));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
-
-            // XOR
-            body.Instructions.Add(Instruction.Create(OpCodes.Xor));
-            body.Instructions.Add(Instruction.Create(OpCodes.Conv_U1));
-            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
-        }
-
-        // Return BitConverter.ToInt32(decrypted, 0)
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, decryptedLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4(0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, toInt32));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-
-        body.UpdateInstructionOffsets();
-        return method;
-    }
-
-    private MethodDef CreateDecryptInt64Method(ModuleDef module, FieldDef keyField, FieldDef dataField)
-    {
-        var method = new MethodDefUser(
-            "DecryptInt64",
-            MethodSig.CreateStatic(module.CorLibTypes.Int64, module.CorLibTypes.Int32),
-            MethodAttributes.Public | MethodAttributes.Static);
-
-        var body = new CilBody();
-        method.Body = body;
-
-        var decryptedLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
-        body.Variables.Add(decryptedLocal);
-
-        var bitConverterRef = new TypeRefUser(module, "System", "BitConverter", module.CorLibTypes.AssemblyRef);
-        var toInt64 = new MemberRefUser(
-            module,
-            "ToInt64",
-            MethodSig.CreateStatic(module.CorLibTypes.Int64, new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.Int32),
-            bitConverterRef);
-
-        // Load _d[index]
+        // return BitConverter.To<T>(D(_d[index], _k), 0);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, dataField));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-
-        // Create decrypted array (8 bytes for long)
-        body.Instructions.Add(Instruction.CreateLdcI4(8));
-        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
-        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, decryptedLocal));
-
-        // XOR each byte
-        for (int i = 0; i < 8; i++)
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, decryptedLocal));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, dataField));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
-            body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
-            body.Instructions.Add(Instruction.Create(OpCodes.Rem));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Xor));
-            body.Instructions.Add(Instruction.Create(OpCodes.Conv_U1));
-            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
-        }
-
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, decryptedLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, bytesDecrypt));
         body.Instructions.Add(Instruction.CreateLdcI4(0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, toInt64));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-
-        body.UpdateInstructionOffsets();
-        return method;
-    }
-
-    private MethodDef CreateDecryptSingleMethod(ModuleDef module, FieldDef keyField, FieldDef dataField)
-    {
-        var method = new MethodDefUser(
-            "DecryptSingle",
-            MethodSig.CreateStatic(module.CorLibTypes.Single, module.CorLibTypes.Int32),
-            MethodAttributes.Public | MethodAttributes.Static);
-
-        var body = new CilBody();
-        method.Body = body;
-
-        var decryptedLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
-        body.Variables.Add(decryptedLocal);
-
-        var bitConverterRef = new TypeRefUser(module, "System", "BitConverter", module.CorLibTypes.AssemblyRef);
-        var toSingle = new MemberRefUser(
-            module,
-            "ToSingle",
-            MethodSig.CreateStatic(module.CorLibTypes.Single, new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.Int32),
-            bitConverterRef);
-
-        // Load _d[index]
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, dataField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-
-        // Create decrypted array (4 bytes for float)
-        body.Instructions.Add(Instruction.CreateLdcI4(4));
-        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
-        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, decryptedLocal));
-
-        // XOR each byte
-        for (int i = 0; i < 4; i++)
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, decryptedLocal));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, dataField));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
-            body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
-            body.Instructions.Add(Instruction.Create(OpCodes.Rem));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Xor));
-            body.Instructions.Add(Instruction.Create(OpCodes.Conv_U1));
-            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
-        }
-
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, decryptedLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4(0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, toSingle));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-
-        body.UpdateInstructionOffsets();
-        return method;
-    }
-
-    private MethodDef CreateDecryptDoubleMethod(ModuleDef module, FieldDef keyField, FieldDef dataField)
-    {
-        var method = new MethodDefUser(
-            "DecryptDouble",
-            MethodSig.CreateStatic(module.CorLibTypes.Double, module.CorLibTypes.Int32),
-            MethodAttributes.Public | MethodAttributes.Static);
-
-        var body = new CilBody();
-        method.Body = body;
-
-        var decryptedLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
-        body.Variables.Add(decryptedLocal);
-
-        var bitConverterRef = new TypeRefUser(module, "System", "BitConverter", module.CorLibTypes.AssemblyRef);
-        var toDouble = new MemberRefUser(
-            module,
-            "ToDouble",
-            MethodSig.CreateStatic(module.CorLibTypes.Double, new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.Int32),
-            bitConverterRef);
-
-        // Load _d[index]
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, dataField));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-
-        // Create decrypted array (8 bytes for double)
-        body.Instructions.Add(Instruction.CreateLdcI4(8));
-        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
-        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, decryptedLocal));
-
-        // XOR each byte
-        for (int i = 0; i < 8; i++)
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, decryptedLocal));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, dataField));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
-            body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
-            body.Instructions.Add(Instruction.Create(OpCodes.Rem));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Xor));
-            body.Instructions.Add(Instruction.Create(OpCodes.Conv_U1));
-            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
-        }
-
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, decryptedLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4(0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, toDouble));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, toValue));
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 
         body.UpdateInstructionOffsets();
@@ -650,7 +441,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
         var cctor = decryptorType.FindMethod(".cctor");
 
         if (cctor?.Body == null || dataField == null)
-            return;
+            throw new InvalidOperationException("Constant decryptor storage is missing; refusing to emit a broken assembly.");
 
         var module = decryptorType.Module;
         var body = cctor.Body;
@@ -709,14 +500,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
                rules.Types.Any(t => MatchesPattern(type.Name, t));
     }
 
-    private static bool MatchesPattern(string value, string pattern)
-    {
-        if (pattern.EndsWith("*"))
-        {
-            return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
-        }
-        return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool MatchesPattern(string value, string pattern) => WildcardMatcher.IsMatch(value, pattern);
 
     private static bool IsCompilerGenerated(TypeDef type)
     {

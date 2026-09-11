@@ -40,18 +40,40 @@ public class NameGeneratorTests
     }
 
     [Fact]
-    public void Generate_Hash_ReturnsDeterministicName()
+    public void Generate_Hash_IsDeterministicAcrossRuns()
     {
-        // Arrange
-        var generator = new NameGenerator();
+        // The same original name yields the same hash name on a fresh generator, so a given input
+        // assembly produces a reproducible symbol map.
+        var name1 = new NameGenerator().Generate("TestMethod", NamingMode.Hash);
+        var name2 = new NameGenerator().Generate("TestMethod", NamingMode.Hash);
 
-        // Act
-        var name1 = generator.Generate("TestMethod", NamingMode.Hash);
-        var name2 = generator.Generate("TestMethod", NamingMode.Hash);
-
-        // Assert
         name1.ShouldBe(name2);
         name1.ShouldStartWith("_");
+    }
+
+    [Fact]
+    public void Generate_MakesRepeatedNamesUnique()
+    {
+        // Two symbols that would otherwise collide (same original name in one run) must be given
+        // distinct names; a duplicate in the same scope would produce invalid metadata.
+        var generator = new NameGenerator();
+
+        var first = generator.Generate("Dup", NamingMode.Hash);
+        var second = generator.Generate("Dup", NamingMode.Hash);
+
+        first.ShouldNotBe(second);
+    }
+
+    [Fact]
+    public void Generate_ProducesNoCollisions_OverManyNames()
+    {
+        var generator = new NameGenerator();
+
+        var names = Enumerable.Range(0, 5000)
+            .Select(_ => generator.Generate(NamingMode.Unreadable))
+            .ToList();
+
+        names.Distinct().Count().ShouldBe(names.Count);
     }
 
     [Fact]
@@ -80,5 +102,47 @@ public class NameGeneratorTests
         // Assert
         name.ShouldStartWith("_");
         name.Length.ShouldBeGreaterThan(1);
+    }
+
+    [Fact]
+    public void Generate_Sequential_NeverProducesCSharpKeyword()
+    {
+        // Sequential base-26 names would otherwise land on keywords like "do"/"if"/"int", which would
+        // not compile if used to rename a source symbol. They must be skipped.
+        var generator = new NameGenerator();
+        var keywords = new HashSet<string>
+        {
+            "do", "if", "in", "is", "for", "int", "new", "out", "ref", "try", "void", "null",
+            "true", "case", "else", "enum", "goto", "long", "this", "base", "lock", "byte"
+        };
+
+        var generated = Enumerable.Range(0, 3000)
+            .Select(_ => generator.Generate(NamingMode.Sequential))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var keyword in keywords)
+        {
+            generated.ShouldNotContain(keyword);
+        }
+    }
+
+    [Fact]
+    public void Generate_Sequential_NeverProducesContextualKeyword()
+    {
+        var generator = new NameGenerator();
+        var keywords = new HashSet<string>
+        {
+            "var", "record", "file", "required", "async", "await", "yield", "dynamic",
+            "nint", "nuint", "and", "or", "not", "with", "init"
+        };
+
+        var generated = Enumerable.Range(0, 5000)
+            .Select(_ => generator.Generate(NamingMode.Sequential))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var keyword in keywords)
+        {
+            generated.ShouldNotContain(keyword);
+        }
     }
 }

@@ -24,7 +24,7 @@ public class ControlFlowObfuscator : IObfuscator
     public string Name => "ControlFlow";
 
     /// <inheritdoc/>
-    public int Priority => 30;
+    public int Priority => (int)ObfuscationPhase.ControlFlow;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -35,7 +35,7 @@ public class ControlFlowObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.ControlFlow;
         var stats = new ObfuscationStatistics();
 
@@ -54,7 +54,20 @@ public class ControlFlowObfuscator : IObfuscator
                     cancellationToken.ThrowIfCancellationRequested();
 
                     if (!CanObfuscateMethod(method))
+                    {
+                        // Eligible-looking methods with exception handlers are left in the clear;
+                        // record the skip so CLI/UI do not report a clean run.
+                        if (method.HasBody &&
+                            method.Body.Instructions.Count >= 5 &&
+                            !method.IsConstructor &&
+                            !method.IsStaticConstructor &&
+                            method.Body.HasExceptionHandlers)
+                        {
+                            context.SkippedItems.Add(
+                                SkippedItem.UnsupportedMethod(method.FullName, "Exception handlers"));
+                        }
                         continue;
+                    }
 
                     try
                     {
@@ -73,14 +86,12 @@ public class ControlFlowObfuscator : IObfuscator
                     }
                     catch (Exception ex)
                     {
+                        // Flattening mutates the body in place (Clear + rebuild, or incremental
+                        // inserts). A throw mid-mutation can leave unverifiable IL; do not report
+                        // Success with a "skipped" method whose body is half-rewritten.
                         _logger.LogError(ex, "Failed to obfuscate method {Method}", method.FullName);
-                        context.SkippedItems.Add(new SkippedItem
-                        {
-                            Reason = SkipReason.UnsupportedConstruct,
-                            ItemType = "Method",
-                            ItemName = method.FullName,
-                            Details = ex.Message
-                        });
+                        return Task.FromResult(ObfuscationResult.Failed(
+                            $"Control flow obfuscation failed on {method.FullName}: {ex.Message}", ex));
                     }
                 }
             }
@@ -126,10 +137,17 @@ public class ControlFlowObfuscator : IObfuscator
         if (_random.Next(100) > intensity)
             return false;
 
-        if (instructions.Any(i =>
-                i.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch))
+        // Only straight-line code can be safely flattened. Bail on anything that branches, throws,
+        // or returns early (other than the trailing ret handled below): those create extra edges or
+        // dead code that would invalidate the linear stack-depth analysis in FlattenLinearMethod.
+        var lastIndex = instructions.Count - 1;
+        for (var i = 0; i < lastIndex; i++)
         {
-            return false;
+            if (instructions[i].OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch
+                or FlowControl.Return or FlowControl.Throw)
+            {
+                return false;
+            }
         }
 
         return FlattenLinearMethod(method);
@@ -151,11 +169,46 @@ public class ControlFlowObfuscator : IObfuscator
         if (work.Count < 4)
             return false;
 
-        var chunks = new List<List<Instruction>>();
-        for (var i = 0; i < work.Count; i += chunkSize)
+        // The dispatcher is re-entered via `br dispatcher` between chunks, so every chunk boundary
+        // that precedes such a branch MUST sit on an empty evaluation stack; otherwise the dispatcher
+        // is reachable at differing stack depths and the JIT rejects the body as unverifiable.
+        // Compute the running stack depth after each instruction and split only at depth 0.
+        var depthAfter = new int[work.Count];
+        var depth = 0;
+        foreach (var (instr, index) in work.Select((instr, index) => (instr, index)))
         {
-            chunks.Add(work.Skip(i).Take(chunkSize).ToList());
+            instr.CalculateStackUsage(out var pushes, out var pops);
+            depth = depth - pops + pushes;
+            if (depth < 0)
+                return false; // unexpected underflow — refuse rather than emit invalid IL
+            depthAfter[index] = depth;
         }
+
+        // Greedily group instructions into chunks that each end on an empty stack (targeting chunkSize).
+        // The final trailing segment falls through to `ret` and need not end on an empty stack (it may
+        // carry the single return value that ret consumes). Prefix opcodes (volatile., constrained.,
+        // tail., ...) have stack delta 0, so never split after one — the prefix must stay glued to
+        // the instruction it modifies.
+        var chunks = new List<List<Instruction>>();
+        var current = new List<Instruction>();
+        for (var i = 0; i < work.Count; i++)
+        {
+            current.Add(work[i]);
+            if (depthAfter[i] == 0 &&
+                current.Count >= chunkSize &&
+                work[i].OpCode.FlowControl != FlowControl.Meta)
+            {
+                chunks.Add(current);
+                current = new List<Instruction>();
+            }
+        }
+        if (current.Count > 0)
+            chunks.Add(current);
+
+        // Flattening only adds value with multiple chunks. Leave the method untouched unless there
+        // are at least two chunks (an empty-stack boundary at or after chunkSize instructions).
+        if (chunks.Count < 2)
+            return false;
 
         var stateVar = new Local(method.Module.CorLibTypes.Int32);
         body.Variables.Add(stateVar);

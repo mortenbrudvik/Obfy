@@ -24,7 +24,7 @@ public class SourceStringEncryptor : IObfuscator
     public string Name => "SourceStringEncryption";
 
     /// <inheritdoc/>
-    public int Priority => 10;
+    public int Priority => (int)ObfuscationPhase.StringEncryption;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.SourceCode;
@@ -35,7 +35,7 @@ public class SourceStringEncryptor : IObfuscator
     /// <inheritdoc/>
     public async Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var compilation = context.Compilation!;
+        var compilation = context.RequireCompilation();
         var settings = context.Settings.StringEncryption;
         var stats = new ObfuscationStatistics();
 

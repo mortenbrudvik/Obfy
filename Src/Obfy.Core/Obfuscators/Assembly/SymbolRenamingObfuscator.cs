@@ -24,7 +24,7 @@ public class SymbolRenamingObfuscator : IObfuscator
     public string Name => "SymbolRenaming";
 
     /// <inheritdoc/>
-    public int Priority => 50;
+    public int Priority => (int)ObfuscationPhase.SymbolRenaming;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -35,7 +35,7 @@ public class SymbolRenamingObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.SymbolRenaming;
         var stats = new ObfuscationStatistics();
 
@@ -139,8 +139,20 @@ public class SymbolRenamingObfuscator : IObfuscator
             {
                 foreach (var type in module.GetTypes())
                 {
+                    // Respect the same type-level exclusions used for members above (runtime-injected
+                    // types, Obfy models, excluded namespaces/types).
+                    if (ShouldSkipType(type, settings, context.Settings.Exclusions))
+                        continue;
+
                     foreach (var method in type.Methods)
                     {
+                        // Parameter names follow CanRenameMethod: skipped for constructors, entry
+                        // points, virtuals/overrides/interface impls, and public methods when
+                        // PreservePublicApi is set. Named-argument / reflection callers of public APIs
+                        // are only safe with PreservePublicApi = true (the default is false).
+                        if (!CanRenameMethod(method, settings))
+                            continue;
+
                         foreach (var param in method.Parameters)
                         {
                             if (!string.IsNullOrEmpty(param.Name) && !param.IsHiddenThisParameter)
@@ -282,15 +294,5 @@ public class SymbolRenamingObfuscator : IObfuscator
         return true;
     }
 
-    private static bool MatchesPattern(string value, string pattern)
-    {
-        if (string.IsNullOrEmpty(value))
-            return false;
-
-        if (pattern.EndsWith("*"))
-        {
-            return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
-        }
-        return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool MatchesPattern(string value, string pattern) => WildcardMatcher.IsMatch(value, pattern);
 }

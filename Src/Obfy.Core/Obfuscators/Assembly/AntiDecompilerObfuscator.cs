@@ -31,7 +31,7 @@ public class AntiDecompilerObfuscator : IObfuscator
     public string Name => "AntiDecompiler";
 
     /// <inheritdoc/>
-    public int Priority => 72;
+    public int Priority => (int)ObfuscationPhase.AntiDecompiler;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -42,7 +42,7 @@ public class AntiDecompilerObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.Protection.AntiDecompiler;
         var stats = new ObfuscationStatistics();
 

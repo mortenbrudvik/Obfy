@@ -21,7 +21,7 @@ public class MetadataRemovalObfuscator : IObfuscator
     public string Name => "MetadataRemoval";
 
     /// <inheritdoc/>
-    public int Priority => 90;
+    public int Priority => (int)ObfuscationPhase.MetadataRemoval;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -35,7 +35,7 @@ public class MetadataRemovalObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.Metadata;
         var stats = new ObfuscationStatistics();
 
@@ -116,10 +116,12 @@ public class MetadataRemovalObfuscator : IObfuscator
     private int RemoveAttributes(ModuleDef module, ExclusionRules exclusions)
     {
         var count = 0;
+        // NOTE: CompilationRelaxationsAttribute (e.g. NoStringInterning) and
+        // RuntimeCompatibilityAttribute (WrapNonExceptionThrows) are intentionally NOT removed.
+        // Stripping them alters runtime throw-wrapping / string-interning behavior for little
+        // obfuscation gain.
         var attributesToRemove = new HashSet<string>
         {
-            "System.Runtime.CompilerServices.CompilationRelaxationsAttribute",
-            "System.Runtime.CompilerServices.RuntimeCompatibilityAttribute",
             "System.Runtime.CompilerServices.CompilerGeneratedAttribute",
             "System.Runtime.CompilerServices.NullableAttribute",
             "System.Runtime.CompilerServices.NullableContextAttribute",

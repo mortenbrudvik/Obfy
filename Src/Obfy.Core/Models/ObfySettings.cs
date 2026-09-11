@@ -15,47 +15,47 @@ public class ObfySettings
     /// <summary>
     /// String encryption settings.
     /// </summary>
-    public StringEncryptionSettings StringEncryption { get; set; } = new();
+    public StringEncryptionSettings StringEncryption { get; init; } = new();
 
     /// <summary>
     /// Control flow obfuscation settings.
     /// </summary>
-    public ControlFlowSettings ControlFlow { get; set; } = new();
+    public ControlFlowSettings ControlFlow { get; init; } = new();
 
     /// <summary>
     /// Symbol renaming settings.
     /// </summary>
-    public SymbolRenamingSettings SymbolRenaming { get; set; } = new();
+    public SymbolRenamingSettings SymbolRenaming { get; init; } = new();
 
     /// <summary>
     /// Anti-debugging and anti-tampering settings.
     /// </summary>
-    public ProtectionSettings Protection { get; set; } = new();
+    public ProtectionSettings Protection { get; init; } = new();
 
     /// <summary>
     /// Metadata removal settings.
     /// </summary>
-    public MetadataSettings Metadata { get; set; } = new();
+    public MetadataSettings Metadata { get; init; } = new();
 
     /// <summary>
     /// Resource encryption settings.
     /// </summary>
-    public ResourceEncryptionSettings ResourceEncryption { get; set; } = new();
+    public ResourceEncryptionSettings ResourceEncryption { get; init; } = new();
 
     /// <summary>
     /// Constant (numeric) encryption settings.
     /// </summary>
-    public ConstantEncryptionSettings ConstantEncryption { get; set; } = new();
+    public ConstantEncryptionSettings ConstantEncryption { get; init; } = new();
 
     /// <summary>
     /// Assembly merging settings.
     /// </summary>
-    public AssemblyMergeSettings AssemblyMerge { get; set; } = new();
+    public AssemblyMergeSettings AssemblyMerge { get; init; } = new();
 
     /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
-    public ExclusionRules Exclusions { get; set; } = new();
+    public ExclusionRules Exclusions { get; init; } = new();
 
     /// <summary>
     /// Whether post-build obfuscation is enabled (used by VS extension).
@@ -79,9 +79,15 @@ public class ObfySettings
     {
         switch (Level)
         {
+            // Each non-Custom branch assigns this fixed set of flags (enabled bits, intensity,
+            // constant-encryption algorithm, metadata/debug) so *those* values do not leak from a
+            // previously applied level. Other nested settings (control-flow mode, string/resource
+            // algorithms, naming mode, PreservePublicApi, junk counts, include/exclude patterns)
+            // keep their prior or default values.
             case ObfuscationLevel.Minimal:
                 StringEncryption.Enabled = false;
                 ControlFlow.Enabled = false;
+                ControlFlow.Intensity = 50;
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = false;
                 Protection.AntiTamper.Enabled = false;
@@ -91,19 +97,23 @@ public class ObfySettings
                 Metadata.RemoveAttributes = false;
                 ResourceEncryption.Enabled = false;
                 ConstantEncryption.Enabled = false;
+                ConstantEncryption.Algorithm = EncryptionAlgorithm.Xor;
                 break;
 
             case ObfuscationLevel.Standard:
                 StringEncryption.Enabled = true;
                 ControlFlow.Enabled = false;
+                ControlFlow.Intensity = 50;
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = false;
                 Protection.AntiTamper.Enabled = false;
                 Protection.AntiDecompiler.Enabled = false;
                 Protection.AntiDump = false;
                 Metadata.RemoveDebugInfo = true;
+                Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = false;
                 ConstantEncryption.Enabled = false;
+                ConstantEncryption.Algorithm = EncryptionAlgorithm.Xor;
                 break;
 
             case ObfuscationLevel.Aggressive:
@@ -126,6 +136,30 @@ public class ObfySettings
                 // Use individual settings as-is
                 break;
         }
+    }
+
+    /// <summary>
+    /// Validates the range-constrained settings, throwing <see cref="ValidationException"/> if any
+    /// value is out of its declared range. DataAnnotations attributes are not enforced automatically,
+    /// so this must be called explicitly before the settings are used.
+    /// </summary>
+    public void Validate()
+    {
+        ValidateObject(this);
+        ValidateObject(StringEncryption);
+        ValidateObject(ControlFlow);
+        ValidateObject(SymbolRenaming);
+        ValidateObject(Protection);
+        ValidateObject(Protection.AntiTamper);
+        ValidateObject(Protection.AntiDecompiler);
+        ValidateObject(Metadata);
+        ValidateObject(ResourceEncryption);
+        ValidateObject(ConstantEncryption);
+        ValidateObject(AssemblyMerge);
+        ValidateObject(Exclusions);
+
+        static void ValidateObject(object instance) =>
+            Validator.ValidateObject(instance, new ValidationContext(instance), validateAllProperties: true);
     }
 }
 

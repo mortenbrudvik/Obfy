@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
@@ -39,16 +40,27 @@ public class ObfuscationService : IObfuscationService
     {
         _logger.LogInformation("Starting obfuscation of {InputPath}", inputPath);
 
-        if (!File.Exists(inputPath) && !Directory.Exists(inputPath))
+        var isDirectory = Directory.Exists(inputPath);
+        if (!File.Exists(inputPath) && !isDirectory)
         {
             return ObfuscationResult.Failed($"Input file not found: {inputPath}");
         }
 
-        var target = ObfuscationTarget.FromFile(inputPath, outputPath);
+        var target = ObfuscationTarget.ForFile(inputPath, outputPath, isDirectory);
 
         if (settings.Level != ObfuscationLevel.Custom)
         {
             settings.ApplyLevel();
+        }
+
+        try
+        {
+            settings.Validate();
+        }
+        catch (ValidationException ex)
+        {
+            _logger.LogError(ex, "Invalid obfuscation settings");
+            return ObfuscationResult.Failed($"Invalid settings: {ex.Message}", ex);
         }
 
         PipelineContext context;
@@ -64,6 +76,13 @@ public class ObfuscationService : IObfuscationService
 
             context.InputPath = inputPath;
             context.OutputPath = target.EffectiveOutputPath;
+
+            if (settings.Protection.AntiDump)
+            {
+                const string warning = "Anti-dump is not implemented and was ignored.";
+                context.Warnings.Add(warning);
+                _logger.LogWarning("{Warning}", warning);
+            }
         }
         catch (Exception ex)
         {
@@ -71,44 +90,58 @@ public class ObfuscationService : IObfuscationService
             return ObfuscationResult.Failed($"Failed to load input: {ex.Message}", ex);
         }
 
-        // Execute the pipeline
-        var result = await _pipeline.ExecuteAsync(context, cancellationToken);
-
-        if (!result.Success)
-        {
-            return result;
-        }
-
-        // Save the result
         try
         {
-            var effectiveOutput = outputPath ?? GenerateOutputPath(inputPath);
+            // Execute the pipeline
+            var result = await _pipeline.ExecuteAsync(context, cancellationToken);
 
-            switch (target.TargetType)
+            if (!result.Success)
             {
-                case TargetType.Assembly:
-                    await _assemblyProcessor.SaveAsync(context, effectiveOutput, cancellationToken);
-                    break;
-                case TargetType.SourceCode:
-                    await _sourceProcessor.SaveAsync(context, effectiveOutput, cancellationToken);
-                    break;
+                return result;
             }
 
-            _logger.LogInformation("Obfuscation completed. Output written to {OutputPath}", effectiveOutput);
+            // Save the result
+            try
+            {
+                var effectiveOutput = outputPath ?? GenerateOutputPath(inputPath);
 
-            return ObfuscationResult.Successful(
-                context.Statistics,
-                inputPath: inputPath,
-                outputPath: effectiveOutput,
-                elapsedTime: result.ElapsedTime,
-                processingTimes: context.ProcessingTimes.ToList(),
-                skippedItems: context.SkippedItems.ToList(),
-                symbolMap: new Dictionary<string, string>(context.SymbolMap));
+                switch (target.TargetType)
+                {
+                    case TargetType.Assembly:
+                        await _assemblyProcessor.SaveAsync(context, effectiveOutput, cancellationToken);
+                        break;
+                    case TargetType.SourceCode:
+                        await _sourceProcessor.SaveAsync(context, effectiveOutput, cancellationToken);
+                        break;
+                }
+
+                _logger.LogInformation("Obfuscation completed. Output written to {OutputPath}", effectiveOutput);
+
+                return ObfuscationResult.Successful(
+                    context.Statistics,
+                    inputPath: inputPath,
+                    outputPath: effectiveOutput,
+                    elapsedTime: result.ElapsedTime,
+                    processingTimes: context.ProcessingTimes.ToList(),
+                    skippedItems: context.SkippedItems.ToList(),
+                    symbolMap: new Dictionary<string, string>(context.SymbolMap),
+                    warnings: context.Warnings.ToList());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save obfuscated output");
+                return ObfuscationResult.Failed($"Failed to save output: {ex.Message}", ex);
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogError(ex, "Failed to save obfuscated output");
-            return ObfuscationResult.Failed($"Failed to save output: {ex.Message}", ex);
+            // The loaded module holds native resources. SaveAsync disposes and nulls it on the
+            // success path; dispose here too so a pipeline/write failure cannot leak it.
+            if (context.Module is IDisposable module)
+            {
+                module.Dispose();
+                context.Module = null;
+            }
         }
     }
 

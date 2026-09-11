@@ -22,7 +22,7 @@ public class AntiDebugObfuscator : IObfuscator
     public string Name => "AntiDebug";
 
     /// <inheritdoc/>
-    public int Priority => 70;
+    public int Priority => (int)ObfuscationPhase.AntiDebug;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -33,7 +33,7 @@ public class AntiDebugObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.Protection;
         var stats = new ObfuscationStatistics();
 
@@ -47,22 +47,30 @@ public class AntiDebugObfuscator : IObfuscator
                 var antiDebugType = InjectAntiDebugType(module);
 
                 // Add check to entry point
-                if (module.EntryPoint != null)
+                if (module.EntryPoint != null && InjectDebuggerCheck(module.EntryPoint, antiDebugType))
                 {
-                    InjectDebuggerCheck(module.EntryPoint, antiDebugType);
                     stats.ProtectionsApplied++;
                 }
 
                 var moduleInitializer = FindModuleInitializer(module);
-                if (moduleInitializer == null && module.EntryPoint == null)
+                // If the entry-point inject failed (no body) or there is no entry point, create a
+                // module initializer so the check still runs at load.
+                if (moduleInitializer == null && stats.ProtectionsApplied == 0)
                 {
                     moduleInitializer = CreateModuleInitializer(module);
                 }
 
-                if (moduleInitializer != null)
+                if (moduleInitializer != null && InjectDebuggerCheck(moduleInitializer, antiDebugType))
                 {
-                    InjectDebuggerCheck(moduleInitializer, antiDebugType);
                     stats.ProtectionsApplied++;
+                }
+
+                if (stats.ProtectionsApplied == 0)
+                {
+                    const string warning =
+                        "Anti-debug: runtime type was injected but no call site could be instrumented (entry point/module initializer missing or has no body).";
+                    context.Warnings.Add(warning);
+                    _logger.LogWarning("{Warning}", warning);
                 }
             }
 
@@ -87,13 +95,9 @@ public class AntiDebugObfuscator : IObfuscator
 
         typeDef.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract;
 
-        // Add CheckDebugger method
+        // Add CheckDebugger method (self-contained: detects a debugger and exits the process)
         var checkMethod = CreateCheckDebuggerMethod(module);
         typeDef.Methods.Add(checkMethod);
-
-        // Add HandleDebugger method
-        var handleMethod = CreateHandleDebuggerMethod(module);
-        typeDef.Methods.Add(handleMethod);
 
         module.Types.Add(typeDef);
 
@@ -140,42 +144,14 @@ public class AntiDebugObfuscator : IObfuscator
         return method;
     }
 
-    private MethodDef CreateHandleDebuggerMethod(ModuleDef module)
-    {
-        var method = new MethodDefUser(
-            "Handle",
-            MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Public | MethodAttributes.Static);
-
-        var body = new CilBody();
-        method.Body = body;
-
-        // Get Environment.FailFast method
-        var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
-        var failFastMethod = new MemberRefUser(
-            module,
-            "FailFast",
-            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String),
-            environmentType);
-
-        // FailFast with a generic message
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "Security violation"));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, failFastMethod));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-
-        body.UpdateInstructionOffsets();
-
-        return method;
-    }
-
-    private void InjectDebuggerCheck(MethodDef method, TypeDef antiDebugType)
+    private bool InjectDebuggerCheck(MethodDef method, TypeDef antiDebugType)
     {
         if (!method.HasBody)
-            return;
+            return false;
 
         var checkMethod = antiDebugType.FindMethod("Check");
         if (checkMethod == null)
-            return;
+            return false;
 
         var body = method.Body;
         var instructions = body.Instructions;
@@ -184,6 +160,7 @@ public class AntiDebugObfuscator : IObfuscator
         instructions.Insert(0, Instruction.Create(OpCodes.Call, checkMethod));
 
         body.UpdateInstructionOffsets();
+        return true;
     }
 
     private MethodDef? FindModuleInitializer(ModuleDef module)

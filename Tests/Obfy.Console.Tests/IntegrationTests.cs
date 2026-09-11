@@ -335,4 +335,28 @@ public class IntegrationTests : IDisposable
     }
 
     #endregion
+
+    #region Real end-to-end obfuscation
+
+    [Fact]
+    public async Task Main_RunsRealObfuscationHandler_EndToEnd()
+    {
+        // The other "integration" tests replace the obfuscation handler with a no-op. This drives the
+        // real handler through Program.Main: parse args -> build DI -> run the pipeline -> write output.
+        var input = CreateTestAssembly("MainE2E.dll");
+        var outputDir = Path.Combine(_tempDirectory, "out");
+
+        var exitCode = await Program.Main(new[] { input, "-o", outputDir, "-l", "minimal" });
+
+        exitCode.ShouldBe(0);
+
+        var outputPath = Path.Combine(outputDir, "MainE2E.dll");
+        File.Exists(outputPath).ShouldBeTrue();
+
+        // Minimal renames symbols, so the original public type name must be gone from the output.
+        using var outModule = ModuleDefMD.Load(outputPath);
+        outModule.Types.Any(t => t.Name == "TestClass").ShouldBeFalse();
+    }
+
+    #endregion
 }

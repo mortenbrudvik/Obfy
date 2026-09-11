@@ -26,31 +26,29 @@ public class ObfuscationTarget
     public string EffectiveOutputPath => OutputPath ?? InputPath;
 
     /// <summary>
-    /// Creates a target from a file path, auto-detecting the target type.
+    /// Creates a target from a path, choosing the target type. The caller supplies whether the path is
+    /// a directory so this model performs no filesystem IO (extension inspection is a pure string op).
     /// </summary>
-    public static ObfuscationTarget FromFile(string inputPath, string? outputPath = null)
+    public static ObfuscationTarget ForFile(string inputPath, string? outputPath, bool isDirectory)
     {
-        TargetType targetType;
-        if (Directory.Exists(inputPath))
-        {
-            targetType = TargetType.SourceCode;
-        }
-        else
-        {
-            var extension = Path.GetExtension(inputPath).ToLowerInvariant();
-            targetType = extension switch
-            {
-                ".dll" or ".exe" => TargetType.Assembly,
-                ".cs" => TargetType.SourceCode,
-                _ => throw new ArgumentException($"Unsupported file type: {extension}", nameof(inputPath))
-            };
-        }
+        var targetType = isDirectory ? TargetType.SourceCode : DetectFromExtension(inputPath);
 
         return new ObfuscationTarget
         {
             InputPath = inputPath,
             OutputPath = outputPath,
             TargetType = targetType
+        };
+    }
+
+    private static TargetType DetectFromExtension(string inputPath)
+    {
+        var extension = Path.GetExtension(inputPath).ToLowerInvariant();
+        return extension switch
+        {
+            ".dll" or ".exe" => TargetType.Assembly,
+            ".cs" => TargetType.SourceCode,
+            _ => throw new ArgumentException($"Unsupported file type: {extension}", nameof(inputPath))
         };
     }
 }

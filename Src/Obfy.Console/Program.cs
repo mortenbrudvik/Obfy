@@ -270,7 +270,7 @@ public class Program
 
                 context.ExitCode = await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose, merge);
             }
-            catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException)
+            catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or IOException)
             {
                 AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
                 context.ExitCode = 1;
@@ -315,6 +315,11 @@ public class Program
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             }) ?? throw new InvalidOperationException("Config file deserialized to null.");
+
+            // The per-technique flags in a config file are authoritative. Treat file-sourced settings
+            // as Custom so ObfuscationService does not re-run ApplyLevel() and overwrite them
+            // (a generated config already contains the fully resolved flags for its level).
+            settings.Level = ObfuscationLevel.Custom;
         }
         else
         {
@@ -574,6 +579,24 @@ public class Program
         }
 
         AnsiConsole.Write(table);
+
+        // Surface skipped items and warnings in normal output (not only in --report) so partial
+        // protection or a protection that cannot take effect is never silently reported as success.
+        if (result.SkippedItems.Count > 0)
+        {
+            AnsiConsole.MarkupLine($"[yellow]⚠ {result.SkippedItems.Count} item(s) were skipped and left unobfuscated:[/]");
+            foreach (var group in result.SkippedItems
+                         .GroupBy(s => s.Details ?? s.Reason.ToString())
+                         .OrderByDescending(g => g.Count()))
+            {
+                AnsiConsole.MarkupLine($"  [yellow]- {Markup.Escape(group.Key)}: {group.Count()}[/]");
+            }
+        }
+
+        foreach (var warning in result.Warnings)
+        {
+            AnsiConsole.MarkupLine($"[yellow]⚠ {Markup.Escape(warning)}[/]");
+        }
     }
 
     private static void DisplayError(string fileName, ObfuscationResult result)

@@ -26,6 +26,22 @@ public class PipelineContext
     public CSharpCompilation? Compilation { get; set; }
 
     /// <summary>
+    /// Returns the assembly module, throwing if this is not an assembly context. Assembly obfuscators
+    /// call this instead of dereferencing <see cref="Module"/> with <c>!</c>.
+    /// </summary>
+    public ModuleDef RequireModule() =>
+        Module ?? throw new InvalidOperationException(
+            $"No assembly module is available (target type is {TargetType}).");
+
+    /// <summary>
+    /// Returns the Roslyn compilation, throwing if this is not a source-code context. Source
+    /// obfuscators call this instead of dereferencing <see cref="Compilation"/> with <c>!</c>.
+    /// </summary>
+    public CSharpCompilation RequireCompilation() =>
+        Compilation ?? throw new InvalidOperationException(
+            $"No source compilation is available (target type is {TargetType}).");
+
+    /// <summary>
     /// Gets the active obfuscation settings.
     /// </summary>
     public ObfySettings Settings { get; init; } = new();
@@ -42,9 +58,11 @@ public class PipelineContext
     public Dictionary<string, string> SymbolMap { get; } = new();
 
     /// <summary>
-    /// Gets additional data that can be shared between obfuscators.
+    /// Set when the anti-tamper type was injected. The assembly writer uses presence (not a token)
+    /// as the signal to patch the integrity-hash blob after the module is written. Null when
+    /// anti-tamper did not run.
     /// </summary>
-    public Dictionary<string, object> SharedData { get; } = new();
+    public AntiTamperMetadata? AntiTamperMetadata { get; set; }
 
     /// <summary>
     /// Gets or sets the input file path.
@@ -60,6 +78,12 @@ public class PipelineContext
     /// Gets the list of items skipped during obfuscation.
     /// </summary>
     public List<SkippedItem> SkippedItems { get; } = new();
+
+    /// <summary>
+    /// Gets non-fatal warnings raised during obfuscation (e.g. a protection that cannot take effect
+    /// for certain deployment models). Surfaced to the user so protections never silently do nothing.
+    /// </summary>
+    public List<string> Warnings { get; } = new();
 
     /// <summary>
     /// Gets the processing time entries for each obfuscator.

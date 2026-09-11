@@ -156,6 +156,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         allSymbols[key] = value;
                     }
                     Output.Success($"Completed {file.FileName}: {result.Statistics?.TotalTransformations ?? 0} transformations");
+
+                    // Surface skips and warnings so partial or ineffective protection is visible
+                    // here, not only in an exported report.
+                    if (result.SkippedItems.Count > 0)
+                    {
+                        Output.Warning($"{result.SkippedItems.Count} item(s) in {file.FileName} were skipped and left unobfuscated.");
+                    }
+                    foreach (var warning in result.Warnings)
+                    {
+                        Output.Warning(warning);
+                    }
                 }
                 else
                 {
@@ -181,8 +192,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             ShowResultsPanel = true;
 
-            Output.Success($"Obfuscation completed: {totalStats.TotalTransformations} total transformations in {stopwatch.Elapsed:mm\\:ss\\.fff}");
-            StatusMessage = "Obfuscation complete";
+            var failed = files.Count(f => f.Status == FileStatus.Error);
+            if (failed > 0)
+            {
+                Output.Error($"Obfuscation finished with errors: {failed} file(s) failed.");
+                StatusMessage = "Completed with errors";
+            }
+            else
+            {
+                Output.Success($"Obfuscation completed: {totalStats.TotalTransformations} total transformations in {stopwatch.Elapsed:mm\\:ss\\.fff}");
+                StatusMessage = "Obfuscation complete";
+            }
         }
         catch (OperationCanceledException)
         {

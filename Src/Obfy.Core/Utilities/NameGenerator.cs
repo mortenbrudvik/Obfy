@@ -10,7 +10,8 @@ namespace Obfy.Core.Utilities;
 public interface INameGenerator
 {
     /// <summary>
-    /// Generates a new obfuscated name.
+    /// Generates a new obfuscated name that is unique within this generator instance and is never
+    /// a C# reserved or contextual keyword.
     /// </summary>
     /// <param name="mode">The naming mode to use.</param>
     /// <returns>An obfuscated name.</returns>
@@ -77,7 +78,12 @@ public class NameGenerator : INameGenerator
         "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed", "short",
         "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true",
         "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "virtual",
-        "void", "volatile", "while"
+        "void", "volatile", "while",
+        // Contextual keywords that sequential base-26 names can still emit (e.g. "var", "file").
+        "var", "record", "file", "required", "async", "await", "yield", "dynamic", "nint", "nuint",
+        "nameof", "when", "where", "and", "or", "not", "with", "init", "managed", "unmanaged",
+        "alias", "args", "from", "let", "select", "group", "into", "orderby", "join", "equals",
+        "by", "on", "ascending", "descending"
     };
 
     /// <inheritdoc/>
@@ -118,8 +124,8 @@ public class NameGenerator : INameGenerator
 
     /// <summary>
     /// Returns a name from <paramref name="generator"/> that has not been handed out in this run.
-    /// Retries the generator for the randomized modes, then falls back to a deterministic suffix so
-    /// termination is guaranteed even if the generator's space is exhausted.
+    /// Up to 16 attempts for any mode, then a base-26 suffix until the name is unused and not a
+    /// keyword, so termination is guaranteed even if the generator's space is exhausted.
     /// </summary>
     private string EnsureUnique(Func<string> generator)
     {

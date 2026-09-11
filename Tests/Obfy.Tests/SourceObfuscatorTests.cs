@@ -893,4 +893,153 @@ public class SourceObfuscatorTests
         GetErrors(context.Compilation!).ShouldBeEmpty();
         EmitAndInvoke(context.Compilation!, "Widget", "Result").ShouldBe(42);
     }
+
+    [Fact]
+    public async Task SourceControlFlow_SwitchMode_DoesNotFlattenOutVarDeclarations()
+    {
+        // Flattening used to split `out var x` from later uses (CS0103). CanFlatten must refuse.
+        var sourceCode = """
+            public class Parser
+            {
+                public int Parse(string s)
+                {
+                    int.TryParse(s, out var x);
+                    x = x + 1;
+                    return x;
+                }
+            }
+            """;
+
+        var compilation = CreateCompilation(sourceCode);
+        var obfuscator = new SourceControlFlowObfuscator(new Mock<ILogger<SourceControlFlowObfuscator>>().Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+        };
+        var context = PipelineContext.ForSourceCode(compilation, settings);
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Parser", "Parse", "41").ShouldBe(42);
+    }
+
+    [Fact]
+    public async Task SourceControlFlow_SwitchMode_DoesNotFlattenLocalFunctions()
+    {
+        // A local function in case 0 is invisible to calls in later cases (CS0103).
+        var sourceCode = """
+            public class Calc
+            {
+                public int Compute(int x)
+                {
+                    int Local(int n) => n + 1;
+                    x = Local(x);
+                    x = x + 2;
+                    return x;
+                }
+            }
+            """;
+
+        var compilation = CreateCompilation(sourceCode);
+        var obfuscator = new SourceControlFlowObfuscator(new Mock<ILogger<SourceControlFlowObfuscator>>().Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+        };
+        var context = PipelineContext.ForSourceCode(compilation, settings);
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Calc", "Compute", 10).ShouldBe(13);
+    }
+
+    [Fact]
+    public async Task SourceSymbolRenamer_RewritesAttributeTypeNames()
+    {
+        // `[Marker]` binds to the constructor, not the type. The type must be renamed and the
+        // attribute use-site must follow, or the result fails with CS0246.
+        var sourceCode = """
+            using System;
+            class MarkerAttribute : Attribute {}
+            [Marker]
+            public class Widget
+            {
+                public static int Result() => 1;
+            }
+            """;
+
+        var compilation = CreateCompilation(sourceCode);
+        var renamer = new SourceSymbolRenamer(new NameGenerator(), new Mock<ILogger<SourceSymbolRenamer>>().Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            SymbolRenaming =
+            {
+                Enabled = true,
+                RenameTypes = true,
+                PreservePublicApi = true,
+                Mode = NamingMode.Sequential
+            }
+        };
+        var context = PipelineContext.ForSourceCode(compilation, settings);
+
+        var result = await renamer.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.TypesRenamed.ShouldBeGreaterThan(0);
+
+        var newSource = context.Compilation!.SyntaxTrees.First().ToString();
+        newSource.ShouldNotContain("MarkerAttribute");
+        newSource.ShouldNotContain("[Marker]");
+        newSource.ShouldContain("Widget");
+
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Widget", "Result").ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task SourceSymbolRenamer_RenamesRecordPositionalParametersAndPropertyUses()
+    {
+        // `record Person(string Name)` is one parameter token that also declares a property.
+        // Renaming the parameter without the property use-site (`p.Name`) produces CS1061.
+        var sourceCode = """
+            record Person(string Name);
+            public class Use
+            {
+                public static string Run()
+                {
+                    var p = new Person("Ada");
+                    return p.Name;
+                }
+            }
+            """;
+
+        var compilation = CreateCompilation(sourceCode);
+        var renamer = new SourceSymbolRenamer(new NameGenerator(), new Mock<ILogger<SourceSymbolRenamer>>().Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            SymbolRenaming =
+            {
+                Enabled = true,
+                RenameTypes = true,
+                RenameParameters = true,
+                RenameProperties = true,
+                PreservePublicApi = true,
+                Mode = NamingMode.Sequential
+            }
+        };
+        var context = PipelineContext.ForSourceCode(compilation, settings);
+
+        var result = await renamer.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Use", "Run").ShouldBe("Ada");
+    }
 }

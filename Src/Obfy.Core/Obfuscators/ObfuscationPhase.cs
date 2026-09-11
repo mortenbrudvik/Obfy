@@ -7,7 +7,10 @@ namespace Obfy.Core.Obfuscators;
 /// </summary>
 public enum ObfuscationPhase
 {
-    /// <summary>Encrypt string literals (must run before transforms that move code).</summary>
+    /// <summary>
+    /// Encrypt string literals. Runs first so later control-flow rewrites see decrypt calls, and
+    /// injected helper types exist before renaming/metadata.
+    /// </summary>
     StringEncryption = 10,
 
     /// <summary>Encrypt numeric constants.</summary>

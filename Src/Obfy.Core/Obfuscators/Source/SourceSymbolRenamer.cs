@@ -77,7 +77,19 @@ public class SourceSymbolRenamer : IObfuscator
                     if (!ShouldRenameDeclaration(node, definition, settings, exclusions))
                         continue;
 
-                    renames[definition] = _nameGenerator.Generate(definition.Name, settings.Mode);
+                    var newName = _nameGenerator.Generate(definition.Name, settings.Mode);
+                    renames[definition] = newName;
+
+                    // A record positional parameter also declares a synthesized property of the same
+                    // name. Use-sites bind to the property, so both must share the new name.
+                    if (definition is IParameterSymbol param &&
+                        node.Parent?.Parent is RecordDeclarationSyntax &&
+                        param.ContainingType is { } recordType)
+                    {
+                        var property = recordType.GetMembers(param.Name).OfType<IPropertySymbol>().FirstOrDefault();
+                        if (property != null)
+                            renames[property.OriginalDefinition] = newName;
+                    }
                 }
             }
 
@@ -129,9 +141,22 @@ public class SourceSymbolRenamer : IObfuscator
                 {
                     var info = model.GetSymbolInfo(name, cancellationToken);
                     var symbol = (info.Symbol ?? info.CandidateSymbols.FirstOrDefault())?.OriginalDefinition;
-                    if (symbol != null && renames.TryGetValue(symbol, out var refName))
+                    if (symbol == null)
+                        continue;
+
+                    if (renames.TryGetValue(symbol, out var refName))
                     {
                         tokenRenames[name.Identifier] = refName;
+                        continue;
+                    }
+
+                    // Attribute names bind to the constructor, not the type. Constructors are not
+                    // entered into `renames` (only ordinary methods are), so look up the type.
+                    if (symbol is IMethodSymbol { MethodKind: MethodKind.Constructor } ctor)
+                    {
+                        var type = ctor.ContainingType.OriginalDefinition;
+                        if (renames.TryGetValue(type, out var typeName))
+                            tokenRenames[name.Identifier] = typeName;
                     }
                 }
 
@@ -229,7 +254,7 @@ public class SourceSymbolRenamer : IObfuscator
                 }
                 else if (v.Parent?.Parent is not LocalDeclarationStatementSyntax)
                 {
-                    // Not a field or a local (e.g. an event or fixed buffer) — leave it alone.
+                    // Not a field or a local (e.g. event fields or `for`/`using` declarators).
                     return false;
                 }
                 break;
@@ -276,7 +301,8 @@ public class SourceSymbolRenamer : IObfuscator
         if (settings.PreservePublicApi && IsExternallyVisible(symbol))
             return false;
 
-        // Honor configured exclusion patterns.
+        // Honor type and method exclusion patterns. Namespace/attribute exclusions apply to the
+        // assembly renamer only.
         if (symbol.Kind == SymbolKind.NamedType && exclusions.Types.Any(t => MatchesPattern(symbol.Name, t)))
             return false;
         if (symbol.Kind == SymbolKind.Method && exclusions.Methods.Any(m => MatchesPattern(symbol.Name, m)))

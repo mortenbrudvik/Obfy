@@ -133,6 +133,24 @@ public class ReportServiceTests : IDisposable
     }
 
     [Fact]
+    public void BuildReport_IncludesRuntimeWarningsFromResult()
+    {
+        var result = ObfuscationResult.Successful(
+            new ObfuscationStatistics { StringsEncrypted = 1 },
+            warnings: new List<string>
+            {
+                "Anti-tamper: the integrity check verifies the assembly file on disk and is skipped for single-file / self-contained deployments (Assembly.Location is empty). Ship a file-based deployment for tamper protection to take effect."
+            });
+        var settings = new ObfySettings();
+
+        var report = _reportService.BuildReport(result, settings);
+
+        report.Warnings.ShouldContain(w =>
+            w.Category == WarningCategory.ProtectionIneffective &&
+            w.Message.Contains("Anti-tamper"));
+    }
+
+    [Fact]
     public void BuildReport_IncludesPublicApiWarning()
     {
         // Arrange

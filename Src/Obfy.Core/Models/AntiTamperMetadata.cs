@@ -1,13 +1,19 @@
 namespace Obfy.Core.Models;
 
 /// <summary>
-/// Metadata produced by the anti-tamper obfuscator and consumed by the assembly writer to patch the
-/// integrity hash after the module is written. Passed as a typed field on the pipeline context.
+/// Marker that the anti-tamper type was injected. Presence on the pipeline context tells the
+/// assembly writer to patch the integrity-hash blob after the module is written. Patching locates
+/// the hash slot by a magic byte sequence in the PE image, not by a metadata token.
+/// Null on the context means anti-tamper did not run.
 /// </summary>
-public class AntiTamperMetadata
+public sealed class AntiTamperMetadata
 {
     /// <summary>
-    /// Token of the hash field, used to locate it during post-write patching.
+    /// Singleton used whenever the anti-tamper type has been injected.
     /// </summary>
-    public uint HashFieldToken { get; set; }
+    public static AntiTamperMetadata Injected { get; } = new();
+
+    private AntiTamperMetadata()
+    {
+    }
 }

@@ -53,7 +53,9 @@ public class AntiDebugObfuscator : IObfuscator
                 }
 
                 var moduleInitializer = FindModuleInitializer(module);
-                if (moduleInitializer == null && module.EntryPoint == null)
+                // If the entry-point inject failed (no body) or there is no entry point, create a
+                // module initializer so the check still runs at load.
+                if (moduleInitializer == null && stats.ProtectionsApplied == 0)
                 {
                     moduleInitializer = CreateModuleInitializer(module);
                 }
@@ -61,6 +63,14 @@ public class AntiDebugObfuscator : IObfuscator
                 if (moduleInitializer != null && InjectDebuggerCheck(moduleInitializer, antiDebugType))
                 {
                     stats.ProtectionsApplied++;
+                }
+
+                if (stats.ProtectionsApplied == 0)
+                {
+                    const string warning =
+                        "Anti-debug: runtime type was injected but no call site could be instrumented (entry point/module initializer missing or has no body).";
+                    context.Warnings.Add(warning);
+                    _logger.LogWarning("{Warning}", warning);
                 }
             }
 

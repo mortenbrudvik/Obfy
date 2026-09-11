@@ -125,4 +125,24 @@ public class NameGeneratorTests
             generated.ShouldNotContain(keyword);
         }
     }
+
+    [Fact]
+    public void Generate_Sequential_NeverProducesContextualKeyword()
+    {
+        var generator = new NameGenerator();
+        var keywords = new HashSet<string>
+        {
+            "var", "record", "file", "required", "async", "await", "yield", "dynamic",
+            "nint", "nuint", "and", "or", "not", "with", "init"
+        };
+
+        var generated = Enumerable.Range(0, 5000)
+            .Select(_ => generator.Generate(NamingMode.Sequential))
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var keyword in keywords)
+        {
+            generated.ShouldNotContain(keyword);
+        }
+    }
 }

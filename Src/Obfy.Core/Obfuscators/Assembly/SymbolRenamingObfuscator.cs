@@ -146,10 +146,10 @@ public class SymbolRenamingObfuscator : IObfuscator
 
                     foreach (var method in type.Methods)
                     {
-                        // Only rename parameters of methods we would rename anyway. This honors
-                        // PreservePublicApi, overrides, interface implementations and runtime methods,
-                        // so we never rewrite parameter names on public APIs that callers bind by name
-                        // (named arguments, reflection, model binding, DI-by-name).
+                        // Parameter names follow CanRenameMethod: skipped for constructors, entry
+                        // points, virtuals/overrides/interface impls, and public methods when
+                        // PreservePublicApi is set. Named-argument / reflection callers of public APIs
+                        // are only safe with PreservePublicApi = true (the default is false).
                         if (!CanRenameMethod(method, settings))
                             continue;
 

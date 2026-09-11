@@ -57,9 +57,13 @@ public class ObfuscationResult
 
     /// <summary>
     /// Gets non-fatal warnings raised during obfuscation (e.g. a protection that could not take
-    /// effect). Surfaced to the user so enabled protections never silently do nothing.
+    /// effect for a given deployment model). Surfaced in CLI/UI output and in exported reports.
     /// </summary>
     public List<string> Warnings { get; private init; } = new();
+
+    private ObfuscationResult()
+    {
+    }
 
     /// <summary>
     /// Creates a successful result.
@@ -93,6 +97,7 @@ public class ObfuscationResult
     /// </summary>
     public static ObfuscationResult Failed(string errorMessage, Exception? exception = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
         return new ObfuscationResult
         {
             Success = false,

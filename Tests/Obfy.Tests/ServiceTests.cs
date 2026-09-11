@@ -584,6 +584,113 @@ namespace Test
         result.Success.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task ObfuscationService_CopiesSkippedItemsAndWarningsOntoResult()
+    {
+        var assemblyPath = CreateTestAssembly("SkipWarn.dll");
+        var outputPath = Path.Combine(_tempDirectory, "SkipWarn.out.dll");
+
+        var mockContext = PipelineContext.ForAssembly(
+            ModuleDefMD.Load(assemblyPath),
+            new ObfySettings());
+
+        var assemblyProcessor = new Mock<IAssemblyProcessor>();
+        assemblyProcessor
+            .Setup(p => p.LoadAsync(assemblyPath, It.IsAny<ObfySettings>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(mockContext);
+        assemblyProcessor
+            .Setup(p => p.SaveAsync(It.IsAny<PipelineContext>(), outputPath, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var pipeline = new Mock<IObfuscationPipeline>();
+        pipeline
+            .Setup(p => p.ExecuteAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
+            .Callback<PipelineContext, CancellationToken>((ctx, _) =>
+            {
+                ctx.SkippedItems.Add(SkippedItem.UnsupportedMethod("Foo::Bar", "Exception handlers"));
+                ctx.Warnings.Add("protection ineffective");
+            })
+            .ReturnsAsync(ObfuscationResult.Successful(new ObfuscationStatistics { StringsEncrypted = 1 }));
+
+        var service = new ObfuscationService(
+            assemblyProcessor.Object,
+            new Mock<ISourceProcessor>().Object,
+            pipeline.Object,
+            new Mock<IAssemblyMerger>().Object,
+            new Mock<ILogger<ObfuscationService>>().Object);
+
+        var result = await service.ObfuscateAsync(assemblyPath, outputPath, new ObfySettings { Level = ObfuscationLevel.Custom });
+
+        result.Success.ShouldBeTrue();
+        result.SkippedItems.ShouldContain(s => s.ItemName == "Foo::Bar");
+        result.Warnings.ShouldContain("protection ineffective");
+    }
+
+    [Fact]
+    public async Task ObfuscationService_FailsOnInvalidSettings()
+    {
+        var assemblyPath = CreateTestAssembly("InvalidSettings.dll");
+        var service = new ObfuscationService(
+            new Mock<IAssemblyProcessor>().Object,
+            new Mock<ISourceProcessor>().Object,
+            new Mock<IObfuscationPipeline>().Object,
+            new Mock<IAssemblyMerger>().Object,
+            new Mock<ILogger<ObfuscationService>>().Object);
+
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ControlFlow = { Intensity = 101 }
+        };
+
+        var result = await service.ObfuscateAsync(assemblyPath, null, settings);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("Invalid settings");
+    }
+
+    [Fact]
+    public async Task ObfuscationService_WarnsWhenAntiDumpEnabled()
+    {
+        var assemblyPath = CreateTestAssembly("AntiDump.dll");
+        var outputPath = Path.Combine(_tempDirectory, "AntiDump.out.dll");
+
+        var mockContext = PipelineContext.ForAssembly(
+            ModuleDefMD.Load(assemblyPath),
+            new ObfySettings());
+
+        var assemblyProcessor = new Mock<IAssemblyProcessor>();
+        assemblyProcessor
+            .Setup(p => p.LoadAsync(assemblyPath, It.IsAny<ObfySettings>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(mockContext);
+        assemblyProcessor
+            .Setup(p => p.SaveAsync(It.IsAny<PipelineContext>(), outputPath, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var pipeline = new Mock<IObfuscationPipeline>();
+        pipeline
+            .Setup(p => p.ExecuteAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ObfuscationResult.Successful(new ObfuscationStatistics()));
+
+        var service = new ObfuscationService(
+            assemblyProcessor.Object,
+            new Mock<ISourceProcessor>().Object,
+            pipeline.Object,
+            new Mock<IAssemblyMerger>().Object,
+            new Mock<ILogger<ObfuscationService>>().Object);
+
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            Protection = { AntiDump = true }
+        };
+
+        var result = await service.ObfuscateAsync(assemblyPath, outputPath, settings);
+
+        result.Success.ShouldBeTrue();
+        result.Warnings.ShouldContain(w => w.Contains("Anti-dump is not implemented"));
+    }
+
     #endregion
 
     #region AssemblyMerger Tests

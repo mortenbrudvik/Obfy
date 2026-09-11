@@ -45,10 +45,7 @@ public class AntiTamperObfuscator : IObfuscator
         {
             var antiTamperType = InjectAntiTamperType(module);
 
-            context.AntiTamperMetadata = new AntiTamperMetadata
-            {
-                HashFieldToken = antiTamperType.MDToken.Raw
-            };
+            context.AntiTamperMetadata = AntiTamperMetadata.Injected;
 
             // Add check to entry point if configured
             if (settings.CheckEntryPoint && module.EntryPoint != null &&
@@ -71,9 +68,8 @@ public class AntiTamperObfuscator : IObfuscator
 
             _logger.LogInformation("Applied {Count} anti-tamper protections", stats.ProtectionsApplied);
 
-            // The runtime integrity check hashes the assembly file on disk. For single-file or
-            // self-contained publishes, Assembly.Location is empty and the check quietly does nothing,
-            // so warn rather than leave the user believing tamper protection is active.
+            // Emitted unconditionally: at obfuscation time we cannot know whether the consumer will
+            // publish as single-file. The runtime still skips when Assembly.Location is empty.
             const string singleFileWarning =
                 "Anti-tamper: the integrity check verifies the assembly file on disk and is skipped for " +
                 "single-file / self-contained deployments (Assembly.Location is empty). Ship a file-based " +
@@ -306,7 +302,8 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, offsetLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Blt, skipLabel));
+        // Missing hash blob is tamper (or a failed patch), not the documented single-file skip.
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, exitLabel));
 
         body.Instructions.Add(Instruction.CreateLdcI4(AssemblyHashComputer.HashSize));
         body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));

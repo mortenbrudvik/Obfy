@@ -75,5 +75,10 @@ public enum WarningCategory
     /// <summary>
     /// Potential issue detected.
     /// </summary>
-    PotentialIssue
+    PotentialIssue,
+
+    /// <summary>
+    /// An enabled protection could not take effect (or is not implemented).
+    /// </summary>
+    ProtectionIneffective
 }

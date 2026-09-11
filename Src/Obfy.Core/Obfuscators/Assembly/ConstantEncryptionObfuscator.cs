@@ -83,13 +83,8 @@ public class ConstantEncryptionObfuscator : IObfuscator
                     // Skip methods with exception handlers to avoid corrupting handler boundaries
                     if (method.Body.HasExceptionHandlers)
                     {
-                        context.SkippedItems.Add(new SkippedItem
-                        {
-                            Reason = SkipReason.UnsupportedConstruct,
-                            ItemType = SkippedItemType.Method,
-                            ItemName = method.FullName,
-                            Details = "Exception handlers"
-                        });
+                        context.SkippedItems.Add(
+                            SkippedItem.UnsupportedMethod(method.FullName, "Exception handlers"));
                         continue;
                     }
 

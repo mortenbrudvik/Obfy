@@ -58,9 +58,9 @@ public class PipelineContext
     public Dictionary<string, string> SymbolMap { get; } = new();
 
     /// <summary>
-    /// Anti-tamper metadata produced by the anti-tamper obfuscator and consumed by the assembly
-    /// writer to patch the integrity hash after the module is written. Null when anti-tamper did
-    /// not run. Replaces an untyped shared-data bag with a typed, discoverable handoff.
+    /// Set when the anti-tamper type was injected. The assembly writer uses presence (not a token)
+    /// as the signal to patch the integrity-hash blob after the module is written. Null when
+    /// anti-tamper did not run.
     /// </summary>
     public AntiTamperMetadata? AntiTamperMetadata { get; set; }
 

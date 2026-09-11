@@ -24,6 +24,27 @@ public class SkippedItem
     /// Additional details about why the item was skipped.
     /// </summary>
     public string? Details { get; init; }
+
+    /// <summary>
+    /// A method skipped because it uses an unsupported construct (e.g. exception handlers).
+    /// </summary>
+    public static SkippedItem UnsupportedMethod(string name, string details) => new()
+    {
+        Reason = SkipReason.UnsupportedConstruct,
+        ItemType = SkippedItemType.Method,
+        ItemName = name,
+        Details = details
+    };
+
+    /// <summary>
+    /// An embedded resource skipped because it matched an exclude pattern.
+    /// </summary>
+    public static SkippedItem ResourceExcluded(string name) => new()
+    {
+        Reason = SkipReason.ResourceExcluded,
+        ItemType = SkippedItemType.Resource,
+        ItemName = name
+    };
 }
 
 /// <summary>

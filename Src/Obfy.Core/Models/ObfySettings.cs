@@ -79,9 +79,11 @@ public class ObfySettings
     {
         switch (Level)
         {
-            // Each branch sets every field it depends on to an explicit value (never relying on
-            // defaults or on prior state), so re-applying a level over an existing instance is
-            // deterministic and cannot leak values from a previously applied level.
+            // Each non-Custom branch assigns this fixed set of flags (enabled bits, intensity,
+            // constant-encryption algorithm, metadata/debug) so *those* values do not leak from a
+            // previously applied level. Other nested settings (control-flow mode, string/resource
+            // algorithms, naming mode, PreservePublicApi, junk counts, include/exclude patterns)
+            // keep their prior or default values.
             case ObfuscationLevel.Minimal:
                 StringEncryption.Enabled = false;
                 ControlFlow.Enabled = false;

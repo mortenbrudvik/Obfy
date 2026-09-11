@@ -230,6 +230,8 @@ public class ReportService : IReportService
             }
         }
 
+        AddRuntimeWarnings(warnings, context.Warnings);
+
         // Check for unused settings
         if (settings.StringEncryption.Enabled && result.Statistics.StringsEncrypted == 0)
         {
@@ -307,6 +309,19 @@ public class ReportService : IReportService
         }
 
         return warnings;
+    }
+
+    private static void AddRuntimeWarnings(List<ReportWarning> warnings, IEnumerable<string> runtimeWarnings)
+    {
+        foreach (var warning in runtimeWarnings)
+        {
+            warnings.Add(new ReportWarning
+            {
+                Severity = WarningSeverity.Warning,
+                Category = WarningCategory.ProtectionIneffective,
+                Message = warning
+            });
+        }
     }
 
     private static string FormatSkipReason(SkipReason reason) => reason switch
@@ -405,6 +420,8 @@ public class ReportService : IReportService
                 });
             }
         }
+
+        AddRuntimeWarnings(warnings, result.Warnings);
 
         // Check for unused settings
         if (settings.StringEncryption.Enabled && result.Statistics.StringsEncrypted == 0)

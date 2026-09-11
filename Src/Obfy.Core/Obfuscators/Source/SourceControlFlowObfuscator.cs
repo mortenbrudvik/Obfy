@@ -175,7 +175,8 @@ public class SourceControlFlowObfuscator : IObfuscator
                 return false;
             }
 
-            // async Task / async ValueTask (non-generic) and async void need no return value.
+            // async Task / async ValueTask (non-generic) need no return value. async void is handled
+            // by the void-keyword check above.
             if (method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)))
             {
                 var returnType = method.ReturnType.ToString();
@@ -233,6 +234,7 @@ public class SourceControlFlowObfuscator : IObfuscator
                 }
 
                 if (statement is LocalDeclarationStatementSyntax
+                    or LocalFunctionStatementSyntax
                     or BreakStatementSyntax
                     or ContinueStatementSyntax
                     or GotoStatementSyntax
@@ -252,12 +254,17 @@ public class SourceControlFlowObfuscator : IObfuscator
                     return false;
                 }
 
+                // Declaration expressions (`out var x`) and nested local functions introduce names
+                // whose scope is the enclosing block. Flattening puts each statement in its own
+                // switch section, so those names would not be visible to later statements.
                 if (statement.DescendantNodes().Any(n =>
                         n is BreakStatementSyntax
                             or ContinueStatementSyntax
                             or GotoStatementSyntax
                             or YieldStatementSyntax
-                            or LocalDeclarationStatementSyntax))
+                            or LocalDeclarationStatementSyntax
+                            or LocalFunctionStatementSyntax
+                            or DeclarationExpressionSyntax))
                 {
                     return false;
                 }
@@ -378,9 +385,10 @@ public class SourceControlFlowObfuscator : IObfuscator
             };
 
             // For a value-returning method the original return lives inside a switch case, so the
-            // compiler cannot see that the loop always returns and reports CS0161. The last flattened
-            // statement is always a return (CanFlatten enforces it), so this terminal is unreachable at
-            // runtime and only satisfies the compiler's definite-return analysis.
+            // compiler cannot see that the loop always returns and reports CS0161. CanFlatten forbids
+            // early return; a final throw (or other allowed statement) may still flatten. The original
+            // body already returns or throws, so this terminal is unreachable and only satisfies
+            // definite-assignment.
             if (needsReturnValue)
             {
                 newStatements.Add(

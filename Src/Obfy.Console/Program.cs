@@ -270,7 +270,7 @@ public class Program
 
                 context.ExitCode = await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose, merge);
             }
-            catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException)
+            catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or IOException)
             {
                 AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
                 context.ExitCode = 1;

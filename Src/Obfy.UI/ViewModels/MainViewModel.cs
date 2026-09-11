@@ -192,8 +192,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             ShowResultsPanel = true;
 
-            Output.Success($"Obfuscation completed: {totalStats.TotalTransformations} total transformations in {stopwatch.Elapsed:mm\\:ss\\.fff}");
-            StatusMessage = "Obfuscation complete";
+            var failed = files.Count(f => f.Status == FileStatus.Error);
+            if (failed > 0)
+            {
+                Output.Error($"Obfuscation finished with errors: {failed} file(s) failed.");
+                StatusMessage = "Completed with errors";
+            }
+            else
+            {
+                Output.Success($"Obfuscation completed: {totalStats.TotalTransformations} total transformations in {stopwatch.Elapsed:mm\\:ss\\.fff}");
+                StatusMessage = "Obfuscation complete";
+            }
         }
         catch (OperationCanceledException)
         {

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Aggressive and AES obfuscation now produce loadable, runnable assemblies (constant decryptors, empty-stack control-flow splits, crypto types referenced from their real assemblies)
+- Source switch flattening no longer emits CS0161, wraps declarations, or splits `out var` / local functions across cases
+- Source symbol renaming is semantic (ISymbol), including attributes and record positional properties
+- String/constant encryption and control-flow record skipped try/catch methods instead of silently leaving them unprotected
+- Resource encryption decrypts only encrypted names, rewrites only `Assembly.GetManifestResourceStream(string)`, and warns on other load paths
+- Control-flow fails the run instead of returning success after a half-rewritten method body, and does not split IL prefixes
+- Anti-debug warns when no call site could be instrumented; anti-tamper fail-closes if the hash blob is missing
+- Skips and warnings are shown in CLI/UI output and exported reports, not only in `--report`
+- Anti-dump enabled produces an explicit “not implemented” warning; UI overall status reports file failures
 - Assembly string encryption now decrypts at runtime (AES-256 and XOR) instead of returning ciphertext
 - Anti-tamper hash excludes the stored digest so Aggressive builds no longer exit on startup
 - Resource encryption keeps embedded resources and unwraps `GetManifestResourceStream`

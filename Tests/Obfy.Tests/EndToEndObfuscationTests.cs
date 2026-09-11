@@ -1,9 +1,12 @@
 using System.Runtime.Loader;
+using Autofac;
 using dnlib.DotNet;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Obfy.Core.DependencyInjection;
 using Obfy.Core.Models;
 using Obfy.Core.Obfuscators.Assembly;
 using Obfy.Core.Pipeline;
@@ -214,6 +217,98 @@ public class EndToEndObfuscationTests
             module.Write(output);
 
             LoadAndInvoke(output, "Lib", "Get").ShouldBe(7);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Aggressive_FullPipeline_RunsOnRealAssembly()
+    {
+        // Individual technique tests would not catch interactions such as switch flattening after
+        // decrypt-call insertion, or metadata/anti-decompiler making AES/SHA256 unloadable.
+        const string source = """
+            public static class Lib
+            {
+                public static int Run()
+                {
+                    var s = "hello-world-secret";
+                    long n = 1234567890123L;
+                    int x = s.Length;
+                    x = x + (int)(n % 100);
+                    x = x * 2;
+                    return x;
+                }
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-agg-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "AggLib");
+            var output = Path.Combine(dir, "AggLib.obf.dll");
+
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+
+            var service = container.Resolve<IObfuscationService>();
+            var settings = ObfySettings.ForLevel(ObfuscationLevel.Aggressive);
+            settings.SymbolRenaming.PreservePublicApi = true;
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Statistics.StringsEncrypted.ShouldBeGreaterThan(0);
+            result.Statistics.ConstantsEncrypted.ShouldBeGreaterThan(0);
+
+            LoadAndInvoke(output, "Lib", "Run").ShouldBe(82);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public async Task ConstantEncryption_Aes_RunsOnRealAssembly(EncryptionAlgorithm algorithm)
+    {
+        // mscorlib test modules mask TypeLoadException for Aes/SHA256; a real System.Runtime
+        // assembly is the setup that used to crash at load.
+        const string source = "public static class Lib { public static long Get() => 9876543210L; }";
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-const-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "ConstLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                ConstantEncryption =
+                {
+                    Enabled = true,
+                    Algorithm = algorithm,
+                    EncryptIntegers = false,
+                    EncryptLongs = true,
+                    LongThreshold = 0
+                }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            var obfuscator = new ConstantEncryptionObfuscator(new Mock<ILogger<ConstantEncryptionObfuscator>>().Object);
+
+            (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "ConstLib.obf.dll");
+            module.Write(output);
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(9876543210L);
         }
         finally
         {

@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Microsoft.Extensions.Logging;
@@ -50,18 +49,22 @@ public class ResourceEncryptionObfuscator : IObfuscator
             // and passes any other resource stream through untouched.
             var encryptedResourceNames = new List<string>();
 
-            // Iterate backwards to safely replace while iterating
-            for (var i = module.Resources.Count - 1; i >= 0; i--)
+            for (var i = 0; i < module.Resources.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (module.Resources[i] is not EmbeddedResource embeddedResource)
+                {
+                    context.Warnings.Add(
+                        $"ResourceEncryption: '{module.Resources[i].Name}' is not an embedded resource and cannot be encrypted.");
                     continue;
+                }
 
                 var resourceName = embeddedResource.Name.String;
 
                 if (!ShouldEncrypt(resourceName, settings))
                 {
+                    context.SkippedItems.Add(SkippedItem.ResourceExcluded(resourceName));
                     _logger.LogDebug("Skipping resource {Name} (excluded by pattern)", resourceName);
                     continue;
                 }
@@ -85,7 +88,7 @@ public class ResourceEncryptionObfuscator : IObfuscator
             if (encryptedResourceNames.Count > 0)
             {
                 // Inject decryptor type and rewrite resource loads to decrypt on the fly
-                InjectDecryptorType(module, key, settings.Algorithm, encryptedResourceNames);
+                InjectDecryptorType(module, key, settings.Algorithm, encryptedResourceNames, context);
 
                 _logger.LogInformation("Encrypted {Count} resources", stats.ResourcesEncrypted);
             }
@@ -119,7 +122,8 @@ public class ResourceEncryptionObfuscator : IObfuscator
         ModuleDef module,
         byte[] key,
         EncryptionAlgorithm algorithm,
-        List<string> encryptedResourceNames)
+        List<string> encryptedResourceNames,
+        PipelineContext context)
     {
         // Create internal static class for decryption
         var typeDef = new TypeDefUser(
@@ -158,12 +162,16 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
         module.Types.Add(typeDef);
 
-        RewriteResourceLoads(module, loadResource);
+        if (RewriteResourceLoads(module, loadResource, context) == 0)
+        {
+            context.Warnings.Add(
+                "ResourceEncryption: resources were encrypted but no Assembly.GetManifestResourceStream(string) call sites were rewritten. Encrypted resources loaded any other way will be ciphertext.");
+        }
     }
 
     /// <summary>
     /// Emits <c>static Stream LoadResourceStream(Assembly asm, string name)</c>. It fetches the
-    /// manifest resource stream, and if <paramref name="name"/> is one of the encrypted resources,
+    /// manifest resource stream, and if <c>name</c> is one of the encrypted resources,
     /// decrypts the stream and returns it as a new MemoryStream; otherwise the original stream is
     /// returned unchanged so non-encrypted resources are never corrupted.
     /// </summary>
@@ -325,12 +333,14 @@ public class ResourceEncryptionObfuscator : IObfuscator
     }
 
     /// <summary>
-    /// Replaces single-argument <c>Assembly.GetManifestResourceStream(string)</c> calls with a call
-    /// to the injected name-aware loader, so encrypted resources are transparently decrypted while
-    /// every other resource stream is returned unchanged.
+    /// Replaces <c>Assembly.GetManifestResourceStream(string)</c> (matched by declaring type name
+    /// and arity 1) with a call to the injected name-aware loader. The <c>(Type, string)</c>
+    /// overload and <c>Module.GetManifestResourceStream</c> are not intercepted and will observe
+    /// ciphertext; those call sites are recorded as warnings.
     /// </summary>
-    private static void RewriteResourceLoads(ModuleDef module, MethodDef loadResource)
+    private static int RewriteResourceLoads(ModuleDef module, MethodDef loadResource, PipelineContext context)
     {
+        var rewritten = 0;
         foreach (var type in module.GetTypes())
         {
             if (type.Namespace == "Obfy.Runtime")
@@ -354,20 +364,29 @@ public class ResourceEncryptionObfuscator : IObfuscator
                     if (called.Name != "GetManifestResourceStream")
                         continue;
 
-                    // Only the (string) overload matches our loader's signature; leave the
-                    // (Type, string) overload and anything else alone.
-                    if (called.MethodSig?.Params.Count != 1)
-                        continue;
+                    var declaring = called.DeclaringType?.Name?.String;
+                    var arity = called.MethodSig?.Params.Count ?? -1;
+                    var isAssembly = declaring is "Assembly" or "RuntimeAssembly";
 
-                    // Rewrite in place to preserve any branch targets pointing at this instruction.
-                    instr.OpCode = OpCodes.Call;
-                    instr.Operand = loadResource;
-                    modified = true;
+                    if (isAssembly && arity == 1)
+                    {
+                        // Rewrite in place to preserve any branch targets pointing at this instruction.
+                        instr.OpCode = OpCodes.Call;
+                        instr.Operand = loadResource;
+                        modified = true;
+                        rewritten++;
+                        continue;
+                    }
+
+                    context.Warnings.Add(
+                        $"ResourceEncryption: {method.FullName} calls {called.FullName}, which is not rewritten. Encrypted resources loaded this way will be ciphertext.");
                 }
 
                 if (modified)
                     method.Body.UpdateInstructionOffsets();
             }
         }
+
+        return rewritten;
     }
 }

@@ -54,7 +54,20 @@ public class ControlFlowObfuscator : IObfuscator
                     cancellationToken.ThrowIfCancellationRequested();
 
                     if (!CanObfuscateMethod(method))
+                    {
+                        // Eligible-looking methods with exception handlers are left in the clear;
+                        // record the skip so CLI/UI do not report a clean run.
+                        if (method.HasBody &&
+                            method.Body.Instructions.Count >= 5 &&
+                            !method.IsConstructor &&
+                            !method.IsStaticConstructor &&
+                            method.Body.HasExceptionHandlers)
+                        {
+                            context.SkippedItems.Add(
+                                SkippedItem.UnsupportedMethod(method.FullName, "Exception handlers"));
+                        }
                         continue;
+                    }
 
                     try
                     {
@@ -73,14 +86,12 @@ public class ControlFlowObfuscator : IObfuscator
                     }
                     catch (Exception ex)
                     {
+                        // Flattening mutates the body in place (Clear + rebuild, or incremental
+                        // inserts). A throw mid-mutation can leave unverifiable IL; do not report
+                        // Success with a "skipped" method whose body is half-rewritten.
                         _logger.LogError(ex, "Failed to obfuscate method {Method}", method.FullName);
-                        context.SkippedItems.Add(new SkippedItem
-                        {
-                            Reason = SkipReason.UnsupportedConstruct,
-                            ItemType = SkippedItemType.Method,
-                            ItemName = method.FullName,
-                            Details = ex.Message
-                        });
+                        return Task.FromResult(ObfuscationResult.Failed(
+                            $"Control flow obfuscation failed on {method.FullName}: {ex.Message}", ex));
                     }
                 }
             }
@@ -175,13 +186,17 @@ public class ControlFlowObfuscator : IObfuscator
 
         // Greedily group instructions into chunks that each end on an empty stack (targeting chunkSize).
         // The final trailing segment falls through to `ret` and need not end on an empty stack (it may
-        // carry the single return value that ret consumes).
+        // carry the single return value that ret consumes). Prefix opcodes (volatile., constrained.,
+        // tail., ...) have stack delta 0, so never split after one — the prefix must stay glued to
+        // the instruction it modifies.
         var chunks = new List<List<Instruction>>();
         var current = new List<Instruction>();
         for (var i = 0; i < work.Count; i++)
         {
             current.Add(work[i]);
-            if (depthAfter[i] == 0 && current.Count >= chunkSize)
+            if (depthAfter[i] == 0 &&
+                current.Count >= chunkSize &&
+                work[i].OpCode.FlowControl != FlowControl.Meta)
             {
                 chunks.Add(current);
                 current = new List<Instruction>();
@@ -190,8 +205,8 @@ public class ControlFlowObfuscator : IObfuscator
         if (current.Count > 0)
             chunks.Add(current);
 
-        // Flattening only adds value with multiple chunks; a single chunk means the stack never
-        // returned to empty in the interior, so leave the method untouched.
+        // Flattening only adds value with multiple chunks. Leave the method untouched unless there
+        // are at least two chunks (an empty-stack boundary at or after chunkSize instructions).
         if (chunks.Count < 2)
             return false;
 

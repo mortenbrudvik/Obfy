@@ -11,6 +11,8 @@ public static class WildcardMatcher
 {
     public static bool IsMatch(string? value, string pattern)
     {
+        ArgumentNullException.ThrowIfNull(pattern);
+
         if (string.IsNullOrEmpty(value))
             return false;
 

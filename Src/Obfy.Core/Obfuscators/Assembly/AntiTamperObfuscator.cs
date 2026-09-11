@@ -77,6 +77,16 @@ public class AntiTamperObfuscator : IObfuscator
 
             _logger.LogInformation("Applied {Count} anti-tamper protections", stats.ProtectionsApplied);
 
+            // The runtime integrity check hashes the assembly file on disk. For single-file or
+            // self-contained publishes, Assembly.Location is empty and the check quietly does nothing,
+            // so warn rather than leave the user believing tamper protection is active.
+            const string singleFileWarning =
+                "Anti-tamper: the integrity check verifies the assembly file on disk and is skipped for " +
+                "single-file / self-contained deployments (Assembly.Location is empty). Ship a file-based " +
+                "deployment for tamper protection to take effect.";
+            context.Warnings.Add(singleFileWarning);
+            _logger.LogWarning("{Warning}", singleFileWarning);
+
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
         catch (Exception ex)
@@ -247,7 +257,8 @@ public class AntiTamperObfuscator : IObfuscator
         var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
         var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
         var fileType = new TypeRefUser(module, "System.IO", "File", module.CorLibTypes.AssemblyRef);
-        var sha256Type = new TypeRefUser(module, "System.Security.Cryptography", "SHA256", module.CorLibTypes.AssemblyRef);
+        // SHA256 lives in the cryptography assembly, not the corlib facade, on modern .NET.
+        var sha256Type = new TypeRefUser(module, "System.Security.Cryptography", "SHA256", FrameworkReferences.Cryptography(module));
         var bufferType = new TypeRefUser(module, "System", "Buffer", module.CorLibTypes.AssemblyRef);
 
         var getExecutingAssembly = new MemberRefUser(module, "GetExecutingAssembly",

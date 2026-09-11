@@ -126,10 +126,17 @@ public class ControlFlowObfuscator : IObfuscator
         if (_random.Next(100) > intensity)
             return false;
 
-        if (instructions.Any(i =>
-                i.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch))
+        // Only straight-line code can be safely flattened. Bail on anything that branches, throws,
+        // or returns early (other than the trailing ret handled below): those create extra edges or
+        // dead code that would invalidate the linear stack-depth analysis in FlattenLinearMethod.
+        var lastIndex = instructions.Count - 1;
+        for (var i = 0; i < lastIndex; i++)
         {
-            return false;
+            if (instructions[i].OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch
+                or FlowControl.Return or FlowControl.Throw)
+            {
+                return false;
+            }
         }
 
         return FlattenLinearMethod(method);
@@ -151,11 +158,42 @@ public class ControlFlowObfuscator : IObfuscator
         if (work.Count < 4)
             return false;
 
-        var chunks = new List<List<Instruction>>();
-        for (var i = 0; i < work.Count; i += chunkSize)
+        // The dispatcher is re-entered via `br dispatcher` between chunks, so every chunk boundary
+        // that precedes such a branch MUST sit on an empty evaluation stack; otherwise the dispatcher
+        // is reachable at differing stack depths and the JIT rejects the body as unverifiable.
+        // Compute the running stack depth after each instruction and split only at depth 0.
+        var depthAfter = new int[work.Count];
+        var depth = 0;
+        foreach (var (instr, index) in work.Select((instr, index) => (instr, index)))
         {
-            chunks.Add(work.Skip(i).Take(chunkSize).ToList());
+            instr.CalculateStackUsage(out var pushes, out var pops);
+            depth = depth - pops + pushes;
+            if (depth < 0)
+                return false; // unexpected underflow — refuse rather than emit invalid IL
+            depthAfter[index] = depth;
         }
+
+        // Greedily group instructions into chunks that each end on an empty stack (targeting chunkSize).
+        // The final trailing segment falls through to `ret` and need not end on an empty stack (it may
+        // carry the single return value that ret consumes).
+        var chunks = new List<List<Instruction>>();
+        var current = new List<Instruction>();
+        for (var i = 0; i < work.Count; i++)
+        {
+            current.Add(work[i]);
+            if (depthAfter[i] == 0 && current.Count >= chunkSize)
+            {
+                chunks.Add(current);
+                current = new List<Instruction>();
+            }
+        }
+        if (current.Count > 0)
+            chunks.Add(current);
+
+        // Flattening only adds value with multiple chunks; a single chunk means the stack never
+        // returned to empty in the interior, so leave the method untouched.
+        if (chunks.Count < 2)
+            return false;
 
         var stateVar = new Local(method.Module.CorLibTypes.Int32);
         body.Variables.Add(stateVar);

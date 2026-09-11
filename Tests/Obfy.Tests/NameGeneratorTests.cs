@@ -40,18 +40,40 @@ public class NameGeneratorTests
     }
 
     [Fact]
-    public void Generate_Hash_ReturnsDeterministicName()
+    public void Generate_Hash_IsDeterministicAcrossRuns()
     {
-        // Arrange
-        var generator = new NameGenerator();
+        // The same original name yields the same hash name on a fresh generator, so a given input
+        // assembly produces a reproducible symbol map.
+        var name1 = new NameGenerator().Generate("TestMethod", NamingMode.Hash);
+        var name2 = new NameGenerator().Generate("TestMethod", NamingMode.Hash);
 
-        // Act
-        var name1 = generator.Generate("TestMethod", NamingMode.Hash);
-        var name2 = generator.Generate("TestMethod", NamingMode.Hash);
-
-        // Assert
         name1.ShouldBe(name2);
         name1.ShouldStartWith("_");
+    }
+
+    [Fact]
+    public void Generate_MakesRepeatedNamesUnique()
+    {
+        // Two symbols that would otherwise collide (same original name in one run) must be given
+        // distinct names; a duplicate in the same scope would produce invalid metadata.
+        var generator = new NameGenerator();
+
+        var first = generator.Generate("Dup", NamingMode.Hash);
+        var second = generator.Generate("Dup", NamingMode.Hash);
+
+        first.ShouldNotBe(second);
+    }
+
+    [Fact]
+    public void Generate_ProducesNoCollisions_OverManyNames()
+    {
+        var generator = new NameGenerator();
+
+        var names = Enumerable.Range(0, 5000)
+            .Select(_ => generator.Generate(NamingMode.Unreadable))
+            .ToList();
+
+        names.Distinct().Count().ShouldBe(names.Count);
     }
 
     [Fact]

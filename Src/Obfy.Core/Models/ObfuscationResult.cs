@@ -56,6 +56,12 @@ public class ObfuscationResult
     public Dictionary<string, string> SymbolMap { get; init; } = new();
 
     /// <summary>
+    /// Gets non-fatal warnings raised during obfuscation (e.g. a protection that could not take
+    /// effect). Surfaced to the user so enabled protections never silently do nothing.
+    /// </summary>
+    public List<string> Warnings { get; init; } = new();
+
+    /// <summary>
     /// Creates a successful result.
     /// </summary>
     public static ObfuscationResult Successful(
@@ -65,7 +71,8 @@ public class ObfuscationResult
         TimeSpan? elapsedTime = null,
         List<ProcessingTimeEntry>? processingTimes = null,
         List<SkippedItem>? skippedItems = null,
-        Dictionary<string, string>? symbolMap = null)
+        Dictionary<string, string>? symbolMap = null,
+        List<string>? warnings = null)
     {
         return new ObfuscationResult
         {
@@ -76,7 +83,8 @@ public class ObfuscationResult
             ElapsedTime = elapsedTime ?? TimeSpan.Zero,
             ProcessingTimes = processingTimes ?? new(),
             SkippedItems = skippedItems ?? new(),
-            SymbolMap = symbolMap ?? new()
+            SymbolMap = symbolMap ?? new(),
+            Warnings = warnings ?? new()
         };
     }
 

@@ -110,6 +110,18 @@ public class AssemblyMerger : IAssemblyMerger
 
             stopwatch.Stop();
 
+            // ILRepack surfaces some failures through its logger without throwing. If any error was
+            // logged, the merged output cannot be trusted, so fail rather than obfuscate a bad merge.
+            if (repackLogger.HadError)
+            {
+                return Task.FromResult(new AssemblyMergeResult
+                {
+                    Success = false,
+                    ErrorMessage = repackLogger.FirstError ?? "ILRepack reported an error during merge",
+                    Duration = stopwatch.Elapsed
+                });
+            }
+
             var result = new AssemblyMergeResult
             {
                 Success = true,
@@ -176,6 +188,16 @@ public class AssemblyMerger : IAssemblyMerger
 
         public bool ShouldLogVerbose { get; set; } = false;
 
+        /// <summary>
+        /// True if ILRepack logged at least one error (some failures are reported without throwing).
+        /// </summary>
+        public bool HadError { get; private set; }
+
+        /// <summary>
+        /// The first error message ILRepack logged, if any.
+        /// </summary>
+        public string? FirstError { get; private set; }
+
         public void DuplicateIgnored(string ignoredType, object ignoredObject)
         {
             _logger.LogDebug("Duplicate ignored: {Type}", ignoredType);
@@ -183,6 +205,8 @@ public class AssemblyMerger : IAssemblyMerger
 
         public void Error(string msg)
         {
+            HadError = true;
+            FirstError ??= msg;
             _logger.LogError("{Message}", msg);
         }
 

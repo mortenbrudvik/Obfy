@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
@@ -728,5 +730,167 @@ public class SourceObfuscatorTests
             new[] { syntaxTree },
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    private static CSharpCompilation RecompileWithFullReferences(CSharpCompilation compilation)
+    {
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator)
+            .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p));
+
+        return CSharpCompilation.Create(
+            "VerifyAssembly",
+            compilation.SyntaxTrees,
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    private static IReadOnlyList<Diagnostic> GetErrors(CSharpCompilation compilation) =>
+        RecompileWithFullReferences(compilation)
+            .GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .ToList();
+
+    private static object? EmitAndInvoke(CSharpCompilation compilation, string typeName, string methodName, params object[] args)
+    {
+        var full = RecompileWithFullReferences(compilation);
+        using var ms = new MemoryStream();
+        var emit = full.Emit(ms);
+        emit.Success.ShouldBeTrue(
+            "Obfuscated code failed to compile:\n" +
+            string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+
+        ms.Position = 0;
+        var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
+        try
+        {
+            var asm = alc.LoadFromStream(ms);
+            var type = asm.GetTypes().First(t => t.Name == typeName);
+            var method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+            var instance = method!.IsStatic ? null : Activator.CreateInstance(type);
+            return method.Invoke(instance, args.Length == 0 ? null : args);
+        }
+        finally
+        {
+            alc.Unload();
+        }
+    }
+
+    [Fact]
+    public async Task SourceControlFlow_SwitchMode_ProducesCompilableRunnableCode()
+    {
+        // Switch flattening previously left value-returning methods with no return after the loop
+        // (CS0161). Compile and run the flattened method to prove it is valid and behavior-preserving.
+        var sourceCode = """
+            public class Calc
+            {
+                public int Compute(int x)
+                {
+                    x = x + 5;
+                    x = x * 3;
+                    x = x - 2;
+                    return x;
+                }
+            }
+            """;
+
+        var compilation = CreateCompilation(sourceCode);
+        var obfuscator = new SourceControlFlowObfuscator(new Mock<ILogger<SourceControlFlowObfuscator>>().Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+        };
+        var context = PipelineContext.ForSourceCode(compilation, settings);
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.MethodsControlFlowObfuscated.ShouldBe(1);
+
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Calc", "Compute", 10).ShouldBe(((10 + 5) * 3) - 2);
+    }
+
+    [Fact]
+    public async Task SourceControlFlow_OpaquePredicate_DoesNotScopeAwayDeclarations()
+    {
+        // Opaque predicates previously wrapped local declarations in an if-block, hiding the local
+        // from the rest of the method. Compile and run to prove declarations stay in scope.
+        var sourceCode = """
+            public class Calc
+            {
+                public int Compute(int seed)
+                {
+                    int a = seed + 1;
+                    int b = a * 2;
+                    int c = b - 3;
+                    return a + b + c;
+                }
+            }
+            """;
+
+        var compilation = CreateCompilation(sourceCode);
+        var obfuscator = new SourceControlFlowObfuscator(new Mock<ILogger<SourceControlFlowObfuscator>>().Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.OpaquePredicate, Intensity = 100 }
+        };
+        var context = PipelineContext.ForSourceCode(compilation, settings);
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        // a=11, b=22, c=19 => 52
+        EmitAndInvoke(context.Compilation!, "Calc", "Compute", 10).ShouldBe(52);
+    }
+
+    [Fact]
+    public async Task SourceSymbolRenamer_SemanticRename_CompilesAndPreservesBehavior()
+    {
+        // Two locals named 'x' in different methods, plus a renamed private method reference. A
+        // textual renamer would corrupt these; the semantic renamer must keep them independent and
+        // preserve behavior, while leaving the public API (Widget.Result) intact.
+        var sourceCode = """
+            public class Widget
+            {
+                private int Seed() { int x = 21; return x; }
+                public int Result()
+                {
+                    int x = Seed();
+                    return x + 21;
+                }
+            }
+            """;
+
+        var compilation = CreateCompilation(sourceCode);
+        var renamer = new SourceSymbolRenamer(new NameGenerator(), new Mock<ILogger<SourceSymbolRenamer>>().Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            SymbolRenaming =
+            {
+                Enabled = true,
+                RenameMethods = true,
+                RenameFields = true,
+                RenameParameters = true,
+                PreservePublicApi = true,
+                Mode = NamingMode.Sequential
+            }
+        };
+        var context = PipelineContext.ForSourceCode(compilation, settings);
+
+        var result = await renamer.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.MethodsRenamed.ShouldBe(1); // Seed renamed, public Result preserved
+
+        var newSource = context.Compilation!.SyntaxTrees.First().ToString();
+        newSource.ShouldNotContain("Seed");
+        newSource.ShouldContain("Result"); // public API preserved
+
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Widget", "Result").ShouldBe(42);
     }
 }

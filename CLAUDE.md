@@ -100,10 +100,10 @@ Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 
 | Technique | Priority | Description |
 |-----------|----------|-------------|
-| StringEncryption | 10 | Encrypts string literals with AES-256 |
-| ConstantEncryption | 11 | Encrypts numeric constants (int, long, float, double) |
-| ResourceEncryption | 15 | Encrypts embedded resources |
-| ControlFlow | 30 | Flattens control flow with state machines |
+| StringEncryption | 10 | Encrypts string literals (XOR or AES-256) |
+| ConstantEncryption | 11 | Encrypts numeric constants (int, long, float, double; XOR or AES-256) |
+| ResourceEncryption | 15 | Encrypts embedded resources (XOR or AES-256) |
+| ControlFlow | 30 | Switch-dispatches straight-line (branch-free) methods and/or inserts opaque predicates |
 | SymbolRenaming | 50 | Renames types, methods, fields, properties |
 | AntiDebug | 70 | Injects debugger detection |
 | AntiDecompiler | 72 | Injects junk types and methods |

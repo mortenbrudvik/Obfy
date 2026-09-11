@@ -79,9 +79,13 @@ public class ObfySettings
     {
         switch (Level)
         {
+            // Each branch sets every field it depends on to an explicit value (never relying on
+            // defaults or on prior state), so re-applying a level over an existing instance is
+            // deterministic and cannot leak values from a previously applied level.
             case ObfuscationLevel.Minimal:
                 StringEncryption.Enabled = false;
                 ControlFlow.Enabled = false;
+                ControlFlow.Intensity = 50;
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = false;
                 Protection.AntiTamper.Enabled = false;
@@ -91,19 +95,23 @@ public class ObfySettings
                 Metadata.RemoveAttributes = false;
                 ResourceEncryption.Enabled = false;
                 ConstantEncryption.Enabled = false;
+                ConstantEncryption.Algorithm = EncryptionAlgorithm.Xor;
                 break;
 
             case ObfuscationLevel.Standard:
                 StringEncryption.Enabled = true;
                 ControlFlow.Enabled = false;
+                ControlFlow.Intensity = 50;
                 SymbolRenaming.Enabled = true;
                 Protection.AntiDebug = false;
                 Protection.AntiTamper.Enabled = false;
                 Protection.AntiDecompiler.Enabled = false;
                 Protection.AntiDump = false;
                 Metadata.RemoveDebugInfo = true;
+                Metadata.RemoveAttributes = true;
                 ResourceEncryption.Enabled = false;
                 ConstantEncryption.Enabled = false;
+                ConstantEncryption.Algorithm = EncryptionAlgorithm.Xor;
                 break;
 
             case ObfuscationLevel.Aggressive:
@@ -126,6 +134,30 @@ public class ObfySettings
                 // Use individual settings as-is
                 break;
         }
+    }
+
+    /// <summary>
+    /// Validates the range-constrained settings, throwing <see cref="ValidationException"/> if any
+    /// value is out of its declared range. DataAnnotations attributes are not enforced automatically,
+    /// so this must be called explicitly before the settings are used.
+    /// </summary>
+    public void Validate()
+    {
+        ValidateObject(this);
+        ValidateObject(StringEncryption);
+        ValidateObject(ControlFlow);
+        ValidateObject(SymbolRenaming);
+        ValidateObject(Protection);
+        ValidateObject(Protection.AntiTamper);
+        ValidateObject(Protection.AntiDecompiler);
+        ValidateObject(Metadata);
+        ValidateObject(ResourceEncryption);
+        ValidateObject(ConstantEncryption);
+        ValidateObject(AssemblyMerge);
+        ValidateObject(Exclusions);
+
+        static void ValidateObject(object instance) =>
+            Validator.ValidateObject(instance, new ValidationContext(instance), validateAllProperties: true);
     }
 }
 

@@ -87,13 +87,9 @@ public class AntiDebugObfuscator : IObfuscator
 
         typeDef.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract;
 
-        // Add CheckDebugger method
+        // Add CheckDebugger method (self-contained: detects a debugger and exits the process)
         var checkMethod = CreateCheckDebuggerMethod(module);
         typeDef.Methods.Add(checkMethod);
-
-        // Add HandleDebugger method
-        var handleMethod = CreateHandleDebuggerMethod(module);
-        typeDef.Methods.Add(handleMethod);
 
         module.Types.Add(typeDef);
 
@@ -134,34 +130,6 @@ public class AntiDebugObfuscator : IObfuscator
         body.Instructions.Add(Instruction.CreateLdcI4(1));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
         body.Instructions.Add(skipExit);
-
-        body.UpdateInstructionOffsets();
-
-        return method;
-    }
-
-    private MethodDef CreateHandleDebuggerMethod(ModuleDef module)
-    {
-        var method = new MethodDefUser(
-            "Handle",
-            MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Public | MethodAttributes.Static);
-
-        var body = new CilBody();
-        method.Body = body;
-
-        // Get Environment.FailFast method
-        var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
-        var failFastMethod = new MemberRefUser(
-            module,
-            "FailFast",
-            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String),
-            environmentType);
-
-        // FailFast with a generic message
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "Security violation"));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, failFastMethod));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 
         body.UpdateInstructionOffsets();
 

@@ -9,8 +9,15 @@ using Obfy.Core.Utilities;
 namespace Obfy.Core.Obfuscators.Source;
 
 /// <summary>
-/// Renames symbols in C# source code using Roslyn.
+/// Renames symbols in C# source code using Roslyn's semantic model.
 /// </summary>
+/// <remarks>
+/// Renaming is driven by resolved symbols, not identifier text: only symbols declared in the source
+/// are renamed, and each identifier is rewritten based on the symbol it binds to. This keeps distinct
+/// symbols that happen to share a name (locals in different methods, a field and an unrelated method
+/// parameter, or a framework member with the same name) independent, and never touches identifiers
+/// that resolve to types or members outside the source being obfuscated.
+/// </remarks>
 public class SourceSymbolRenamer : IObfuscator
 {
     private readonly INameGenerator _nameGenerator;
@@ -39,6 +46,7 @@ public class SourceSymbolRenamer : IObfuscator
     {
         var compilation = context.Compilation!;
         var settings = context.Settings.SymbolRenaming;
+        var exclusions = context.Settings.Exclusions;
         var stats = new ObfuscationStatistics();
 
         _logger.LogDebug("Starting source symbol renaming with mode {Mode}", settings.Mode);
@@ -47,43 +55,100 @@ public class SourceSymbolRenamer : IObfuscator
         {
             _nameGenerator.Reset();
 
-            // First pass: collect all symbols to rename
-            var symbolMap = new Dictionary<string, string>();
+            // Pass 1: choose a new name for every renamable source-declared symbol, keyed by symbol
+            // identity so the decision is independent of how the name is spelled at each use site.
+            var renames = new Dictionary<ISymbol, string>(SymbolEqualityComparer.Default);
 
             foreach (var tree in compilation.SyntaxTrees)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
+                var model = compilation.GetSemanticModel(tree);
                 var root = await tree.GetRootAsync(cancellationToken);
-                var semanticModel = compilation.GetSemanticModel(tree);
 
-                CollectSymbols(root, semanticModel, settings, symbolMap, context.Settings.Exclusions);
+                foreach (var node in root.DescendantNodes())
+                {
+                    if (!TryGetDeclarationIdentifier(node, model, out _, out var symbol) || symbol == null)
+                        continue;
+
+                    var definition = symbol.OriginalDefinition;
+                    if (renames.ContainsKey(definition))
+                        continue;
+
+                    if (!ShouldRenameDeclaration(node, definition, settings, exclusions))
+                        continue;
+
+                    renames[definition] = _nameGenerator.Generate(definition.Name, settings.Mode);
+                }
             }
 
-            // Second pass: apply renames
+            if (renames.Count == 0)
+            {
+                _logger.LogInformation("No symbols eligible for renaming");
+                return ObfuscationResult.Successful(stats);
+            }
+
+            // Pass 2: per tree, map each identifier token that binds to a renamed symbol to its new
+            // name, then rewrite exactly those tokens.
             var newTrees = new List<SyntaxTree>();
 
             foreach (var tree in compilation.SyntaxTrees)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
+                var model = compilation.GetSemanticModel(tree);
                 var root = await tree.GetRootAsync(cancellationToken);
-                var rewriter = new SymbolRenamingRewriter(symbolMap, settings);
+
+                var tokenRenames = new Dictionary<SyntaxToken, string>();
+
+                foreach (var node in root.DescendantNodes())
+                {
+                    // Declaration identifiers
+                    if (TryGetDeclarationIdentifier(node, model, out var token, out var declared) &&
+                        declared != null &&
+                        renames.TryGetValue(declared.OriginalDefinition, out var declName))
+                    {
+                        tokenRenames[token] = declName;
+                        CountDeclaration(declared, stats);
+                        continue;
+                    }
+
+                    // Constructor / destructor names spell the containing type, so they must follow
+                    // the type's rename even though their own symbol is not the type.
+                    switch (node)
+                    {
+                        case ConstructorDeclarationSyntax ctor:
+                            MapContainingTypeName(ctor.Identifier, model.GetDeclaredSymbol(ctor), renames, tokenRenames);
+                            break;
+                        case DestructorDeclarationSyntax dtor:
+                            MapContainingTypeName(dtor.Identifier, model.GetDeclaredSymbol(dtor), renames, tokenRenames);
+                            break;
+                    }
+                }
+
+                // References: any simple name (identifier or generic name) that binds to a renamed symbol.
+                foreach (var name in root.DescendantNodes().OfType<SimpleNameSyntax>())
+                {
+                    var info = model.GetSymbolInfo(name, cancellationToken);
+                    var symbol = (info.Symbol ?? info.CandidateSymbols.FirstOrDefault())?.OriginalDefinition;
+                    if (symbol != null && renames.TryGetValue(symbol, out var refName))
+                    {
+                        tokenRenames[name.Identifier] = refName;
+                    }
+                }
+
+                if (tokenRenames.Count == 0)
+                {
+                    newTrees.Add(tree);
+                    continue;
+                }
+
+                var rewriter = new TokenRenamingRewriter(tokenRenames);
                 var newRoot = rewriter.Visit(root);
-
-                stats.TypesRenamed += rewriter.TypesRenamed;
-                stats.MethodsRenamed += rewriter.MethodsRenamed;
-                stats.FieldsRenamed += rewriter.FieldsRenamed;
-                stats.PropertiesRenamed += rewriter.PropertiesRenamed;
-                stats.ParametersRenamed += rewriter.ParametersRenamed;
-
                 newTrees.Add(newRoot.SyntaxTree);
             }
 
-            // Store symbol map in context
-            foreach (var (key, value) in symbolMap)
+            foreach (var (symbol, newName) in renames)
             {
-                context.SymbolMap[key] = value;
+                context.SymbolMap[$"{symbol.Kind}:{symbol.ToDisplayString()}"] = newName;
             }
 
             context.Compilation = compilation
@@ -104,271 +169,217 @@ public class SourceSymbolRenamer : IObfuscator
         }
     }
 
-    private void CollectSymbols(
-        SyntaxNode root,
-        SemanticModel semanticModel,
-        SymbolRenamingSettings settings,
-        Dictionary<string, string> symbolMap,
-        ExclusionRules exclusions)
+    private static void MapContainingTypeName(
+        SyntaxToken identifier,
+        ISymbol? memberSymbol,
+        Dictionary<ISymbol, string> renames,
+        Dictionary<SyntaxToken, string> tokenRenames)
     {
-        foreach (var node in root.DescendantNodes())
+        var type = memberSymbol?.ContainingType?.OriginalDefinition;
+        if (type != null && renames.TryGetValue(type, out var newName))
         {
-            switch (node)
-            {
-                case ClassDeclarationSyntax classDecl when settings.RenameTypes:
-                    if (ShouldRename(classDecl.Identifier.Text, classDecl.Modifiers, settings, exclusions))
-                    {
-                        var key = $"Type:{classDecl.Identifier.Text}";
-                        if (!symbolMap.ContainsKey(key))
-                        {
-                            symbolMap[key] = _nameGenerator.Generate(classDecl.Identifier.Text, settings.Mode);
-                        }
-                    }
-                    break;
-
-                case StructDeclarationSyntax structDecl when settings.RenameTypes:
-                    if (ShouldRename(structDecl.Identifier.Text, structDecl.Modifiers, settings, exclusions))
-                    {
-                        var key = $"Type:{structDecl.Identifier.Text}";
-                        if (!symbolMap.ContainsKey(key))
-                        {
-                            symbolMap[key] = _nameGenerator.Generate(structDecl.Identifier.Text, settings.Mode);
-                        }
-                    }
-                    break;
-
-                case MethodDeclarationSyntax methodDecl when settings.RenameMethods:
-                    if (ShouldRenameMethod(methodDecl, settings, exclusions))
-                    {
-                        var key = $"Method:{methodDecl.Identifier.Text}";
-                        if (!symbolMap.ContainsKey(key))
-                        {
-                            symbolMap[key] = _nameGenerator.Generate(methodDecl.Identifier.Text, settings.Mode);
-                        }
-                    }
-                    break;
-
-                case FieldDeclarationSyntax fieldDecl when settings.RenameFields:
-                    foreach (var variable in fieldDecl.Declaration.Variables)
-                    {
-                        if (ShouldRename(variable.Identifier.Text, fieldDecl.Modifiers, settings, exclusions))
-                        {
-                            var key = $"Field:{variable.Identifier.Text}";
-                            if (!symbolMap.ContainsKey(key))
-                            {
-                                symbolMap[key] = _nameGenerator.Generate(variable.Identifier.Text, settings.Mode);
-                            }
-                        }
-                    }
-                    break;
-
-                case PropertyDeclarationSyntax propDecl when settings.RenameProperties:
-                    if (ShouldRename(propDecl.Identifier.Text, propDecl.Modifiers, settings, exclusions))
-                    {
-                        var key = $"Property:{propDecl.Identifier.Text}";
-                        if (!symbolMap.ContainsKey(key))
-                        {
-                            symbolMap[key] = _nameGenerator.Generate(propDecl.Identifier.Text, settings.Mode);
-                        }
-                    }
-                    break;
-
-                case ParameterSyntax param when settings.RenameParameters:
-                    var paramKey = $"Parameter:{param.Identifier.Text}";
-                    if (!symbolMap.ContainsKey(paramKey))
-                    {
-                        symbolMap[paramKey] = _nameGenerator.Generate(param.Identifier.Text, settings.Mode);
-                    }
-                    break;
-
-                case VariableDeclaratorSyntax varDecl:
-                    // Local variables
-                    if (varDecl.Parent?.Parent is LocalDeclarationStatementSyntax)
-                    {
-                        var key = $"Local:{varDecl.Identifier.Text}";
-                        if (!symbolMap.ContainsKey(key))
-                        {
-                            symbolMap[key] = _nameGenerator.Generate(varDecl.Identifier.Text, settings.Mode);
-                        }
-                    }
-                    break;
-            }
+            tokenRenames[identifier] = newName;
         }
     }
 
-    private bool ShouldRename(string name, SyntaxTokenList modifiers, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    private static bool TryGetDeclarationIdentifier(SyntaxNode node, SemanticModel model, out SyntaxToken token, out ISymbol? symbol)
     {
-        // Check exclusions
-        if (exclusions.Types.Any(t => MatchesPattern(name, t)))
+        token = default;
+        symbol = null;
+
+        switch (node)
+        {
+            case ClassDeclarationSyntax c: token = c.Identifier; break;
+            case StructDeclarationSyntax s: token = s.Identifier; break;
+            case InterfaceDeclarationSyntax i: token = i.Identifier; break;
+            case EnumDeclarationSyntax e: token = e.Identifier; break;
+            case RecordDeclarationSyntax r: token = r.Identifier; break;
+            case MethodDeclarationSyntax m: token = m.Identifier; break;
+            case PropertyDeclarationSyntax p: token = p.Identifier; break;
+            case ParameterSyntax pa: token = pa.Identifier; break;
+            case VariableDeclaratorSyntax v: token = v.Identifier; break;
+            default: return false;
+        }
+
+        symbol = model.GetDeclaredSymbol(node);
+        return true;
+    }
+
+    private static bool ShouldRenameDeclaration(SyntaxNode node, ISymbol symbol, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    {
+        switch (node)
+        {
+            case BaseTypeDeclarationSyntax:
+                if (!settings.RenameTypes) return false;
+                break;
+            case MethodDeclarationSyntax method:
+                if (!settings.RenameMethods) return false;
+                if (method.Identifier.Text == "Main") return false;
+                break;
+            case PropertyDeclarationSyntax:
+                if (!settings.RenameProperties) return false;
+                break;
+            case ParameterSyntax:
+                if (!settings.RenameParameters) return false;
+                break;
+            case VariableDeclaratorSyntax v:
+                if (v.Parent?.Parent is FieldDeclarationSyntax)
+                {
+                    if (!settings.RenameFields) return false;
+                }
+                else if (v.Parent?.Parent is not LocalDeclarationStatementSyntax)
+                {
+                    // Not a field or a local (e.g. an event or fixed buffer) — leave it alone.
+                    return false;
+                }
+                break;
+            default:
+                return false;
+        }
+
+        return IsRenamable(symbol, settings, exclusions);
+    }
+
+    private static bool IsRenamable(ISymbol symbol, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    {
+        // Never rename anything not declared in the source (framework/metadata symbols).
+        if (!symbol.Locations.Any(l => l.IsInSource))
             return false;
 
-        // Preserve public API if configured
-        if (settings.PreservePublicApi && modifiers.Any(m => m.IsKind(SyntaxKind.PublicKeyword)))
+        // Never rename implicitly declared members (auto-property backing fields, record members, ...).
+        if (symbol.IsImplicitlyDeclared)
             return false;
 
-        // Don't rename special names
-        if (name.StartsWith("_") && name.Contains("Obfy"))
+        // Leave Obfy's own injected runtime helpers and their members untouched.
+        if (symbol.Name.Contains("Obfy", StringComparison.Ordinal) ||
+            symbol.ContainingType?.Name.Contains("Obfy", StringComparison.Ordinal) == true)
+        {
+            return false;
+        }
+
+        // Only ordinary methods are renamable directly; constructors follow their type, and operators
+        // and accessors must keep their compiler-mandated names.
+        if (symbol is IMethodSymbol { MethodKind: not MethodKind.Ordinary })
+            return false;
+
+        // Renaming an override, virtual/abstract member, or interface implementation would break the
+        // contract with the base type or interface.
+        if (symbol is IMethodSymbol or IPropertySymbol)
+        {
+            if (symbol.IsOverride || symbol.IsVirtual || symbol.IsAbstract)
+                return false;
+            if (ImplementsInterfaceMember(symbol))
+                return false;
+        }
+
+        // Preserve the externally visible API surface if requested.
+        if (settings.PreservePublicApi && IsExternallyVisible(symbol))
+            return false;
+
+        // Honor configured exclusion patterns.
+        if (symbol.Kind == SymbolKind.NamedType && exclusions.Types.Any(t => MatchesPattern(symbol.Name, t)))
+            return false;
+        if (symbol.Kind == SymbolKind.Method && exclusions.Methods.Any(m => MatchesPattern(symbol.Name, m)))
             return false;
 
         return true;
     }
 
-    private bool ShouldRenameMethod(MethodDeclarationSyntax method, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    private static bool ImplementsInterfaceMember(ISymbol symbol)
     {
-        var name = method.Identifier.Text;
-
-        // Don't rename Main
-        if (name == "Main")
+        var type = symbol.ContainingType;
+        if (type == null)
             return false;
 
-        // Check exclusions
-        if (exclusions.Methods.Any(m => MatchesPattern(name, m)))
-            return false;
+        foreach (var iface in type.AllInterfaces)
+        {
+            foreach (var member in iface.GetMembers())
+            {
+                var implementation = type.FindImplementationForInterfaceMember(member);
+                if (implementation != null && SymbolEqualityComparer.Default.Equals(implementation, symbol))
+                    return true;
+            }
+        }
 
-        // Preserve public API if configured
-        if (settings.PreservePublicApi && method.Modifiers.Any(m => m.IsKind(SyntaxKind.PublicKeyword)))
-            return false;
+        return false;
+    }
 
-        // Don't rename override methods
-        if (method.Modifiers.Any(m => m.IsKind(SyntaxKind.OverrideKeyword)))
-            return false;
+    private static bool IsExternallyVisible(ISymbol symbol)
+    {
+        // A parameter's visibility follows its containing method.
+        var current = symbol is IParameterSymbol ? symbol.ContainingSymbol : symbol;
+
+        while (current != null && current.Kind != SymbolKind.Namespace)
+        {
+            switch (current.DeclaredAccessibility)
+            {
+                case Accessibility.Public:
+                case Accessibility.Protected:
+                case Accessibility.ProtectedOrInternal:
+                case Accessibility.NotApplicable:
+                    break; // visible (or not access-controlled) at this level; keep checking containers
+                default:
+                    return false; // private/internal somewhere in the chain -> not externally visible
+            }
+
+            current = current.ContainingSymbol;
+        }
 
         return true;
+    }
+
+    private static void CountDeclaration(ISymbol symbol, ObfuscationStatistics stats)
+    {
+        switch (symbol.Kind)
+        {
+            case SymbolKind.NamedType:
+                stats.TypesRenamed++;
+                break;
+            case SymbolKind.Method:
+                stats.MethodsRenamed++;
+                break;
+            case SymbolKind.Property:
+                stats.PropertiesRenamed++;
+                break;
+            case SymbolKind.Field:
+                stats.FieldsRenamed++;
+                break;
+            case SymbolKind.Parameter:
+                stats.ParametersRenamed++;
+                break;
+        }
     }
 
     private static bool MatchesPattern(string value, string pattern)
     {
-        if (pattern.EndsWith("*"))
+        if (pattern.EndsWith("*", StringComparison.Ordinal))
         {
             return value.StartsWith(pattern[..^1], StringComparison.OrdinalIgnoreCase);
         }
         return string.Equals(value, pattern, StringComparison.OrdinalIgnoreCase);
     }
 
-    private class SymbolRenamingRewriter : CSharpSyntaxRewriter
+    /// <summary>
+    /// Rewrites a fixed set of identifier tokens (identified by position within one tree) to new
+    /// names. Only the tokens chosen via the semantic model are changed; every other token is left
+    /// exactly as it was.
+    /// </summary>
+    private sealed class TokenRenamingRewriter : CSharpSyntaxRewriter
     {
-        private readonly Dictionary<string, string> _symbolMap;
-        private readonly SymbolRenamingSettings _settings;
+        private readonly Dictionary<SyntaxToken, string> _tokenRenames;
 
-        public int TypesRenamed { get; private set; }
-        public int MethodsRenamed { get; private set; }
-        public int FieldsRenamed { get; private set; }
-        public int PropertiesRenamed { get; private set; }
-        public int ParametersRenamed { get; private set; }
-
-        public SymbolRenamingRewriter(Dictionary<string, string> symbolMap, SymbolRenamingSettings settings)
+        public TokenRenamingRewriter(Dictionary<SyntaxToken, string> tokenRenames)
         {
-            _symbolMap = symbolMap;
-            _settings = settings;
+            _tokenRenames = tokenRenames;
         }
 
-        public override SyntaxNode? VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
+        public override SyntaxToken VisitToken(SyntaxToken token)
         {
-            var key = $"Type:{node.Identifier.Text}";
-            if (_symbolMap.TryGetValue(key, out var newName))
+            if (_tokenRenames.TryGetValue(token, out var newName))
             {
-                node = node.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(node.Identifier));
+                return SyntaxFactory.Identifier(newName).WithTriviaFrom(token);
             }
-            return base.VisitConstructorDeclaration(node);
-        }
-
-        public override SyntaxNode? VisitDestructorDeclaration(DestructorDeclarationSyntax node)
-        {
-            var key = $"Type:{node.Identifier.Text}";
-            if (_symbolMap.TryGetValue(key, out var newName))
-            {
-                node = node.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(node.Identifier));
-            }
-            return base.VisitDestructorDeclaration(node);
-        }
-
-        public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax node)
-        {
-            var key = $"Type:{node.Identifier.Text}";
-            if (_symbolMap.TryGetValue(key, out var newName))
-            {
-                TypesRenamed++;
-                node = node.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(node.Identifier));
-            }
-            return base.VisitClassDeclaration(node);
-        }
-
-        public override SyntaxNode? VisitStructDeclaration(StructDeclarationSyntax node)
-        {
-            var key = $"Type:{node.Identifier.Text}";
-            if (_symbolMap.TryGetValue(key, out var newName))
-            {
-                TypesRenamed++;
-                node = node.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(node.Identifier));
-            }
-            return base.VisitStructDeclaration(node);
-        }
-
-        public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
-        {
-            var key = $"Method:{node.Identifier.Text}";
-            if (_symbolMap.TryGetValue(key, out var newName))
-            {
-                MethodsRenamed++;
-                node = node.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(node.Identifier));
-            }
-            return base.VisitMethodDeclaration(node);
-        }
-
-        public override SyntaxNode? VisitPropertyDeclaration(PropertyDeclarationSyntax node)
-        {
-            var key = $"Property:{node.Identifier.Text}";
-            if (_symbolMap.TryGetValue(key, out var newName))
-            {
-                PropertiesRenamed++;
-                node = node.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(node.Identifier));
-            }
-            return base.VisitPropertyDeclaration(node);
-        }
-
-        public override SyntaxNode? VisitVariableDeclarator(VariableDeclaratorSyntax node)
-        {
-            // Check if it's a field
-            var fieldKey = $"Field:{node.Identifier.Text}";
-            if (_symbolMap.TryGetValue(fieldKey, out var fieldName))
-            {
-                FieldsRenamed++;
-                return node.WithIdentifier(SyntaxFactory.Identifier(fieldName).WithTriviaFrom(node.Identifier));
-            }
-
-            // Check if it's a local
-            var localKey = $"Local:{node.Identifier.Text}";
-            if (_symbolMap.TryGetValue(localKey, out var localName))
-            {
-                return node.WithIdentifier(SyntaxFactory.Identifier(localName).WithTriviaFrom(node.Identifier));
-            }
-
-            return base.VisitVariableDeclarator(node);
-        }
-
-        public override SyntaxNode? VisitParameter(ParameterSyntax node)
-        {
-            var key = $"Parameter:{node.Identifier.Text}";
-            if (_symbolMap.TryGetValue(key, out var newName))
-            {
-                ParametersRenamed++;
-                node = node.WithIdentifier(SyntaxFactory.Identifier(newName).WithTriviaFrom(node.Identifier));
-            }
-            return base.VisitParameter(node);
-        }
-
-        public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax node)
-        {
-            // Try to rename references to renamed symbols
-            foreach (var prefix in new[] { "Type:", "Method:", "Field:", "Property:", "Parameter:", "Local:" })
-            {
-                var key = $"{prefix}{node.Identifier.Text}";
-                if (_symbolMap.TryGetValue(key, out var newName))
-                {
-                    return SyntaxFactory.IdentifierName(newName).WithTriviaFrom(node);
-                }
-            }
-            return base.VisitIdentifierName(node);
+            return base.VisitToken(token);
         }
     }
 }

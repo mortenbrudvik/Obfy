@@ -62,6 +62,12 @@ public class PipelineContext
     public List<SkippedItem> SkippedItems { get; } = new();
 
     /// <summary>
+    /// Gets non-fatal warnings raised during obfuscation (e.g. a protection that cannot take effect
+    /// for certain deployment models). Surfaced to the user so protections never silently do nothing.
+    /// </summary>
+    public List<string> Warnings { get; } = new();
+
+    /// <summary>
     /// Gets the processing time entries for each obfuscator.
     /// </summary>
     public List<ProcessingTimeEntry> ProcessingTimes { get; } = new();

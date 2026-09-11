@@ -156,6 +156,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         allSymbols[key] = value;
                     }
                     Output.Success($"Completed {file.FileName}: {result.Statistics?.TotalTransformations ?? 0} transformations");
+
+                    // Surface skips and warnings so partial or ineffective protection is visible
+                    // here, not only in an exported report.
+                    if (result.SkippedItems.Count > 0)
+                    {
+                        Output.Warning($"{result.SkippedItems.Count} item(s) in {file.FileName} were skipped and left unobfuscated.");
+                    }
+                    foreach (var warning in result.Warnings)
+                    {
+                        Output.Warning(warning);
+                    }
                 }
                 else
                 {

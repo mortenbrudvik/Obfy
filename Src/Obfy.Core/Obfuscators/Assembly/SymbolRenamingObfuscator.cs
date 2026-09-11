@@ -139,8 +139,20 @@ public class SymbolRenamingObfuscator : IObfuscator
             {
                 foreach (var type in module.GetTypes())
                 {
+                    // Respect the same type-level exclusions used for members above (runtime-injected
+                    // types, Obfy models, excluded namespaces/types).
+                    if (ShouldSkipType(type, settings, context.Settings.Exclusions))
+                        continue;
+
                     foreach (var method in type.Methods)
                     {
+                        // Only rename parameters of methods we would rename anyway. This honors
+                        // PreservePublicApi, overrides, interface implementations and runtime methods,
+                        // so we never rewrite parameter names on public APIs that callers bind by name
+                        // (named arguments, reflection, model binding, DI-by-name).
+                        if (!CanRenameMethod(method, settings))
+                            continue;
+
                         foreach (var param in method.Parameters)
                         {
                             if (!string.IsNullOrEmpty(param.Name) && !param.IsHiddenThisParameter)

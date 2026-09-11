@@ -94,12 +94,16 @@ public class SourceControlFlowObfuscator : IObfuscator
             if (_random.Next(100) > _settings.Intensity)
                 return base.VisitMethodDeclaration(node);
 
+            // Value-returning methods need a terminal statement after the switch dispatcher's loop,
+            // or the compiler reports CS0161 ("not all code paths return a value").
+            var needsReturnValue = MethodNeedsReturnValue(node);
+
             // Apply control flow obfuscation based on mode
             var newBody = _settings.Mode switch
             {
                 ControlFlowMode.OpaquePredicate => InsertOpaquePredicates(node.Body),
-                ControlFlowMode.Switch => ConvertToSwitchDispatcher(node.Body),
-                ControlFlowMode.Combined => InsertOpaquePredicates(ConvertToSwitchDispatcher(node.Body)),
+                ControlFlowMode.Switch => ConvertToSwitchDispatcher(node.Body, needsReturnValue),
+                ControlFlowMode.Combined => InsertOpaquePredicates(ConvertToSwitchDispatcher(node.Body, needsReturnValue)),
                 _ => node.Body
             };
 
@@ -120,7 +124,7 @@ public class SourceControlFlowObfuscator : IObfuscator
             foreach (var statement in body.Statements)
             {
                 // Randomly insert opaque predicates based on intensity
-                if (_random.Next(100) < _settings.Intensity)
+                if (CanWrapInPredicate(statement) && _random.Next(100) < _settings.Intensity)
                 {
                     newStatements.Add(CreateOpaquePredicate(statement));
                     transformedAny = true;
@@ -131,14 +135,59 @@ public class SourceControlFlowObfuscator : IObfuscator
                 }
             }
 
-            // Ensure at least one statement is transformed if intensity > 0
-            if (!transformedAny && body.Statements.Count > 0 && _settings.Intensity > 0)
+            // Ensure at least one wrappable statement is transformed if intensity > 0
+            if (!transformedAny && _settings.Intensity > 0)
             {
-                var idx = _random.Next(body.Statements.Count);
-                newStatements[idx] = CreateOpaquePredicate(body.Statements[idx]);
+                for (var i = 0; i < newStatements.Count; i++)
+                {
+                    if (CanWrapInPredicate(newStatements[i]))
+                    {
+                        newStatements[i] = CreateOpaquePredicate(newStatements[i]);
+                        transformedAny = true;
+                        break;
+                    }
+                }
             }
 
-            return SyntaxFactory.Block(newStatements);
+            // Nothing eligible was wrapped — return the original body so we don't churn it needlessly.
+            return transformedAny ? SyntaxFactory.Block(newStatements) : body;
+        }
+
+        /// <summary>
+        /// Wrapping a statement in an <c>if</c> block moves it into a nested scope. Local declarations,
+        /// local functions and labels are scope-sensitive: wrapping them would hide the declared name
+        /// (or label) from the rest of the method and fail to compile. Such statements are left as-is.
+        /// </summary>
+        private static bool CanWrapInPredicate(StatementSyntax statement)
+        {
+            return statement is not (
+                LocalDeclarationStatementSyntax or
+                LocalFunctionStatementSyntax or
+                LabeledStatementSyntax);
+        }
+
+        private static bool MethodNeedsReturnValue(MethodDeclarationSyntax method)
+        {
+            // void methods never need a return value.
+            if (method.ReturnType is PredefinedTypeSyntax predefined &&
+                predefined.Keyword.IsKind(SyntaxKind.VoidKeyword))
+            {
+                return false;
+            }
+
+            // async Task / async ValueTask (non-generic) and async void need no return value.
+            if (method.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword)))
+            {
+                var returnType = method.ReturnType.ToString();
+                if (returnType is "Task" or "ValueTask" ||
+                    returnType.EndsWith(".Task", StringComparison.Ordinal) ||
+                    returnType.EndsWith(".ValueTask", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private StatementSyntax CreateOpaquePredicate(StatementSyntax originalStatement)
@@ -165,7 +214,7 @@ public class SourceControlFlowObfuscator : IObfuscator
                     SyntaxFactory.Block(
                         SyntaxFactory.ThrowStatement(
                             SyntaxFactory.ObjectCreationExpression(
-                                SyntaxFactory.IdentifierName("InvalidOperationException"))
+                                SyntaxFactory.ParseTypeName("System.InvalidOperationException"))
                             .WithArgumentList(SyntaxFactory.ArgumentList())))));
 
             return ifStatement;
@@ -217,7 +266,7 @@ public class SourceControlFlowObfuscator : IObfuscator
             return true;
         }
 
-        private BlockSyntax ConvertToSwitchDispatcher(BlockSyntax body)
+        private BlockSyntax ConvertToSwitchDispatcher(BlockSyntax body, bool needsReturnValue)
         {
             if (body.Statements.Count < 3)
                 return body;
@@ -327,6 +376,19 @@ public class SourceControlFlowObfuscator : IObfuscator
                                         SyntaxFactory.Literal(stateMap[0]))))))),
                 whileLoop
             };
+
+            // For a value-returning method the original return lives inside a switch case, so the
+            // compiler cannot see that the loop always returns and reports CS0161. The last flattened
+            // statement is always a return (CanFlatten enforces it), so this terminal is unreachable at
+            // runtime and only satisfies the compiler's definite-return analysis.
+            if (needsReturnValue)
+            {
+                newStatements.Add(
+                    SyntaxFactory.ThrowStatement(
+                        SyntaxFactory.ObjectCreationExpression(
+                            SyntaxFactory.ParseTypeName("System.InvalidOperationException"))
+                        .WithArgumentList(SyntaxFactory.ArgumentList())));
+            }
 
             return SyntaxFactory.Block(newStatements);
         }

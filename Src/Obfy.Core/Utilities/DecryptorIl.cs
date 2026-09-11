@@ -91,10 +91,12 @@ internal static class DecryptorIl
         var body = new CilBody { InitLocals = true };
         method.Body = body;
 
-        var aesType = new TypeRefUser(module, "System.Security.Cryptography", "Aes", module.CorLibTypes.AssemblyRef);
+        // Crypto types are not in the corlib facade on modern .NET; reference their real assembly.
+        var cryptoAsm = FrameworkReferences.Cryptography(module);
+        var aesType = new TypeRefUser(module, "System.Security.Cryptography", "Aes", cryptoAsm);
         var bufferType = new TypeRefUser(module, "System", "Buffer", module.CorLibTypes.AssemblyRef);
         var disposableType = new TypeRefUser(module, "System", "IDisposable", module.CorLibTypes.AssemblyRef);
-        var transformType = new TypeRefUser(module, "System.Security.Cryptography", "ICryptoTransform", module.CorLibTypes.AssemblyRef);
+        var transformType = new TypeRefUser(module, "System.Security.Cryptography", "ICryptoTransform", cryptoAsm);
 
         var aesCreate = new MemberRefUser(module, "Create",
             MethodSig.CreateStatic(new ClassSig(aesType)), aesType);

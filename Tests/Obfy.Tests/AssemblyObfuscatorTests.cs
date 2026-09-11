@@ -554,6 +554,84 @@ public class AssemblyObfuscatorTests
 
     #region ControlFlowObfuscator Tests
 
+    private static void AddLinearIntMethod(TypeDef type, string name)
+    {
+        // public static int M() { int x = 7; x = x + 35; x = x * 3; return x; } => 126
+        // Straight-line, stack-neutral at every statement boundary — the shape Switch flattening targets.
+        var method = new MethodDefUser(
+            name,
+            MethodSig.CreateStatic(type.Module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+
+        var body = new CilBody { InitLocals = true };
+        var x = new Local(type.Module.CorLibTypes.Int32);
+        body.Variables.Add(x);
+
+        body.Instructions.Add(Instruction.CreateLdcI4(7));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, x));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, x));
+        body.Instructions.Add(Instruction.CreateLdcI4(35));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, x));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, x));
+        body.Instructions.Add(Instruction.CreateLdcI4(3));
+        body.Instructions.Add(Instruction.Create(OpCodes.Mul));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, x));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, x));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        method.Body = body;
+        type.Methods.Add(method);
+    }
+
+    [Fact]
+    public async Task ControlFlow_SwitchMode_ProducesRunnableAssembly()
+    {
+        // Switch flattening previously chunked IL every 4 instructions regardless of stack depth,
+        // producing unverifiable IL (InvalidProgramException at JIT). This runs the flattened method.
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Machine", isPublic: true);
+        AddLinearIntMethod(type, "Compute");
+
+        var logger = new Mock<ILogger<ControlFlowObfuscator>>();
+        var obfuscator = new ControlFlowObfuscator(logger.Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.MethodsControlFlowObfuscated.ShouldBe(1);
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-cf-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "TestAssembly.dll");
+        try
+        {
+            module.Write(path);
+            var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromAssemblyPath(path);
+                var machine = asm.GetType("TestNamespace.Machine");
+                machine.ShouldNotBeNull();
+                ((int)machine!.GetMethod("Compute")!.Invoke(null, null)!).ShouldBe(126);
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
     [Fact]
     public async Task ControlFlow_ObfuscatesMethodsWithSufficientInstructions()
     {
@@ -625,10 +703,12 @@ public class AssemblyObfuscatorTests
         var context = PipelineContext.ForAssembly(module, settings);
 
         // Act
-        await obfuscator.ObfuscateAsync(context);
+        var result = await obfuscator.ObfuscateAsync(context);
 
-        // Assert - Switch mode adds a state variable
-        method.Body.Variables.Count.ShouldBeGreaterThanOrEqualTo(originalVarCount);
+        // Assert - Switch mode flattens this linear method and adds exactly one state variable
+        result.Success.ShouldBeTrue();
+        result.Statistics.MethodsControlFlowObfuscated.ShouldBe(1);
+        method.Body.Variables.Count.ShouldBe(originalVarCount + 1);
     }
 
     [Fact]
@@ -748,7 +828,6 @@ public class AssemblyObfuscatorTests
         // Assert
         var antiDebugType = module.Types.First(t => t.Name == "<AntiDebug>");
         antiDebugType.FindMethod("Check").ShouldNotBeNull();
-        antiDebugType.FindMethod("Handle").ShouldNotBeNull();
     }
 
     [Fact]
@@ -1052,15 +1131,10 @@ public class AssemblyObfuscatorTests
         var logger = new Mock<ILogger<AntiTamperObfuscator>>();
         var obfuscator = new AntiTamperObfuscator(logger.Object);
 
-        var settings = new ObfySettings { Protection = { AntiTamper = { Enabled = false } } };
-
-        // Act & Assert
-        obfuscator.IsEnabled(settings).ShouldBeFalse();
-
-        // Verify no AntiTamper type would be injected if run
-        var typeCountBefore = module.Types.Count;
-        // Don't run the obfuscator since it's disabled
-        module.Types.Count.ShouldBe(typeCountBefore);
+        // The pipeline gates each obfuscator on IsEnabled, so a disabled setting must report false
+        // (and an enabled one true). This is the mechanism that prevents injection when disabled.
+        obfuscator.IsEnabled(new ObfySettings { Protection = { AntiTamper = { Enabled = false } } }).ShouldBeFalse();
+        obfuscator.IsEnabled(new ObfySettings { Protection = { AntiTamper = { Enabled = true } } }).ShouldBeTrue();
     }
 
     #endregion
@@ -1380,7 +1454,7 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
-    public async Task ResourceEncryption_InjectsDecryptorWithGetResourceMethod()
+    public async Task ResourceEncryption_InjectsDecryptorWithLoaderMethod()
     {
         // Arrange
         var module = CreateTestModule();
@@ -1401,8 +1475,136 @@ public class AssemblyObfuscatorTests
         // Assert
         var decryptorType = module.Types.FirstOrDefault(t => t.Name == "<ResourceDecryptor>");
         decryptorType.ShouldNotBeNull();
-        decryptorType.FindMethod("GetResource").ShouldNotBeNull();
+        decryptorType.FindMethod("LoadResourceStream").ShouldNotBeNull();
         decryptorType.FindMethod(".cctor").ShouldNotBeNull();
+    }
+
+    private static void AddResourceReadMethod(TypeDef type, string name)
+    {
+        // public static byte[] M(string resourceName)
+        // {
+        //     var s = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
+        //     if (s == null) return null;
+        //     var ms = new MemoryStream();
+        //     s.CopyTo(ms);
+        //     return ms.ToArray();
+        // }
+        var module = type.Module;
+        var streamType = new TypeRefUser(module, "System.IO", "Stream", module.CorLibTypes.AssemblyRef);
+        var memoryStreamType = new TypeRefUser(module, "System.IO", "MemoryStream", module.CorLibTypes.AssemblyRef);
+        var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
+
+        var getExecuting = new MemberRefUser(module, "GetExecutingAssembly",
+            MethodSig.CreateStatic(new ClassSig(assemblyType)), assemblyType);
+        var getStream = new MemberRefUser(module, "GetManifestResourceStream",
+            MethodSig.CreateInstance(new ClassSig(streamType), module.CorLibTypes.String), assemblyType);
+        var copyTo = new MemberRefUser(module, "CopyTo",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, new ClassSig(streamType)), streamType);
+        var toArray = new MemberRefUser(module, "ToArray",
+            MethodSig.CreateInstance(new SZArraySig(module.CorLibTypes.Byte)), memoryStreamType);
+        var msCtor = new MemberRefUser(module, ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void), memoryStreamType);
+
+        var method = new MethodDefUser(
+            name,
+            MethodSig.CreateStatic(new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.String),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+
+        var body = new CilBody { InitLocals = true };
+        var s = new Local(new ClassSig(streamType));
+        var ms = new Local(new ClassSig(memoryStreamType));
+        body.Variables.Add(s);
+        body.Variables.Add(ms);
+
+        var read = Instruction.Create(OpCodes.Newobj, msCtor);
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getExecuting));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getStream)); // rewritten to LoadResourceStream
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, s));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, s));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, read));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.Instructions.Add(read);
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, ms));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, s));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ms));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, copyTo));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ms));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, toArray));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        method.Body = body;
+        type.Methods.Add(method);
+    }
+
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public async Task ResourceEncryption_RoundTripsEncryptedAndPassesThroughExcluded(EncryptionAlgorithm algorithm)
+    {
+        // The runtime loader previously decrypted EVERY GetManifestResourceStream result, corrupting
+        // resources it never encrypted. This verifies the encrypted resource decrypts back to its
+        // original bytes AND an excluded (*.resources) resource is returned untouched.
+        var secret = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
+        var plain = new byte[] { 200, 201, 202, 203, 204 };
+
+        var module = CreateTestModule();
+        module.Resources.Add(new EmbeddedResource("secret.bin", secret, ManifestResourceAttributes.Public));
+        module.Resources.Add(new EmbeddedResource("keep.resources", plain, ManifestResourceAttributes.Public));
+        var type = CreateTestType(module, "ResHolder", isPublic: true);
+        AddResourceReadMethod(type, "Read");
+
+        var logger = new Mock<ILogger<ResourceEncryptionObfuscator>>();
+        var obfuscator = new ResourceEncryptionObfuscator(logger.Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ResourceEncryption =
+            {
+                Enabled = true,
+                Algorithm = algorithm,
+                IncludePatterns = new List<string> { "*" },
+                ExcludePatterns = new List<string> { "*.resources" }
+            }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ResourcesEncrypted.ShouldBe(1); // secret.bin only
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-res-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "TestAssembly.dll");
+        try
+        {
+            module.Write(path);
+            var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromAssemblyPath(path);
+                var holder = asm.GetType("TestNamespace.ResHolder");
+                holder.ShouldNotBeNull();
+                var read = holder!.GetMethod("Read");
+
+                var decrypted = (byte[])read!.Invoke(null, new object[] { "secret.bin" })!;
+                decrypted.ShouldBe(secret); // encrypted resource decrypts back to original
+
+                var passthrough = (byte[])read.Invoke(null, new object[] { "keep.resources" })!;
+                passthrough.ShouldBe(plain); // excluded resource must NOT be altered
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
     }
 
     [Fact]
@@ -1465,6 +1667,92 @@ public class AssemblyObfuscatorTests
 
         type.Methods.Add(method);
         return method;
+    }
+
+    private static void AddConstantReturningMethod(TypeDef type, string name, TypeSig returnType, Instruction loadConstant)
+    {
+        var method = new MethodDefUser(
+            name,
+            MethodSig.CreateStatic(returnType),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+
+        var body = new CilBody();
+        body.Instructions.Add(loadConstant);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        method.Body = body;
+
+        type.Methods.Add(method);
+    }
+
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public async Task ConstantEncryption_RuntimeDecryptsAllNumericTypes(EncryptionAlgorithm algorithm)
+    {
+        // Each numeric type exercises a distinct decrypt method; the long/float/double methods
+        // previously emitted a stray leading array load (stack non-empty at ret -> InvalidProgramException),
+        // and AES was never honored at runtime. This runs the obfuscated assembly to prove both are fixed.
+        const int intValue = 123456;
+        const long longValue = 9_876_543_210L;
+        const float floatValue = 3.14159f;
+        const double doubleValue = 2.718281828459045;
+
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Calc", isPublic: true);
+        AddConstantReturningMethod(type, "GetInt", module.CorLibTypes.Int32, Instruction.CreateLdcI4(intValue));
+        AddConstantReturningMethod(type, "GetLong", module.CorLibTypes.Int64, Instruction.Create(OpCodes.Ldc_I8, longValue));
+        AddConstantReturningMethod(type, "GetFloat", module.CorLibTypes.Single, Instruction.Create(OpCodes.Ldc_R4, floatValue));
+        AddConstantReturningMethod(type, "GetDouble", module.CorLibTypes.Double, Instruction.Create(OpCodes.Ldc_R8, doubleValue));
+
+        var logger = new Mock<ILogger<ConstantEncryptionObfuscator>>();
+        var obfuscator = new ConstantEncryptionObfuscator(logger.Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ConstantEncryption =
+            {
+                Enabled = true,
+                Algorithm = algorithm,
+                IntegerThreshold = 0,
+                LongThreshold = 0,
+                SkipCommonFloats = false,
+                SkipCommonDoubles = false
+            }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ConstantsEncrypted.ShouldBe(4);
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-const-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "TestAssembly.dll");
+        try
+        {
+            module.Write(path);
+            var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromAssemblyPath(path);
+                var calc = asm.GetType("TestNamespace.Calc");
+                calc.ShouldNotBeNull();
+                ((int)calc!.GetMethod("GetInt")!.Invoke(null, null)!).ShouldBe(intValue);
+                ((long)calc.GetMethod("GetLong")!.Invoke(null, null)!).ShouldBe(longValue);
+                ((float)calc.GetMethod("GetFloat")!.Invoke(null, null)!).ShouldBe(floatValue);
+                ((double)calc.GetMethod("GetDouble")!.Invoke(null, null)!).ShouldBe(doubleValue);
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
     }
 
     [Fact]

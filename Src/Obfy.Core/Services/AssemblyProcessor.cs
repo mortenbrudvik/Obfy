@@ -26,7 +26,10 @@ public class AssemblyProcessor : IAssemblyProcessor
         _logger.LogDebug("Loading assembly from {Path}", path);
 
         var moduleContext = ModuleDef.CreateModuleContext();
-        var module = ModuleDefMD.Load(path, moduleContext);
+        // Load from an in-memory byte copy rather than the path directly: ModuleDefMD.Load(path)
+        // memory-maps and locks the file for the module's lifetime, which blocks in-place output and
+        // leaves the input locked if a later stage fails. Reading the bytes up front avoids the lock.
+        var module = ModuleDefMD.Load(File.ReadAllBytes(path), moduleContext);
 
         _logger.LogDebug("Loaded assembly {Name} with {TypeCount} types",
             module.Name, module.Types.Count);

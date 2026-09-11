@@ -26,6 +26,22 @@ public class PipelineContext
     public CSharpCompilation? Compilation { get; set; }
 
     /// <summary>
+    /// Returns the assembly module, throwing if this is not an assembly context. Assembly obfuscators
+    /// call this instead of dereferencing <see cref="Module"/> with <c>!</c>.
+    /// </summary>
+    public ModuleDef RequireModule() =>
+        Module ?? throw new InvalidOperationException(
+            $"No assembly module is available (target type is {TargetType}).");
+
+    /// <summary>
+    /// Returns the Roslyn compilation, throwing if this is not a source-code context. Source
+    /// obfuscators call this instead of dereferencing <see cref="Compilation"/> with <c>!</c>.
+    /// </summary>
+    public CSharpCompilation RequireCompilation() =>
+        Compilation ?? throw new InvalidOperationException(
+            $"No source compilation is available (target type is {TargetType}).");
+
+    /// <summary>
     /// Gets the active obfuscation settings.
     /// </summary>
     public ObfySettings Settings { get; init; } = new();
@@ -42,9 +58,11 @@ public class PipelineContext
     public Dictionary<string, string> SymbolMap { get; } = new();
 
     /// <summary>
-    /// Gets additional data that can be shared between obfuscators.
+    /// Anti-tamper metadata produced by the anti-tamper obfuscator and consumed by the assembly
+    /// writer to patch the integrity hash after the module is written. Null when anti-tamper did
+    /// not run. Replaces an untyped shared-data bag with a typed, discoverable handoff.
     /// </summary>
-    public Dictionary<string, object> SharedData { get; } = new();
+    public AntiTamperMetadata? AntiTamperMetadata { get; set; }
 
     /// <summary>
     /// Gets or sets the input file path.

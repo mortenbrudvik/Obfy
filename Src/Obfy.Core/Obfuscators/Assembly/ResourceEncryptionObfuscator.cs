@@ -24,7 +24,7 @@ public class ResourceEncryptionObfuscator : IObfuscator
     public string Name => "ResourceEncryption";
 
     /// <inheritdoc/>
-    public int Priority => 15; // After string encryption (10), before control flow (30)
+    public int Priority => (int)ObfuscationPhase.ResourceEncryption;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -35,7 +35,7 @@ public class ResourceEncryptionObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.ResourceEncryption;
         var stats = new ObfuscationStatistics();
 

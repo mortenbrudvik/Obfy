@@ -23,7 +23,7 @@ public class SourceControlFlowObfuscator : IObfuscator
     public string Name => "SourceControlFlow";
 
     /// <inheritdoc/>
-    public int Priority => 30;
+    public int Priority => (int)ObfuscationPhase.ControlFlow;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.SourceCode;
@@ -34,7 +34,7 @@ public class SourceControlFlowObfuscator : IObfuscator
     /// <inheritdoc/>
     public async Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var compilation = context.Compilation!;
+        var compilation = context.RequireCompilation();
         var settings = context.Settings.ControlFlow;
         var stats = new ObfuscationStatistics();
 

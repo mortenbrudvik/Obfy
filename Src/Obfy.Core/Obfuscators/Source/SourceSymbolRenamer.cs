@@ -33,7 +33,7 @@ public class SourceSymbolRenamer : IObfuscator
     public string Name => "SourceSymbolRenaming";
 
     /// <inheritdoc/>
-    public int Priority => 50;
+    public int Priority => (int)ObfuscationPhase.SymbolRenaming;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.SourceCode;
@@ -44,7 +44,7 @@ public class SourceSymbolRenamer : IObfuscator
     /// <inheritdoc/>
     public async Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var compilation = context.Compilation!;
+        var compilation = context.RequireCompilation();
         var settings = context.Settings.SymbolRenaming;
         var exclusions = context.Settings.Exclusions;
         var stats = new ObfuscationStatistics();

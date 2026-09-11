@@ -15,47 +15,47 @@ public class ObfySettings
     /// <summary>
     /// String encryption settings.
     /// </summary>
-    public StringEncryptionSettings StringEncryption { get; set; } = new();
+    public StringEncryptionSettings StringEncryption { get; init; } = new();
 
     /// <summary>
     /// Control flow obfuscation settings.
     /// </summary>
-    public ControlFlowSettings ControlFlow { get; set; } = new();
+    public ControlFlowSettings ControlFlow { get; init; } = new();
 
     /// <summary>
     /// Symbol renaming settings.
     /// </summary>
-    public SymbolRenamingSettings SymbolRenaming { get; set; } = new();
+    public SymbolRenamingSettings SymbolRenaming { get; init; } = new();
 
     /// <summary>
     /// Anti-debugging and anti-tampering settings.
     /// </summary>
-    public ProtectionSettings Protection { get; set; } = new();
+    public ProtectionSettings Protection { get; init; } = new();
 
     /// <summary>
     /// Metadata removal settings.
     /// </summary>
-    public MetadataSettings Metadata { get; set; } = new();
+    public MetadataSettings Metadata { get; init; } = new();
 
     /// <summary>
     /// Resource encryption settings.
     /// </summary>
-    public ResourceEncryptionSettings ResourceEncryption { get; set; } = new();
+    public ResourceEncryptionSettings ResourceEncryption { get; init; } = new();
 
     /// <summary>
     /// Constant (numeric) encryption settings.
     /// </summary>
-    public ConstantEncryptionSettings ConstantEncryption { get; set; } = new();
+    public ConstantEncryptionSettings ConstantEncryption { get; init; } = new();
 
     /// <summary>
     /// Assembly merging settings.
     /// </summary>
-    public AssemblyMergeSettings AssemblyMerge { get; set; } = new();
+    public AssemblyMergeSettings AssemblyMerge { get; init; } = new();
 
     /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
-    public ExclusionRules Exclusions { get; set; } = new();
+    public ExclusionRules Exclusions { get; init; } = new();
 
     /// <summary>
     /// Whether post-build obfuscation is enabled (used by VS extension).

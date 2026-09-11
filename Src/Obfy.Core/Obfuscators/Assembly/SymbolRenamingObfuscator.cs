@@ -24,7 +24,7 @@ public class SymbolRenamingObfuscator : IObfuscator
     public string Name => "SymbolRenaming";
 
     /// <inheritdoc/>
-    public int Priority => 50;
+    public int Priority => (int)ObfuscationPhase.SymbolRenaming;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -35,7 +35,7 @@ public class SymbolRenamingObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.SymbolRenaming;
         var stats = new ObfuscationStatistics();
 

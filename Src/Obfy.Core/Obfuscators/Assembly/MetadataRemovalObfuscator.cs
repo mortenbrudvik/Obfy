@@ -21,7 +21,7 @@ public class MetadataRemovalObfuscator : IObfuscator
     public string Name => "MetadataRemoval";
 
     /// <inheritdoc/>
-    public int Priority => 90;
+    public int Priority => (int)ObfuscationPhase.MetadataRemoval;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -35,7 +35,7 @@ public class MetadataRemovalObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.Metadata;
         var stats = new ObfuscationStatistics();
 

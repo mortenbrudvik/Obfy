@@ -15,11 +15,6 @@ public class AntiTamperObfuscator : IObfuscator
 {
     private readonly ILogger<AntiTamperObfuscator> _logger;
 
-    /// <summary>
-    /// Shared data key for storing hash field metadata for post-processing.
-    /// </summary>
-    public const string HashFieldMetadataKey = "AntiTamper.HashFieldMetadata";
-
     public AntiTamperObfuscator(ILogger<AntiTamperObfuscator> logger)
     {
         _logger = logger;
@@ -29,7 +24,7 @@ public class AntiTamperObfuscator : IObfuscator
     public string Name => "AntiTamper";
 
     /// <inheritdoc/>
-    public int Priority => 75;
+    public int Priority => (int)ObfuscationPhase.AntiTamper;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -40,7 +35,7 @@ public class AntiTamperObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.Protection.AntiTamper;
         var stats = new ObfuscationStatistics();
 
@@ -50,7 +45,7 @@ public class AntiTamperObfuscator : IObfuscator
         {
             var antiTamperType = InjectAntiTamperType(module);
 
-            context.SharedData[HashFieldMetadataKey] = new AntiTamperMetadata
+            context.AntiTamperMetadata = new AntiTamperMetadata
             {
                 HashFieldToken = antiTamperType.MDToken.Raw
             };
@@ -429,15 +424,4 @@ public class AntiTamperObfuscator : IObfuscator
 
         return cctor;
     }
-}
-
-/// <summary>
-/// Metadata for anti-tamper post-processing.
-/// </summary>
-public class AntiTamperMetadata
-{
-    /// <summary>
-    /// Token of the hash field for locating it during patching.
-    /// </summary>
-    public uint HashFieldToken { get; set; }
 }

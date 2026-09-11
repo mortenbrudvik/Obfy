@@ -8,58 +8,58 @@ public class ObfuscationResult
     /// <summary>
     /// Gets whether the obfuscation was successful.
     /// </summary>
-    public bool Success { get; init; }
+    public bool Success { get; private init; }
 
     /// <summary>
     /// Gets the error message if the obfuscation failed.
     /// </summary>
-    public string? ErrorMessage { get; init; }
+    public string? ErrorMessage { get; private init; }
 
     /// <summary>
     /// Gets the exception that caused the failure, if any.
     /// </summary>
-    public Exception? Exception { get; init; }
+    public Exception? Exception { get; private init; }
 
     /// <summary>
     /// Gets the statistics from the obfuscation process.
     /// </summary>
-    public ObfuscationStatistics Statistics { get; init; } = new();
+    public ObfuscationStatistics Statistics { get; private init; } = new();
 
     /// <summary>
     /// Gets the input file path.
     /// </summary>
-    public string? InputPath { get; init; }
+    public string? InputPath { get; private init; }
 
     /// <summary>
     /// Gets the output file path.
     /// </summary>
-    public string? OutputPath { get; init; }
+    public string? OutputPath { get; private init; }
 
     /// <summary>
     /// Gets the elapsed time for the obfuscation.
     /// </summary>
-    public TimeSpan ElapsedTime { get; init; }
+    public TimeSpan ElapsedTime { get; private init; }
 
     /// <summary>
     /// Gets the processing times for each obfuscator (for reporting).
     /// </summary>
-    public List<ProcessingTimeEntry> ProcessingTimes { get; init; } = new();
+    public List<ProcessingTimeEntry> ProcessingTimes { get; private init; } = new();
 
     /// <summary>
     /// Gets the items skipped during obfuscation (for reporting).
     /// </summary>
-    public List<SkippedItem> SkippedItems { get; init; } = new();
+    public List<SkippedItem> SkippedItems { get; private init; } = new();
 
     /// <summary>
     /// Gets the symbol map of renamed symbols (for reporting).
     /// </summary>
-    public Dictionary<string, string> SymbolMap { get; init; } = new();
+    public Dictionary<string, string> SymbolMap { get; private init; } = new();
 
     /// <summary>
     /// Gets non-fatal warnings raised during obfuscation (e.g. a protection that could not take
     /// effect). Surfaced to the user so enabled protections never silently do nothing.
     /// </summary>
-    public List<string> Warnings { get; init; } = new();
+    public List<string> Warnings { get; private init; } = new();
 
     /// <summary>
     /// Creates a successful result.

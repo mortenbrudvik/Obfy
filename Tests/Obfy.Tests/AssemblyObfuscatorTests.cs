@@ -1080,10 +1080,8 @@ public class AssemblyObfuscatorTests
         await obfuscator.ObfuscateAsync(context);
 
         // Assert
-        context.SharedData.ContainsKey(AntiTamperObfuscator.HashFieldMetadataKey).ShouldBeTrue();
-        var metadata = context.SharedData[AntiTamperObfuscator.HashFieldMetadataKey] as AntiTamperMetadata;
-        metadata.ShouldNotBeNull();
-        metadata.HashFieldToken.ShouldBeGreaterThan(0u);
+        context.AntiTamperMetadata.ShouldNotBeNull();
+        context.AntiTamperMetadata!.HashFieldToken.ShouldBeGreaterThan(0u);
     }
 
     [Fact]

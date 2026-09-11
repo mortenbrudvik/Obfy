@@ -33,7 +33,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
     public string Name => "ConstantEncryption";
 
     /// <inheritdoc/>
-    public int Priority => 11; // After StringEncryption (10), before ResourceEncryption (15)
+    public int Priority => (int)ObfuscationPhase.ConstantEncryption;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -44,7 +44,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.ConstantEncryption;
         var stats = new ObfuscationStatistics();
 
@@ -86,7 +86,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
                         context.SkippedItems.Add(new SkippedItem
                         {
                             Reason = SkipReason.UnsupportedConstruct,
-                            ItemType = "Method",
+                            ItemType = SkippedItemType.Method,
                             ItemName = method.FullName,
                             Details = "Exception handlers"
                         });

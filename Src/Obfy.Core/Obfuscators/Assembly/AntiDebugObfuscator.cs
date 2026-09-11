@@ -22,7 +22,7 @@ public class AntiDebugObfuscator : IObfuscator
     public string Name => "AntiDebug";
 
     /// <inheritdoc/>
-    public int Priority => 70;
+    public int Priority => (int)ObfuscationPhase.AntiDebug;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -33,7 +33,7 @@ public class AntiDebugObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.Protection;
         var stats = new ObfuscationStatistics();
 

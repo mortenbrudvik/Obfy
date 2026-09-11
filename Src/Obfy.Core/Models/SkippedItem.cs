@@ -11,9 +11,9 @@ public class SkippedItem
     public SkipReason Reason { get; init; }
 
     /// <summary>
-    /// Type of the item (String, Constant, Type, Method, etc.)
+    /// Kind of the item that was skipped.
     /// </summary>
-    public string ItemType { get; init; } = string.Empty;
+    public SkippedItemType ItemType { get; init; }
 
     /// <summary>
     /// Name or identifier of the item.
@@ -24,6 +24,36 @@ public class SkippedItem
     /// Additional details about why the item was skipped.
     /// </summary>
     public string? Details { get; init; }
+}
+
+/// <summary>
+/// The kind of item that can be skipped during obfuscation.
+/// </summary>
+public enum SkippedItemType
+{
+    /// <summary>A string literal.</summary>
+    String,
+
+    /// <summary>A numeric constant.</summary>
+    Constant,
+
+    /// <summary>A type (class, struct, enum, ...).</summary>
+    Type,
+
+    /// <summary>A method.</summary>
+    Method,
+
+    /// <summary>A field.</summary>
+    Field,
+
+    /// <summary>A property.</summary>
+    Property,
+
+    /// <summary>A parameter.</summary>
+    Parameter,
+
+    /// <summary>An embedded resource.</summary>
+    Resource
 }
 
 /// <summary>

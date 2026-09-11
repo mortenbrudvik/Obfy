@@ -72,7 +72,7 @@ public class AssemblyProcessor : IAssemblyProcessor
 
         if (context.Settings.Protection.AntiTamper.Enabled)
         {
-            if (!context.SharedData.ContainsKey(AntiTamperObfuscator.HashFieldMetadataKey))
+            if (context.AntiTamperMetadata is null)
             {
                 throw new InvalidOperationException("Anti-tamper is enabled but the runtime type was not injected.");
             }

@@ -24,7 +24,7 @@ public class ControlFlowObfuscator : IObfuscator
     public string Name => "ControlFlow";
 
     /// <inheritdoc/>
-    public int Priority => 30;
+    public int Priority => (int)ObfuscationPhase.ControlFlow;
 
     /// <inheritdoc/>
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
@@ -35,7 +35,7 @@ public class ControlFlowObfuscator : IObfuscator
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
-        var module = context.Module!;
+        var module = context.RequireModule();
         var settings = context.Settings.ControlFlow;
         var stats = new ObfuscationStatistics();
 
@@ -77,7 +77,7 @@ public class ControlFlowObfuscator : IObfuscator
                         context.SkippedItems.Add(new SkippedItem
                         {
                             Reason = SkipReason.UnsupportedConstruct,
-                            ItemType = "Method",
+                            ItemType = SkippedItemType.Method,
                             ItemName = method.FullName,
                             Details = ex.Message
                         });

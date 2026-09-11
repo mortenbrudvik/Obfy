@@ -211,9 +211,9 @@ public class ReportServiceTests : IDisposable
         // Arrange
         var skippedItems = new List<SkippedItem>
         {
-            new() { Reason = SkipReason.StringTooShort, ItemType = "String", ItemName = "\"ab\"" },
-            new() { Reason = SkipReason.StringTooShort, ItemType = "String", ItemName = "\"cd\"" },
-            new() { Reason = SkipReason.PreservedPublicApi, ItemType = "Method", ItemName = "Main" }
+            new() { Reason = SkipReason.StringTooShort, ItemType = SkippedItemType.String, ItemName = "\"ab\"" },
+            new() { Reason = SkipReason.StringTooShort, ItemType = SkippedItemType.String, ItemName = "\"cd\"" },
+            new() { Reason = SkipReason.PreservedPublicApi, ItemType = SkippedItemType.Method, ItemName = "Main" }
         };
         var result = ObfuscationResult.Successful(
             new ObfuscationStatistics(),

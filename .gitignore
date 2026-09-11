@@ -62,6 +62,9 @@ build/obfuscated-ui/
 # Claude Code
 .claude/settings.local.json
 
+# Isolated feature worktrees (always branch out here, not in the main checkout)
+.worktrees/
+
 # Per-project obfuscation configs (generated)
 **/obfy.json
 

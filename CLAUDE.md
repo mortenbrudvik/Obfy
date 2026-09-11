@@ -149,11 +149,18 @@ Uses Autofac with module-based registration (`ObfuscationModule`).
 
 ## Development Workflow
 
-1. Create feature branch
-2. Implement with tests
+Always branch out in an isolated git worktree under `.worktrees/`, never on the main checkout:
+
+```bash
+git worktree add .worktrees/<branch-name> -b <branch-name>
+```
+
+1. Create the worktree and branch (command above)
+2. Implement with tests in that worktree
 3. Run all tests: `dotnet test`
 4. Build release: `dotnet build -c Release`
 5. Commit using `/commit`
+6. After merge: `git worktree remove .worktrees/<branch-name>`
 
 ## Testing Requirements
 

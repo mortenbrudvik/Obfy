@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Obfuscation no longer mutates the caller's settings object when applying a level preset
 - Aggressive and AES obfuscation now produce loadable, runnable assemblies (constant decryptors, empty-stack control-flow splits, crypto types referenced from their real assemblies)
 - Source switch flattening no longer emits CS0161, wraps declarations, or splits `out var` / local functions across cases
 - Source symbol renaming is semantic (ISymbol), including attributes and record positional properties

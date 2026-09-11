@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 
 namespace Obfy.Core.Models;
 
@@ -70,6 +71,23 @@ public class ObfySettings
         var settings = new ObfySettings { Level = level };
         settings.ApplyLevel();
         return settings;
+    }
+
+    private static readonly JsonSerializerOptions CloneJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
+    /// <summary>
+    /// Deep-copies this instance so callers can hand settings to the service without having
+    /// <see cref="ApplyLevel"/> mutate their object.
+    /// </summary>
+    public ObfySettings Clone()
+    {
+        var json = JsonSerializer.Serialize(this, CloneJsonOptions);
+        return JsonSerializer.Deserialize<ObfySettings>(json, CloneJsonOptions)
+            ?? throw new InvalidOperationException("Failed to clone obfuscation settings.");
     }
 
     /// <summary>

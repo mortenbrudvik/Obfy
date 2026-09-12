@@ -77,8 +77,8 @@ public class ObfySettings
     public bool PostBuildEnabled { get; set; } = false;
 
     /// <summary>
-    /// Target runtime. NativeAOT and Unity IL2CPP disable method IL encryption and anti-dump
-    /// (both mutate the PE / call kernel32). The pipeline emits report warnings when it turns them off.
+    /// Target runtime. NativeAOT, Unity IL2CPP, and Blazor WASM disable method IL encryption,
+    /// anti-dump, and dependency embedding. The pipeline emits report warnings when it turns them off.
     /// </summary>
     public RuntimeProfile RuntimeProfile { get; set; } = RuntimeProfile.Default;
 
@@ -125,7 +125,8 @@ public class ObfySettings
             // constant-encryption algorithm, metadata/debug) so *those* values do not leak from a
             // previously applied level. Other nested settings (control-flow mode, string/resource
             // algorithms, naming mode, PreservePublicApi, PreserveXaml, junk counts, include/exclude
-            // patterns, RuntimeProfile, Signing) keep their prior or default values.
+            // patterns, RuntimeProfile, Signing, DependencyEmbedding) keep their prior or default
+            // values. ProxyExternalCalls is cleared when ReferenceProxy is turned off.
             case ObfuscationLevel.Minimal:
                 StringEncryption.Enabled = false;
                 ControlFlow.Enabled = false;
@@ -136,6 +137,7 @@ public class ObfySettings
                 Protection.AntiDecompiler.Enabled = false;
                 Protection.AntiDump = false;
                 Protection.ReferenceProxy = false;
+                Protection.ProxyExternalCalls = false;
                 Protection.MethodEncryption = false;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = false;
@@ -154,6 +156,7 @@ public class ObfySettings
                 Protection.AntiDecompiler.Enabled = false;
                 Protection.AntiDump = false;
                 Protection.ReferenceProxy = false;
+                Protection.ProxyExternalCalls = false;
                 Protection.MethodEncryption = false;
                 Metadata.RemoveDebugInfo = true;
                 Metadata.RemoveAttributes = true;
@@ -204,6 +207,7 @@ public class ObfySettings
         ValidateObject(ResourceEncryption);
         ValidateObject(ConstantEncryption);
         ValidateObject(AssemblyMerge);
+        ValidateObject(DependencyEmbedding);
         ValidateObject(Exclusions);
         ValidateObject(Inclusions);
         ValidateObject(Signing);
@@ -211,6 +215,8 @@ public class ObfySettings
         Inclusions.Namespaces ??= new();
         Inclusions.Types ??= new();
         Inclusions.Methods ??= new();
+        DependencyEmbedding.IncludePatterns ??= new();
+        DependencyEmbedding.ExcludePatterns ??= new();
 
         if (Signing.Enabled)
         {
@@ -456,8 +462,9 @@ public class ProtectionSettings
     public bool ReferenceProxy { get; set; } = false;
 
     /// <summary>
-    /// When reference proxy is on, also proxy selected calls into other assemblies (corlib, frameworks).
-    /// Off by default; in-module calls are still proxied.
+    /// When reference proxy is on, also proxy selected out-of-module calls (BCL and third-party).
+    /// Ignored unless <see cref="ReferenceProxy"/> is true. Off by default; in-module calls are still proxied.
+    /// Skips compiler/interop/pointer/value-type/generic/vararg/ctor signatures.
     /// </summary>
     public bool ProxyExternalCalls { get; set; } = false;
 
@@ -596,7 +603,8 @@ public class InclusionRules
 }
 
 /// <summary>
-/// Runtime the obfuscated assembly will run on. PE-mutating protections are Windows JIT only.
+/// Runtime the obfuscated assembly will run on. NativeAOT, Unity IL2CPP, and Blazor WASM
+/// disable method encryption, anti-dump, and AssemblyResolve embedding.
 /// </summary>
 public enum RuntimeProfile
 {
@@ -624,7 +632,8 @@ public class SigningSettings
 }
 
 /// <summary>
-/// Embed referenced assemblies as resources loaded via AssemblyResolve.
+/// Embed sibling <c>{name}.dll</c> files (matching assembly refs next to the input) as resources
+/// loaded via AppDomain.AssemblyResolve. Disabled on NativeAot / UnityIl2Cpp / BlazorWasm.
 /// </summary>
 public class DependencyEmbeddingSettings
 {
@@ -660,6 +669,8 @@ public class ResourceEncryptionSettings
     /// Patterns for resources to exclude (supports wildcards: *, ?).
     /// Excluded patterns take precedence over include patterns.
     /// *.resources is excluded by default so ResourceManager satellite files keep working.
+    /// Obfy.Embedded.* is excluded so packed dependency DLLs stay plaintext for Assembly.Load;
+    /// resource encryption also hard-skips that prefix even if this list is overwritten.
     /// </summary>
     public List<string> ExcludePatterns { get; set; } = new() { "*.resources", "Obfy.Embedded.*" };
 }

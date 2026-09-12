@@ -1,12 +1,12 @@
 # Obfy for Visual Studio Code
 
-Obfuscate from the CLI without the WPF app.
+Stub extension: JSON schema validation for `obfy.json` and a problem matcher for CLI `Error:` / `⚠` lines. There is no TaskProvider; use a shell task.
 
 ## Setup
 
 1. Install the Obfy CLI (`obfy` on PATH).
-2. Copy `schemas/obfy.schema.json` next to this extension (or keep using the GitHub `$schema` URL in `obfy.json`).
-3. Add a task:
+2. Schema validation uses the GitHub URL contributed in `package.json` (or set `"$schema"` in `obfy.json`).
+3. Add a shell task:
 
 ```json
 {
@@ -16,7 +16,7 @@ Obfuscate from the CLI without the WPF app.
       "label": "Obfy: obfuscate",
       "type": "shell",
       "command": "obfy",
-      "args": ["${input:obfyInput}", "-c", "obfy.json", "-o", "obfuscated/"],
+      "args": ["MyApp.dll", "-c", "obfy.json", "-o", "obfuscated/"],
       "problemMatcher": ["$obfy"]
     }
   ]

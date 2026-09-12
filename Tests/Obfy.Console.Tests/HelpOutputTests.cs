@@ -108,6 +108,7 @@ public class HelpOutputTests
         output.ShouldContain("--anti-dump");
         output.ShouldContain("--encrypt-methods");
         output.ShouldContain("--reference-proxy");
+        output.ShouldContain("--proxy-external");
         output.ShouldContain("--encrypt-constants");
         output.ShouldContain("--no-control-flow");
         output.ShouldContain("--strip-metadata");
@@ -125,6 +126,7 @@ public class HelpOutputTests
         var output = console.Out.ToString();
 
         // Assert
+        output.ShouldContain("--proxy-external");
         output.ShouldContain("--preserve-public");
         output.ShouldContain("--map");
         output.ShouldContain("--report");

@@ -108,6 +108,11 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
     private bool ShouldEncrypt(string resourceName, ResourceEncryptionSettings settings)
     {
+        // Packed dependency payloads must stay plaintext for Assembly.Load, even if the user
+        // overwrites excludePatterns and drops the default "Obfy.Embedded.*" entry.
+        if (resourceName.StartsWith(DependencyEmbeddingObfuscator.ResourcePrefix, StringComparison.Ordinal))
+            return false;
+
         // Check exclude patterns first (they take precedence)
         if (settings.ExcludePatterns.Any(p => MatchesPattern(resourceName, p)))
             return false;

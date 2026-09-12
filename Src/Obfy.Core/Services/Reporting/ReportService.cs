@@ -293,6 +293,18 @@ public class ReportService : IReportService
             });
         }
 
+        if (settings.DependencyEmbedding.Enabled && result.Statistics.AssembliesEmbedded == 0)
+        {
+            warnings.Add(new ReportWarning
+            {
+                Severity = WarningSeverity.Warning,
+                Category = WarningCategory.UnusedSetting,
+                Message = "Dependency embedding was enabled but no assemblies were packed",
+                RelatedItem = "DependencyEmbedding",
+                Details = "Referenced DLLs must sit next to the input as '{Name}.dll'; framework assemblies are not embedded."
+            });
+        }
+
         if (settings.SymbolRenaming.Enabled && result.Statistics.TypesRenamed == 0 &&
             result.Statistics.MethodsRenamed == 0 && result.Statistics.FieldsRenamed == 0)
         {
@@ -494,6 +506,18 @@ public class ReportService : IReportService
                 Message = "Method encryption was enabled but no methods were encrypted",
                 RelatedItem = "MethodEncryption",
                 Details = "Methods may be generic, too short, runtime helpers, or otherwise ineligible."
+            });
+        }
+
+        if (settings.DependencyEmbedding.Enabled && result.Statistics.AssembliesEmbedded == 0)
+        {
+            warnings.Add(new ReportWarning
+            {
+                Severity = WarningSeverity.Warning,
+                Category = WarningCategory.UnusedSetting,
+                Message = "Dependency embedding was enabled but no assemblies were packed",
+                RelatedItem = "DependencyEmbedding",
+                Details = "Referenced DLLs must sit next to the input as '{Name}.dll'; framework assemblies are not embedded."
             });
         }
 

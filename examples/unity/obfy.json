@@ -6,7 +6,7 @@
   "controlFlow": { "enabled": true, "mode": "Switch", "intensity": 40 },
   "symbolRenaming": { "enabled": true, "preservePublicApi": false },
   "protection": {
-    "antiDebug": true,
+    "antiDebug": false,
     "antiDump": false,
     "methodEncryption": false,
     "referenceProxy": true

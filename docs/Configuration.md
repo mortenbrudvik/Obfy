@@ -16,6 +16,7 @@ Complete JSON configuration schema for Obfy.
   "protection": { ... },
   "metadata": { ... },
   "assemblyMerge": { ... },
+  "dependencyEmbedding": { ... },
   "inclusions": { ... },
   "exclusions": { ... },
   "runtimeProfile": "Default",
@@ -58,7 +59,7 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
     "enabled": false,
     "algorithm": "Aes256 | Xor",
     "includePatterns": ["*"],
-    "excludePatterns": ["*.resources"]
+    "excludePatterns": ["*.resources", "Obfy.Embedded.*"]
   },
 
   "controlFlow": {
@@ -97,7 +98,14 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
     },
     "antiDump": false,
     "referenceProxy": false,
+    "proxyExternalCalls": false,
     "methodEncryption": false
+  },
+
+  "dependencyEmbedding": {
+    "enabled": false,
+    "includePatterns": ["*.dll"],
+    "excludePatterns": ["*.resources.dll"]
   },
 
   "metadata": {
@@ -269,7 +277,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `enabled` | bool | `false` | Enable resource encryption |
 | `algorithm` | enum | `Aes256` | Encryption algorithm: `Aes256` or `Xor` |
 | `includePatterns` | string[] | `["*"]` | Glob patterns for resources to include |
-| `excludePatterns` | string[] | `["*.resources"]` | Glob patterns for resources to exclude |
+| `excludePatterns` | string[] | `["*.resources", "Obfy.Embedded.*"]` | Glob patterns for resources to exclude. `Obfy.Embedded.*` keeps packed dependency DLLs plaintext; the obfuscator also hard-skips that prefix. |
 
 **Pattern Examples:**
 
@@ -281,7 +289,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `Config.*` | Resources starting with "Config." |
 | `*.resources` | .NET resource files (typically excluded) |
 
-**Note:** Exclude patterns take precedence over include patterns. System resources (`*.resources`) should typically be excluded to avoid runtime issues.
+**Note:** Exclude patterns take precedence over include patterns. System resources (`*.resources`) should typically be excluded to avoid runtime issues. Packed dependency resources (`Obfy.Embedded.*`) are also excluded by default and hard-skipped even if this list is overwritten.
 
 ### controlFlow
 
@@ -331,6 +339,8 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `antiDebug` | bool | `false` | Inject debugger detection checks |
 | `antiDump` | bool | `false` | Wipe PE headers in memory at load (Windows) |
 | `referenceProxy` | bool | `false` | Hide in-module call targets behind proxy methods |
+| `proxyExternalCalls` | bool | `false` | Also proxy selected out-of-module calls. Ignored unless `referenceProxy` is true. |
+| `methodEncryption` | bool | `false` | XOR method IL in the PE (Windows) |
 
 **antiTamper Settings:**
 
@@ -367,6 +377,16 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `preserveDebugInfo` | bool | `false` | Preserve debug information in merged assembly |
 | `searchDirectories` | string[] | `[]` | Additional directories to search for dependencies |
 | `excludePatterns` | string[] | `[]` | Assembly patterns to exclude from merging (e.g., `System.*`) |
+
+### dependencyEmbedding
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | Pack sibling `{AssemblyRef.Name}.dll` files as `Obfy.Embedded.*` resources and load via AssemblyResolve |
+| `includePatterns` | string[] | `["*.dll"]` | File-name globs to include (empty means all) |
+| `excludePatterns` | string[] | `["*.resources.dll"]` | File-name globs to skip (satellites). Exclude wins. |
+
+Disabled automatically on `NativeAot`, `UnityIl2Cpp`, and `BlazorWasm`. Only files next to the input are packed.
 
 **Use Cases:**
 
@@ -409,8 +429,9 @@ Empty lists mean no allow-list. When any list is non-empty, only matching namesp
 | Value | Effect |
 |-------|--------|
 | `Default` | All protections as configured |
-| `NativeAot` | Disables method encryption and anti-dump; emits report warnings. Other Aggressive protections still run. |
+| `NativeAot` | Disables method encryption, anti-dump, and dependency embedding; emits report warnings. |
 | `UnityIl2Cpp` | Same gating; Unity wizard also excludes `UnityEngine.*` and `Unity.*` |
+| `BlazorWasm` | Same gating for Blazor WebAssembly (no `AppDomain.AssemblyResolve` / `VirtualProtect`). |
 
 ### signing
 
@@ -487,7 +508,7 @@ JSON/XML property attributes are excluded from renaming by default. Add extra se
   "resourceEncryption": {
     "enabled": true,
     "algorithm": "Aes256",
-    "excludePatterns": ["*.resources"]
+    "excludePatterns": ["*.resources", "Obfy.Embedded.*"]
   },
   "controlFlow": {
     "enabled": true,

@@ -35,4 +35,32 @@ public class WizardDefaultsTests
 
         context.Settings.SymbolRenaming.PreserveXaml.ShouldBeTrue();
     }
+
+    [Fact]
+    public void ApplyUseCaseDefaults_Blazor_SetsBlazorWasmProfile()
+    {
+        var context = new WizardContext
+        {
+            UseCase = "Blazor WebAssembly",
+            Settings = new ObfySettings()
+        };
+
+        ConfigurationWizard.ApplyUseCaseDefaults(context);
+
+        context.Settings.RuntimeProfile.ShouldBe(RuntimeProfile.BlazorWasm);
+    }
+
+    [Fact]
+    public void ApplyUseCaseDefaults_Maui_SetsPreserveXaml()
+    {
+        var context = new WizardContext
+        {
+            UseCase = "MAUI / Mobile",
+            Settings = new ObfySettings()
+        };
+
+        ConfigurationWizard.ApplyUseCaseDefaults(context);
+
+        context.Settings.SymbolRenaming.PreserveXaml.ShouldBeTrue();
+    }
 }

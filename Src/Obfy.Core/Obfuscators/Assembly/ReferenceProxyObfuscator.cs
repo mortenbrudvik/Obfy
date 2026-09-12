@@ -8,8 +8,11 @@ using Obfy.Core.Utilities;
 namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
-/// Replaces direct call/callvirt targets with static proxy methods so call sites no longer
-/// reference the original method token.
+/// Replaces direct call/callvirt targets with static <c>calli</c> trampolines so call sites no
+/// longer reference the original method token. In-module calls are proxied when
+/// <see cref="ProtectionSettings.ReferenceProxy"/> is on. Out-of-module calls (BCL and third-party)
+/// are proxied only when <see cref="ProtectionSettings.ProxyExternalCalls"/> is also on;
+/// compiler/interop/pointer/value-type/generic/<c>constrained.</c> sites are skipped.
 /// </summary>
 public class ReferenceProxyObfuscator : IObfuscator
 {
@@ -68,9 +71,14 @@ public class ReferenceProxyObfuscator : IObfuscator
                         continue;
 
                     var modified = false;
-                    foreach (var instr in method.Body.Instructions)
+                    var instructions = method.Body.Instructions;
+                    for (var i = 0; i < instructions.Count; i++)
                     {
+                        var instr = instructions[i];
                         if (instr.OpCode != OpCodes.Call && instr.OpCode != OpCodes.Callvirt)
+                            continue;
+                        // constrained./tail./unaligned. may only prefix instance call/callvirt/ldvirtftn.
+                        if (i > 0 && ObfuscatorHelpers.IsPrefix(instructions[i - 1]))
                             continue;
                         if (instr.Operand is not IMethod called)
                             continue;
@@ -123,7 +131,7 @@ public class ReferenceProxyObfuscator : IObfuscator
             return false;
         if (called.MethodSig.Params.Count > 16)
             return false;
-        if (called.MethodSig.GenParamCount > 0 || called is MethodSpec)
+        if (HasOpenGeneric(called))
             return false;
         if (called.DeclaringType == null)
             return false;
@@ -154,6 +162,8 @@ public class ReferenceProxyObfuscator : IObfuscator
             return true;
         if (typeName is "RuntimeHelpers" or "Unsafe" or "Interlocked" or "Volatile" or "GCHandle" or "Buffer")
             return true;
+        if (called.DeclaringType?.IsValueType == true)
+            return true;
 
         var sig = called.MethodSig!;
         if (sig.CallingConvention == CallingConvention.VarArg)
@@ -171,6 +181,29 @@ public class ReferenceProxyObfuscator : IObfuscator
 
     private static bool IsPointerLike(TypeSig? sig) =>
         sig?.ElementType is ElementType.Ptr or ElementType.FnPtr or ElementType.ByRef;
+
+    private static bool HasOpenGeneric(IMethod called)
+    {
+        if (called is MethodSpec || called.MethodSig.GenParamCount > 0)
+            return true;
+        if (called.DeclaringType is TypeSpec)
+            return true;
+        return ContainsGeneric(called.MethodSig.RetType) ||
+               called.MethodSig.Params.Any(ContainsGeneric);
+    }
+
+    private static bool ContainsGeneric(TypeSig? sig)
+    {
+        while (sig != null)
+        {
+            if (sig.ElementType is ElementType.Var or ElementType.MVar)
+                return true;
+            if (sig is GenericInstSig)
+                return true;
+            sig = sig.Next;
+        }
+        return false;
+    }
 
     private static MethodDef? CreateProxy(ModuleDef module, TypeDef proxyType, IMethod target, bool virt)
     {

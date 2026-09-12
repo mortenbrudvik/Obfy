@@ -17,6 +17,7 @@ public interface IObfuscator
     /// <summary>
     /// Gets the execution priority (lower values execute first).
     /// Recommended ranges:
+    /// - 8: Resource injection (dependency embedding)
     /// - 10-20: Encoding and runtime helper injection
     /// - 30-40: Control flow and reference proxies
     /// - 50-60: Symbol renaming

@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using Obfy.Console;
+using Obfy.Core.Models;
 using Shouldly;
 
 namespace Obfy.Console.Tests;
@@ -173,6 +174,7 @@ public class CommandParsingTests : IDisposable
     [InlineData("--anti-debug")]
     [InlineData("--anti-dump")]
     [InlineData("--reference-proxy")]
+    [InlineData("--proxy-external")]
     [InlineData("--encrypt-methods")]
     [InlineData("--encrypt-constants")]
     [InlineData("--no-control-flow")]
@@ -245,6 +247,32 @@ public class CommandParsingTests : IDisposable
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --reference-proxy");
         parseResult.GetValueForOption(Program.ReferenceProxyOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Parse_ProxyExternalOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --proxy-external");
+        parseResult.GetValueForOption(Program.ProxyExternalOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task BuildSettings_ProxyExternal_ImpliesReferenceProxy()
+    {
+        var settings = await Program.BuildSettingsAsync(
+            configFile: null,
+            level: "standard",
+            stringEncrypt: false,
+            controlFlow: false,
+            rename: false,
+            antiDebug: false,
+            stripMetadata: false,
+            encryptResources: false,
+            preservePublic: false,
+            proxyExternal: true);
+
+        settings.Protection.ReferenceProxy.ShouldBeTrue();
+        settings.Protection.ProxyExternalCalls.ShouldBeTrue();
     }
 
     [Fact]
@@ -561,7 +589,7 @@ public class CommandParsingTests : IDisposable
     {
         // Arrange & Act
         var parseResult = _rootCommand.Parse(
-            $"\"{_testDll}\" --string-encrypt --control-flow --rename --anti-debug --anti-dump --reference-proxy --encrypt-methods --encrypt-constants --no-control-flow --strip-metadata --encrypt-resources --preserve-public");
+            $"\"{_testDll}\" --string-encrypt --control-flow --rename --anti-debug --anti-dump --reference-proxy --proxy-external --encrypt-methods --encrypt-constants --no-control-flow --strip-metadata --encrypt-resources --preserve-public");
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
@@ -571,6 +599,7 @@ public class CommandParsingTests : IDisposable
         parseResult.GetValueForOption(Program.AntiDebugOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.AntiDumpOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.ReferenceProxyOption).ShouldBeTrue();
+        parseResult.GetValueForOption(Program.ProxyExternalOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.EncryptMethodsOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.EncryptConstantsOption).ShouldBeTrue();
         parseResult.GetValueForOption(Program.NoControlFlowOption).ShouldBeTrue();

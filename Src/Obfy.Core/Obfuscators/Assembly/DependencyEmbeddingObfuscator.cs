@@ -8,7 +8,10 @@ using Obfy.Core.Utilities;
 namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
-/// Embeds referenced assemblies next to the input as resources and loads them via AssemblyResolve.
+/// Embeds sibling <c>{AssemblyRef.Name}.dll</c> files next to the input as
+/// <c>Obfy.Embedded.{name}.dll</c> resources and loads them via
+/// <c>AppDomain.CurrentDomain.AssemblyResolve</c>. Disabled on NativeAOT / Unity IL2CPP / Blazor WASM.
+/// Does not probe NuGet, GAC, or <c>.exe</c> files, and does not strip assembly references.
 /// </summary>
 public class DependencyEmbeddingObfuscator : IObfuscator
 {
@@ -29,7 +32,7 @@ public class DependencyEmbeddingObfuscator : IObfuscator
 
     public bool IsEnabled(ObfySettings settings) =>
         settings.DependencyEmbedding.Enabled &&
-        !RuntimeProfileGating.BlocksPeProtections(settings.RuntimeProfile);
+        !RuntimeProfileGating.BlocksAssemblyResolve(settings.RuntimeProfile);
 
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
@@ -39,14 +42,28 @@ public class DependencyEmbeddingObfuscator : IObfuscator
 
         try
         {
-            var inputDir = Path.GetDirectoryName(context.InputPath);
-            if (string.IsNullOrEmpty(inputDir) || !Directory.Exists(inputDir))
+            var inputPath = context.InputPath;
+            if (string.IsNullOrWhiteSpace(inputPath))
             {
-                _logger.LogInformation("Dependency embedding: no input directory, nothing to embed");
+                const string missingPath =
+                    "Dependency embedding was enabled but the input path is missing; no assemblies were packed.";
+                context.Warnings.Add(missingPath);
+                _logger.LogWarning("{Warning}", missingPath);
                 return Task.FromResult(ObfuscationResult.Successful(stats));
             }
 
-            var selfName = Path.GetFileNameWithoutExtension(context.InputPath);
+            inputPath = Path.GetFullPath(inputPath);
+            var inputDir = Path.GetDirectoryName(inputPath);
+            if (string.IsNullOrEmpty(inputDir) || !Directory.Exists(inputDir))
+            {
+                var warning =
+                    "Dependency embedding was enabled but the input directory is missing; no assemblies were packed.";
+                context.Warnings.Add(warning);
+                _logger.LogWarning("{Warning}", warning);
+                return Task.FromResult(ObfuscationResult.Successful(stats));
+            }
+
+            var selfName = Path.GetFileNameWithoutExtension(inputPath);
             var embedded = 0;
 
             foreach (var asmRef in module.GetAssemblyRefs())
@@ -62,24 +79,43 @@ public class DependencyEmbeddingObfuscator : IObfuscator
 
                 var path = Path.Combine(inputDir, fileName);
                 if (!File.Exists(path))
+                {
+                    if (!IsFrameworkAssembly(simple))
+                    {
+                        context.Warnings.Add(
+                            $"Dependency embedding: referenced assembly '{fileName}' was not found next to the input and was not packed.");
+                    }
                     continue;
+                }
 
                 var resourceName = ResourcePrefix + simple + ".dll";
                 if (module.Resources.Any(r => r.Name == resourceName))
+                {
+                    context.Warnings.Add(
+                        $"Dependency embedding: resource '{resourceName}' already exists; not replaced.");
                     continue;
+                }
 
                 module.Resources.Add(new EmbeddedResource(resourceName, File.ReadAllBytes(path)));
                 embedded++;
-                stats.ProtectionsApplied++;
+                stats.AssembliesEmbedded++;
             }
 
             if (embedded > 0)
                 InjectResolver(module);
+            else
+            {
+                const string unused =
+                    "Dependency embedding was enabled but no referenced assemblies were packed. " +
+                    "Refs must be '{Name}.dll' next to the input; framework assemblies are not embedded.";
+                context.Warnings.Add(unused);
+                _logger.LogWarning("{Warning}", unused);
+            }
 
             _logger.LogInformation("Embedded {Count} dependency assemblies", embedded);
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Dependency embedding failed");
             return Task.FromResult(ObfuscationResult.Failed($"Dependency embedding failed: {ex.Message}", ex));
@@ -88,11 +124,24 @@ public class DependencyEmbeddingObfuscator : IObfuscator
 
     private static bool IsIncluded(string fileName, DependencyEmbeddingSettings settings)
     {
-        if (settings.ExcludePatterns.Any(p => WildcardMatcher.IsMatch(fileName, p)))
+        var excludes = settings.ExcludePatterns ?? new List<string>();
+        var includes = settings.IncludePatterns ?? new List<string>();
+        if (excludes.Any(p => WildcardMatcher.IsMatch(fileName, p)))
             return false;
-        return settings.IncludePatterns.Count == 0 ||
-               settings.IncludePatterns.Any(p => WildcardMatcher.IsMatch(fileName, p));
+        return includes.Count == 0 ||
+               includes.Any(p => WildcardMatcher.IsMatch(fileName, p));
     }
+
+    internal static bool IsFrameworkAssembly(string simpleName) =>
+        simpleName.Equals("mscorlib", StringComparison.OrdinalIgnoreCase) ||
+        simpleName.Equals("netstandard", StringComparison.OrdinalIgnoreCase) ||
+        simpleName.Equals("System", StringComparison.OrdinalIgnoreCase) ||
+        simpleName.Equals("WindowsBase", StringComparison.OrdinalIgnoreCase) ||
+        simpleName.Equals("PresentationCore", StringComparison.OrdinalIgnoreCase) ||
+        simpleName.Equals("PresentationFramework", StringComparison.OrdinalIgnoreCase) ||
+        simpleName.StartsWith("System.", StringComparison.OrdinalIgnoreCase) ||
+        simpleName.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase) ||
+        simpleName.StartsWith("Windows.", StringComparison.OrdinalIgnoreCase);
 
     private static void InjectResolver(ModuleDef module)
     {
@@ -168,9 +217,13 @@ public class DependencyEmbeddingObfuscator : IObfuscator
         var nameLocal = new Local(module.CorLibTypes.String);
         var streamLocal = new Local(new ClassSig(streamType));
         var bufLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
+        var offsetLocal = new Local(module.CorLibTypes.Int32);
+        var nLocal = new Local(module.CorLibTypes.Int32);
         body.Variables.Add(nameLocal);
         body.Variables.Add(streamLocal);
         body.Variables.Add(bufLocal);
+        body.Variables.Add(offsetLocal);
+        body.Variables.Add(nLocal);
 
         var getArgsName = new MemberRefUser(module, "get_Name",
             MethodSig.CreateInstance(module.CorLibTypes.String), argsType);
@@ -193,9 +246,14 @@ public class DependencyEmbeddingObfuscator : IObfuscator
         var load = new MemberRefUser(module, "Load",
             MethodSig.CreateStatic(new ClassSig(assemblyType), new SZArraySig(module.CorLibTypes.Byte)),
             assemblyType);
+        var dispose = new MemberRefUser(module, "Dispose",
+            MethodSig.CreateInstance(module.CorLibTypes.Void), streamType);
 
         var retNull = Instruction.Create(OpCodes.Ldnull);
         var haveStream = Instruction.Create(OpCodes.Stloc, streamLocal);
+        var readLoop = Instruction.Create(OpCodes.Nop);
+        var doneRead = Instruction.Create(OpCodes.Nop);
+        var fail = Instruction.Create(OpCodes.Ldnull);
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getArgsName));
@@ -221,16 +279,46 @@ public class DependencyEmbeddingObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Conv_Ovf_I4));
         body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, bufLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, streamLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, offsetLocal));
+
+        body.Instructions.Add(readLoop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
         body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bge, doneRead));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, streamLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Sub));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, read));
-        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, nLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, nLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, doneRead));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, nLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, offsetLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, readLoop));
+
+        body.Instructions.Add(doneRead);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, streamLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, dispose));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, fail));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, load));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        body.Instructions.Add(fail);
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 
         body.KeepOldMaxStack = true;

@@ -89,6 +89,12 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _methodEncryptionEnabled = false;
 
+    [ObservableProperty]
+    private bool _dependencyEmbeddingEnabled = false;
+
+    private List<string>? _dependencyEmbeddingIncludes;
+    private List<string>? _dependencyEmbeddingExcludes;
+
     // Protection
     [ObservableProperty]
     private bool _antiDebugEnabled = false;
@@ -267,6 +273,7 @@ public partial class SettingsViewModel : ObservableObject
                     AntiDecompilerEnabled = false;
                     AntiDumpEnabled = false;
                     ReferenceProxyEnabled = false;
+                    ProxyExternalCalls = false;
                     MethodEncryptionEnabled = false;
                     RemoveDebugInfo = true;
                     RemoveAttributes = false;
@@ -285,6 +292,7 @@ public partial class SettingsViewModel : ObservableObject
                     AntiDecompilerEnabled = false;
                     AntiDumpEnabled = false;
                     ReferenceProxyEnabled = false;
+                    ProxyExternalCalls = false;
                     MethodEncryptionEnabled = false;
                     RemoveDebugInfo = true;
                     RemoveAttributes = true;
@@ -327,6 +335,22 @@ public partial class SettingsViewModel : ObservableObject
             return;
         if (Level != ObfuscationLevel.Custom)
             Level = ObfuscationLevel.Custom;
+    }
+
+    partial void OnProxyExternalCallsChanged(bool value)
+    {
+        if (_applyingPreset > 0)
+            return;
+        if (value)
+            ReferenceProxyEnabled = true;
+    }
+
+    partial void OnReferenceProxyEnabledChanged(bool value)
+    {
+        if (_applyingPreset > 0)
+            return;
+        if (!value)
+            ProxyExternalCalls = false;
     }
 
     /// <summary>
@@ -400,6 +424,12 @@ public partial class SettingsViewModel : ObservableObject
             {
                 Enabled = AssemblyMergeEnabled,
                 Internalize = InternalizeMergedTypes
+            },
+            DependencyEmbedding = new DependencyEmbeddingSettings
+            {
+                Enabled = DependencyEmbeddingEnabled,
+                IncludePatterns = _dependencyEmbeddingIncludes ?? new List<string> { "*.dll" },
+                ExcludePatterns = _dependencyEmbeddingExcludes ?? new List<string> { "*.resources.dll" }
             },
             ConstantEncryption = new ConstantEncryptionSettings
             {
@@ -498,6 +528,9 @@ public partial class SettingsViewModel : ObservableObject
         // Assembly Merge
         AssemblyMergeEnabled = settings.AssemblyMerge.Enabled;
         InternalizeMergedTypes = settings.AssemblyMerge.Internalize;
+        DependencyEmbeddingEnabled = settings.DependencyEmbedding.Enabled;
+        _dependencyEmbeddingIncludes = settings.DependencyEmbedding.IncludePatterns?.ToList();
+        _dependencyEmbeddingExcludes = settings.DependencyEmbedding.ExcludePatterns?.ToList();
 
         // Constant Encryption
         ConstantEncryptionEnabled = settings.ConstantEncryption.Enabled;

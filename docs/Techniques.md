@@ -8,6 +8,7 @@ Obfy applies techniques in a specific order (priority):
 
 | Priority | Technique | Description |
 |----------|-----------|-------------|
+| 8 | Dependency Embedding | Pack sibling DLLs as `Obfy.Embedded.*` resources |
 | 10 | String Encryption | Encrypt string literals |
 | 11 | Constant Encryption | Encrypt numeric constants |
 | 15 | Resource Encryption | Encrypt embedded resources |
@@ -469,9 +470,15 @@ Enabled in the Aggressive preset.
 
 ### Reference Proxy
 
-Replaces in-module `call`/`callvirt` targets with small static proxy methods so call sites no longer name the original method. Framework methods are left alone unless `protection.proxyExternalCalls` is true (opt-in; skips compiler/interop/pointer signatures). Assembly-visible runtime helper entry points (string/constant decrypt, anti-debug `Check`, and similar) are proxied from user code; private helper internals stay as direct calls because a trampoline in another type cannot invoke them.
+Replaces in-module `call`/`callvirt` targets with small static `calli` trampolines so call sites no longer name the original method. Out-of-module calls (BCL and third-party) are left alone unless `protection.proxyExternalCalls` is true (opt-in; requires `referenceProxy`; skips compiler/interop/pointer/value-type/`constrained.`/generic-instantiation/vararg/ctor signatures). Assembly-visible runtime helper entry points (string/constant decrypt, anti-debug `Check`, and similar) are proxied from user code; private helper internals stay as direct calls because a trampoline in another type cannot invoke them.
 
 Enabled in the Aggressive preset (`proxyExternalCalls` stays off).
+
+---
+
+### Dependency Embedding
+
+Packs `{AssemblyRef.Name}.dll` files that sit next to the input as `Obfy.Embedded.{name}.dll` resources and registers `AppDomain.AssemblyResolve` from the module `.cctor`. Resource encryption hard-skips that prefix so `Assembly.Load` sees plaintext PE bytes. Gated off NativeAOT / Unity IL2CPP / Blazor WASM. Does not probe NuGet or GAC, and does not embed `.exe` files.
 
 ---
 

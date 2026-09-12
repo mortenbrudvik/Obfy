@@ -430,6 +430,65 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void ToObfySettings_ConvertsProxyExternalAndEmbedding()
+    {
+        var viewModel = new SettingsViewModel
+        {
+            ReferenceProxyEnabled = true,
+            ProxyExternalCalls = true,
+            DependencyEmbeddingEnabled = true
+        };
+
+        var settings = viewModel.ToObfySettings();
+
+        settings.Protection.ReferenceProxy.ShouldBeTrue();
+        settings.Protection.ProxyExternalCalls.ShouldBeTrue();
+        settings.DependencyEmbedding.Enabled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void FromObfySettings_RoundTripsProxyExternalAndEmbedding()
+    {
+        var settings = new ObfySettings
+        {
+            Protection = { ReferenceProxy = true, ProxyExternalCalls = true },
+            DependencyEmbedding =
+            {
+                Enabled = true,
+                IncludePatterns = { "Lib.dll" },
+                ExcludePatterns = { "Skip.dll" }
+            }
+        };
+
+        var viewModel = new SettingsViewModel();
+        viewModel.FromObfySettings(settings);
+        var roundTripped = viewModel.ToObfySettings();
+
+        viewModel.ProxyExternalCalls.ShouldBeTrue();
+        viewModel.DependencyEmbeddingEnabled.ShouldBeTrue();
+        roundTripped.Protection.ProxyExternalCalls.ShouldBeTrue();
+        roundTripped.DependencyEmbedding.Enabled.ShouldBeTrue();
+        roundTripped.DependencyEmbedding.IncludePatterns.ShouldContain("Lib.dll");
+        roundTripped.DependencyEmbedding.ExcludePatterns.ShouldContain("Skip.dll");
+    }
+
+    [Fact]
+    public void ApplyPreset_Standard_ClearsProxyExternalCalls()
+    {
+        var viewModel = new SettingsViewModel
+        {
+            Level = ObfuscationLevel.Custom,
+            ReferenceProxyEnabled = true,
+            ProxyExternalCalls = true
+        };
+
+        viewModel.ApplyPreset(ObfuscationLevel.Standard);
+
+        viewModel.ReferenceProxyEnabled.ShouldBeFalse();
+        viewModel.ProxyExternalCalls.ShouldBeFalse();
+    }
+
+    [Fact]
     public void ToObfySettings_ConvertsExclusions()
     {
         // Arrange

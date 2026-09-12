@@ -45,6 +45,11 @@ public class SymbolRenamingObfuscator : IObfuscator
         {
             _nameGenerator.Reset();
 
+            ObfuscationAttributeRules.WarnIfInclusionsMatchedNothing(
+                module, context.Settings, context.Warnings);
+
+            var xamlBindableSeen = 0;
+
             // Collect all renamable symbols first
             var typeRenames = new Dictionary<TypeDef, string>();
             var methodRenames = new Dictionary<MethodDef, string>();
@@ -57,11 +62,14 @@ public class SymbolRenamingObfuscator : IObfuscator
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (ShouldSkipType(type, settings, context.Settings.Exclusions, context.Settings.Inclusions))
+                if (ShouldSkipType(type, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                     continue;
 
+                if (settings.PreserveXaml && ObfuscatorHelpers.LooksLikeXamlBindable(type))
+                    xamlBindableSeen++;
+
                 // Rename type
-                if (settings.RenameTypes && CanRenameType(type, settings))
+                if (settings.RenameTypes && CanRenameType(type, settings, context.Settings.Inclusions))
                 {
                     var newName = _nameGenerator.Generate(type.Name, settings.Mode);
                     typeRenames[type] = newName;
@@ -73,7 +81,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 {
                     foreach (var method in type.Methods)
                     {
-                        if (CanRenameMethod(method, settings, context.Settings.Exclusions))
+                        if (CanRenameMethod(method, settings, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                         {
                             var newName = _nameGenerator.Generate(method.Name, settings.Mode);
                             methodRenames[method] = newName;
@@ -87,7 +95,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 {
                     foreach (var field in type.Fields)
                     {
-                        if (CanRenameField(field, settings, context.Settings.Exclusions))
+                        if (CanRenameField(field, settings, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                         {
                             var newName = _nameGenerator.Generate(field.Name, settings.Mode);
                             fieldRenames[field] = newName;
@@ -100,7 +108,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 {
                     foreach (var property in type.Properties)
                     {
-                        if (CanRenameProperty(property, settings, context.Settings.Exclusions))
+                        if (CanRenameProperty(property, settings, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                         {
                             var newName = _nameGenerator.Generate(property.Name, settings.Mode);
                             propertyRenames[property] = newName;
@@ -117,7 +125,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 {
                     foreach (var evt in type.Events)
                     {
-                        if (CanRenameEvent(evt, settings))
+                        if (CanRenameEvent(evt, settings, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                         {
                             var newName = _nameGenerator.Generate(evt.Name, settings.Mode);
                             eventRenames[evt] = newName;
@@ -207,7 +215,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 {
                     // Respect the same type-level exclusions used for members above (runtime-injected
                     // types, Obfy models, excluded namespaces/types).
-                    if (ShouldSkipType(type, settings, context.Settings.Exclusions, context.Settings.Inclusions))
+                    if (ShouldSkipType(type, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                         continue;
 
                     foreach (var method in type.Methods)
@@ -216,7 +224,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                         // points, virtuals/overrides/interface impls, and public methods when
                         // PreservePublicApi is set. Named-argument / reflection callers of public APIs
                         // are only safe with PreservePublicApi = true (the default is false).
-                        if (!CanRenameMethod(method, settings, context.Settings.Exclusions))
+                        if (!CanRenameMethod(method, settings, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                             continue;
 
                         foreach (var param in method.Parameters)
@@ -229,6 +237,14 @@ public class SymbolRenamingObfuscator : IObfuscator
                         }
                     }
                 }
+            }
+
+            if (settings.PreserveXaml && xamlBindableSeen == 0)
+            {
+                context.Warnings.Add(
+                    "preserveXaml is enabled but no ViewModel/View/DependencyObject types were detected. " +
+                    "Public properties on XAML types may have been renamed. Name view-models *ViewModel / *View, " +
+                    "or ensure WPF/WinUI assemblies are resolvable.");
             }
 
             _logger.LogInformation(
@@ -245,16 +261,18 @@ public class SymbolRenamingObfuscator : IObfuscator
         }
     }
 
-    private bool ShouldSkipType(TypeDef type, SymbolRenamingSettings settings, ExclusionRules exclusions, InclusionRules inclusions)
+    private static bool ShouldSkipType(
+        TypeDef type,
+        ExclusionRules exclusions,
+        InclusionRules inclusions,
+        ICollection<string> warnings)
     {
         if (type.Namespace == "Obfy.Core.Models")
             return true;
 
-        // Skip module type
         if (type.IsGlobalModuleType)
             return true;
 
-        // Check exclusion rules
         if (exclusions.Namespaces.Any(n => MatchesPattern(type.Namespace, n)))
             return true;
 
@@ -267,33 +285,42 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (ObfuscatorHelpers.IsComVisibleTrue(type))
             return true;
 
-        if (ObfuscationAttributeRules.IsExcluded(type, ObfuscationFeature.Renaming))
+        if (ObfuscationAttributeRules.IsExcluded(type, ObfuscationFeature.Renaming, warnings) &&
+            ObfuscationAttributeRules.ApplyToMembers(type, ObfuscationFeature.Renaming))
             return true;
 
-        if (!ObfuscationAttributeRules.MatchesInclusions(type, null, inclusions))
+        if (!ObfuscationAttributeRules.TypeMayContainInclusions(type, inclusions))
             return true;
 
         return false;
     }
 
-    private bool CanRenameType(TypeDef type, SymbolRenamingSettings settings)
+    private bool CanRenameType(TypeDef type, SymbolRenamingSettings settings, InclusionRules inclusions)
     {
-        // Don't rename entry point types
         if (type.Module.EntryPoint?.DeclaringType == type)
             return false;
 
-        // Preserve public API if configured
         if (settings.PreservePublicApi && type.IsPublic)
             return false;
 
-        // Don't rename special types
         if (type.IsRuntimeSpecialName || type.IsSpecialName)
+            return false;
+
+        if (ObfuscationAttributeRules.IsExcluded(type, ObfuscationFeature.Renaming))
+            return false;
+
+        if (inclusions.HasAny && !TypeMatchedInclusions(type, inclusions))
             return false;
 
         return true;
     }
 
-    private bool CanRenameMethod(MethodDef method, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    private bool CanRenameMethod(
+        MethodDef method,
+        SymbolRenamingSettings settings,
+        ExclusionRules exclusions,
+        InclusionRules inclusions,
+        ICollection<string> warnings)
     {
         if (method.IsConstructor || method.IsStaticConstructor)
             return false;
@@ -310,9 +337,10 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (ObfuscatorHelpers.MethodMatchesExclusion(method, exclusions))
             return false;
 
-        if (ObfuscatorHelpers.HasExcludedAttribute(method, exclusions) ||
-            ObfuscatorHelpers.IsComVisibleTrue(method) ||
-            ObfuscationAttributeRules.IsExcluded(method, ObfuscationFeature.Renaming))
+        if (IsMemberProtected(method, exclusions, warnings))
+            return false;
+
+        if (!ObfuscationAttributeRules.MatchesInclusions(method.DeclaringType, method, inclusions))
             return false;
 
         if (method.HasOverrides)
@@ -348,7 +376,20 @@ public class SymbolRenamingObfuscator : IObfuscator
         return false;
     }
 
-    private static bool CanRenameEvent(EventDef evt, SymbolRenamingSettings settings)
+    private static bool IsMemberProtected(IMemberDef member, ExclusionRules exclusions, ICollection<string> warnings) =>
+        ObfuscatorHelpers.HasExcludedAttribute(member, exclusions) ||
+        ObfuscatorHelpers.IsComVisibleTrue(member) ||
+        ObfuscationAttributeRules.IsExcluded(member, ObfuscationFeature.Renaming, warnings);
+
+    private static bool TypeMatchedInclusions(TypeDef type, InclusionRules inclusions) =>
+        ObfuscationAttributeRules.MatchesInclusions(type, null, inclusions);
+
+    private static bool CanRenameEvent(
+        EventDef evt,
+        SymbolRenamingSettings settings,
+        ExclusionRules exclusions,
+        InclusionRules inclusions,
+        ICollection<string> warnings)
     {
         var isPublic = (evt.AddMethod?.IsPublic ?? false) || (evt.RemoveMethod?.IsPublic ?? false);
         if (settings.PreservePublicApi && isPublic)
@@ -357,44 +398,59 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (evt.IsSpecialName || evt.IsRuntimeSpecialName)
             return false;
 
+        if (IsMemberProtected(evt, exclusions, warnings))
+            return false;
+
+        if (inclusions.HasAny && !TypeMatchedInclusions(evt.DeclaringType, inclusions))
+            return false;
+
         return true;
     }
 
-    private bool CanRenameField(FieldDef field, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    private bool CanRenameField(
+        FieldDef field,
+        SymbolRenamingSettings settings,
+        ExclusionRules exclusions,
+        InclusionRules inclusions,
+        ICollection<string> warnings)
     {
-        // Preserve public API if configured
         if (settings.PreservePublicApi && field.IsPublic)
             return false;
 
-        // Don't rename special fields
         if (field.IsRuntimeSpecialName || field.IsSpecialName)
             return false;
 
-        // Don't rename literal fields (constants)
         if (field.IsLiteral)
             return false;
 
-        if (ObfuscatorHelpers.HasExcludedAttribute(field, exclusions) ||
-            ObfuscatorHelpers.IsComVisibleTrue(field))
+        if (IsMemberProtected(field, exclusions, warnings))
+            return false;
+
+        if (inclusions.HasAny && !TypeMatchedInclusions(field.DeclaringType, inclusions))
             return false;
 
         return true;
     }
 
-    private bool CanRenameProperty(PropertyDef property, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    private bool CanRenameProperty(
+        PropertyDef property,
+        SymbolRenamingSettings settings,
+        ExclusionRules exclusions,
+        InclusionRules inclusions,
+        ICollection<string> warnings)
     {
-        // Check if getter/setter is public
         var isPublic = (property.GetMethod?.IsPublic ?? false) || (property.SetMethod?.IsPublic ?? false);
 
         if (settings.PreservePublicApi && isPublic)
             return false;
 
-        // Don't rename special properties
         if (property.IsRuntimeSpecialName || property.IsSpecialName)
             return false;
 
-        if (ObfuscatorHelpers.HasExcludedAttribute(property, exclusions) ||
-            ObfuscatorHelpers.IsComVisibleTrue(property))
+        if (IsMemberProtected(property, exclusions, warnings))
+            return false;
+
+        if (inclusions.HasAny && !TypeMatchedInclusions(property.DeclaringType, inclusions))
             return false;
 
         if (settings.PreserveXaml && isPublic &&

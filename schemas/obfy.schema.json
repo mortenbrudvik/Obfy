@@ -62,7 +62,11 @@
         "renameEvents": { "type": "boolean", "default": true },
         "renameNamespaces": { "type": "boolean", "default": true },
         "preservePublicApi": { "type": "boolean", "default": false },
-        "preserveXaml": { "type": "boolean", "default": false }
+        "preserveXaml": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep public instance properties on ViewModel/View/DependencyObject-like types for XAML bindings."
+        }
       }
     },
     "protection": {
@@ -164,7 +168,7 @@
     },
     "inclusions": {
       "type": "object",
-      "description": "Optional allow-list. When any pattern is set, only matching items are obfuscated.",
+      "description": "Optional allow-list. When any pattern is set, only matching namespaces, types, or methods are candidates (OR). Method-only lists still visit types that contain a matching method.",
       "additionalProperties": true,
       "properties": {
         "namespaces": { "type": "array", "items": { "type": "string" }, "default": [] },
@@ -214,7 +218,10 @@
       "properties": {
         "enabled": { "type": "boolean", "default": false },
         "keyFile": { "type": "string" },
-        "passwordEnvironmentVariable": { "type": "string" }
+        "passwordEnvironmentVariable": {
+          "type": "string",
+          "description": "Environment variable that holds the PFX password. Required for .pfx/.p12; unused for .snk."
+        }
       }
     },
     "runtimeProfile": {

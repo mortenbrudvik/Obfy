@@ -60,10 +60,9 @@ public class StringEncryptionObfuscator : IObfuscator
             if (decryptMethods.Count == 0)
                 throw new InvalidOperationException("String decryptor was not injected.");
 
-            // Process all methods
             foreach (var type in module.GetTypes())
             {
-                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.Strings))
+                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.Strings, context.Warnings))
                     continue;
 
                 foreach (var method in type.Methods)
@@ -71,7 +70,7 @@ public class StringEncryptionObfuscator : IObfuscator
                     if (!method.HasBody)
                         continue;
 
-                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.Strings))
+                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.Strings, context.Warnings))
                         continue;
 
                     var body = method.Body;

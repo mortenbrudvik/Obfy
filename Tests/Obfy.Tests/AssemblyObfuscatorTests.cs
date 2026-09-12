@@ -3115,12 +3115,16 @@ public class AssemblyObfuscatorTests
         type.Name.String.ShouldNotBe("Widget");
     }
 
-    private static void AddObfuscationAttribute(IHasCustomAttribute target, bool exclude, string? feature = null)
+    private static void AddObfuscationAttribute(
+        IHasCustomAttribute target,
+        bool exclude,
+        string? feature = null,
+        bool? applyToMembers = null)
     {
         var module = target switch
         {
             TypeDef t => t.Module,
-            MethodDef m => m.Module,
+            IMemberDef m => m.Module,
             _ => throw new ArgumentOutOfRangeException(nameof(target))
         };
         var attrType = new TypeRefUser(module, "System.Reflection", "ObfuscationAttribute", module.CorLibTypes.AssemblyRef);
@@ -3131,7 +3135,199 @@ public class AssemblyObfuscatorTests
         if (feature != null)
             attr.NamedArguments.Add(new CANamedArgument(
                 false, module.CorLibTypes.String, "Feature", new CAArgument(module.CorLibTypes.String, feature)));
+        if (applyToMembers.HasValue)
+            attr.NamedArguments.Add(new CANamedArgument(
+                false, module.CorLibTypes.Boolean, "ApplyToMembers",
+                new CAArgument(module.CorLibTypes.Boolean, applyToMembers.Value)));
         target.CustomAttributes.Add(attr);
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_ApplyToMembersFalse_RenamesMembersButNotType()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "License");
+        var helper = CreateMethodWithString(type, "Helper", "x");
+        AddObfuscationAttribute(type, exclude: true, applyToMembers: false);
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameTypes = true, RenameMethods = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        type.Name.String.ShouldBe("License");
+        helper.Name.String.ShouldNotBe("Helper");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_HonorsMethodLevelObfuscationExclude()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "C");
+        var keep = CreateMethodWithString(type, "Keep", "a");
+        var hide = CreateMethodWithString(type, "Hide", "b");
+        AddObfuscationAttribute(keep, exclude: true);
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameMethods = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        keep.Name.String.ShouldBe("Keep");
+        hide.Name.String.ShouldNotBe("Hide");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_HonorsPropertyAndEventObfuscationExclude()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "C");
+        var keptProp = CreateTestProperty(type, "Title");
+        var renamedProp = CreateTestProperty(type, "Scratch");
+        AddObfuscationAttribute(keptProp, exclude: true);
+
+        var handler = new TypeRefUser(module, "System", "EventHandler", module.CorLibTypes.AssemblyRef);
+        var add = new MethodDefUser("add_Changed", MethodSig.CreateInstance(module.CorLibTypes.Void, new ClassSig(handler)),
+            MethodAttributes.Private | MethodAttributes.SpecialName | MethodAttributes.HideBySig);
+        add.Body = new CilBody();
+        add.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(add);
+        var evt = new EventDefUser("Changed", handler);
+        evt.AddMethod = add;
+        type.Events.Add(evt);
+        AddObfuscationAttribute(evt, exclude: true);
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming =
+            {
+                Enabled = true,
+                RenameProperties = true,
+                RenameEvents = true,
+                Mode = NamingMode.Sequential
+            }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        keptProp.Name.String.ShouldBe("Title");
+        renamedProp.Name.String.ShouldNotBe("Scratch");
+        evt.Name.String.ShouldBe("Changed");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_HonorsInclusionMethods()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "C");
+        var onlyThis = CreateMethodWithString(type, "OnlyThis", "a");
+        var leaveMe = CreateMethodWithString(type, "LeaveMe", "b");
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameMethods = true, RenameTypes = true, Mode = NamingMode.Sequential },
+            Inclusions = { Methods = { "OnlyThis" } }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        onlyThis.Name.String.ShouldNotBe("OnlyThis");
+        leaveMe.Name.String.ShouldBe("LeaveMe");
+        type.Name.String.ShouldBe("C");
+    }
+
+    [Fact]
+    public async Task StringEncryption_HonorsInclusionMethods()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "C");
+        var onlyThis = CreateMethodWithString(type, "OnlyThis", "EncryptThisSecretString");
+        var leaveMe = CreateMethodWithString(type, "LeaveMe", "KeepThisSecretString");
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 },
+            Inclusions = { Methods = { "OnlyThis" } }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        onlyThis.Body.Instructions.ShouldNotContain(i =>
+            i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "EncryptThisSecretString");
+        leaveMe.Body.Instructions.ShouldContain(i =>
+            i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "KeepThisSecretString");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_FeatureStringsDoesNotKeepTypeName()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Dto");
+        AddObfuscationAttribute(type, exclude: true, feature: "strings");
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameTypes = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        type.Name.String.ShouldNotBe("Dto");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_UnknownFeature_EmitsWarning()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Widget");
+        AddObfuscationAttribute(type, exclude: true, feature: "virtualization");
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameTypes = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        type.Name.String.ShouldNotBe("Widget");
+        context.Warnings.ShouldContain(w => w.Contains("virtualization"));
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_SkipsComVisibleTrueEvents()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "C");
+        var handler = new TypeRefUser(module, "System", "EventHandler", module.CorLibTypes.AssemblyRef);
+        var add = new MethodDefUser("add_Changed", MethodSig.CreateInstance(module.CorLibTypes.Void, new ClassSig(handler)),
+            MethodAttributes.Private | MethodAttributes.SpecialName | MethodAttributes.HideBySig);
+        add.Body = new CilBody();
+        add.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(add);
+        var evt = new EventDefUser("Changed", handler);
+        evt.AddMethod = add;
+        type.Events.Add(evt);
+
+        var com = new TypeRefUser(module, "System.Runtime.InteropServices", "ComVisibleAttribute",
+            module.CorLibTypes.AssemblyRef);
+        var ctor = new MemberRefUser(module, ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.Boolean), com);
+        var attr = new CustomAttribute(ctor);
+        attr.ConstructorArguments.Add(new CAArgument(module.CorLibTypes.Boolean, true));
+        evt.CustomAttributes.Add(attr);
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameEvents = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        evt.Name.String.ShouldBe("Changed");
     }
 
     [Fact]

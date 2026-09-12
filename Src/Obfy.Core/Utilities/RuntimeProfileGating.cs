@@ -4,7 +4,9 @@ using Obfy.Core.Pipeline;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// Disables Windows PE-mutating protections on NativeAOT / Unity IL2CPP targets.
+/// Disables method IL encryption and anti-dump on NativeAOT / Unity IL2CPP targets.
+/// <see cref="Apply"/> mutates the working clone of <see cref="ObfySettings"/> (callers are
+/// cloned first by <c>ObfuscationService</c>) and records report warnings.
 /// </summary>
 public static class RuntimeProfileGating
 {

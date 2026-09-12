@@ -81,6 +81,8 @@ public class ObfuscationService : IObfuscationService
             context.InputPath = inputPath;
             context.OutputPath = target.EffectiveOutputPath;
             RuntimeProfileGating.Apply(settings, context);
+            foreach (var warning in context.Warnings)
+                _logger.LogWarning("{Warning}", warning);
         }
         catch (Exception ex)
         {

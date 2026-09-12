@@ -102,7 +102,7 @@ Source mode is a subset: strings, renaming, control flow only.
 |----|---------|----------|--------|-------|--------|
 | UF-01 | Assembly merging | P1 | Medium | Medium | ✅ Done |
 | UF-04 | Obfuscation report | P1 | Low | Medium | ✅ Done |
-| UF-03 | Assembly signing (re-sign after obfuscation) | P1 | Low | Medium | Planned |
+| UF-03 | Assembly signing (re-sign after obfuscation) | P1 | Low | Medium | ✅ Done |
 | UF-02 | Dependency embedding | P2 | Medium | Medium | Backlog |
 | UF-05 | Incremental obfuscation | P3 | High | Medium | Future |
 

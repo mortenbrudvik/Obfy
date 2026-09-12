@@ -65,10 +65,9 @@ public class ConstantEncryptionObfuscator : IObfuscator
             var decryptSingle = decryptorType.FindMethod("DecryptSingle");
             var decryptDouble = decryptorType.FindMethod("DecryptDouble");
 
-            // Process all methods
             foreach (var type in module.GetTypes())
             {
-                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.Constants))
+                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.Constants, context.Warnings))
                     continue;
 
                 foreach (var method in type.Methods)
@@ -76,7 +75,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
                     if (!method.HasBody)
                         continue;
 
-                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.Constants))
+                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.Constants, context.Warnings))
                         continue;
 
                     var body = method.Body;

@@ -176,6 +176,10 @@ public class ConfigurationWizard
         table.AddRow("Resource Encryption", FormatBool(s.ResourceEncryption.Enabled));
         table.AddRow("Constant Encryption", FormatBool(s.ConstantEncryption.Enabled));
         table.AddRow("Preserve Public API", FormatBool(s.SymbolRenaming.PreservePublicApi));
+        table.AddRow("Preserve XAML", FormatBool(s.SymbolRenaming.PreserveXaml));
+        table.AddRow("Runtime Profile", s.RuntimeProfile.ToString());
+        if (s.Signing.Enabled)
+            table.AddRow("Signing", s.Signing.KeyFile ?? "(enabled, no key file)");
 
         if (s.Exclusions.Namespaces.Count > 0)
         {
@@ -187,7 +191,7 @@ public class ConfigurationWizard
 
     private static string FormatBool(bool value) => value ? "[green]Yes[/]" : "[dim]No[/]";
 
-    private static void ApplyUseCaseDefaults(WizardContext context)
+    internal static void ApplyUseCaseDefaults(WizardContext context)
     {
         switch (context.UseCase)
         {

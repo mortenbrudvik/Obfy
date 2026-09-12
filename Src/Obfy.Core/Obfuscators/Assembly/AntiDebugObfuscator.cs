@@ -57,10 +57,14 @@ public class AntiDebugObfuscator : IObfuscator
                 {
                     if (type == antiDebugType || ObfuscatorHelpers.IsRuntimeHelper(type))
                         continue;
+                    if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.All, context.Warnings))
+                        continue;
 
                     foreach (var method in type.Methods)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
+                        if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.All, context.Warnings))
+                            continue;
                         if (InjectDebuggerCheck(method, antiDebugType))
                             stats.ProtectionsApplied++;
                     }

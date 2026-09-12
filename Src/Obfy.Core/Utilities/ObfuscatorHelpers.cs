@@ -116,6 +116,12 @@ public static class ObfuscatorHelpers
         return false;
     }
 
+    /// <summary>
+    /// Heuristic for XAML-bindable types: name ends with ViewModel or View (also matches
+    /// Overview/Preview), an interface name contains INotifyPropertyChanged, a field type is
+    /// DependencyProperty, or a resolvable base name contains DependencyObject. Framework WPF
+    /// bases often fail <c>ResolveTypeDef()</c> and fall through to the suffix checks.
+    /// </summary>
     public static bool LooksLikeXamlBindable(TypeDef type)
     {
         var name = type.Name.String;

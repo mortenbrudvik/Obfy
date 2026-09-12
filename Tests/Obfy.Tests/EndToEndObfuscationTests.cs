@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
 using Autofac;
 using dnlib.DotNet;
 using Microsoft.CodeAnalysis;
@@ -527,6 +528,125 @@ public class EndToEndObfuscationTests
         {
             try { Directory.Delete(dir, true); } catch { /* ignore */ }
         }
+    }
+
+    [Fact]
+    public async Task MethodEncryptionAndAntiTamper_WithSnk_StillRunsAndStaysSigned()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get()
+                {
+                    int x = 7;
+                    x = x + 35;
+                    return x;
+                }
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-sign-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var snkPath = Path.Combine(dir, "test.snk");
+            WriteSnk(snkPath);
+
+            var input = CompileToAssembly(source, dir, "SignMcLib");
+            var output = Path.Combine(dir, "SignMcLib.obf.dll");
+
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Protection =
+                {
+                    MethodEncryption = true,
+                    AntiTamper = { Enabled = true }
+                },
+                Signing = { Enabled = true, KeyFile = snkPath }
+            };
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            using var loaded = ModuleDefMD.Load(File.ReadAllBytes(output));
+            loaded.IsStrongNameSigned.ShouldBeTrue();
+            loaded.GetTypes().ShouldContain(t => t.Name == "<MethodCrypt>");
+            loaded.GetTypes().ShouldContain(t => t.Name == "<AntiTamper>");
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(42);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task CompiledObfuscationAttribute_FeatureRenaming_DoesNotSkipStrings()
+    {
+        const string source = """
+            using System.Reflection;
+            [Obfuscation(Exclude = true, Feature = "renaming")]
+            public static class Lib
+            {
+                public static string Get() => "EncryptThisSecretString";
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-attr-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "AttrLib");
+            var output = Path.Combine(dir, "AttrLib.obf.dll");
+
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = true, MinStringLength = 3 },
+                SymbolRenaming = { Enabled = true, RenameTypes = true, PreservePublicApi = false, Mode = NamingMode.Sequential }
+            };
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            using var loaded = ModuleDefMD.Load(File.ReadAllBytes(output));
+            loaded.Types.ShouldContain(t => t.Name == "Lib");
+            var lib = loaded.Types.Single(t => t.Name == "Lib");
+            var get = lib.Methods.Single(m => m.Name == "Get");
+            get.Body.Instructions.ShouldNotContain(i =>
+                i.OpCode.Code == dnlib.DotNet.Emit.Code.Ldstr && (string)i.Operand! == "EncryptThisSecretString");
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe("EncryptThisSecretString");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    private static void WriteSnk(string path)
+    {
+#pragma warning disable SYSLIB0028, CA1416
+        var cspParams = new CspParameters { KeyNumber = (int)KeyNumber.Signature };
+        using var csp = new RSACryptoServiceProvider(1024, cspParams);
+        File.WriteAllBytes(path, csp.ExportCspBlob(includePrivateParameters: true));
+#pragma warning restore SYSLIB0028, CA1416
     }
 
     [Theory]

@@ -76,6 +76,8 @@ public class SourceSymbolRenamer : IObfuscator
 
                     if (!ShouldRenameDeclaration(node, definition, settings, exclusions))
                         continue;
+                    if (ObfuscationAttributeRules.IsExcluded(definition, ObfuscationFeature.Renaming))
+                        continue;
 
                     var newName = _nameGenerator.Generate(definition.Name, settings.Mode);
                     renames[definition] = newName;

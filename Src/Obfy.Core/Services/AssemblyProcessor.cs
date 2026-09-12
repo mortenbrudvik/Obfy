@@ -60,65 +60,63 @@ public class AssemblyProcessor : IAssemblyProcessor
             Directory.CreateDirectory(directory);
         }
 
-        // Configure writer options
+        // StrongNameKey on the first write allocates the signature directory. After IL XOR,
+        // SignInPlace refreshes the blob. Anti-tamper hashes the whole file except its own
+        // slot, so the hash must be patched last (after the final signature).
+        var strongNameKey = AssemblySigner.TryLoadKey(context.Settings.Signing);
+
         var writerOptions = new ModuleWriterOptions(context.Module)
         {
-            // Preserve metadata tokens for better compatibility
-            MetadataOptions = { Flags = MetadataFlags.PreserveAll }
+            MetadataOptions = { Flags = MetadataFlags.PreserveAll },
+            StrongNameKey = strongNameKey
         };
 
-        // Remove debug info if configured
         if (context.Settings.Metadata.RemoveDebugInfo)
         {
             writerOptions.WritePdb = false;
         }
 
-        if (context.Settings.Protection.AntiTamper.Enabled)
+        var antiTamper = context.Settings.Protection.AntiTamper.Enabled;
+        if (antiTamper && context.AntiTamperMetadata is null)
         {
-            if (context.AntiTamperMetadata is null)
-            {
-                throw new InvalidOperationException("Anti-tamper is enabled but the runtime type was not injected.");
-            }
-
-            var tempPath = Path.Combine(Path.GetTempPath(), $"obfy_{Guid.NewGuid():N}.dll");
-
-            try
-            {
-                context.Module.Write(tempPath, writerOptions);
-                if (context.MethodEncryptionMetadata is not null)
-                    MethodBodyPeEncryptor.Encrypt(tempPath, context.MethodEncryptionMetadata);
-                AssemblyHashComputer.PatchIntegrityHash(tempPath);
-
-                if (File.Exists(outputPath))
-                {
-                    File.Delete(outputPath);
-                }
-                File.Move(tempPath, outputPath);
-            }
-            finally
-            {
-                if (File.Exists(tempPath))
-                {
-                    try
-                    {
-                        File.Delete(tempPath);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to delete temp assembly {Path}", tempPath);
-                    }
-                }
-            }
+            throw new InvalidOperationException("Anti-tamper is enabled but the runtime type was not injected.");
         }
-        else
+
+        var writePath = antiTamper
+            ? Path.Combine(Path.GetTempPath(), $"obfy_{Guid.NewGuid():N}.dll")
+            : outputPath;
+
+        try
         {
-            context.Module.Write(outputPath, writerOptions);
+            context.Module.Write(writePath, writerOptions);
             if (context.MethodEncryptionMetadata is not null)
-                MethodBodyPeEncryptor.Encrypt(outputPath, context.MethodEncryptionMetadata);
-        }
+                MethodBodyPeEncryptor.Encrypt(writePath, context.MethodEncryptionMetadata);
+            if (antiTamper)
+                AssemblyHashComputer.PatchIntegrityHash(writePath);
+            if (strongNameKey is not null)
+                AssemblySigner.SignInPlace(writePath, strongNameKey);
 
-        if (context.Settings.Signing.Enabled)
-            AssemblySigner.Sign(outputPath, context.Settings.Signing);
+            if (antiTamper)
+            {
+                if (File.Exists(outputPath))
+                    File.Delete(outputPath);
+                File.Move(writePath, outputPath);
+            }
+        }
+        finally
+        {
+            if (antiTamper && File.Exists(writePath))
+            {
+                try
+                {
+                    File.Delete(writePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to delete temp assembly {Path}", writePath);
+                }
+            }
+        }
 
         if (context.Module is IDisposable disposable)
         {

@@ -69,6 +69,18 @@ public partial class SettingsViewModel : ObservableObject
     private bool _preserveXaml = false;
 
     [ObservableProperty]
+    private RuntimeProfile _runtimeProfile = RuntimeProfile.Default;
+
+    [ObservableProperty]
+    private bool _signingEnabled = false;
+
+    [ObservableProperty]
+    private string _signingKeyFile = string.Empty;
+
+    [ObservableProperty]
+    private string _signingPasswordEnvironmentVariable = string.Empty;
+
+    [ObservableProperty]
     private bool _referenceProxyEnabled = false;
 
     [ObservableProperty]
@@ -163,6 +175,10 @@ public partial class SettingsViewModel : ObservableObject
     public ObservableCollection<string> ExcludedTypes { get; } = new();
     public ObservableCollection<string> ExcludedMethods { get; } = new();
 
+    public ObservableCollection<string> IncludedNamespaces { get; } = new();
+    public ObservableCollection<string> IncludedTypes { get; } = new();
+    public ObservableCollection<string> IncludedMethods { get; } = new();
+
     [ObservableProperty]
     private string _newExcludedNamespace = string.Empty;
 
@@ -216,6 +232,7 @@ public partial class SettingsViewModel : ObservableObject
     public static EncryptionAlgorithm[] AvailableAlgorithms { get; } = Enum.GetValues<EncryptionAlgorithm>();
     public static ControlFlowMode[] AvailableModes { get; } = Enum.GetValues<ControlFlowMode>();
     public static NamingMode[] AvailableNamingModes { get; } = Enum.GetValues<NamingMode>();
+    public static RuntimeProfile[] AvailableRuntimeProfiles { get; } = Enum.GetValues<RuntimeProfile>();
 
     partial void OnLevelChanged(ObfuscationLevel value)
     {
@@ -398,6 +415,21 @@ public partial class SettingsViewModel : ObservableObject
                 Types = ExcludedTypes.ToList(),
                 Methods = ExcludedMethods.ToList(),
                 Attributes = new List<string>(new ExclusionRules().Attributes)
+            },
+            Inclusions = new InclusionRules
+            {
+                Namespaces = IncludedNamespaces.ToList(),
+                Types = IncludedTypes.ToList(),
+                Methods = IncludedMethods.ToList()
+            },
+            RuntimeProfile = this.RuntimeProfile,
+            Signing = new SigningSettings
+            {
+                Enabled = SigningEnabled,
+                KeyFile = string.IsNullOrWhiteSpace(SigningKeyFile) ? null : SigningKeyFile,
+                PasswordEnvironmentVariable = string.IsNullOrWhiteSpace(SigningPasswordEnvironmentVariable)
+                    ? null
+                    : SigningPasswordEnvironmentVariable
             }
         };
     }
@@ -491,6 +523,21 @@ public partial class SettingsViewModel : ObservableObject
         {
             ExcludedMethods.Add(method);
         }
+
+        IncludedNamespaces.Clear();
+        foreach (var ns in settings.Inclusions.Namespaces)
+            IncludedNamespaces.Add(ns);
+        IncludedTypes.Clear();
+        foreach (var type in settings.Inclusions.Types)
+            IncludedTypes.Add(type);
+        IncludedMethods.Clear();
+        foreach (var method in settings.Inclusions.Methods)
+            IncludedMethods.Add(method);
+
+        RuntimeProfile = settings.RuntimeProfile;
+        SigningEnabled = settings.Signing.Enabled;
+        SigningKeyFile = settings.Signing.KeyFile ?? string.Empty;
+        SigningPasswordEnvironmentVariable = settings.Signing.PasswordEnvironmentVariable ?? string.Empty;
         }
         finally
         {

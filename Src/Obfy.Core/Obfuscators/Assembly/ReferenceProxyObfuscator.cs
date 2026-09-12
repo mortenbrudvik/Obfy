@@ -56,7 +56,7 @@ public class ReferenceProxyObfuscator : IObfuscator
                 // proxy assembly-visible helper entry points. User private methods are still proxied.
                 if (ObfuscatorHelpers.IsRuntimeHelper(type))
                     continue;
-                if (ObfuscatorHelpers.IsExcluded(type, context.Settings.Exclusions))
+                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.All, context.Warnings))
                     continue;
 
                 foreach (var method in type.Methods)
@@ -64,7 +64,7 @@ public class ReferenceProxyObfuscator : IObfuscator
                     cancellationToken.ThrowIfCancellationRequested();
                     if (!method.HasBody)
                         continue;
-                    if (ObfuscatorHelpers.MethodMatchesExclusion(method, context.Settings.Exclusions))
+                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.All, context.Warnings))
                         continue;
 
                     var modified = false;

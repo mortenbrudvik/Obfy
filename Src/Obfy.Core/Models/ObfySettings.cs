@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Obfy.Core.Models;
 
@@ -59,8 +60,9 @@ public class ObfySettings
     public ExclusionRules Exclusions { get; init; } = new();
 
     /// <summary>
-    /// Optional allow-list. When any pattern is set, only matching types/methods are obfuscated
-    /// (exclusions still apply).
+    /// Optional allow-list. Empty lists mean no allow-list. When any pattern is set, only matching
+    /// namespaces, types, or methods are candidates for renaming, control flow, strings, and constants
+    /// (exclusions still apply). Method-only lists still visit types that contain a matching method.
     /// </summary>
     public InclusionRules Inclusions { get; init; } = new();
 
@@ -70,7 +72,8 @@ public class ObfySettings
     public bool PostBuildEnabled { get; set; } = false;
 
     /// <summary>
-    /// Target runtime. NativeAOT and Unity IL2CPP disable PE-header tricks (method encryption, anti-dump).
+    /// Target runtime. NativeAOT and Unity IL2CPP disable method IL encryption and anti-dump
+    /// (both mutate the PE / call kernel32). The pipeline emits report warnings when it turns them off.
     /// </summary>
     public RuntimeProfile RuntimeProfile { get; set; } = RuntimeProfile.Default;
 
@@ -116,8 +119,8 @@ public class ObfySettings
             // Each non-Custom branch assigns this fixed set of flags (enabled bits, intensity,
             // constant-encryption algorithm, metadata/debug) so *those* values do not leak from a
             // previously applied level. Other nested settings (control-flow mode, string/resource
-            // algorithms, naming mode, PreservePublicApi, junk counts, include/exclude patterns)
-            // keep their prior or default values.
+            // algorithms, naming mode, PreservePublicApi, PreserveXaml, junk counts, include/exclude
+            // patterns, RuntimeProfile, Signing) keep their prior or default values.
             case ObfuscationLevel.Minimal:
                 StringEncryption.Enabled = false;
                 ControlFlow.Enabled = false;
@@ -197,6 +200,29 @@ public class ObfySettings
         ValidateObject(ConstantEncryption);
         ValidateObject(AssemblyMerge);
         ValidateObject(Exclusions);
+        ValidateObject(Inclusions);
+        ValidateObject(Signing);
+
+        Inclusions.Namespaces ??= new();
+        Inclusions.Types ??= new();
+        Inclusions.Methods ??= new();
+
+        if (Signing.Enabled)
+        {
+            var keyFile = Signing.KeyFile;
+            if (string.IsNullOrWhiteSpace(keyFile))
+            {
+                throw new ValidationException("Signing is enabled but no key file was specified.");
+            }
+
+            if ((keyFile.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase) ||
+                 keyFile.EndsWith(".p12", StringComparison.OrdinalIgnoreCase)) &&
+                string.IsNullOrWhiteSpace(Signing.PasswordEnvironmentVariable))
+            {
+                throw new ValidationException(
+                    "PFX signing requires Signing.PasswordEnvironmentVariable to name an environment variable that holds the password.");
+            }
+        }
 
         static void ValidateObject(object instance) =>
             Validator.ValidateObject(instance, new ValidationContext(instance), validateAllProperties: true);
@@ -355,8 +381,11 @@ public class SymbolRenamingSettings
     public bool PreservePublicApi { get; set; } = false;
 
     /// <summary>
-    /// Preserve public instance properties on view-model / DependencyObject-like types for XAML bindings.
-    /// Off by default; the Desktop wizard preset turns it on.
+    /// Preserve public instance properties on types that look XAML-bindable: name ends with
+    /// ViewModel/View, implements INotifyPropertyChanged, declares DependencyProperty fields,
+    /// or has a resolvable base whose name contains DependencyObject. Framework WPF bases often
+    /// fail to resolve, so prefer the *ViewModel suffix. Off by default; Desktop wizard / Settings
+    /// panel can turn it on.
     /// </summary>
     public bool PreserveXaml { get; set; } = false;
 }
@@ -538,7 +567,9 @@ public class ExclusionRules
 }
 
 /// <summary>
-/// Optional allow-list. Empty lists mean "no allow-list" (everything is a candidate).
+/// Optional allow-list. Empty lists mean no allow-list (everything is a candidate).
+/// Patterns use the same wildcards as exclusions and match short names. Dimensions are OR'd:
+/// a type matches if its namespace, type name, or (for methods) method name hits a pattern.
 /// </summary>
 public class InclusionRules
 {
@@ -548,7 +579,9 @@ public class InclusionRules
 
     public List<string> Methods { get; set; } = new();
 
-    public bool HasAny => Namespaces.Count > 0 || Types.Count > 0 || Methods.Count > 0;
+    [JsonIgnore]
+    public bool HasAny =>
+        (Namespaces?.Count ?? 0) > 0 || (Types?.Count ?? 0) > 0 || (Methods?.Count ?? 0) > 0;
 }
 
 /// <summary>
@@ -568,10 +601,13 @@ public class SigningSettings
 {
     public bool Enabled { get; set; }
 
-    /// <summary>Path to an .snk or .pfx file.</summary>
+    /// <summary>Path to an .snk, .pfx, or .p12 file.</summary>
     public string? KeyFile { get; set; }
 
-    /// <summary>Environment variable holding the PFX password, if needed.</summary>
+    /// <summary>
+    /// Name of the environment variable that holds the PFX password. Required for .pfx/.p12;
+    /// unused for .snk. Empty PFX passwords are not supported.
+    /// </summary>
     public string? PasswordEnvironmentVariable { get; set; }
 }
 

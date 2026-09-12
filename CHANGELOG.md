@@ -28,9 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default JSON/XML attribute exclusions, `ComVisible(true)` skip, and `symbolRenaming.preserveXaml` for XAML bindings
 - `System.Reflection.ObfuscationAttribute` and optional `inclusions` allow-list
 - `runtimeProfile` (NativeAot / UnityIl2Cpp) disables method encryption and anti-dump with a warning
-- Strong-name re-signing after obfuscation (`signing.keyFile`, optional PFX password env var)
+- Strong-name re-signing after obfuscation (`signing.keyFile`; PFX password from `signing.passwordEnvironmentVariable`, required for `.pfx`/`.p12`)
 
 ### Changed
+- Strong-name signing refreshes the signature blob in place after method-IL XOR; anti-tamper hashing skips the signature so Aggressive + `signing.keyFile` keeps both protections
 - Method IL encryption records generic skips in the report and uses a distinct XOR key per method; warns when many methods are skipped because they are generic
 - Method IL encryption always warns that it is Windows-only / not NativeAOT; decrypt failure leaves ciphertext
 - Anti-debug scatters `Check` into user methods, adds `CheckRemoteDebuggerPresent` and a TickCount timing probe, and cycles failure through `Exit` / `FailFast` / `throw` inside `Check`

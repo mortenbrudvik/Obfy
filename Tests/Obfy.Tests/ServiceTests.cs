@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Microsoft.CodeAnalysis;
@@ -176,6 +177,83 @@ public class ServiceTests : IDisposable
         signed.IsStrongNameSigned.ShouldBeTrue();
         signed.Assembly.PublicKey.ShouldNotBeNull();
         signed.Assembly.PublicKey.Data.Length.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task AssemblyProcessor_Save_MissingKeyFilePath_Fails()
+    {
+        var assemblyPath = CreateTestAssembly("Unsigned2.dll");
+        var outputPath = Path.Combine(_tempDirectory, "signed-missing-path.dll");
+        var processor = new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object);
+        var settings = new ObfySettings
+        {
+            Signing = { Enabled = true, KeyFile = Path.Combine(_tempDirectory, "no-such.snk") }
+        };
+        var context = await processor.LoadAsync(assemblyPath, settings);
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await processor.SaveAsync(context, outputPath));
+        ex.Message.ShouldContain("not found");
+    }
+
+    [Fact]
+    public async Task AssemblyProcessor_Save_PfxWithoutPasswordEnv_Fails()
+    {
+        var pfxPath = Path.Combine(_tempDirectory, "key.pfx");
+        WritePfx(pfxPath, "secret");
+        var assemblyPath = CreateTestAssembly("PfxNoPass.dll");
+        var outputPath = Path.Combine(_tempDirectory, "pfx-nopass.dll");
+        var processor = new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object);
+        var settings = new ObfySettings
+        {
+            Signing = { Enabled = true, KeyFile = pfxPath }
+        };
+        var context = await processor.LoadAsync(assemblyPath, settings);
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await processor.SaveAsync(context, outputPath));
+        ex.Message.ShouldContain("PasswordEnvironmentVariable");
+    }
+
+    [Fact]
+    public async Task AssemblyProcessor_Save_PfxWithPassword_Signs()
+    {
+        var pfxPath = Path.Combine(_tempDirectory, "ok.pfx");
+        WritePfx(pfxPath, "secret");
+        const string env = "OBFY_TEST_PFX_PASSWORD";
+        Environment.SetEnvironmentVariable(env, "secret");
+        try
+        {
+            var assemblyPath = CreateTestAssembly("PfxOk.dll");
+            var outputPath = Path.Combine(_tempDirectory, "pfx-ok.dll");
+            var processor = new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object);
+            var settings = new ObfySettings
+            {
+                Signing =
+                {
+                    Enabled = true,
+                    KeyFile = pfxPath,
+                    PasswordEnvironmentVariable = env
+                }
+            };
+            var context = await processor.LoadAsync(assemblyPath, settings);
+            await processor.SaveAsync(context, outputPath);
+
+            using var signed = ModuleDefMD.Load(File.ReadAllBytes(outputPath));
+            signed.IsStrongNameSigned.ShouldBeTrue();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(env, null);
+        }
+    }
+
+    private static void WritePfx(string path, string password)
+    {
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("CN=ObfyTest", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        File.WriteAllBytes(path, cert.Export(X509ContentType.Pfx, password));
     }
 
     #endregion

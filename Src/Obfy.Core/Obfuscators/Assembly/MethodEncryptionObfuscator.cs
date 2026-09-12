@@ -46,10 +46,14 @@ public class MethodEncryptionObfuscator : IObfuscator
                     continue;
                 if (type.IsGlobalModuleType)
                     continue;
+                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.All, context.Warnings))
+                    continue;
 
                 foreach (var method in type.Methods)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.All, context.Warnings))
+                        continue;
                     if (!IsEncryptCandidate(method))
                         continue;
 

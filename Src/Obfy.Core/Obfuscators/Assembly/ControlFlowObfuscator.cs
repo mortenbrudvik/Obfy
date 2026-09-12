@@ -47,7 +47,7 @@ public class ControlFlowObfuscator : IObfuscator
             foreach (var type in module.GetTypes())
             {
                 var isHelper = ObfuscatorHelpers.IsRuntimeHelper(type);
-                if (!isHelper && !ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.ControlFlow))
+                if (!isHelper && !ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.ControlFlow, context.Warnings))
                     continue;
 
                 var intensity = isHelper ? 100 : settings.Intensity;
@@ -58,7 +58,7 @@ public class ControlFlowObfuscator : IObfuscator
 
                     if (!CanObfuscateMethod(method))
                         continue;
-                    if (!isHelper && !ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.ControlFlow))
+                    if (!isHelper && !ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.ControlFlow, context.Warnings))
                         continue;
 
                     try

@@ -567,6 +567,57 @@ public class SettingsViewModelTests
         restored.ExcludedNamespaces.ShouldContain("Test.Namespace");
     }
 
+    [Fact]
+    public void ToObfySettings_ConvertsPreserveXamlRuntimeProfileSigningAndInclusions()
+    {
+        var viewModel = new SettingsViewModel
+        {
+            PreserveXaml = true,
+            RuntimeProfile = RuntimeProfile.NativeAot,
+            SigningEnabled = true,
+            SigningKeyFile = "key.snk",
+            SigningPasswordEnvironmentVariable = "OBFY_PFX"
+        };
+        viewModel.IncludedMethods.Add("OnlyThis");
+
+        var settings = viewModel.ToObfySettings();
+
+        settings.SymbolRenaming.PreserveXaml.ShouldBeTrue();
+        settings.RuntimeProfile.ShouldBe(RuntimeProfile.NativeAot);
+        settings.Signing.Enabled.ShouldBeTrue();
+        settings.Signing.KeyFile.ShouldBe("key.snk");
+        settings.Signing.PasswordEnvironmentVariable.ShouldBe("OBFY_PFX");
+        settings.Inclusions.Methods.ShouldContain("OnlyThis");
+    }
+
+    [Fact]
+    public void FromObfySettings_RoundTripsRuntimeProfileSigningAndInclusions()
+    {
+        var settings = new ObfySettings
+        {
+            RuntimeProfile = RuntimeProfile.UnityIl2Cpp,
+            Signing = { Enabled = true, KeyFile = @"C:\keys\lib.snk" },
+            Inclusions = { Types = { "OnlyThis" }, Methods = { "Secret*" } },
+            SymbolRenaming = { PreserveXaml = true }
+        };
+
+        var viewModel = new SettingsViewModel();
+        viewModel.FromObfySettings(settings);
+        var roundTripped = viewModel.ToObfySettings();
+
+        viewModel.RuntimeProfile.ShouldBe(RuntimeProfile.UnityIl2Cpp);
+        viewModel.SigningEnabled.ShouldBeTrue();
+        viewModel.SigningKeyFile.ShouldBe(@"C:\keys\lib.snk");
+        viewModel.PreserveXaml.ShouldBeTrue();
+        viewModel.IncludedTypes.ShouldContain("OnlyThis");
+        viewModel.IncludedMethods.ShouldContain("Secret*");
+
+        roundTripped.RuntimeProfile.ShouldBe(RuntimeProfile.UnityIl2Cpp);
+        roundTripped.Signing.KeyFile.ShouldBe(@"C:\keys\lib.snk");
+        roundTripped.Inclusions.Types.ShouldContain("OnlyThis");
+        roundTripped.SymbolRenaming.PreserveXaml.ShouldBeTrue();
+    }
+
     #endregion
 
     #region Exclusion Collection Tests

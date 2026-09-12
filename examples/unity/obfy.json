@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json",
+  "level": "custom",
+  "runtimeProfile": "UnityIl2Cpp",
+  "stringEncryption": { "enabled": true, "minStringLength": 3 },
+  "controlFlow": { "enabled": true, "mode": "Switch", "intensity": 40 },
+  "symbolRenaming": { "enabled": true, "preservePublicApi": false },
+  "protection": {
+    "antiDebug": true,
+    "antiDump": false,
+    "methodEncryption": false,
+    "referenceProxy": true
+  },
+  "exclusions": {
+    "namespaces": ["UnityEngine.*", "Unity.*"]
+  }
+}

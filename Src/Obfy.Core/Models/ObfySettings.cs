@@ -66,6 +66,16 @@ public class ObfySettings
     public WatermarkSettings Watermark { get; init; } = new();
 
     /// <summary>
+    /// Skip re-obfuscation when the input and settings have not changed (CI cache).
+    /// </summary>
+    public IncrementalSettings Incremental { get; init; } = new();
+
+    /// <summary>
+    /// Replace selected method bodies with a custom bytecode interpreter.
+    /// </summary>
+    public VirtualizationSettings Virtualization { get; init; } = new();
+
+    /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
     public ExclusionRules Exclusions { get; init; } = new();
@@ -700,6 +710,25 @@ public class WatermarkSettings : IValidatableObject
                 new[] { nameof(Id) });
         }
     }
+}
+
+/// <summary>
+/// Reuse a previous output when the input bytes and settings have not changed.
+/// </summary>
+public class IncrementalSettings
+{
+    public bool Enabled { get; set; }
+}
+
+/// <summary>
+/// Selective IL virtualization for simple static int methods (no EH, no generics, arithmetic only).
+/// </summary>
+public class VirtualizationSettings
+{
+    public bool Enabled { get; set; }
+
+    [Range(1, 256)]
+    public int MaxMethods { get; set; } = 32;
 }
 
 /// <summary>

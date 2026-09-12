@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--proxy-external` help text matches that it enables `--reference-proxy`
 
 ### Added
+- Incremental obfuscation cache (`incremental.enabled`)
+- Selective IL virtualization for simple static int methods (`virtualization.enabled`)
 - MSIX packaging for Microsoft Store / sideload (`build/build-msix.ps1`)
 - Desktop UI snackbars for save/load/complete/fail, keyboard shortcuts, and an Open output folder action
 - Settings panel controls for anti-decompiler, assembly merge, exclusions, and tamper-check sites

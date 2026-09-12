@@ -105,7 +105,7 @@ public class EndToEndObfuscationTests
         return path;
     }
 
-    private static object? LoadAndInvoke(string assemblyPath, string typeName, string methodName)
+    private static object? LoadAndInvoke(string assemblyPath, string typeName, string methodName, params object[] args)
     {
         var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
         try
@@ -115,11 +115,90 @@ public class EndToEndObfuscationTests
             type.ShouldNotBeNull();
             var method = type!.GetMethod(methodName);
             method.ShouldNotBeNull();
-            return method!.Invoke(null, null);
+            return method!.Invoke(null, args.Length == 0 ? null : args);
         }
         finally
         {
             alc.Unload();
+        }
+    }
+
+    [Fact]
+    public async Task Incremental_ReusesCachedOutput()
+    {
+        const string source = "public static class Lib { public static int Get() => 3; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-inc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "IncLib");
+            var output = Path.Combine(dir, "IncLib.obf.dll");
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Incremental = { Enabled = true }
+            };
+
+            var first = await service.ObfuscateAsync(input, output, settings);
+            first.Success.ShouldBeTrue(first.ErrorMessage);
+            first.Warnings.ShouldNotContain(w => w.Contains("Incremental: reused"));
+            var stamp = File.GetLastWriteTimeUtc(output);
+
+            await Task.Delay(50);
+            var second = await service.ObfuscateAsync(input, output, settings);
+            second.Success.ShouldBeTrue(second.ErrorMessage);
+            second.Warnings.ShouldContain(w => w.Contains("Incremental: reused cached output"));
+            File.GetLastWriteTimeUtc(output).ShouldBe(stamp);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(3);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Virtualization_RunsSimpleArithmeticOnRealAssembly()
+    {
+        const string source = "public static class Lib { public static int Add(int a, int b) => a + b; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-vm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "VmLib");
+            var output = Path.Combine(dir, "VmLib.obf.dll");
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Virtualization = { Enabled = true }
+            };
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
+
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
+                loaded.Types.ShouldContain(t => t.Name == "<Vm>");
+
+            LoadAndInvoke(output, "Lib", "Add", 2, 3).ShouldBe(5);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
         }
     }
 

@@ -55,7 +55,8 @@ public class SourceStringEncryptor : IObfuscator
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var root = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
-                var rewriter = new StringEncryptionRewriter(settings, key, encryptedStrings);
+                var model = compilation.GetSemanticModel(tree);
+                var rewriter = new StringEncryptionRewriter(settings, key, encryptedStrings, model);
                 var newRoot = rewriter.Visit(root);
 
                 stats.StringsEncrypted += rewriter.EncryptedCount;
@@ -144,17 +145,20 @@ public class SourceStringEncryptor : IObfuscator
         private readonly StringEncryptionSettings _settings;
         private readonly byte[] _key;
         private readonly List<(string Original, string Encrypted)> _encryptedStrings;
+        private readonly SemanticModel _model;
 
         public int EncryptedCount { get; private set; }
 
         public StringEncryptionRewriter(
             StringEncryptionSettings settings,
             byte[] key,
-            List<(string Original, string Encrypted)> encryptedStrings)
+            List<(string Original, string Encrypted)> encryptedStrings,
+            SemanticModel model)
         {
             _settings = settings;
             _key = key;
             _encryptedStrings = encryptedStrings;
+            _model = model;
         }
 
         public override SyntaxNode? VisitLiteralExpression(LiteralExpressionSyntax node)
@@ -163,6 +167,10 @@ public class SourceStringEncryptor : IObfuscator
                 return base.VisitLiteralExpression(node);
 
             if (node.Ancestors().Any(a => a is AttributeArgumentSyntax or AttributeSyntax))
+                return base.VisitLiteralExpression(node);
+
+            var enclosing = _model.GetEnclosingSymbol(node.SpanStart);
+            if (enclosing != null && ObfuscationAttributeRules.IsExcluded(enclosing, ObfuscationFeature.Strings))
                 return base.VisitLiteralExpression(node);
 
             var value = node.Token.ValueText;

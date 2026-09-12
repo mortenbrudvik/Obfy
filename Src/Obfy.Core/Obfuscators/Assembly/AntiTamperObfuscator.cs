@@ -237,12 +237,16 @@ public class AntiTamperObfuscator : IObfuscator
         var computedLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
         var offsetLocal = new Local(module.CorLibTypes.Int32);
         var iLocal = new Local(module.CorLibTypes.Int32);
+        var snOffLocal = new Local(module.CorLibTypes.Int32);
+        var snSizeLocal = new Local(module.CorLibTypes.Int32);
         body.Variables.Add(pathLocal);
         body.Variables.Add(bytesLocal);
         body.Variables.Add(storedLocal);
         body.Variables.Add(computedLocal);
         body.Variables.Add(offsetLocal);
         body.Variables.Add(iLocal);
+        body.Variables.Add(snOffLocal);
+        body.Variables.Add(snSizeLocal);
 
         var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
         var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
@@ -279,6 +283,10 @@ public class AntiTamperObfuscator : IObfuscator
                 module.CorLibTypes.Int32,
                 module.CorLibTypes.Int32),
             bufferType);
+        var bitConverterType = module.CorLibTypes.GetTypeRef("System", "BitConverter");
+        var toInt32 = new MemberRefUser(module, "ToInt32",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32, new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.Int32),
+            bitConverterType);
 
         var skipLabel = Instruction.Create(OpCodes.Ret);
         var exitLabel = Instruction.Create(OpCodes.Ldc_I4_1);
@@ -343,7 +351,54 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.CreateLdcI4(AssemblyHashComputer.HashSize));
         body.Instructions.Add(Instruction.Create(OpCodes.Blt, zeroBody));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, sha256Create));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(AssemblyHashComputer.HashSize));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, toInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, snOffLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(AssemblyHashComputer.HashSize + 4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, toInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, snSizeLocal));
+
+        var afterSn = Instruction.Create(OpCodes.Call, sha256Create);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, snOffLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, afterSn));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, snSizeLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ble, afterSn));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, snOffLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, snSizeLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bgt, afterSn));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, iLocal));
+        var snCheck = Instruction.Create(OpCodes.Ldloc, iLocal);
+        var snBody = Instruction.Create(OpCodes.Ldloc, bytesLocal);
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, snCheck));
+        body.Instructions.Add(snBody);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, snOffLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, iLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, iLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, iLocal));
+        body.Instructions.Add(snCheck);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, snSizeLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, snBody));
+
+        body.Instructions.Add(afterSn);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, computeHash));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, computedLocal));

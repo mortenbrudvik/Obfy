@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Obfuscators.Source;
 
@@ -49,7 +50,8 @@ public class SourceControlFlowObfuscator : IObfuscator
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var root = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
-                var rewriter = new ControlFlowRewriter(settings);
+                var model = compilation.GetSemanticModel(tree);
+                var rewriter = new ControlFlowRewriter(settings, model);
                 var newRoot = rewriter.Visit(root);
 
                 stats.MethodsControlFlowObfuscated += rewriter.MethodsObfuscated;
@@ -75,19 +77,24 @@ public class SourceControlFlowObfuscator : IObfuscator
     private class ControlFlowRewriter : CSharpSyntaxRewriter
     {
         private readonly ControlFlowSettings _settings;
+        private readonly SemanticModel _model;
         private readonly Random _random = new();
 
         public int MethodsObfuscated { get; private set; }
 
-        public ControlFlowRewriter(ControlFlowSettings settings)
+        public ControlFlowRewriter(ControlFlowSettings settings, SemanticModel model)
         {
             _settings = settings;
+            _model = model;
         }
 
         public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
         {
-            // Skip methods that are too simple
             if (node.Body == null || node.Body.Statements.Count < 3)
+                return base.VisitMethodDeclaration(node);
+
+            var symbol = _model.GetDeclaredSymbol(node);
+            if (symbol != null && ObfuscationAttributeRules.IsExcluded(symbol, ObfuscationFeature.ControlFlow))
                 return base.VisitMethodDeclaration(node);
 
             // Skip based on intensity

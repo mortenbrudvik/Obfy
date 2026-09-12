@@ -27,7 +27,8 @@ public class MethodEncryptionObfuscator : IObfuscator
 
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
 
-    public bool IsEnabled(ObfySettings settings) => settings.Protection.MethodEncryption;
+    public bool IsEnabled(ObfySettings settings) =>
+        settings.Protection.MethodEncryption && !RuntimeProfileGating.BlocksPeProtections(settings.RuntimeProfile);
 
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
@@ -45,10 +46,14 @@ public class MethodEncryptionObfuscator : IObfuscator
                     continue;
                 if (type.IsGlobalModuleType)
                     continue;
+                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.All, context.Warnings))
+                    continue;
 
                 foreach (var method in type.Methods)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.All, context.Warnings))
+                        continue;
                     if (!IsEncryptCandidate(method))
                         continue;
 

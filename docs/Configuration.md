@@ -16,7 +16,10 @@ Complete JSON configuration schema for Obfy.
   "protection": { ... },
   "metadata": { ... },
   "assemblyMerge": { ... },
+  "inclusions": { ... },
   "exclusions": { ... },
+  "runtimeProfile": "Default",
+  "signing": { "enabled": false, "keyFile": "", "passwordEnvironmentVariable": "" },
   "postBuildEnabled": false
 }
 ```
@@ -74,7 +77,8 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
     "renameParameters": true,
     "renameEvents": true,
     "renameNamespaces": true,
-    "preservePublicApi": false
+    "preservePublicApi": false,
+    "preserveXaml": false
   },
 
   "protection": {
@@ -92,7 +96,8 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
       "junkMethodsPerType": 3
     },
     "antiDump": false,
-    "referenceProxy": false
+    "referenceProxy": false,
+    "methodEncryption": false
   },
 
   "metadata": {
@@ -109,6 +114,12 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
     "excludePatterns": []
   },
 
+  "inclusions": {
+    "namespaces": [],
+    "types": [],
+    "methods": []
+  },
+
   "exclusions": {
     "namespaces": [],
     "types": [],
@@ -116,8 +127,19 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
     "attributes": [
       "SerializableAttribute",
       "DataContractAttribute",
-      "DataMemberAttribute"
+      "DataMemberAttribute",
+      "JsonPropertyNameAttribute",
+      "JsonPropertyAttribute",
+      "XmlElementAttribute",
+      "XmlAttributeAttribute"
     ]
+  },
+
+  "runtimeProfile": "Default",
+  "signing": {
+    "enabled": false,
+    "keyFile": "",
+    "passwordEnvironmentVariable": ""
   },
 
   "postBuildEnabled": false
@@ -291,6 +313,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `renameEvents` | bool | `true` | Rename events and add_/remove_ accessors |
 | `renameNamespaces` | bool | `true` | Rename namespaces (public namespaces kept when `preservePublicApi`) |
 | `preservePublicApi` | bool | `false` | Keep public members unchanged |
+| `preserveXaml` | bool | `false` | Keep public instance properties on `*ViewModel`/`*View`/INPC/`DependencyProperty` types. Desktop wizard and Settings panel can turn this on. |
 
 **Naming Modes:**
 
@@ -353,6 +376,16 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | Keep public APIs exposed | `"enabled": true, "internalize": false` |
 | Exclude framework assemblies | `"excludePatterns": ["System.*", "Microsoft.*"]` |
 
+### inclusions
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `namespaces` | string[] | `[]` | Namespace patterns to allow (wildcards `*`, `?`) |
+| `types` | string[] | `[]` | Type name patterns to allow |
+| `methods` | string[] | `[]` | Method name patterns to allow |
+
+Empty lists mean no allow-list. When any list is non-empty, only matching namespaces, types, or methods are candidates (OR). A method-only list still visits types that contain a matching method. Honored by renaming, control flow, strings, and constants. Exclusions still apply.
+
 ### exclusions
 
 | Property | Type | Default | Description |
@@ -366,6 +399,28 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 - `SerializableAttribute`
 - `DataContractAttribute`
 - `DataMemberAttribute`
+- `JsonPropertyNameAttribute`
+- `JsonPropertyAttribute`
+- `XmlElementAttribute`
+- `XmlAttributeAttribute`
+
+### runtimeProfile
+
+| Value | Effect |
+|-------|--------|
+| `Default` | All protections as configured |
+| `NativeAot` | Disables method encryption and anti-dump; emits report warnings. Other Aggressive protections still run. |
+| `UnityIl2Cpp` | Same gating; Unity wizard also excludes `UnityEngine.*` and `Unity.*` |
+
+### signing
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | Re-sign the output after obfuscation |
+| `keyFile` | string | | Path to `.snk` or `.pfx` |
+| `passwordEnvironmentVariable` | string | | Name of the env var that holds the PFX password. **Required for `.pfx`/`.p12`**; unused for `.snk`. Empty PFX passwords are not supported. |
+
+Signing runs after PE patches (method-IL XOR, anti-tamper hash) by refreshing the strong-name blob in place. The run fails if signing is enabled and the key cannot be applied.
 
 ## Example Configurations
 
@@ -398,15 +453,14 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 
 ### Web API with Serialization
 
+JSON/XML property attributes are excluded from renaming by default. Add extra serializer attributes if needed:
+
 ```json
 {
   "level": "standard",
   "exclusions": {
     "attributes": [
-      "SerializableAttribute",
-      "DataContractAttribute",
-      "DataMemberAttribute",
-      "JsonPropertyAttribute"
+      "ProtoMemberAttribute"
     ]
   }
 }

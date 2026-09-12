@@ -61,7 +61,12 @@
         "renameParameters": { "type": "boolean", "default": true },
         "renameEvents": { "type": "boolean", "default": true },
         "renameNamespaces": { "type": "boolean", "default": true },
-        "preservePublicApi": { "type": "boolean", "default": false }
+        "preservePublicApi": { "type": "boolean", "default": false },
+        "preserveXaml": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep public instance properties on ViewModel/View/DependencyObject-like types for XAML bindings."
+        }
       }
     },
     "protection": {
@@ -161,6 +166,16 @@
         }
       }
     },
+    "inclusions": {
+      "type": "object",
+      "description": "Optional allow-list. When any pattern is set, only matching namespaces, types, or methods are candidates (OR). Method-only lists still visit types that contain a matching method.",
+      "additionalProperties": true,
+      "properties": {
+        "namespaces": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "types": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "methods": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    },
     "exclusions": {
       "type": "object",
       "description": "Exclusion rules (types, methods, namespaces to skip).",
@@ -187,10 +202,33 @@
           "default": [
             "SerializableAttribute",
             "DataContractAttribute",
-            "DataMemberAttribute"
+            "DataMemberAttribute",
+            "JsonPropertyNameAttribute",
+            "JsonPropertyAttribute",
+            "XmlElementAttribute",
+            "XmlAttributeAttribute"
           ]
         }
       }
+    },
+    "signing": {
+      "type": "object",
+      "description": "Re-sign the output with a strong-name key after obfuscation.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "keyFile": { "type": "string" },
+        "passwordEnvironmentVariable": {
+          "type": "string",
+          "description": "Environment variable that holds the PFX password. Required for .pfx/.p12; unused for .snk."
+        }
+      }
+    },
+    "runtimeProfile": {
+      "type": "string",
+      "description": "Target runtime. NativeAot and UnityIl2Cpp disable method encryption and anti-dump.",
+      "enum": ["Default", "NativeAot", "UnityIl2Cpp"],
+      "default": "Default"
     },
     "postBuildEnabled": {
       "type": "boolean",

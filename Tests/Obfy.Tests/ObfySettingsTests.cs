@@ -47,6 +47,7 @@ public class ObfySettingsTests
         settings.Protection.AntiDump.ShouldBeTrue();
         settings.Protection.ReferenceProxy.ShouldBeTrue();
         settings.Protection.MethodEncryption.ShouldBeTrue();
+        settings.RuntimeProfile.ShouldBe(RuntimeProfile.Default);
     }
 
     [Fact]
@@ -82,6 +83,11 @@ public class ObfySettingsTests
         settings.SymbolRenaming.Mode.ShouldBe(NamingMode.Unreadable);
         settings.ControlFlow.Enabled.ShouldBeFalse();
         settings.Protection.AntiDebug.ShouldBeFalse();
+        settings.Exclusions.Attributes.ShouldContain("JsonPropertyNameAttribute");
+        settings.Exclusions.Attributes.ShouldContain("JsonPropertyAttribute");
+        settings.Exclusions.Attributes.ShouldContain("XmlElementAttribute");
+        settings.Exclusions.Attributes.ShouldContain("XmlAttributeAttribute");
+        settings.SymbolRenaming.PreserveXaml.ShouldBeFalse();
     }
 
     [Fact]
@@ -160,5 +166,49 @@ public class ObfySettingsTests
         clone.StringEncryption.Enabled.ShouldBeTrue();
         clone.ShouldNotBeSameAs(original);
         clone.StringEncryption.ShouldNotBeSameAs(original.StringEncryption);
+    }
+
+    [Fact]
+    public void Validate_SigningEnabledWithoutKeyFile_Throws()
+    {
+        var settings = new ObfySettings { Signing = { Enabled = true } };
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate())
+            .Message.ShouldContain("key file");
+    }
+
+    [Fact]
+    public void Validate_PfxWithoutPasswordEnv_Throws()
+    {
+        var settings = new ObfySettings
+        {
+            Signing = { Enabled = true, KeyFile = "key.pfx" }
+        };
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate())
+            .Message.ShouldContain("PasswordEnvironmentVariable");
+    }
+
+    [Fact]
+    public void Clone_DoesNotSerializeHasAny_AndKeepsV15Settings()
+    {
+        var original = new ObfySettings
+        {
+            RuntimeProfile = RuntimeProfile.NativeAot,
+            Signing = { Enabled = true, KeyFile = "a.snk" },
+            Inclusions = { Methods = { "OnlyThis" } },
+            SymbolRenaming = { PreserveXaml = true }
+        };
+
+        var clone = original.Clone();
+        clone.RuntimeProfile.ShouldBe(RuntimeProfile.NativeAot);
+        clone.Signing.Enabled.ShouldBeTrue();
+        clone.Signing.KeyFile.ShouldBe("a.snk");
+        clone.Inclusions.Methods.ShouldContain("OnlyThis");
+        clone.SymbolRenaming.PreserveXaml.ShouldBeTrue();
+
+        var json = System.Text.Json.JsonSerializer.Serialize(original, new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+        });
+        json.ShouldNotContain("hasAny");
     }
 }

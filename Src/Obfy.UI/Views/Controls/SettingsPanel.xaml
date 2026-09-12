@@ -21,6 +21,14 @@
                   ItemTemplate="{StaticResource EnumDescriptionTemplate}"
                   Margin="0,0,0,16"/>
 
+        <TextBlock Text="Runtime profile" FontWeight="SemiBold" Margin="0,0,0,8"/>
+        <ComboBox AutomationProperties.AutomationId="RuntimeProfileSelector"
+                  AutomationProperties.Name="Runtime profile"
+                  ItemsSource="{Binding AvailableRuntimeProfiles}"
+                  SelectedItem="{Binding RuntimeProfile}"
+                  ItemTemplate="{StaticResource EnumDescriptionTemplate}"
+                  Margin="0,0,0,16"/>
+
         <ui:CardExpander Header="String Encryption" Icon="{ui:SymbolIcon LockClosed24}" IsExpanded="True" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="StringEncryptionToggle"
@@ -108,6 +116,7 @@
                     <CheckBox Content="Rename Events" IsChecked="{Binding RenameEvents}"/>
                     <CheckBox Content="Rename Namespaces" IsChecked="{Binding RenameNamespaces}"/>
                     <ui:ToggleSwitch Content="Preserve Public API" IsChecked="{Binding PreservePublicApi}" Margin="0,8,0,0"/>
+                    <ui:ToggleSwitch Content="Preserve XAML bindings" IsChecked="{Binding PreserveXaml}" Margin="0,8,0,0"/>
                 </StackPanel>
             </StackPanel>
         </ui:CardExpander>
@@ -152,6 +161,26 @@
                 <CheckBox Content="Remove Debug Info" IsChecked="{Binding RemoveDebugInfo}"/>
                 <CheckBox Content="Remove Attributes" IsChecked="{Binding RemoveAttributes}"/>
                 <CheckBox Content="Strip Documentation" IsChecked="{Binding StripDocumentation}"/>
+            </StackPanel>
+        </ui:CardExpander>
+
+        <ui:CardExpander Header="Strong-Name Signing" Icon="{ui:SymbolIcon Fingerprint24}" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <ui:ToggleSwitch AutomationProperties.AutomationId="SigningToggle"
+                               Content="Enabled" IsChecked="{Binding SigningEnabled}"/>
+                <StackPanel Visibility="{Binding SigningEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="0,8,0,0">
+                    <TextBlock Text="Key file (.snk / .pfx)" Margin="0,0,0,4"/>
+                    <ui:TextBox AutomationProperties.Name="Signing key file"
+                                Text="{Binding SigningKeyFile, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="path to .snk or .pfx"/>
+                    <TextBlock Text="PFX password environment variable" Margin="0,12,0,4"/>
+                    <ui:TextBox AutomationProperties.Name="Signing password environment variable"
+                                Text="{Binding SigningPasswordEnvironmentVariable, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="e.g. OBFY_PFX_PASSWORD"/>
+                    <TextBlock Text="Required for .pfx/.p12. Unused for .snk."
+                               FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
+                </StackPanel>
             </StackPanel>
         </ui:CardExpander>
 

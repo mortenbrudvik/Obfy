@@ -2,6 +2,27 @@
 
 Exclusion rules, best practices, and troubleshooting for Obfy.
 
+## `[Obfuscation]` attribute
+
+Obfy honors `System.Reflection.ObfuscationAttribute` on types and members for **assembly** obfuscation (renaming, control flow, strings, constants, plus `Feature=all` for method encryption, reference proxy, and anti-debug). Source obfuscators honor the same attribute for renaming, strings, and control flow.
+
+```csharp
+[Obfuscation(Exclude = true)]
+public class License { }
+
+[Obfuscation(Exclude = true, Feature = "renaming")]
+public class Dto { }
+
+[Obfuscation(Exclude = true, Feature = "strings")]
+public string GetSecret() => "plain";
+```
+
+Supported `Feature` values: `all` (default), `renaming` (`rename`, `symbols`), `controlflow` (`cf`, `control-flow`), `strings` (`stringencryption`), `constants` (`constantencryption`). Unknown features are ignored and recorded as a report warning.
+
+Type-level `ApplyToMembers` (default true) applies the directive to members. `[Obfuscation(Exclude = true, ApplyToMembers = false)]` keeps the type name and still obfuscates members. A member-level `Exclude` value wins over the declaring type.
+
+Optional allow-list (`inclusions`) in `obfy.json`: when any pattern is set, only matching namespaces, types, **or** methods are candidates for renaming, control flow, strings, and constants (exclusions still apply). A method-only list still visits types that contain a matching method.
+
 ## Exclusion Rules
 
 Exclusions prevent specific code from being obfuscated.
@@ -67,7 +88,7 @@ Exclude specific methods by name.
 
 ### Attribute-Based Exclusions
 
-Members with specific attributes are automatically excluded.
+Type-level attributes such as `Serializable` skip the type for renaming, strings, constants, and control flow. Member-level attributes (`JsonPropertyName`, `JsonProperty`, `XmlElement`, `XmlAttribute`) currently skip **symbol renaming** of that member only.
 
 ```json
 {
@@ -85,13 +106,16 @@ Members with specific attributes are automatically excluded.
 
 **Default Excluded Attributes:**
 - `SerializableAttribute` - Binary serialization
-- `DataContractAttribute` - WCF serialization
-- `DataMemberAttribute` - WCF serialization
+- `DataContractAttribute` / `DataMemberAttribute` - WCF serialization
+- `JsonPropertyNameAttribute` - System.Text.Json
+- `JsonPropertyAttribute` - JSON.NET
+- `XmlElementAttribute` / `XmlAttributeAttribute` - XML serialization
+
+`ComVisible(true)` types, methods, fields, properties, and events are never renamed. Only an explicit `[ComVisible(true)]` is checked (assembly-level COM visibility is not inferred).
+
+Set `symbolRenaming.preserveXaml` (Desktop wizard / Settings panel) to keep public instance properties on types that look XAML-bindable: name ends with `ViewModel` or `View`, implements `INotifyPropertyChanged`, declares `DependencyProperty` fields, or has a resolvable base whose name contains `DependencyObject`. Framework WPF bases often fail to resolve, so prefer the `*ViewModel` suffix.
 
 **Common Additions:**
-- `JsonPropertyAttribute` - JSON.NET
-- `JsonPropertyNameAttribute` - System.Text.Json
-- `XmlElementAttribute` - XML serialization
 - `ProtoMemberAttribute` - protobuf-net
 
 ### Automatic Exclusions
@@ -296,18 +320,7 @@ obfy bin/Release/net8.0/MyApp.dll -o dist/
 
 **Cause:** JSON/XML properties renamed.
 
-**Solution:**
-```json
-{
-  "exclusions": {
-    "attributes": [
-      "JsonPropertyAttribute",
-      "JsonPropertyNameAttribute",
-      "XmlElementAttribute"
-    ]
-  }
-}
-```
+**Solution:** `JsonPropertyName`, `JsonProperty`, `XmlElement`, and `XmlAttribute` are excluded from renaming by default. For other serializers, add the attribute (for example `ProtoMemberAttribute`) or turn on `symbolRenaming.preserveXaml` for view-models.
 
 ### DI Container Fails
 
@@ -348,9 +361,7 @@ obfy bin/Release/net8.0/MyApp.dll -o dist/
 
 **Cause:** Strong name or signing issues.
 
-**Solution:**
-- Re-sign assembly after obfuscation
-- Or disable strong naming during obfuscation
+**Solution:** Set `signing.enabled` and `signing.keyFile` (`.snk` or `.pfx`). For PFX, set `signing.passwordEnvironmentVariable` to the name of an environment variable that holds the password. Signing runs after PE patches and fails the run if the key cannot be applied.
 
 ### Single-File Executable Error
 

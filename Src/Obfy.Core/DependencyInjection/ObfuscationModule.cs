@@ -88,6 +88,10 @@ public class ObfuscationModule : Module
             .As<IObfuscator>()
             .SingleInstance();
 
+        builder.RegisterType<VirtualizationObfuscator>()
+            .As<IObfuscator>()
+            .SingleInstance();
+
         // Register source code obfuscators
         builder.RegisterType<SourceStringEncryptor>()
             .As<IObfuscator>()

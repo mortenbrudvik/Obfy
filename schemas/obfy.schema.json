@@ -222,6 +222,23 @@
         }
       }
     },
+    "incremental": {
+      "type": "object",
+      "description": "Reuse previous output when input and settings are unchanged.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false }
+      }
+    },
+    "virtualization": {
+      "type": "object",
+      "description": "Replace simple static int methods with a bytecode interpreter.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "maxMethods": { "type": "integer", "minimum": 1, "maximum": 256, "default": 32 }
+      }
+    },
     "watermark": {
       "type": "object",
       "description": "Embed a customer/build identifier as an assembly attribute. Requires enabled=true and a non-whitespace id.",

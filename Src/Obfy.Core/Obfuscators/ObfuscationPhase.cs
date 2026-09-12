@@ -47,6 +47,9 @@ public enum ObfuscationPhase
     /// <summary>Inject anti-tamper verification (before renaming).</summary>
     AntiTamper = 22,
 
+    /// <summary>Replace selected simple methods with a bytecode interpreter stub (before PE IL encryption).</summary>
+    Virtualization = 24,
+
     /// <summary>Encrypt method IL in the PE image; decrypted at module load.</summary>
     MethodEncryption = 25,
 

@@ -67,6 +67,20 @@ public class ObfuscationService : IObfuscationService
             return ObfuscationResult.Failed($"Invalid settings: {ex.Message}", ex);
         }
 
+        var effectiveOutputEarly = outputPath ?? GenerateOutputPath(inputPath);
+        if (settings.Incremental.Enabled &&
+            !isDirectory &&
+            target.TargetType == TargetType.Assembly &&
+            IncrementalCache.TryHit(inputPath, effectiveOutputEarly, settings))
+        {
+            _logger.LogInformation("Incremental cache hit for {InputPath}", inputPath);
+            return ObfuscationResult.Successful(
+                new ObfuscationStatistics(),
+                inputPath: inputPath,
+                outputPath: effectiveOutputEarly,
+                warnings: new List<string> { "Incremental: reused cached output" });
+        }
+
         PipelineContext context;
 
         try
@@ -116,6 +130,9 @@ public class ObfuscationService : IObfuscationService
                 }
 
                 _logger.LogInformation("Obfuscation completed. Output written to {OutputPath}", effectiveOutput);
+
+                if (settings.Incremental.Enabled && target.TargetType == TargetType.Assembly)
+                    IncrementalCache.Write(inputPath, effectiveOutput, settings);
 
                 return ObfuscationResult.Successful(
                     context.Statistics,

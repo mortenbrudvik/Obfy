@@ -55,6 +55,11 @@ public class ObfySettings
     public AssemblyMergeSettings AssemblyMerge { get; init; } = new();
 
     /// <summary>
+    /// Embed referenced assemblies as resources and load them via AssemblyResolve.
+    /// </summary>
+    public DependencyEmbeddingSettings DependencyEmbedding { get; init; } = new();
+
+    /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
     public ExclusionRules Exclusions { get; init; } = new();
@@ -618,6 +623,18 @@ public class SigningSettings
 }
 
 /// <summary>
+/// Embed referenced assemblies as resources loaded via AssemblyResolve.
+/// </summary>
+public class DependencyEmbeddingSettings
+{
+    public bool Enabled { get; set; }
+
+    public List<string> IncludePatterns { get; set; } = new() { "*.dll" };
+
+    public List<string> ExcludePatterns { get; set; } = new() { "*.resources.dll" };
+}
+
+/// <summary>
 /// Settings for resource encryption.
 /// </summary>
 public class ResourceEncryptionSettings
@@ -643,7 +660,7 @@ public class ResourceEncryptionSettings
     /// Excluded patterns take precedence over include patterns.
     /// *.resources is excluded by default so ResourceManager satellite files keep working.
     /// </summary>
-    public List<string> ExcludePatterns { get; set; } = new() { "*.resources" };
+    public List<string> ExcludePatterns { get; set; } = new() { "*.resources", "Obfy.Embedded.*" };
 }
 
 /// <summary>

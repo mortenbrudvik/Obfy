@@ -35,5 +35,12 @@ public static class RuntimeProfileGating
             context.Warnings.Add(
                 $"Anti-dump disabled for {label}: it wipes PE headers via kernel32 and is not safe on this runtime.");
         }
+
+        if (settings.DependencyEmbedding.Enabled)
+        {
+            settings.DependencyEmbedding.Enabled = false;
+            context.Warnings.Add(
+                $"Dependency embedding disabled for {label}: AssemblyResolve is not available on this runtime.");
+        }
     }
 }

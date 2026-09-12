@@ -212,6 +212,16 @@
         }
       }
     },
+    "dependencyEmbedding": {
+      "type": "object",
+      "description": "Embed referenced DLLs as resources and load them via AssemblyResolve.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "includePatterns": { "type": "array", "items": { "type": "string" }, "default": ["*.dll"] },
+        "excludePatterns": { "type": "array", "items": { "type": "string" }, "default": ["*.resources.dll"] }
+      }
+    },
     "signing": {
       "type": "object",
       "description": "Re-sign the output with a strong-name key after obfuscation.",

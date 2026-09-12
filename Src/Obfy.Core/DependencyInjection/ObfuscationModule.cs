@@ -80,6 +80,10 @@ public class ObfuscationModule : Module
             .As<IObfuscator>()
             .SingleInstance();
 
+        builder.RegisterType<DependencyEmbeddingObfuscator>()
+            .As<IObfuscator>()
+            .SingleInstance();
+
         // Register source code obfuscators
         builder.RegisterType<SourceStringEncryptor>()
             .As<IObfuscator>()

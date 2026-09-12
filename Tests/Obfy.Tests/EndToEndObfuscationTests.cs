@@ -83,6 +83,27 @@ public class EndToEndObfuscationTests
         throw new InvalidOperationException("Method-encryption blob was not found.");
     }
 
+    private static string CompileToAssemblyWithRef(string source, string dir, string assemblyName, string referencePath)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator)
+            .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
+            .Append(MetadataReference.CreateFromFile(referencePath));
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            new[] { tree },
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var path = Path.Combine(dir, assemblyName + ".dll");
+        var emit = compilation.Emit(path);
+        emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        return path;
+    }
+
     private static object? LoadAndInvoke(string assemblyPath, string typeName, string methodName)
     {
         var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
@@ -199,6 +220,49 @@ public class EndToEndObfuscationTests
 
             var output = Path.Combine(dir, "ExtProxyLib.obf.dll");
             module.Write(output);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(5);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task DependencyEmbedding_LoadsMissingSiblingAssembly()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-emb-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var dep = CompileToAssembly("public static class Dep { public static int N => 4; }", dir, "Dep");
+            var libSource = """
+                public static class Lib
+                {
+                    public static int Get() => Dep.N + 1;
+                }
+                """;
+            var lib = CompileToAssemblyWithRef(libSource, dir, "EmbLib", dep);
+
+            var output = Path.Combine(dir, "EmbLib.obf.dll");
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                DependencyEmbedding = { Enabled = true }
+            };
+
+            var result = await service.ObfuscateAsync(lib, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
+
+            File.Delete(dep);
             LoadAndInvoke(output, "Lib", "Get").ShouldBe(5);
         }
         finally

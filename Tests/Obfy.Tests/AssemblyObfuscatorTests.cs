@@ -1173,6 +1173,59 @@ public class AssemblyObfuscatorTests
         obfuscator.IsEnabled(disabledSettings).ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task AntiDebug_CheckUsesRemoteDebuggerAndTiming()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "App");
+        var entry = CreateTestMethod(type, "Main", isPublic: true);
+        module.EntryPoint = entry;
+
+        var obfuscator = new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDebug = true } });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var anti = module.Types.First(t => t.Name == "<AntiDebug>");
+        anti.FindMethod("CheckRemoteDebuggerPresent").ShouldNotBeNull();
+        anti.FindMethod("GetCurrentProcess").ShouldNotBeNull();
+
+        var check = anti.FindMethod("Check")!;
+        var names = check.Body.Instructions
+            .Select(i => i.Operand as IMethod)
+            .Where(m => m != null)
+            .Select(m => m!.Name.String)
+            .ToList();
+        names.ShouldContain("CheckRemoteDebuggerPresent");
+        names.ShouldContain("GetCurrentProcess");
+        names.Count(n => n == "get_TickCount").ShouldBeGreaterThanOrEqualTo(2);
+        names.ShouldContain("FailFast");
+        check.Body.Instructions.Any(i => i.OpCode == OpCodes.Throw).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task AntiDebug_ScattersChecksIntoUserMethods()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Work");
+        var a = CreateTestMethod(type, "A");
+        var b = CreateTestMethod(type, "B");
+        var c = CreateTestMethod(type, "C");
+        var entry = CreateTestMethod(type, "Main", isPublic: true);
+        module.EntryPoint = entry;
+
+        var obfuscator = new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDebug = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(2);
+
+        foreach (var method in new[] { a, b, c, entry })
+        {
+            method.Body.Instructions[0].OpCode.ShouldBe(OpCodes.Call);
+            ((IMethod)method.Body.Instructions[0].Operand).Name.String.ShouldBe("Check");
+        }
+    }
+
     #endregion
 
     #region AntiTamperObfuscator Tests

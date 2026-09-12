@@ -266,6 +266,44 @@ public class EndToEndObfuscationTests
     }
 
     [Fact]
+    public async Task AntiDebug_ScatteredChecks_UndebuggedRun_Proceeds()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get() => Helper() + 1;
+                static int Helper() => 6;
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-ad-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "AntiDebugScatterLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Protection = { AntiDebug = true }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            (await new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "AntiDebugScatterLib.obf.dll");
+            module.Write(output);
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(7);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public async Task MethodEncryption_RoundTripsOnRealAssembly()
     {
         const string source = """

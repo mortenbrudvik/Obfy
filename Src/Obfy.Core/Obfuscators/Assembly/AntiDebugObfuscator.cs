@@ -3,6 +3,7 @@ using dnlib.DotNet.Emit;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Obfuscators.Assembly;
 
@@ -12,6 +13,7 @@ namespace Obfy.Core.Obfuscators.Assembly;
 public class AntiDebugObfuscator : IObfuscator
 {
     private readonly ILogger<AntiDebugObfuscator> _logger;
+    private int _failKind;
 
     public AntiDebugObfuscator(ILogger<AntiDebugObfuscator> logger)
     {
@@ -43,26 +45,23 @@ public class AntiDebugObfuscator : IObfuscator
         {
             if (settings.AntiDebug)
             {
-                // Inject anti-debug type
                 var antiDebugType = InjectAntiDebugType(module);
 
-                // Add check to entry point
-                if (module.EntryPoint != null && InjectDebuggerCheck(module.EntryPoint, antiDebugType))
-                {
+                var moduleInitializer = FindModuleInitializer(module) ?? CreateModuleInitializer(module);
+                if (InjectDebuggerCheck(moduleInitializer, antiDebugType))
                     stats.ProtectionsApplied++;
-                }
 
-                var moduleInitializer = FindModuleInitializer(module);
-                // If the entry-point inject failed (no body) or there is no entry point, create a
-                // module initializer so the check still runs at load.
-                if (moduleInitializer == null && stats.ProtectionsApplied == 0)
+                foreach (var type in module.GetTypes())
                 {
-                    moduleInitializer = CreateModuleInitializer(module);
-                }
+                    if (type == antiDebugType || ObfuscatorHelpers.IsRuntimeHelper(type))
+                        continue;
 
-                if (moduleInitializer != null && InjectDebuggerCheck(moduleInitializer, antiDebugType))
-                {
-                    stats.ProtectionsApplied++;
+                    foreach (var method in type.Methods)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (InjectDebuggerCheck(method, antiDebugType))
+                            stats.ProtectionsApplied++;
+                    }
                 }
 
                 if (stats.ProtectionsApplied == 0)
@@ -95,20 +94,22 @@ public class AntiDebugObfuscator : IObfuscator
 
         typeDef.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract;
 
-        var isDebuggerPresent = new MethodDefUser(
-            "IsDebuggerPresent",
-            MethodSig.CreateStatic(module.CorLibTypes.Boolean),
-            MethodImplAttributes.PreserveSig,
-            MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.PinvokeImpl)
-        {
-            ImplMap = new ImplMapUser(
-                new ModuleRefUser(module, "kernel32"),
-                "IsDebuggerPresent",
-                PInvokeAttributes.SupportsLastError | PInvokeAttributes.CallConvWinapi | PInvokeAttributes.NoMangle)
-        };
-        typeDef.Methods.Add(isDebuggerPresent);
+        var isDebuggerPresent = CreateKernel32PInvoke(
+            module, "IsDebuggerPresent", MethodSig.CreateStatic(module.CorLibTypes.Boolean));
+        var getCurrentProcess = CreateKernel32PInvoke(
+            module, "GetCurrentProcess", MethodSig.CreateStatic(module.CorLibTypes.IntPtr));
+        var checkRemote = CreateKernel32PInvoke(
+            module, "CheckRemoteDebuggerPresent",
+            MethodSig.CreateStatic(
+                module.CorLibTypes.Boolean,
+                module.CorLibTypes.IntPtr,
+                new ByRefSig(module.CorLibTypes.Boolean)));
 
-        var checkMethod = CreateCheckDebuggerMethod(module, isDebuggerPresent);
+        typeDef.Methods.Add(isDebuggerPresent);
+        typeDef.Methods.Add(getCurrentProcess);
+        typeDef.Methods.Add(checkRemote);
+
+        var checkMethod = CreateCheckDebuggerMethod(module, isDebuggerPresent, getCurrentProcess, checkRemote);
         typeDef.Methods.Add(checkMethod);
 
         module.Types.Add(typeDef);
@@ -116,7 +117,26 @@ public class AntiDebugObfuscator : IObfuscator
         return typeDef;
     }
 
-    private static MethodDef CreateCheckDebuggerMethod(ModuleDef module, MethodDef isDebuggerPresent)
+    private static MethodDef CreateKernel32PInvoke(ModuleDef module, string name, MethodSig sig)
+    {
+        return new MethodDefUser(
+            name,
+            sig,
+            MethodImplAttributes.PreserveSig,
+            MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.PinvokeImpl)
+        {
+            ImplMap = new ImplMapUser(
+                new ModuleRefUser(module, "kernel32"),
+                name,
+                PInvokeAttributes.SupportsLastError | PInvokeAttributes.CallConvWinapi | PInvokeAttributes.NoMangle)
+        };
+    }
+
+    private MethodDef CreateCheckDebuggerMethod(
+        ModuleDef module,
+        MethodDef isDebuggerPresent,
+        MethodDef getCurrentProcess,
+        MethodDef checkRemote)
     {
         var method = new MethodDefUser(
             "Check",
@@ -126,6 +146,11 @@ public class AntiDebugObfuscator : IObfuscator
         var body = new CilBody { InitLocals = true };
         method.Body = body;
 
+        var remoteLocal = new Local(module.CorLibTypes.Boolean);
+        var tickLocal = new Local(module.CorLibTypes.Int32);
+        body.Variables.Add(remoteLocal);
+        body.Variables.Add(tickLocal);
+
         var debuggerType = module.CorLibTypes.GetTypeRef("System.Diagnostics", "Debugger");
         var isAttachedGetter = new MemberRefUser(
             module, "get_IsAttached",
@@ -133,50 +158,137 @@ public class AntiDebugObfuscator : IObfuscator
         var isLogging = new MemberRefUser(
             module, "IsLogging",
             MethodSig.CreateStatic(module.CorLibTypes.Boolean), debuggerType);
-        var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
-        var exitMethod = new MemberRefUser(
-            module, "Exit",
-            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32), environmentType);
+        var env = module.CorLibTypes.GetTypeRef("System", "Environment");
+        var getTickCount = new MemberRefUser(
+            module, "get_TickCount",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32), env);
+        var dllNotFound = module.CorLibTypes.GetTypeRef("System", "DllNotFoundException");
 
-        var skipExit = Instruction.Create(OpCodes.Ret);
-        var afterAttached = Instruction.Create(OpCodes.Call, isLogging);
-
+        var afterAttached = Instruction.Create(OpCodes.Nop);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isAttachedGetter));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterAttached));
-        body.Instructions.Add(Instruction.CreateLdcI4(1));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
-
+        EmitFail(body, module);
         body.Instructions.Add(afterAttached);
-        var afterLogging = Instruction.Create(OpCodes.Call, isDebuggerPresent);
+
+        var afterLogging = Instruction.Create(OpCodes.Nop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, isLogging));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterLogging));
-        body.Instructions.Add(Instruction.CreateLdcI4(1));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
-
+        EmitFail(body, module);
         body.Instructions.Add(afterLogging);
-        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, skipExit));
-        body.Instructions.Add(Instruction.CreateLdcI4(1));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
-        body.Instructions.Add(skipExit);
 
+        var tryStart = Instruction.Create(OpCodes.Call, isDebuggerPresent);
+        var afterPresent = Instruction.Create(OpCodes.Call, getCurrentProcess);
+        var afterRemote = Instruction.Create(OpCodes.Nop);
+        var catchStart = Instruction.Create(OpCodes.Pop);
+        var afterTry = Instruction.Create(OpCodes.Call, getTickCount);
+
+        body.Instructions.Add(tryStart);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterPresent));
+        EmitFail(body, module);
+
+        body.Instructions.Add(afterPresent);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, remoteLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, remoteLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, checkRemote));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, remoteLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterRemote));
+        EmitFail(body, module);
+        body.Instructions.Add(afterRemote);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
+
+        body.Instructions.Add(catchStart);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
+
+        body.Instructions.Add(afterTry);
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, tickLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, tickLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x5A5A));
+        body.Instructions.Add(Instruction.Create(OpCodes.Xor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getTickCount));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, tickLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Sub));
+        var afterTiming = Instruction.Create(OpCodes.Ret);
+        body.Instructions.Add(Instruction.CreateLdcI4(1000));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ble, afterTiming));
+        EmitFail(body, module);
+        body.Instructions.Add(afterTiming);
+
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+        {
+            TryStart = tryStart,
+            TryEnd = catchStart,
+            HandlerStart = catchStart,
+            HandlerEnd = afterTry,
+            CatchType = dllNotFound
+        });
+
+        body.KeepOldMaxStack = true;
+        body.MaxStack = 8;
         body.UpdateInstructionOffsets();
         return method;
     }
 
-    private bool InjectDebuggerCheck(MethodDef method, TypeDef antiDebugType)
+    private void EmitFail(CilBody body, ModuleDef module)
     {
-        if (!method.HasBody)
+        var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
+        switch (_failKind++ % 3)
+        {
+            case 0:
+                var exit = new MemberRefUser(
+                    module, "Exit",
+                    MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32),
+                    environmentType);
+                body.Instructions.Add(Instruction.CreateLdcI4(1));
+                body.Instructions.Add(Instruction.Create(OpCodes.Call, exit));
+                break;
+            case 1:
+                var failFast = new MemberRefUser(
+                    module, "FailFast",
+                    MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String),
+                    environmentType);
+                body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, ""));
+                body.Instructions.Add(Instruction.Create(OpCodes.Call, failFast));
+                break;
+            default:
+                var exType = module.CorLibTypes.GetTypeRef("System", "Exception");
+                var ctor = new MemberRefUser(
+                    module, ".ctor",
+                    MethodSig.CreateInstance(module.CorLibTypes.Void),
+                    exType);
+                body.Instructions.Add(Instruction.Create(OpCodes.Newobj, ctor));
+                body.Instructions.Add(Instruction.Create(OpCodes.Throw));
+                break;
+        }
+    }
+
+    private static bool InjectDebuggerCheck(MethodDef method, TypeDef antiDebugType)
+    {
+        if (!method.HasBody || method.IsPinvokeImpl || method.IsAbstract)
             return false;
 
         var checkMethod = antiDebugType.FindMethod("Check");
-        if (checkMethod == null)
+        if (checkMethod == null || method == checkMethod)
             return false;
 
         var body = method.Body;
         var instructions = body.Instructions;
+        if (instructions.Count == 0)
+            return false;
 
-        // Insert call to Check at the beginning
+        if (instructions.Any(i =>
+                i.OpCode == OpCodes.Call && i.Operand is IMethod called &&
+                (called == checkMethod || called.Name == "Check" && called.DeclaringType == antiDebugType)))
+        {
+            return false;
+        }
+
+        if (instructions[0].OpCode.FlowControl == FlowControl.Meta)
+            return false;
+
         instructions.Insert(0, Instruction.Create(OpCodes.Call, checkMethod));
-
         body.UpdateInstructionOffsets();
         return true;
     }

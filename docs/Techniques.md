@@ -401,21 +401,21 @@ public class _‌‌‍‏‌
 
 ### Anti-Debug Protection
 
-Injects code that detects and responds to debugging attempts.
+Injects code that detects and responds to debugging attempts. This raises the cost of casual debugging; it is not debugger immunity.
 
 **How It Works:**
 
 1. Injects a runtime class (`Obfy.Runtime.<AntiDebug>`)
-2. Adds debugger detection checks at entry point
-3. Optionally adds checks in module initializer
+2. Calls `Check` from the module initializer (runs at load)
+3. Scatters `Check` into every user method with a body so patching a single call site is not enough
 
-**Detection Method:**
-```csharp
-if (System.Diagnostics.Debugger.IsAttached || System.Diagnostics.Debugger.IsLogging())
-{
-    Environment.Exit(1);
-}
-```
+**Detection:**
+
+- `Debugger.IsAttached` and `Debugger.IsLogging()`
+- `kernel32!IsDebuggerPresent` and `CheckRemoteDebuggerPresent` (Windows; `DllNotFoundException` is swallowed)
+- Tick-count timing probe (~1s threshold) to catch single-stepping
+
+Failure is not always `Environment.Exit(1)`: call sites cycle through `Exit`, `Environment.FailFast`, and `throw`.
 
 **Settings:**
 
@@ -433,7 +433,7 @@ if (System.Diagnostics.Debugger.IsAttached || System.Diagnostics.Debugger.IsLogg
 **Limitations:**
 - Can be bypassed by experienced reverse engineers
 - May cause issues with legitimate profilers
-- Some detection methods can be patched out
+- Native checks are Windows-only; managed checks still run elsewhere
 
 ---
 

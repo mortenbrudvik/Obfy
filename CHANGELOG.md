@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- External reference proxy skips `constrained.` prefixes (foreach/`using` on structs) so the output stays verifiable
+- Resource encryption hard-skips `Obfy.Embedded.*` even if `excludePatterns` is overwritten
+- UI load/save/run preserves `dependencyEmbedding` instead of dropping it
+- `--proxy-external` help text matches that it enables `--reference-proxy`
+
 ### Added
 - MSIX packaging for Microsoft Store / sideload (`build/build-msix.ps1`)
 - Desktop UI snackbars for save/load/complete/fail, keyboard shortcuts, and an Open output folder action
@@ -27,10 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Decompiler-resistance fixtures (ILSpy decryptor output, anti-debug NOP survival, method-encryption skip counts in reports)
 - Default JSON/XML attribute exclusions, `ComVisible(true)` skip, and `symbolRenaming.preserveXaml` for XAML bindings
 - `System.Reflection.ObfuscationAttribute` and optional `inclusions` allow-list
-- `runtimeProfile` (NativeAot / UnityIl2Cpp) disables method encryption and anti-dump with a warning
+- `runtimeProfile` (NativeAot / UnityIl2Cpp / BlazorWasm) disables method encryption, anti-dump, and dependency embedding with a warning
 - Strong-name re-signing after obfuscation (`signing.keyFile`; PFX password from `signing.passwordEnvironmentVariable`, required for `.pfx`/`.p12`)
-- Optional `proxyExternalCalls` / `--proxy-external` to hide selected framework call targets
-- Dependency embedding (`dependencyEmbedding.enabled`) loads referenced DLLs from resources via AssemblyResolve
+- Optional `proxyExternalCalls` / `--proxy-external` to hide selected out-of-module call targets (`--proxy-external` enables `--reference-proxy`)
+- Dependency embedding (`dependencyEmbedding.enabled`) loads sibling referenced DLLs from resources via AssemblyResolve
 - Unity / Blazor / MAUI recipes and wizard presets; `runtimeProfile: BlazorWasm`
 - VS Code extension stub (`Src/Obfy.VSCode`) with `obfy.json` schema, task type, and problem matcher
 

@@ -8,12 +8,16 @@ namespace Obfy.Core.Obfuscators;
 public enum ObfuscationPhase
 {
     /// <summary>
-    /// Encrypt string literals. Runs first so later control-flow rewrites see decrypt calls, and
-    /// injected helper types exist before renaming/metadata.
+    /// Embed sibling DLLs as resources and hook AssemblyResolve. Runs before string encryption
+    /// so the injected helper exists for later passes, and before resource encryption so packed
+    /// payloads can be excluded from encryption.
     /// </summary>
-    /// <summary>Embed referenced DLLs as resources and hook AssemblyResolve.</summary>
     DependencyEmbedding = 8,
 
+    /// <summary>
+    /// Encrypt string literals so later control-flow rewrites see decrypt calls, and injected
+    /// helper types exist before renaming/metadata.
+    /// </summary>
     StringEncryption = 10,
 
     /// <summary>Encrypt numeric constants.</summary>

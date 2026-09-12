@@ -10,17 +10,15 @@ Set `runtimeProfile` to `UnityIl2Cpp` (the wizard Game/Unity preset does this). 
 - Anti-dump PE wipe
 - Dependency embedding (`AssemblyResolve`)
 
-**Safe to keep:** symbol renaming (with `UnityEngine.*` / `Unity.*` exclusions), string/constant encryption, control flow, reference proxy (in-module), anti-debug managed checks.
+**Safe to keep:** symbol renaming (with `UnityEngine.*` / `Unity.*` exclusions), string/constant encryption, control flow, reference proxy (in-module). Anti-debug also injects `kernel32!IsDebuggerPresent`; leave it off for IL2CPP unless you have confirmed the player still runs.
 
 ## Config
 
-See `examples/unity/obfy.json`. Typical post-build:
+See `examples/unity/obfy.json`. `Library/ScriptAssemblies` is editor output, not the player/IL2CPP staging assemblies. Run Obfy on the managed player DLLs **before** IL2CPP, not on the native output:
 
 ```bash
-obfy Library/ScriptAssemblies/Assembly-CSharp.dll -c obfy.json -o Build/Obfuscated/
+obfy Assembly-CSharp.dll -c obfy.json -o Build/Obfuscated/
 ```
-
-Run this **before** IL2CPP (Player build), on the managed DLLs, not on the native output.
 
 ## Limits
 

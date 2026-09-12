@@ -183,6 +183,11 @@ public class ObfuscationStatistics
     public int ConstantsEncrypted { get; set; }
 
     /// <summary>
+    /// Number of referenced assemblies packed as embedded resources.
+    /// </summary>
+    public int AssembliesEmbedded { get; set; }
+
+    /// <summary>
     /// Total number of transformations applied.
     /// </summary>
     public int TotalTransformations =>
@@ -199,7 +204,8 @@ public class ObfuscationStatistics
         ProtectionsApplied +
         MethodsEncrypted +
         MetadataItemsRemoved +
-        ResourcesEncrypted;
+        ResourcesEncrypted +
+        AssembliesEmbedded;
 
     /// <summary>
     /// Merges another statistics instance into this one.
@@ -220,5 +226,6 @@ public class ObfuscationStatistics
         MethodsEncrypted += other.MethodsEncrypted;
         MetadataItemsRemoved += other.MetadataItemsRemoved;
         ResourcesEncrypted += other.ResourcesEncrypted;
+        AssembliesEmbedded += other.AssembliesEmbedded;
     }
 }

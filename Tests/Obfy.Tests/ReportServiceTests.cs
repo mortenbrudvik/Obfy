@@ -145,6 +145,18 @@ public class ReportServiceTests : IDisposable
     }
 
     [Fact]
+    public void BuildReport_IncludesUnusedSettingForDependencyEmbedding()
+    {
+        var result = CreateSuccessfulResult();
+        var settings = new ObfySettings { DependencyEmbedding = { Enabled = true } };
+
+        var report = _reportService.BuildReport(result, settings);
+
+        report.Warnings.ShouldContain(w => w.Category == WarningCategory.UnusedSetting &&
+                                          w.RelatedItem == "DependencyEmbedding");
+    }
+
+    [Fact]
     public void BuildReport_IncludesRuntimeWarningsFromResult()
     {
         var result = ObfuscationResult.Successful(

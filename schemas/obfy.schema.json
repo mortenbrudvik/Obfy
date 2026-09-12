@@ -77,7 +77,11 @@
         "antiDebug": { "type": "boolean", "default": false },
         "antiDump": { "type": "boolean", "default": false },
         "referenceProxy": { "type": "boolean", "default": false },
-        "proxyExternalCalls": { "type": "boolean", "default": false },
+        "proxyExternalCalls": {
+          "type": "boolean",
+          "default": false,
+          "description": "Proxy selected out-of-module calls (BCL and third-party). Ignored unless referenceProxy is true. Skips compiler/interop/pointer/value-type signatures."
+        },
         "methodEncryption": { "type": "boolean", "default": false },
         "antiTamper": {
           "type": "object",
@@ -126,7 +130,8 @@
         "excludePatterns": {
           "type": "array",
           "items": { "type": "string" },
-          "default": ["*.resources"]
+          "default": ["*.resources", "Obfy.Embedded.*"],
+          "description": "*.resources keeps ResourceManager satellites working. Obfy.Embedded.* protects packed dependency DLLs; the obfuscator also hard-skips that prefix."
         }
       }
     },
@@ -214,7 +219,7 @@
     },
     "dependencyEmbedding": {
       "type": "object",
-      "description": "Embed referenced DLLs as resources and load them via AssemblyResolve.",
+      "description": "Embed sibling {AssemblyRef.Name}.dll files next to the input as Obfy.Embedded.* resources and load them via AppDomain.AssemblyResolve. Disabled on NativeAot, UnityIl2Cpp, and BlazorWasm.",
       "additionalProperties": true,
       "properties": {
         "enabled": { "type": "boolean", "default": false },
@@ -237,7 +242,7 @@
     },
     "runtimeProfile": {
       "type": "string",
-      "description": "Target runtime. NativeAot and UnityIl2Cpp disable method encryption and anti-dump.",
+      "description": "Target runtime. NativeAot, UnityIl2Cpp, and BlazorWasm disable method encryption, anti-dump, and dependency embedding (report warnings).",
       "enum": ["Default", "NativeAot", "UnityIl2Cpp", "BlazorWasm"],
       "default": "Default"
     },

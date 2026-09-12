@@ -30,7 +30,7 @@
         "name": "obfy",
         "owner": "obfy",
         "pattern": {
-          "regexp": "^(error|warning):\\s+(.*)$",
+          "regexp": "^(?:\\[[\\w]+\\])?(error|warning|Error|⚠)\\s*:?\\s+(.*)$",
           "severity": 1,
           "message": 2
         }

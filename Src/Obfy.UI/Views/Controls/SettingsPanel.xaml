@@ -151,8 +151,11 @@
                 </StackPanel>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ReferenceProxyToggle"
                                Content="Reference Proxy" IsChecked="{Binding ReferenceProxyEnabled}"/>
-                <ui:ToggleSwitch Content="Proxy external calls" IsChecked="{Binding ProxyExternalCalls}"
-                               Margin="0,8,0,0"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="ProxyExternalCallsToggle"
+                               Content="Proxy external calls (out-of-module)"
+                               IsChecked="{Binding ProxyExternalCalls}"
+                               IsEnabled="{Binding ReferenceProxyEnabled}"
+                               Margin="16,8,0,0"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="MethodEncryptionToggle"
                                Content="Method IL Encryption" IsChecked="{Binding MethodEncryptionEnabled}"/>
             </StackPanel>
@@ -208,6 +211,10 @@
                 <CheckBox Content="Internalize merged types" IsChecked="{Binding InternalizeMergedTypes}"
                           Visibility="{Binding AssemblyMergeEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                           Margin="0,8,0,0"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="DependencyEmbeddingToggle"
+                               Content="Embed referenced DLLs"
+                               IsChecked="{Binding DependencyEmbeddingEnabled}"
+                               Margin="0,8,0,0"/>
             </StackPanel>
         </ui:CardExpander>
 

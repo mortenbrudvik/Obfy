@@ -211,4 +211,62 @@ public class ObfySettingsTests
         });
         json.ShouldNotContain("hasAny");
     }
+
+    [Fact]
+    public void ResourceEncryption_DefaultExcludeIncludesEmbeddedPrefix()
+    {
+        new ResourceEncryptionSettings().ExcludePatterns.ShouldContain("Obfy.Embedded.*");
+        new ResourceEncryptionSettings().ExcludePatterns.ShouldContain("*.resources");
+    }
+
+    [Fact]
+    public void Clone_KeepsDependencyEmbeddingAndProxyExternal()
+    {
+        var original = new ObfySettings
+        {
+            RuntimeProfile = RuntimeProfile.BlazorWasm,
+            DependencyEmbedding =
+            {
+                Enabled = true,
+                IncludePatterns = { "Lib*.dll" },
+                ExcludePatterns = { "Skip.dll" }
+            },
+            Protection = { ReferenceProxy = true, ProxyExternalCalls = true }
+        };
+
+        var clone = original.Clone();
+        clone.RuntimeProfile.ShouldBe(RuntimeProfile.BlazorWasm);
+        clone.DependencyEmbedding.Enabled.ShouldBeTrue();
+        clone.DependencyEmbedding.IncludePatterns.ShouldContain("Lib*.dll");
+        clone.DependencyEmbedding.ExcludePatterns.ShouldContain("Skip.dll");
+        clone.Protection.ProxyExternalCalls.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ApplyLevel_Standard_ClearsProxyExternalCalls()
+    {
+        var settings = new ObfySettings
+        {
+            Protection = { ReferenceProxy = true, ProxyExternalCalls = true },
+            Level = ObfuscationLevel.Standard
+        };
+
+        settings.ApplyLevel();
+
+        settings.Protection.ReferenceProxy.ShouldBeFalse();
+        settings.Protection.ProxyExternalCalls.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Validate_NullCoalescesDependencyEmbeddingLists()
+    {
+        var settings = new ObfySettings();
+        settings.DependencyEmbedding.IncludePatterns = null!;
+        settings.DependencyEmbedding.ExcludePatterns = null!;
+
+        settings.Validate();
+
+        settings.DependencyEmbedding.IncludePatterns.ShouldNotBeNull();
+        settings.DependencyEmbedding.ExcludePatterns.ShouldNotBeNull();
+    }
 }

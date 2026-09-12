@@ -229,6 +229,47 @@ public class EndToEndObfuscationTests
     }
 
     [Fact]
+    public async Task ReferenceProxy_ConstrainedForeachAndValueTypeToString_RunOnRealAssembly()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get()
+                {
+                    var list = new System.Collections.Generic.List<int>();
+                    list.Add(1);
+                    list.Add(2);
+                    var n = 0;
+                    foreach (var x in list) n += x;
+                    return n + 42.ToString().Length;
+                }
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-cns-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "ConstrainedProxyLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var settings = new ObfySettings
+            {
+                Protection = { ReferenceProxy = true, ProxyExternalCalls = true }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            (await new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "ConstrainedProxyLib.obf.dll");
+            module.Write(output);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(5);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public async Task DependencyEmbedding_LoadsMissingSiblingAssembly()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-emb-{Guid.NewGuid():N}");
@@ -260,7 +301,51 @@ public class EndToEndObfuscationTests
 
             var result = await service.ObfuscateAsync(lib, output, settings);
             result.Success.ShouldBeTrue(result.ErrorMessage);
-            result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
+            result.Statistics.AssembliesEmbedded.ShouldBeGreaterThan(0);
+
+            File.Delete(dep);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(5);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task DependencyEmbedding_WithResourceEncryption_LoadsMissingSiblingAssembly()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-embenc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var dep = CompileToAssembly("public static class Dep { public static int N => 4; }", dir, "Dep");
+            var libSource = """
+                public static class Lib
+                {
+                    public static int Get() => Dep.N + 1;
+                }
+                """;
+            var lib = CompileToAssemblyWithRef(libSource, dir, "EmbEncLib", dep);
+
+            var output = Path.Combine(dir, "EmbEncLib.obf.dll");
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                ResourceEncryption = { Enabled = true },
+                DependencyEmbedding = { Enabled = true }
+            };
+
+            var result = await service.ObfuscateAsync(lib, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Statistics.AssembliesEmbedded.ShouldBeGreaterThan(0);
 
             File.Delete(dep);
             LoadAndInvoke(output, "Lib", "Get").ShouldBe(5);
@@ -604,15 +689,18 @@ public class EndToEndObfuscationTests
             var settings = ObfySettings.ForLevel(ObfuscationLevel.Aggressive);
             settings.SymbolRenaming.PreservePublicApi = true;
             settings.RuntimeProfile = RuntimeProfile.NativeAot;
+            settings.DependencyEmbedding.Enabled = true;
 
             var result = await service.ObfuscateAsync(input, output, settings);
             result.Success.ShouldBeTrue(result.ErrorMessage);
             result.Warnings.ShouldContain(w => w.Contains("Method encryption disabled", StringComparison.OrdinalIgnoreCase));
             result.Warnings.ShouldContain(w => w.Contains("Anti-dump disabled", StringComparison.OrdinalIgnoreCase));
+            result.Warnings.ShouldContain(w => w.Contains("Dependency embedding disabled", StringComparison.OrdinalIgnoreCase));
 
             using var loaded = ModuleDefMD.Load(File.ReadAllBytes(output));
             loaded.Types.ShouldNotContain(t => t.Name == "<MethodCrypt>");
             loaded.Types.ShouldNotContain(t => t.Name == "<AntiDump>");
+            loaded.Types.ShouldNotContain(t => t.Name == "<Embed>");
 
             LoadAndInvoke(output, "Lib", "Get").ShouldBe(9);
         }

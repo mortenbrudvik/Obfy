@@ -108,7 +108,7 @@ public class Program
 
         ProxyExternalOption = new Option<bool>(
             name: "--proxy-external",
-            description: "Also proxy calls into other assemblies (requires --reference-proxy)");
+            description: "Also proxy selected out-of-module calls (enables --reference-proxy). Skips compiler/interop/pointer signatures.");
 
         EncryptMethodsOption = new Option<bool>(
             name: "--encrypt-methods",
@@ -332,7 +332,7 @@ public class Program
         AnsiConsole.WriteLine();
     }
 
-    private static async Task<ObfySettings> BuildSettingsAsync(
+    internal static async Task<ObfySettings> BuildSettingsAsync(
         FileInfo? configFile,
         string level,
         bool stringEncrypt,

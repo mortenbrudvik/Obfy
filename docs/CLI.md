@@ -41,7 +41,7 @@ obfy <input>... [options]
 | `--anti-decompiler` | | Enable anti-decompiler protection | Off |
 | `--anti-dump` | | Enable anti-dump protection | Off |
 | `--reference-proxy` | | Enable reference proxy | Off |
-| `--proxy-external` | | Also proxy calls into other assemblies | Off |
+| `--proxy-external` | | Also proxy selected out-of-module calls (enables `--reference-proxy`; skips compiler/interop/pointer signatures) | Off |
 | `--encrypt-methods` | | Encrypt method IL in the PE image (Windows) | Off |
 | `--no-string-encryption` | | Disable string encryption | Off |
 | `--no-symbol-renaming` | | Disable symbol renaming | Off |
@@ -105,7 +105,9 @@ The wizard applies sensible defaults based on your application type:
 | Console Application | Standard protection |
 | Class Library / NuGet | Minimal protection, preserves public API |
 | Web Application (ASP.NET) | Standard protection, excludes route attributes |
-| Game (Unity) | Aggressive protection, excludes Unity namespaces |
+| Blazor WebAssembly | Standard protection, `runtimeProfile: BlazorWasm` |
+| MAUI / Mobile | Standard protection, preserves XAML names |
+| Game (Unity) | Standard protection, `runtimeProfile: UnityIl2Cpp`, excludes Unity namespaces |
 
 ## Examples
 

@@ -1888,6 +1888,34 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task ResourceEncryption_HardSkipsEmbeddedDependenciesEvenIfExcludeCleared()
+    {
+        var module = CreateTestModule();
+        var packed = new byte[] { 0x4D, 0x5A, 0x90, 0x00 };
+        module.Resources.Add(new EmbeddedResource("Obfy.Embedded.Dep.dll", packed));
+        module.Resources.Add(new EmbeddedResource("secret.bin", new byte[] { 4, 5, 6 }));
+
+        var obfuscator = new ResourceEncryptionObfuscator(new Mock<ILogger<ResourceEncryptionObfuscator>>().Object);
+        var settings = new ObfySettings
+        {
+            ResourceEncryption = new ResourceEncryptionSettings
+            {
+                Enabled = true,
+                IncludePatterns = new List<string> { "*" },
+                ExcludePatterns = new List<string>()
+            }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ResourcesEncrypted.ShouldBe(1);
+        var embedded = (EmbeddedResource)module.Resources.Single(r => r.Name == "Obfy.Embedded.Dep.dll");
+        embedded.CreateReader().ToArray().ShouldBe(packed);
+        context.SkippedItems.ShouldContain(s => s.ItemName == "Obfy.Embedded.Dep.dll");
+    }
+
+    [Fact]
     public async Task ResourceEncryption_DisabledWhenSettingFalse()
     {
         // Arrange
@@ -3463,6 +3491,89 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task ReferenceProxy_SkipsConstrainedExternalCalls()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Calc");
+        var idisposable = new TypeRefUser(module, "System", "IDisposable", module.CorLibTypes.AssemblyRef);
+        var dispose = new MemberRefUser(module, "Dispose",
+            MethodSig.CreateInstance(module.CorLibTypes.Void), idisposable);
+        var caller = CreateTestMethod(type, "Run");
+        caller.Body.Instructions.Clear();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Constrained, module.CorLibTypes.Int32.TypeDefOrRef));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, dispose));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        var obfuscator = new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Protection = { ReferenceProxy = true, ProxyExternalCalls = true }
+        });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var called = (IMethod)caller.Body.Instructions[2].Operand;
+        called.Name.String.ShouldBe("Dispose");
+        called.DeclaringType.Name.String.ShouldBe("IDisposable");
+    }
+
+    [Fact]
+    public async Task ReferenceProxy_DoesNotProxyInterlocked()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Calc");
+        var interlocked = new TypeRefUser(module, "System.Threading", "Interlocked", module.CorLibTypes.AssemblyRef);
+        var compareExchange = new MemberRefUser(module, "CompareExchange",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32, module.CorLibTypes.Int32, module.CorLibTypes.Int32),
+            interlocked);
+        var caller = CreateTestMethod(type, "Run");
+        caller.Body.Instructions.Clear();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Call, compareExchange));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        var obfuscator = new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Protection = { ReferenceProxy = true, ProxyExternalCalls = true }
+        });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var called = (IMethod)caller.Body.Instructions[2].Operand;
+        called.Name.String.ShouldBe("CompareExchange");
+        called.DeclaringType.Name.String.ShouldBe("Interlocked");
+    }
+
+    [Fact]
+    public async Task ReferenceProxy_DoesNotProxyGenericInstantiatedExternalCalls()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Calc");
+        var listType = new TypeRefUser(module, "System.Collections.Generic", "List`1", module.CorLibTypes.AssemblyRef);
+        var listInt = new TypeSpecUser(new GenericInstSig(new ClassSig(listType), module.CorLibTypes.Int32));
+        var add = new MemberRefUser(module, "Add",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, new GenericVar(0)), listInt);
+        var caller = CreateTestMethod(type, "Run");
+        caller.Body.Instructions.Clear();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, add));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        var obfuscator = new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Protection = { ReferenceProxy = true, ProxyExternalCalls = true }
+        });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var called = (IMethod)caller.Body.Instructions[2].Operand;
+        called.Name.String.ShouldBe("Add");
+    }
+
+    [Fact]
     public async Task StringEncryption_EncryptsCompilerGeneratedTypes()
     {
         var module = CreateTestModule();
@@ -3679,6 +3790,69 @@ public class AssemblyObfuscatorTests
             Protection = { AntiDump = true },
             RuntimeProfile = RuntimeProfile.BlazorWasm
         }).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void DependencyEmbedding_IsEnabled_RespectsSettingsAndProfiles()
+    {
+        var obfuscator = new DependencyEmbeddingObfuscator(new Mock<ILogger<DependencyEmbeddingObfuscator>>().Object);
+        obfuscator.IsEnabled(new ObfySettings { DependencyEmbedding = { Enabled = true } }).ShouldBeTrue();
+        obfuscator.IsEnabled(new ObfySettings { DependencyEmbedding = { Enabled = false } }).ShouldBeFalse();
+        obfuscator.IsEnabled(new ObfySettings
+        {
+            DependencyEmbedding = { Enabled = true },
+            RuntimeProfile = RuntimeProfile.NativeAot
+        }).ShouldBeFalse();
+        obfuscator.IsEnabled(new ObfySettings
+        {
+            DependencyEmbedding = { Enabled = true },
+            RuntimeProfile = RuntimeProfile.UnityIl2Cpp
+        }).ShouldBeFalse();
+        obfuscator.IsEnabled(new ObfySettings
+        {
+            DependencyEmbedding = { Enabled = true },
+            RuntimeProfile = RuntimeProfile.BlazorWasm
+        }).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task DependencyEmbedding_WarnsWhenInputPathMissing()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new DependencyEmbeddingObfuscator(new Mock<ILogger<DependencyEmbeddingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { DependencyEmbedding = { Enabled = true } });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        result.Statistics.AssembliesEmbedded.ShouldBe(0);
+        context.Warnings.ShouldContain(w => w.Contains("input path is missing", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task DependencyEmbedding_WarnsWhenNoUserAssembliesArePacked()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-emb-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = Path.Combine(dir, "App.dll");
+            File.WriteAllBytes(input, new byte[] { 0 });
+            var module = CreateTestModule();
+            var obfuscator = new DependencyEmbeddingObfuscator(new Mock<ILogger<DependencyEmbeddingObfuscator>>().Object);
+            var context = PipelineContext.ForAssembly(module, new ObfySettings { DependencyEmbedding = { Enabled = true } });
+            context.InputPath = input;
+
+            var result = await obfuscator.ObfuscateAsync(context);
+
+            result.Success.ShouldBeTrue();
+            result.Statistics.AssembliesEmbedded.ShouldBe(0);
+            context.Warnings.ShouldContain(w => w.Contains("no referenced assemblies were packed", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
     }
 
     [Fact]

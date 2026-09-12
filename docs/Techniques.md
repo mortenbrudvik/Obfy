@@ -40,13 +40,17 @@ Console.WriteLine("Hello World");
 
 **After (conceptual):**
 ```csharp
-Console.WriteLine(StringDecryptor.Decrypt(0));
+Console.WriteLine(StringDecryptor.Decrypt(encodedIndex));
+// or Decrypt2 / Decrypt3 — call sites round-robin across several entry points
 ```
 
 **Runtime Decryptor:**
 - Stores encrypted strings in a static array
 - Caches decrypted strings to avoid repeated decryption
 - Key is embedded in the assembly
+- Emits three `string Decrypt*(int)` entry points so a single `Decrypt(int)` is not a decompiler signature for every string
+- When control flow is enabled, decryptor methods (not `.cctor`) are flattened or given opaque predicates at full intensity
+- When reference proxy is enabled, user call sites invoke the decryptor through a `calli` trampoline
 
 **Algorithms:**
 
@@ -73,7 +77,7 @@ Console.WriteLine(StringDecryptor.Decrypt(0));
 - Adds slight runtime overhead for first access
 - Methods with exception handlers and compiler-generated methods **and types** (async state machines, display classes, iterators) are encrypted
 - Control-flow flattening still skips exception-handler methods (rebuilding EH is unsafe); those methods get opaque predicates instead
-- String decrypt call sites pass `index XOR seed`, not the raw index
+- String decrypt call sites pass `index XOR seed`, not the raw index, and do not all call the same method
 - Aggressive XOR-encrypts method IL in the PE; a module initializer decrypts it in memory before JIT (Windows `VirtualProtect`)
 - Resource strings shorter than `minStringLength` stay plaintext; encrypted resource strings are prefixed so `GetString` does not try to decrypt them
 
@@ -293,9 +297,12 @@ The `intensity` setting (0-100) controls how aggressively the technique is appli
 - **76-100**: Maximum obfuscation, all eligible blocks affected
 
 **Skipped Methods:**
-- Constructors
+- Constructors and static constructors (including runtime helper `.cctor`)
+- P/Invoke stubs and `calli` trampolines
 - Switch-flattening of methods with exception handlers (opaque predicates still apply)
 - Very short methods (<5 instructions)
+
+**Runtime helpers:** Decryptors, anti-debug `Check`, anti-tamper `Verify`, anti-dump `Wipe`, and method-body decrypt are control-flowed whenever control flow is enabled, at intensity 100 (user intensity is ignored for those methods). If switch flattening cannot run, they get opaque predicates instead of being left as clean IL.
 
 **Settings:**
 
@@ -438,7 +445,7 @@ Enabled in the Aggressive preset.
 
 ### Reference Proxy
 
-Replaces in-module `call`/`callvirt` targets with small static proxy methods so call sites no longer name the original method. Framework methods are left alone.
+Replaces in-module `call`/`callvirt` targets with small static proxy methods so call sites no longer name the original method. Framework methods are left alone. Assembly-visible runtime helper entry points (string/constant decrypt, anti-debug `Check`, and similar) are proxied from user code; private helper internals stay as direct calls because a trampoline in another type cannot invoke them.
 
 Enabled in the Aggressive preset.
 

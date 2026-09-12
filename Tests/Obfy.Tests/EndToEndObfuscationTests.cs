@@ -100,6 +100,47 @@ public class EndToEndObfuscationTests
         }
     }
 
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public async Task StringEncryption_WithHardenedHelpers_RunsOnRealAssembly(EncryptionAlgorithm algorithm)
+    {
+        const string source = "public static class Lib { public static string Get() => \"IntegrationSecretString\"; }";
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-hh-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "StrHelpLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = true, Algorithm = algorithm, MinStringLength = 3 },
+                ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 10 },
+                Protection = { ReferenceProxy = true }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+
+            (await new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+            (await new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+            (await new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "StrHelpLib.obf.dll");
+            module.Write(output);
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe("IntegrationSecretString");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
     [Fact]
     public async Task AntiTamper_VerifyPassesOnUntamperedRealAssembly()
     {

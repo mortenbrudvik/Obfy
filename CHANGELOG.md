@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Directory.Build.props, `.editorconfig`, and `version.json`
 
 ### Changed
+- Runtime helpers (decryptors, anti-debug `Check`, anti-tamper `Verify`, anti-dump `Wipe`, method-body decrypt) are control-flow obfuscated when control flow is on; `.cctor` and P/Invoke are left alone
+- String decryption uses three entry points; call sites round-robin so there is no single `Decrypt(int)` for every string
+- Reference proxies now hide user calls to assembly-visible runtime helper entry points
 - String and constant encryption now cover try/catch, compiler-generated methods, and compiler-generated types (async/iterator/lambda display classes)
 - Control flow applies opaque predicates to methods with exception handlers (`using`/`await`/`try`) instead of skipping them
 - Opaque predicates use several always-true forms plus a junk dead branch, not only `n*(n+1)%2`

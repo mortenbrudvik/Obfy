@@ -209,11 +209,12 @@ internal static class DecryptorIl
         FieldDef cacheField,
         FieldDef indexXorField,
         MethodDef bytesDecrypt,
-        EncryptionAlgorithm algorithm)
+        EncryptionAlgorithm algorithm,
+        string name = "Decrypt")
     {
         _ = algorithm;
         var method = new MethodDefUser(
-            "Decrypt",
+            name,
             MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.Int32),
             MethodAttributes.Assembly | MethodAttributes.Static);
 

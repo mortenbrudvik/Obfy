@@ -49,9 +49,16 @@ public class StringEncryptionObfuscator : IObfuscator
             // Store key and encrypted strings for decryptor injection
             var encryptedStrings = new List<byte[]>();
 
-            // Inject decryptor type
+            // Inject decryptor type with several entry points so a single Decrypt(int) is not a
+            // decompiler signature for every string.
             var decryptorType = InjectDecryptorType(module, key, settings.Algorithm, indexXor);
-            var decryptMethod = decryptorType.FindMethod("Decrypt");
+            var decryptMethods = decryptorType.Methods
+                .Where(m => m.MethodSig?.RetType.ElementType == ElementType.String
+                    && m.MethodSig.Params.Count == 1
+                    && m.MethodSig.Params[0].ElementType == ElementType.I4)
+                .ToList();
+            if (decryptMethods.Count == 0)
+                throw new InvalidOperationException("String decryptor was not injected.");
 
             // Process all methods
             foreach (var type in module.GetTypes())
@@ -93,6 +100,7 @@ public class StringEncryptionObfuscator : IObfuscator
 
                         var originalInstr = instructions[i];
                         ObfuscatorHelpers.SetLdcI4(originalInstr, index ^ indexXor);
+                        var decryptMethod = decryptMethods[index % decryptMethods.Count];
                         instructions.Insert(i + 1, Instruction.Create(OpCodes.Call, decryptMethod));
                         i++;
                         modified = true;
@@ -175,9 +183,13 @@ public class StringEncryptionObfuscator : IObfuscator
             : DecryptorIl.CreateXorDecryptBytes(module, "XorDecrypt", MethodAttributes.Private | MethodAttributes.Static);
         typeDef.Methods.Add(bytesDecrypt);
 
-        var decryptMethod = DecryptorIl.CreateStringDecrypt(
-            module, keyField, stringsField, cacheField, indexXorField, bytesDecrypt, algorithm);
-        typeDef.Methods.Add(decryptMethod);
+        const int variantCount = 3;
+        for (var v = 0; v < variantCount; v++)
+        {
+            var name = v == 0 ? "Decrypt" : "Decrypt" + (v + 1);
+            typeDef.Methods.Add(DecryptorIl.CreateStringDecrypt(
+                module, keyField, stringsField, cacheField, indexXorField, bytesDecrypt, algorithm, name));
+        }
 
         var cctor = new MethodDefUser(
             ".cctor",

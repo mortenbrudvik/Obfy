@@ -46,10 +46,11 @@ public class ControlFlowObfuscator : IObfuscator
         {
             foreach (var type in module.GetTypes())
             {
-                if (ObfuscatorHelpers.IsRuntimeHelper(type))
-                    continue;
                 if (ObfuscatorHelpers.IsExcluded(type, context.Settings.Exclusions))
                     continue;
+
+                var isHelper = ObfuscatorHelpers.IsRuntimeHelper(type);
+                var intensity = isHelper ? 100 : settings.Intensity;
 
                 foreach (var method in type.Methods)
                 {
@@ -62,9 +63,9 @@ public class ControlFlowObfuscator : IObfuscator
                     {
                         var obfuscated = settings.Mode switch
                         {
-                            ControlFlowMode.Switch => ApplySwitchFlattening(method, settings.Intensity, context),
-                            ControlFlowMode.OpaquePredicate => ApplyOpaquePredicates(method, settings.Intensity),
-                            ControlFlowMode.Combined => ApplyCombined(method, settings.Intensity, context),
+                            ControlFlowMode.Switch => ApplySwitchFlattening(method, intensity, isHelper, context),
+                            ControlFlowMode.OpaquePredicate => ApplyOpaquePredicates(method, intensity),
+                            ControlFlowMode.Combined => ApplyCombined(method, intensity, isHelper, context),
                             _ => false
                         };
 
@@ -107,10 +108,20 @@ public class ControlFlowObfuscator : IObfuscator
         if (method.IsConstructor || method.IsStaticConstructor)
             return false;
 
+        if (method.IsPinvokeImpl)
+            return false;
+
+        // calli trampolines (reference proxies) must stay a ldftn+calli+ret shape.
+        foreach (var instr in method.Body.Instructions)
+        {
+            if (instr.OpCode == OpCodes.Calli)
+                return false;
+        }
+
         return true;
     }
 
-    private bool ApplySwitchFlattening(MethodDef method, int intensity, PipelineContext context)
+    private bool ApplySwitchFlattening(MethodDef method, int intensity, bool isHelper, PipelineContext context)
     {
         if (method.Body.HasExceptionHandlers)
         {
@@ -120,7 +131,7 @@ public class ControlFlowObfuscator : IObfuscator
         }
 
         if (method.Body.Instructions.Count < 10)
-            return false;
+            return isHelper && ApplyOpaquePredicates(method, intensity);
 
         if (_random.Next(100) > intensity)
             return false;
@@ -135,7 +146,7 @@ public class ControlFlowObfuscator : IObfuscator
             if (instructions[i].OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch
                 or FlowControl.Return or FlowControl.Throw)
             {
-                return false;
+                return isHelper && ApplyOpaquePredicates(method, intensity);
             }
         }
 
@@ -279,10 +290,10 @@ public class ControlFlowObfuscator : IObfuscator
         return insertCount > 0;
     }
 
-    private bool ApplyCombined(MethodDef method, int intensity, PipelineContext context)
+    private bool ApplyCombined(MethodDef method, int intensity, bool isHelper, PipelineContext context)
     {
-        var result1 = ApplySwitchFlattening(method, intensity, context);
-        var result2 = ApplyOpaquePredicates(method, intensity / 2);
+        var result1 = ApplySwitchFlattening(method, intensity, isHelper, context);
+        var result2 = ApplyOpaquePredicates(method, isHelper ? intensity : intensity / 2);
         return result1 || result2;
     }
 

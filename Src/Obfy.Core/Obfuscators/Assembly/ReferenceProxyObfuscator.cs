@@ -51,6 +51,9 @@ public class ReferenceProxyObfuscator : IObfuscator
             {
                 if (type == proxyType)
                     continue;
+                // Keep helper internals as direct calls (many helper methods are private and
+                // cannot be invoked from <RefProxy>). User call sites still proxy helper entry
+                // points because those methods are assembly-visible.
                 if (ObfuscatorHelpers.IsRuntimeHelper(type))
                     continue;
                 if (ObfuscatorHelpers.IsExcluded(type, context.Settings.Exclusions))
@@ -131,8 +134,6 @@ public class ReferenceProxyObfuscator : IObfuscator
         // are easy to get wrong (this-pointer TypeSig) and are not the calls we need to hide.
         var resolved = called.ResolveMethodDef();
         if (resolved == null || resolved.Module != module)
-            return false;
-        if (ObfuscatorHelpers.IsRuntimeHelper(resolved.DeclaringType))
             return false;
         if (resolved.IsPinvokeImpl || resolved.IsNative)
             return false;

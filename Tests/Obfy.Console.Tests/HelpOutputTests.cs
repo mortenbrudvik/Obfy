@@ -112,6 +112,7 @@ public class HelpOutputTests
         output.ShouldContain("--no-control-flow");
         output.ShouldContain("--strip-metadata");
         output.ShouldContain("--encrypt-resources");
+        output.ShouldContain("--watermark-id");
     }
 
     [Fact]

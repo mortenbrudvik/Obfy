@@ -44,7 +44,7 @@ public class DependencyInjectionTests
 
         var obfuscators = container.Resolve<IEnumerable<IObfuscator>>().ToList();
 
-        // 12 assembly + 3 source obfuscators are registered.
+        // 14 assembly + 3 source obfuscators are registered.
         obfuscators.Count.ShouldBe(17);
 
         var names = obfuscators.Select(o => o.Name).ToList();
@@ -68,11 +68,16 @@ public class DependencyInjectionTests
         var byName = container.Resolve<IEnumerable<IObfuscator>>().ToDictionary(o => o.Name, o => o.Priority);
 
         byName["StringEncryption"].ShouldBe((int)ObfuscationPhase.StringEncryption);
+        byName["AntiDecompiler"].ShouldBe((int)ObfuscationPhase.AntiDecompiler);
+        byName["Watermark"].ShouldBe((int)ObfuscationPhase.Watermark);
+        byName["AntiTamper"].ShouldBe((int)ObfuscationPhase.AntiTamper);
         byName["SymbolRenaming"].ShouldBe((int)ObfuscationPhase.SymbolRenaming);
         byName["MetadataRemoval"].ShouldBe((int)ObfuscationPhase.MetadataRemoval);
 
         // String encryption must run before symbol renaming, which must run before metadata cleanup.
         byName["StringEncryption"].ShouldBeLessThan(byName["SymbolRenaming"]);
+        byName["AntiDecompiler"].ShouldBeLessThan(byName["Watermark"]);
+        byName["Watermark"].ShouldBeLessThan(byName["AntiTamper"]);
         byName["SymbolRenaming"].ShouldBeLessThan(byName["MetadataRemoval"]);
     }
 }

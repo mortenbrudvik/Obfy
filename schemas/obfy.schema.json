@@ -95,7 +95,11 @@
             "enabled": { "type": "boolean", "default": false },
             "injectJunkTypes": { "type": "boolean", "default": true },
             "addSuppressIldasmAttribute": { "type": "boolean", "default": true },
-            "addDecoyAttributes": { "type": "boolean", "default": true },
+            "addDecoyAttributes": {
+              "type": "boolean",
+              "default": true,
+              "description": "Inject ConfusedByAttribute / DotfuscatorAttribute types and assembly attributes. Names are pinned against renaming. Name-based detector bait; does not block de4dot."
+            },
             "junkTypeCount": { "type": "integer", "minimum": 1, "maximum": 50, "default": 5 },
             "junkMethodsPerType": { "type": "integer", "minimum": 1, "maximum": 20, "default": 3 }
           }
@@ -215,11 +219,11 @@
     },
     "watermark": {
       "type": "object",
-      "description": "Embed a customer/build identifier as an assembly attribute.",
+      "description": "Embed a customer/build identifier as an assembly attribute. Requires enabled=true and a non-whitespace id.",
       "additionalProperties": true,
       "properties": {
-        "enabled": { "type": "boolean", "default": false },
-        "id": { "type": "string" }
+        "enabled": { "type": "boolean", "default": false, "description": "Must be true together with a non-empty id; enabled with a blank id fails validation." },
+        "id": { "type": "string", "description": "Plaintext identifier stored as the WatermarkAttribute constructor argument and Id field." }
       }
     },
     "dependencyEmbedding": {
@@ -247,7 +251,7 @@
     },
     "runtimeProfile": {
       "type": "string",
-      "description": "Target runtime. NativeAot and UnityIl2Cpp disable method encryption and anti-dump.",
+      "description": "Target runtime. NativeAot, UnityIl2Cpp, and BlazorWasm disable method encryption, anti-dump, and dependency embedding. Anti-debug stays on but omits kernel32 P/Invoke.",
       "enum": ["Default", "NativeAot", "UnityIl2Cpp", "BlazorWasm"],
       "default": "Default"
     },

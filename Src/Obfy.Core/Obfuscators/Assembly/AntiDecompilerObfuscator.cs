@@ -7,10 +7,15 @@ using Obfy.Core.Pipeline;
 namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
-/// Injects anti-decompiler protection to make reverse engineering harder.
+/// Injects anti-decompiler junk types and optional decoy ConfuserEx/Dotfuscator attributes.
+/// Decoy type names are pinned against renaming so name-based detectors can still see them.
+/// Constructor strings are detector bait only; this does not block de4dot.
 /// </summary>
 public class AntiDecompilerObfuscator : IObfuscator
 {
+    public const string ConfusedByAttributeName = "ConfusedByAttribute";
+    public const string DotfuscatorAttributeName = "DotfuscatorAttribute";
+
     private readonly ILogger<AntiDecompilerObfuscator> _logger;
     private readonly Random _random = new();
 
@@ -70,15 +75,17 @@ public class AntiDecompilerObfuscator : IObfuscator
 
             if (settings.AddDecoyAttributes)
             {
-                stats.ProtectionsApplied += InjectDecoyAttributes(module);
-                _logger.LogDebug("Injected decoy obfuscator attributes");
+                var decoys = InjectDecoyAttributes(module);
+                stats.ProtectionsApplied += decoys;
+                if (decoys > 0)
+                    _logger.LogDebug("Injected decoy obfuscator attributes");
             }
 
             _logger.LogInformation("Applied {Count} anti-decompiler protections", stats.ProtectionsApplied);
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Anti-decompiler injection failed");
             return Task.FromResult(ObfuscationResult.Failed($"Anti-decompiler injection failed: {ex.Message}", ex));
@@ -91,7 +98,8 @@ public class AntiDecompilerObfuscator : IObfuscator
     private bool InjectSuppressIldasmAttribute(ModuleDef module)
     {
         // Check if already present
-        var existingAttr = module.Assembly.CustomAttributes
+        var assembly = module.Assembly ?? throw new InvalidOperationException("Module has no assembly.");
+        var existingAttr = assembly.CustomAttributes
             .FirstOrDefault(a => a.TypeFullName == "System.Runtime.CompilerServices.SuppressIldasmAttribute");
 
         if (existingAttr != null)
@@ -114,20 +122,23 @@ public class AntiDecompilerObfuscator : IObfuscator
             attrType);
 
         var attr = new CustomAttribute(ctor);
-        module.Assembly.CustomAttributes.Add(attr);
+        assembly.CustomAttributes.Add(attr);
 
         return true;
     }
 
+    /// <summary>
+    /// Injects internal <c>ConfusedByAttribute</c> / <c>DotfuscatorAttribute</c> types and assembly
+    /// attributes. Names are a de4dot-class detector contract and must not be renamed.
+    /// Constructor strings ("ConfuserEx v1.0.0" / "v5.0") are fingerprint bait only.
+    /// </summary>
     private int InjectDecoyAttributes(ModuleDef module)
     {
-        var assembly = module.Assembly;
-        if (assembly == null)
-            return 0;
+        var assembly = module.Assembly ?? throw new InvalidOperationException("Module has no assembly.");
 
         var count = 0;
-        count += AddNamedDecoy(module, assembly, "ConfusedByAttribute", "ConfuserEx v1.0.0");
-        count += AddNamedDecoy(module, assembly, "DotfuscatorAttribute", "v5.0");
+        count += AddNamedDecoy(module, assembly, ConfusedByAttributeName, "ConfuserEx v1.0.0");
+        count += AddNamedDecoy(module, assembly, DotfuscatorAttributeName, "v5.0");
         return count;
     }
 

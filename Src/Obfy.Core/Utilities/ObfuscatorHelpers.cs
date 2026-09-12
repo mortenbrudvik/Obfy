@@ -67,6 +67,16 @@ public static class ObfuscatorHelpers
         return ns == "Obfy.Runtime" || ns.StartsWith("Obfy.Runtime.", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Attribute types whose names are a public contract (de4dot decoys, watermark lookup).
+    /// Symbol renaming must leave the type name, members, and namespace intact.
+    /// </summary>
+    public static bool IsPinnedAttributeType(TypeDef type)
+    {
+        var name = type.Name.String;
+        return name is "ConfusedByAttribute" or "DotfuscatorAttribute" or "WatermarkAttribute";
+    }
+
     public static bool IsRuntimeOrExcluded(TypeDef type, ExclusionRules exclusions)
     {
         if (IsRuntimeHelper(type) || type.Namespace == "Obfy.Core.Models")

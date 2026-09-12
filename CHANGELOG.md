@@ -33,10 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependency embedding (`dependencyEmbedding.enabled`) loads referenced DLLs from resources via AssemblyResolve
 - Unity / Blazor / MAUI recipes and wizard presets; `runtimeProfile: BlazorWasm`
 - VS Code extension stub (`Src/Obfy.VSCode`) with `obfy.json` schema, task type, and problem matcher
-- Watermark attribute (`watermark.id`)
-- Anti-de4dot decoy `ConfusedBy` / `Dotfuscator` attributes
-- Anti-dump patches `MiniDumpWriteDump` to `ret`
-- NativeAOT/Blazor anti-debug keeps managed checks only (no kernel32 P/Invoke)
+- Watermark (`watermark.enabled` + `watermark.id`; empty/whitespace `id` is rejected). Type name `WatermarkAttribute` is pinned against renaming; the id is a plaintext CA constructor argument and `Id` field
+- Decoy `ConfusedByAttribute` / `DotfuscatorAttribute` (`protection.antiDecompiler.addDecoyAttributes`, default true when anti-decompiler is on). Names are pinned against renaming. Name-based detector bait; does not block de4dot
+- Anti-dump also overwrites the first byte of `dbghelp!MiniDumpWriteDump` with x86/x64 `ret` (`0xC3`) in the current process (Windows; ARM64 is not patched)
+- NativeAOT / Unity IL2CPP / Blazor WASM anti-debug keeps managed checks only (no kernel32 P/Invoke) and emits a report warning
+- CLI `--watermark-id` and Settings panel watermark / decoy-attribute controls
 
 ### Changed
 - Strong-name signing refreshes the signature blob in place after method-IL XOR; anti-tamper hashing skips the signature so Aggressive + `signing.keyFile` keeps both protections

@@ -45,6 +45,7 @@ public class Program
     internal static Option<bool> NoLogoOption { get; private set; } = null!;
     internal static Option<bool> MergeOption { get; private set; } = null!;
     internal static Option<bool> InternalizeOption { get; private set; } = null!;
+    internal static Option<string?> WatermarkIdOption { get; private set; } = null!;
 
     /// <summary>
     /// Creates the root command with all options and subcommands.
@@ -171,6 +172,10 @@ public class Program
             description: "Make merged types internal (improves obfuscation)",
             getDefaultValue: () => true);
 
+        WatermarkIdOption = new Option<string?>(
+            name: "--watermark-id",
+            description: "Embed a customer/build identifier as an assembly attribute");
+
         // Root command
         var rootCommand = new RootCommand("Obfy - C# Obfuscation Tool")
         {
@@ -201,7 +206,8 @@ public class Program
             VerboseOption,
             NoLogoOption,
             MergeOption,
-            InternalizeOption
+            InternalizeOption,
+            WatermarkIdOption
         };
 
         // Config generate command
@@ -292,6 +298,7 @@ public class Program
             var noLogo = context.ParseResult.GetValueForOption(NoLogoOption);
             var merge = context.ParseResult.GetValueForOption(MergeOption);
             var internalize = context.ParseResult.GetValueForOption(InternalizeOption);
+            var watermarkId = context.ParseResult.GetValueForOption(WatermarkIdOption);
 
             if (!noLogo)
             {
@@ -304,7 +311,8 @@ public class Program
                     config, level ?? "standard", stringEncrypt, controlFlow, rename,
                     antiDebug, stripMetadata, encryptResources, preservePublic,
                     antiTamper, antiDecompiler, noStringEncrypt, noRename,
-                    antiDump, referenceProxy, encryptConstants, noControlFlow, encryptMethods, proxyExternal).ConfigureAwait(false);
+                    antiDump, referenceProxy, encryptConstants, noControlFlow, encryptMethods, proxyExternal,
+                    watermarkId).ConfigureAwait(false);
 
                 if (merge)
                 {
@@ -351,7 +359,8 @@ public class Program
         bool encryptConstants = false,
         bool noControlFlow = false,
         bool encryptMethods = false,
-        bool proxyExternal = false)
+        bool proxyExternal = false,
+        string? watermarkId = null)
     {
         ObfySettings settings;
 
@@ -376,10 +385,12 @@ public class Program
             settings = ObfySettings.ForLevel(ParseLevel(level));
         }
 
+        var watermarkRequested = !string.IsNullOrWhiteSpace(watermarkId);
         var anyOverride = stringEncrypt || controlFlow || rename || antiDebug || stripMetadata
             || encryptResources || preservePublic || antiTamper || antiDecompiler
             || noStringEncrypt || noRename
-            || antiDump || referenceProxy || encryptConstants || noControlFlow || encryptMethods || proxyExternal;
+            || antiDump || referenceProxy || encryptConstants || noControlFlow || encryptMethods || proxyExternal
+            || watermarkRequested;
 
         if (stringEncrypt) settings.StringEncryption.Enabled = true;
         if (noStringEncrypt) settings.StringEncryption.Enabled = false;
@@ -402,6 +413,11 @@ public class Program
         if (encryptResources) settings.ResourceEncryption.Enabled = true;
         if (encryptConstants) settings.ConstantEncryption.Enabled = true;
         if (preservePublic) settings.SymbolRenaming.PreservePublicApi = true;
+        if (watermarkRequested)
+        {
+            settings.Watermark.Enabled = true;
+            settings.Watermark.Id = watermarkId!.Trim();
+        }
 
         if (anyOverride)
             settings.Level = ObfuscationLevel.Custom;

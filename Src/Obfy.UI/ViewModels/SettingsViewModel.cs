@@ -121,6 +121,15 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private int _junkMethodsPerType = 3;
 
+    [ObservableProperty]
+    private bool _addDecoyAttributes = true;
+
+    [ObservableProperty]
+    private bool _watermarkEnabled;
+
+    [ObservableProperty]
+    private string _watermarkId = string.Empty;
+
     // Metadata
     [ObservableProperty]
     private bool _removeDebugInfo = true;
@@ -377,6 +386,7 @@ public partial class SettingsViewModel : ObservableObject
                     Enabled = AntiDecompilerEnabled,
                     InjectJunkTypes = InjectJunkTypes,
                     AddSuppressIldasmAttribute = AddSuppressIldasmAttribute,
+                    AddDecoyAttributes = AddDecoyAttributes,
                     JunkTypeCount = JunkTypeCount,
                     JunkMethodsPerType = JunkMethodsPerType
                 },
@@ -425,6 +435,11 @@ public partial class SettingsViewModel : ObservableObject
                 Namespaces = IncludedNamespaces.ToList(),
                 Types = IncludedTypes.ToList(),
                 Methods = IncludedMethods.ToList()
+            },
+            Watermark = new WatermarkSettings
+            {
+                Enabled = WatermarkEnabled,
+                Id = WatermarkId ?? string.Empty
             },
             RuntimeProfile = this.RuntimeProfile,
             Signing = new SigningSettings
@@ -479,6 +494,7 @@ public partial class SettingsViewModel : ObservableObject
         AntiDecompilerEnabled = settings.Protection.AntiDecompiler.Enabled;
         InjectJunkTypes = settings.Protection.AntiDecompiler.InjectJunkTypes;
         AddSuppressIldasmAttribute = settings.Protection.AntiDecompiler.AddSuppressIldasmAttribute;
+        AddDecoyAttributes = settings.Protection.AntiDecompiler.AddDecoyAttributes;
         JunkTypeCount = settings.Protection.AntiDecompiler.JunkTypeCount;
         JunkMethodsPerType = settings.Protection.AntiDecompiler.JunkMethodsPerType;
         AntiDumpEnabled = settings.Protection.AntiDump;
@@ -538,6 +554,9 @@ public partial class SettingsViewModel : ObservableObject
         IncludedMethods.Clear();
         foreach (var method in settings.Inclusions.Methods)
             IncludedMethods.Add(method);
+
+        WatermarkEnabled = settings.Watermark.Enabled;
+        WatermarkId = settings.Watermark.Id ?? string.Empty;
 
         RuntimeProfile = settings.RuntimeProfile;
         SigningEnabled = settings.Signing.Enabled;

@@ -456,14 +456,15 @@ Failure paths inside `Check` cycle through `Environment.Exit(1)`, `Environment.F
 - Can be bypassed by experienced reverse engineers
 - May cause issues with legitimate profilers
 - Native checks are Windows-only; managed checks still run elsewhere
+- NativeAOT, Unity IL2CPP, and Blazor WASM omit kernel32 P/Invoke and keep managed `Debugger` / TickCount checks only (a report warning is emitted)
 
 ---
 
 ### Anti-Dump Protection
 
-Wipes in-memory PE header fields at module load so dumpers that reconstruct the image from the loaded module get a corrupted header. Failures (missing `kernel32`, non-Windows) are swallowed.
+Wipes in-memory PE header fields at module load so dumpers that reconstruct the image from the loaded module get a corrupted header. On Windows x86/x64 it also overwrites the first byte of `dbghelp!MiniDumpWriteDump` with `ret` (`0xC3`). Failures (missing `kernel32`/`dbghelp`, non-Windows, ARM64) are swallowed. Dumpers that use `dbgcore` or raw `ReadProcessMemory` are unaffected.
 
-Enabled in the Aggressive preset.
+PE32 vs PE32+ data-directory layouts are selected from the optional-header magic. Enabled in the Aggressive preset. Not used on NativeAOT / Unity IL2CPP / Blazor WASM.
 
 ---
 
@@ -486,6 +487,7 @@ Makes reverse engineering harder by cluttering decompiler output with junk types
 3. **Junk Methods**: Adds methods with complex-looking but dead code (loops, math, branches)
 4. **Junk Fields**: Adds fake fields to junk types
 5. **Confusing Names**: Uses zero-width and look-alike Unicode characters for names
+6. **Decoy attributes** (default on): injects internal `ConfusedByAttribute` / `DotfuscatorAttribute` types and assembly attributes. Type names are pinned against renaming so name-based detectors can see them. This is detector bait, not a de4dot block.
 
 **Injected Junk Type Structure:**
 
@@ -541,6 +543,7 @@ static int JunkMethod(int a, int b)
       "enabled": true,
       "injectJunkTypes": true,
       "addSuppressIldasmAttribute": true,
+      "addDecoyAttributes": true,
       "junkTypeCount": 5,
       "junkMethodsPerType": 3
     }
@@ -553,6 +556,7 @@ static int JunkMethod(int a, int b)
 | `enabled` | false | Enable anti-decompiler protection |
 | `injectJunkTypes` | true | Create junk types with dead code |
 | `addSuppressIldasmAttribute` | true | Add SuppressIldasm assembly attribute |
+| `addDecoyAttributes` | true | Inject pinned ConfusedBy/Dotfuscator attributes (name-based detector bait) |
 | `junkTypeCount` | 5 | Number of junk types to inject (1-50) |
 | `junkMethodsPerType` | 3 | Number of junk methods per type (1-20) |
 
@@ -561,6 +565,15 @@ static int JunkMethod(int a, int b)
 - Junk code adds to assembly size
 - Experienced analysts can identify and filter junk types
 - Works best when combined with other obfuscation techniques
+- Decoy attributes do not stop de4dot; they only present ConfuserEx/Dotfuscator-like names
+
+---
+
+### Watermark
+
+Embeds a customer or build identifier as an assembly-level `Obfy.Runtime.WatermarkAttribute`. The type name is pinned against renaming. The id is stored as a constructor argument and a public `Id` field (plaintext metadata, not confidentiality).
+
+Requires `watermark.enabled` and a non-whitespace `watermark.id`. Not part of level presets. CLI: `--watermark-id`. Recover the id from the custom-attribute blob or the `Id` field.
 
 ---
 

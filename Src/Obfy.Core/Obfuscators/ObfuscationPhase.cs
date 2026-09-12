@@ -7,13 +7,13 @@ namespace Obfy.Core.Obfuscators;
 /// </summary>
 public enum ObfuscationPhase
 {
+    /// <summary>Embed referenced DLLs as resources and hook AssemblyResolve.</summary>
+    DependencyEmbedding = 8,
+
     /// <summary>
     /// Encrypt string literals. Runs first so later control-flow rewrites see decrypt calls, and
     /// injected helper types exist before renaming/metadata.
     /// </summary>
-    /// <summary>Embed referenced DLLs as resources and hook AssemblyResolve.</summary>
-    DependencyEmbedding = 8,
-
     StringEncryption = 10,
 
     /// <summary>Encrypt numeric constants.</summary>
@@ -25,13 +25,19 @@ public enum ObfuscationPhase
     /// <summary>Inject anti-debugging checks (before control flow/renaming so helpers are obfuscated).</summary>
     AntiDebug = 18,
 
-    /// <summary>Inject anti-dump PE-header wipe (before control flow/renaming).</summary>
+    /// <summary>Inject anti-dump PE-header wipe and dbghelp MiniDumpWriteDump patch (before control flow/renaming).</summary>
     AntiDump = 19,
 
-    /// <summary>Inject anti-decompiler junk (before renaming).</summary>
+    /// <summary>
+    /// Inject anti-decompiler junk and decoy ConfusedBy/Dotfuscator attributes (before renaming).
+    /// Decoy type names are pinned so they survive symbol renaming.
+    /// </summary>
     AntiDecompiler = 20,
 
-    /// <summary>Embed a watermark attribute.</summary>
+    /// <summary>
+    /// Inject watermark CA before renaming. The type name <c>WatermarkAttribute</c> is pinned;
+    /// the customer id lives in the constructor argument and the <c>Id</c> field.
+    /// </summary>
     Watermark = 21,
 
     /// <summary>Inject anti-tamper verification (before renaming).</summary>

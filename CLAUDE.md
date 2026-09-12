@@ -109,9 +109,10 @@ Tech stack: WPF-UI 4.2.1 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | StringEncryption | 10 | Encrypts string literals (XOR or AES-256) |
 | ConstantEncryption | 11 | Encrypts numeric constants (int, long, float, double; XOR or AES-256) |
 | ResourceEncryption | 15 | Encrypts embedded resources (XOR or AES-256) |
-| AntiDebug | 18 | Injects debugger detection |
-| AntiDump | 19 | Wipes PE headers in memory (Windows) |
-| AntiDecompiler | 20 | Injects junk types and methods |
+| AntiDebug | 18 | Injects debugger detection (kernel32 omitted on NativeAOT / IL2CPP / Blazor WASM) |
+| AntiDump | 19 | Wipes PE headers in memory and patches `dbghelp!MiniDumpWriteDump` (Windows; x86/x64) |
+| AntiDecompiler | 20 | Injects junk types/methods and optional decoy ConfusedBy/Dotfuscator attributes |
+| Watermark | 21 | Embeds a customer/build id as a pinned `WatermarkAttribute` |
 | AntiTamper | 22 | Verifies assembly integrity at runtime |
 | MethodEncryption | 25 | XOR-encrypts method IL in the PE (Windows; per-method keys; skips generics) |
 | ControlFlow | 30 | State-machine dispatch of basic blocks and/or opaque predicates |

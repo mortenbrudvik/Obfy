@@ -618,6 +618,28 @@ public class SettingsViewModelTests
         roundTripped.SymbolRenaming.PreserveXaml.ShouldBeTrue();
     }
 
+    [Fact]
+    public void FromObfySettings_RoundTripsWatermarkAndDecoyAttributes()
+    {
+        var settings = new ObfySettings
+        {
+            Watermark = { Enabled = true, Id = "customer-42" },
+            Protection = { AntiDecompiler = { AddDecoyAttributes = false } }
+        };
+
+        var viewModel = new SettingsViewModel();
+        viewModel.FromObfySettings(settings);
+        var roundTripped = viewModel.ToObfySettings();
+
+        viewModel.WatermarkEnabled.ShouldBeTrue();
+        viewModel.WatermarkId.ShouldBe("customer-42");
+        viewModel.AddDecoyAttributes.ShouldBeFalse();
+
+        roundTripped.Watermark.Enabled.ShouldBeTrue();
+        roundTripped.Watermark.Id.ShouldBe("customer-42");
+        roundTripped.Protection.AntiDecompiler.AddDecoyAttributes.ShouldBeFalse();
+    }
+
     #endregion
 
     #region Exclusion Collection Tests

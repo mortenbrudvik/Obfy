@@ -9,6 +9,9 @@ namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
 /// Injects anti-debugging protection into assemblies.
+/// NativeAOT, Unity IL2CPP, and Blazor WASM omit kernel32 P/Invoke
+/// (<c>IsDebuggerPresent</c> / <c>CheckRemoteDebuggerPresent</c>) and keep managed
+/// <c>Debugger.IsAttached</c> / <c>IsLogging</c> / TickCount checks only.
 /// </summary>
 public class AntiDebugObfuscator : IObfuscator
 {
@@ -47,8 +50,17 @@ public class AntiDebugObfuscator : IObfuscator
         {
             if (settings.AntiDebug)
             {
-                var antiDebugType = InjectAntiDebugType(
-                    module, native: !RuntimeProfileGating.BlocksPeProtections(context.Settings.RuntimeProfile));
+                var emitKernel32Checks = !RuntimeProfileGating.BlocksPeProtections(context.Settings.RuntimeProfile);
+                if (!emitKernel32Checks)
+                {
+                    var warning =
+                        $"Anti-debug: kernel32 P/Invoke checks omitted for {RuntimeProfileGating.Describe(context.Settings.RuntimeProfile)}; " +
+                        "managed Debugger and TickCount checks still run.";
+                    context.Warnings.Add(warning);
+                    _logger.LogWarning("{Warning}", warning);
+                }
+
+                var antiDebugType = InjectAntiDebugType(module, emitKernel32Checks);
 
                 var moduleInitializer = FindModuleInitializer(module) ?? CreateModuleInitializer(module);
                 if (InjectDebuggerCheck(moduleInitializer, antiDebugType))
@@ -91,7 +103,7 @@ public class AntiDebugObfuscator : IObfuscator
         }
     }
 
-    private TypeDef InjectAntiDebugType(ModuleDef module, bool native)
+    private TypeDef InjectAntiDebugType(ModuleDef module, bool emitKernel32Checks)
     {
         // Create internal static class for anti-debug
         var typeDef = new TypeDefUser(
@@ -104,7 +116,7 @@ public class AntiDebugObfuscator : IObfuscator
         MethodDef? isDebuggerPresent = null;
         MethodDef? getCurrentProcess = null;
         MethodDef? checkRemote = null;
-        if (native)
+        if (emitKernel32Checks)
         {
             isDebuggerPresent = CreateKernel32PInvoke(
                 module, "IsDebuggerPresent", MethodSig.CreateStatic(module.CorLibTypes.Boolean));

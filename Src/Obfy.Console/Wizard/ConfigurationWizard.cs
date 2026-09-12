@@ -203,6 +203,14 @@ public class ConfigurationWizard
                 context.Settings.SymbolRenaming.PreserveXaml = true;
                 break;
 
+            case "Blazor WebAssembly":
+                context.Settings.RuntimeProfile = RuntimeProfile.BlazorWasm;
+                break;
+
+            case "MAUI / Mobile":
+                context.Settings.SymbolRenaming.PreserveXaml = true;
+                break;
+
             case "Game (Unity)":
                 context.Settings.Exclusions.Namespaces.Add("UnityEngine.*");
                 context.Settings.Exclusions.Namespaces.Add("Unity.*");

@@ -18,7 +18,9 @@ public class ProtectionLevelStep : WizardStep
         var suggested = context.UseCase switch
         {
             "Class Library / NuGet Package" => "Minimal",
-            "Game (Unity)" => "Aggressive",
+            "Game (Unity)" => "Standard",
+            "Blazor WebAssembly" => "Standard",
+            "MAUI / Mobile" => "Standard",
             _ => "Standard"
         };
 

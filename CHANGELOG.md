@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strong-name re-signing after obfuscation (`signing.keyFile`; PFX password from `signing.passwordEnvironmentVariable`, required for `.pfx`/`.p12`)
 - Optional `proxyExternalCalls` / `--proxy-external` to hide selected framework call targets
 - Dependency embedding (`dependencyEmbedding.enabled`) loads referenced DLLs from resources via AssemblyResolve
+- Unity / Blazor / MAUI recipes and wizard presets; `runtimeProfile: BlazorWasm`
+- VS Code extension stub (`Src/Obfy.VSCode`) with `obfy.json` schema, task type, and problem matcher
 
 ### Changed
 - Strong-name signing refreshes the signature blob in place after method-IL XOR; anti-tamper hashing skips the signature so Aggressive + `signing.keyFile` keeps both protections

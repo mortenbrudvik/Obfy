@@ -602,7 +602,8 @@ public enum RuntimeProfile
 {
     Default,
     NativeAot,
-    UnityIl2Cpp
+    UnityIl2Cpp,
+    BlazorWasm
 }
 
 /// <summary>

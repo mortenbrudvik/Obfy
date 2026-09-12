@@ -3674,6 +3674,11 @@ public class AssemblyObfuscatorTests
             Protection = { AntiDump = true },
             RuntimeProfile = RuntimeProfile.UnityIl2Cpp
         }).ShouldBeFalse();
+        obfuscator.IsEnabled(new ObfySettings
+        {
+            Protection = { AntiDump = true },
+            RuntimeProfile = RuntimeProfile.BlazorWasm
+        }).ShouldBeFalse();
     }
 
     [Fact]

@@ -11,16 +11,20 @@ namespace Obfy.Core.Utilities;
 public static class RuntimeProfileGating
 {
     public static bool BlocksPeProtections(RuntimeProfile profile) =>
-        profile is RuntimeProfile.NativeAot or RuntimeProfile.UnityIl2Cpp;
+        profile is RuntimeProfile.NativeAot or RuntimeProfile.UnityIl2Cpp or RuntimeProfile.BlazorWasm;
 
     public static void Apply(ObfySettings settings, PipelineContext context)
     {
         if (!BlocksPeProtections(settings.RuntimeProfile))
             return;
 
-        var label = settings.RuntimeProfile == RuntimeProfile.NativeAot
-            ? "NativeAOT"
-            : "Unity IL2CPP";
+        var label = settings.RuntimeProfile switch
+        {
+            RuntimeProfile.NativeAot => "NativeAOT",
+            RuntimeProfile.UnityIl2Cpp => "Unity IL2CPP",
+            RuntimeProfile.BlazorWasm => "Blazor WebAssembly",
+            _ => settings.RuntimeProfile.ToString()
+        };
 
         if (settings.Protection.MethodEncryption)
         {

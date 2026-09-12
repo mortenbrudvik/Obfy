@@ -1,13 +1,14 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.Json;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Obfy.Core.Models;
 using Obfy.Core.Services.Reporting;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
+using Wpf.Ui;
+using Wpf.Ui.Controls;
 
 namespace Obfy.UI.ViewModels;
 
@@ -18,6 +19,8 @@ public partial class ResultsViewModel : ObservableObject
 {
     private readonly IFileDialogService _fileDialogService;
     private readonly IReportService _reportService;
+    private readonly IClipboardService _clipboard;
+    private readonly ISnackbarService _snackbarService;
     private Dictionary<string, string> _symbolMap = new();
     private ObfuscationReport? _currentReport;
 
@@ -39,10 +42,24 @@ public partial class ResultsViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ExportReportCommand))]
     private bool _hasReport;
 
-    public ResultsViewModel(IFileDialogService fileDialogService, IReportService reportService)
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CopySymbolCommand))]
+    private SymbolTreeNode? _selectedNode;
+
+    public bool HasNoSymbols => RootNodes.Count == 0 && string.IsNullOrWhiteSpace(SearchText);
+
+    public bool HasNoSearchMatches => RootNodes.Count == 0 && !string.IsNullOrWhiteSpace(SearchText);
+
+    public ResultsViewModel(
+        IFileDialogService fileDialogService,
+        IReportService reportService,
+        IClipboardService clipboard,
+        ISnackbarService snackbarService)
     {
         _fileDialogService = fileDialogService;
         _reportService = reportService;
+        _clipboard = clipboard;
+        _snackbarService = snackbarService;
     }
 
     /// <summary>
@@ -53,8 +70,7 @@ public partial class ResultsViewModel : ObservableObject
         _symbolMap = symbolMap;
         Statistics = statistics;
         ElapsedTime = elapsedTime;
-
-        BuildSymbolTree();
+        ApplyFilter();
     }
 
     /// <summary>
@@ -69,6 +85,8 @@ public partial class ResultsViewModel : ObservableObject
         SearchText = string.Empty;
         _currentReport = null;
         HasReport = false;
+        SelectedNode = null;
+        NotifyEmptyStates();
     }
 
     /// <summary>
@@ -80,49 +98,96 @@ public partial class ResultsViewModel : ObservableObject
         HasReport = true;
     }
 
-    private void BuildSymbolTree()
+    private void BuildSymbolTree(IEnumerable<KeyValuePair<string, string>> symbols)
     {
         RootNodes.Clear();
+        var typeGroups = new Dictionary<string, SymbolTreeNode>(StringComparer.Ordinal);
 
-        // Group symbols by namespace/type
-        var typeGroups = new Dictionary<string, SymbolTreeNode>();
-
-        foreach (var (original, obfuscated) in _symbolMap)
+        foreach (var (original, obfuscated) in symbols)
         {
-            // Parse the symbol name to determine its type
             var (typeName, memberName, symbolType) = ParseSymbol(original);
 
             if (string.IsNullOrEmpty(typeName))
             {
-                // Top-level type
-                var typeNode = SymbolTreeNode.Create(original, obfuscated, SymbolType.Type);
-                RootNodes.Add(typeNode);
-            }
-            else
-            {
-                // Member of a type
-                if (!typeGroups.TryGetValue(typeName, out var typeNode))
+                if (typeGroups.TryGetValue(original, out var existing))
                 {
-                    typeNode = SymbolTreeNode.Create(typeName, typeName, SymbolType.Type);
-                    typeGroups[typeName] = typeNode;
-                    RootNodes.Add(typeNode);
+                    existing.ObfuscatedName = obfuscated;
+                }
+                else
+                {
+                    var node = SymbolTreeNode.Create(original, obfuscated, SymbolType.Type);
+                    typeGroups[original] = node;
+                    RootNodes.Add(node);
                 }
 
-                var memberNode = SymbolTreeNode.Create(memberName, obfuscated, symbolType);
-                typeNode.AddChild(memberNode);
+                continue;
+            }
+
+            if (!typeGroups.TryGetValue(typeName, out var typeNode))
+            {
+                typeNode = SymbolTreeNode.Create(typeName, typeName, SymbolType.Type);
+                typeGroups[typeName] = typeNode;
+                RootNodes.Add(typeNode);
+            }
+
+            typeNode.AddChild(SymbolTreeNode.Create(memberName, obfuscated, symbolType));
+        }
+
+        NotifyEmptyStates();
+    }
+
+    private void ApplyFilter()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            BuildSymbolTree(_symbolMap);
+            return;
+        }
+
+        var query = SearchText.Trim();
+        var typeMatches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (original, obfuscated) in _symbolMap)
+        {
+            var (typeName, _, _) = ParseSymbol(original);
+            if (string.IsNullOrEmpty(typeName))
+            {
+                if (Matches(original, obfuscated, query))
+                    typeMatches.Add(original);
+            }
+            else if (Matches(original, obfuscated, query) || Matches(typeName, typeName, query))
+            {
+                typeMatches.Add(typeName);
             }
         }
+
+        var filtered = _symbolMap.Where(kv =>
+        {
+            var (typeName, _, _) = ParseSymbol(kv.Key);
+            if (string.IsNullOrEmpty(typeName))
+                return typeMatches.Contains(kv.Key);
+
+            if (!typeMatches.Contains(typeName))
+                return false;
+
+            var typeSelfMatches = Matches(typeName, typeName, query);
+            return typeSelfMatches || Matches(kv.Key, kv.Value, query);
+        });
+
+        BuildSymbolTree(filtered);
     }
+
+    private static bool Matches(string original, string obfuscated, string query)
+        => original.Contains(query, StringComparison.OrdinalIgnoreCase)
+           || obfuscated.Contains(query, StringComparison.OrdinalIgnoreCase);
 
     private static (string typeName, string memberName, SymbolType symbolType) ParseSymbol(string symbol)
     {
-        // Simple heuristic: if contains "::" it's a member
         if (symbol.Contains("::"))
         {
             var parts = symbol.Split("::", 2);
             var memberName = parts[1];
-            var symbolType = memberName.Contains("(") ? SymbolType.Method :
-                            memberName.StartsWith("get_") || memberName.StartsWith("set_") ? SymbolType.Property :
+            var symbolType = memberName.Contains('(') ? SymbolType.Method :
+                            memberName.StartsWith("get_", StringComparison.Ordinal) || memberName.StartsWith("set_", StringComparison.Ordinal) ? SymbolType.Property :
                             SymbolType.Field;
             return (parts[0], memberName, symbolType);
         }
@@ -135,66 +200,78 @@ public partial class ResultsViewModel : ObservableObject
     {
         var filePath = _fileDialogService.ShowSaveSymbolMapDialog();
         if (string.IsNullOrEmpty(filePath))
-        {
             return;
-        }
 
-        var json = JsonSerializer.Serialize(_symbolMap, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(filePath, json);
+        try
+        {
+            var json = JsonSerializer.Serialize(_symbolMap, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(filePath, json);
+            ShowSnackbar("Symbol map exported", Path.GetFileName(filePath), ControlAppearance.Success);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ShowSnackbar("Export failed", ex.Message, ControlAppearance.Danger);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasReport))]
     private async Task ExportReportAsync()
     {
         if (_currentReport == null)
-        {
             return;
-        }
 
         var filePath = _fileDialogService.ShowSaveReportDialog();
         if (string.IsNullOrEmpty(filePath))
-        {
             return;
-        }
 
-        var format = Path.GetExtension(filePath).ToLowerInvariant() == ".json"
+        var format = Path.GetExtension(filePath).Equals(".json", StringComparison.OrdinalIgnoreCase)
             ? ReportFormat.Json
             : ReportFormat.Html;
 
-        await _reportService.GenerateReportAsync(_currentReport, filePath, format);
+        try
+        {
+            await _reportService.GenerateReportAsync(_currentReport, filePath, format);
+            ShowSnackbar("Report exported", Path.GetFileName(filePath), ControlAppearance.Success);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ShowSnackbar("Export failed", ex.Message, ControlAppearance.Danger);
+        }
     }
 
     [RelayCommand]
     private void CopySymbol(SymbolTreeNode? node)
     {
-        if (node != null)
+        var target = node ?? SelectedNode;
+        if (target == null)
+            return;
+
+        try
         {
-            Clipboard.SetText($"{node.OriginalName} -> {node.ObfuscatedName}");
+            _clipboard.SetText($"{target.OriginalName} -> {target.ObfuscatedName}");
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
+        {
+            ShowSnackbar("Copy failed", ex.Message, ControlAppearance.Danger);
         }
     }
 
-    partial void OnSearchTextChanged(string value)
-    {
-        // Filter the tree based on search text
-        // For now, just rebuild - could optimize with filtering
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            BuildSymbolTree();
-        }
-        else
-        {
-            // Simple filter: show only matching symbols
-            var filtered = _symbolMap
-                .Where(kv => kv.Key.Contains(value, StringComparison.OrdinalIgnoreCase) ||
-                            kv.Value.Contains(value, StringComparison.OrdinalIgnoreCase))
-                .ToDictionary(kv => kv.Key, kv => kv.Value);
+    partial void OnSearchTextChanged(string value) => ApplyFilter();
 
-            RootNodes.Clear();
-            foreach (var (original, obfuscated) in filtered)
-            {
-                var node = SymbolTreeNode.Create(original, obfuscated, SymbolType.Type);
-                RootNodes.Add(node);
-            }
-        }
+    private void NotifyEmptyStates()
+    {
+        OnPropertyChanged(nameof(HasNoSymbols));
+        OnPropertyChanged(nameof(HasNoSearchMatches));
+    }
+
+    private void ShowSnackbar(string title, string message, ControlAppearance appearance)
+    {
+        var symbol = appearance == ControlAppearance.Danger ? SymbolRegular.ErrorCircle24 : SymbolRegular.Checkmark24;
+        _snackbarService.Show(
+            title,
+            message,
+            appearance,
+            MainViewModel.CreateSnackbarIcon(symbol),
+            TimeSpan.FromSeconds(4));
     }
 }

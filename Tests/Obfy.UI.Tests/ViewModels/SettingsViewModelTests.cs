@@ -190,6 +190,85 @@ public class SettingsViewModelTests
         viewModel.ControlFlowIntensity.ShouldBe(80);
     }
 
+    [Fact]
+    public void ApplyPreset_Aggressive_EnablesAntiDumpReferenceProxyAndMethodEncryption()
+    {
+        var viewModel = new SettingsViewModel();
+
+        viewModel.ApplyPreset(ObfuscationLevel.Aggressive);
+
+        viewModel.AntiDumpEnabled.ShouldBeTrue();
+        viewModel.ReferenceProxyEnabled.ShouldBeTrue();
+        viewModel.MethodEncryptionEnabled.ShouldBeTrue();
+        viewModel.RemoveAttributes.ShouldBeTrue();
+        viewModel.ControlFlowIntensity.ShouldBe(80);
+        viewModel.ConstantEncryptionAlgorithm.ShouldBe(EncryptionAlgorithm.Xor);
+    }
+
+    [Fact]
+    public void ApplyPreset_Minimal_ClearsAggressiveProtectionsAndResetsIntensity()
+    {
+        var viewModel = new SettingsViewModel();
+        viewModel.ApplyPreset(ObfuscationLevel.Aggressive);
+
+        viewModel.ApplyPreset(ObfuscationLevel.Minimal);
+
+        viewModel.AntiDebugEnabled.ShouldBeFalse();
+        viewModel.AntiTamperEnabled.ShouldBeFalse();
+        viewModel.AntiDecompilerEnabled.ShouldBeFalse();
+        viewModel.AntiDumpEnabled.ShouldBeFalse();
+        viewModel.ReferenceProxyEnabled.ShouldBeFalse();
+        viewModel.MethodEncryptionEnabled.ShouldBeFalse();
+        viewModel.RemoveAttributes.ShouldBeFalse();
+        viewModel.ControlFlowIntensity.ShouldBe(50);
+        viewModel.ConstantEncryptionEnabled.ShouldBeFalse();
+        viewModel.ResourceEncryptionEnabled.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ApplyPreset_Standard_ClearsAggressiveProtectionsAndStripsAttributes()
+    {
+        var viewModel = new SettingsViewModel();
+        viewModel.ApplyPreset(ObfuscationLevel.Aggressive);
+
+        viewModel.ApplyPreset(ObfuscationLevel.Standard);
+
+        viewModel.StringEncryptionEnabled.ShouldBeTrue();
+        viewModel.AntiDebugEnabled.ShouldBeFalse();
+        viewModel.AntiTamperEnabled.ShouldBeFalse();
+        viewModel.AntiDecompilerEnabled.ShouldBeFalse();
+        viewModel.AntiDumpEnabled.ShouldBeFalse();
+        viewModel.ReferenceProxyEnabled.ShouldBeFalse();
+        viewModel.MethodEncryptionEnabled.ShouldBeFalse();
+        viewModel.RemoveAttributes.ShouldBeTrue();
+        viewModel.ControlFlowIntensity.ShouldBe(50);
+    }
+
+    [Fact]
+    public void AddExcludedNamespace_AddsTrimmedValueAndClearsInput()
+    {
+        var viewModel = new SettingsViewModel { NewExcludedNamespace = "  MyApp.Internal  " };
+
+        viewModel.AddExcludedNamespaceCommand.Execute(null);
+
+        viewModel.ExcludedNamespaces.ShouldContain("MyApp.Internal");
+        viewModel.NewExcludedNamespace.ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void AddExcludedNamespace_IgnoresBlankAndDuplicates()
+    {
+        var viewModel = new SettingsViewModel();
+        viewModel.ExcludedNamespaces.Add("System");
+        viewModel.NewExcludedNamespace = "  ";
+
+        viewModel.AddExcludedNamespaceCommand.Execute(null);
+        viewModel.NewExcludedNamespace = "System";
+        viewModel.AddExcludedNamespaceCommand.Execute(null);
+
+        viewModel.ExcludedNamespaces.Count.ShouldBe(1);
+    }
+
     #endregion
 
     #region Level Change Auto-Apply Tests

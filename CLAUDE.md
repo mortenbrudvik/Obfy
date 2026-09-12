@@ -92,7 +92,7 @@ The WPF desktop application provides a visual interface for obfuscation:
 - **Real-time progress**: Color-coded output logs
 - **Results view**: Statistics and symbol map export
 
-Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
+Tech stack: WPF-UI 4.2.1 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 
 ## Obfuscation Techniques
 

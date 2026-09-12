@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -9,6 +10,7 @@ using Obfy.Core.Services.Reporting;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
 using Wpf.Ui;
+using Wpf.Ui.Controls;
 using Wpf.Ui.Extensions;
 
 namespace Obfy.UI.ViewModels;
@@ -23,6 +25,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly ISettingsService _settingsService;
     private readonly IReportService _reportService;
     private readonly IContentDialogService _contentDialogService;
+    private readonly ISnackbarService _snackbarService;
+    private readonly NotifyCollectionChangedEventHandler _filesChanged;
     private CancellationTokenSource? _cancellationTokenSource;
 
     /// <summary>
@@ -58,15 +62,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showResultsPanel;
 
-    [ObservableProperty]
-    private int _selectedNavigationIndex;
-
     public MainViewModel(
         IObfuscationService obfuscationService,
         IFileDialogService fileDialogService,
         ISettingsService settingsService,
         IReportService reportService,
         IContentDialogService contentDialogService,
+        ISnackbarService snackbarService,
         SettingsViewModel settings,
         FilesViewModel files,
         OutputViewModel output,
@@ -77,11 +79,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _settingsService = settingsService;
         _reportService = reportService;
         _contentDialogService = contentDialogService;
+        _snackbarService = snackbarService;
         Settings = settings;
         Files = files;
         Output = output;
         Results = results;
-        Files.Files.CollectionChanged += (_, _) => ObfuscateCommand.NotifyCanExecuteChanged();
+        _filesChanged = (_, _) => ObfuscateCommand.NotifyCanExecuteChanged();
+        Files.Files.CollectionChanged += _filesChanged;
     }
 
     /// <summary>
@@ -114,8 +118,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var allSymbols = new Dictionary<string, string>();
         var totalStats = new ObfuscationStatistics();
+        var successfulResults = new List<ObfuscationResult>();
         var stopwatch = Stopwatch.StartNew();
-        ObfuscationResult? lastSuccessfulResult = null;
 
         Output.Clear();
         Output.Info("Starting obfuscation...");
@@ -124,77 +128,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            for (int i = 0; i < files.Count; i++)
+            if (ShouldMerge(settings, files))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var file = files[i];
-                file.Status = FileStatus.Processing;
-                file.Progress = 0;
-                StatusMessage = $"Processing {file.FileName}...";
-
-                Output.Info($"Processing {file.FileName}...");
-
-                var outputPath = outputDir != null
-                    ? Path.Combine(outputDir, file.FileName)
-                    : null;
-
-                var result = await Task.Run(
-                    () => _obfuscationService.ObfuscateAsync(
-                        file.FilePath,
-                        outputPath,
-                        settings,
-                        cancellationToken),
-                    cancellationToken);
-
-                file.Progress = 100;
-
-                if (result.Success)
-                {
-                    file.Status = FileStatus.Success;
-                    lastSuccessfulResult = result;
-                    if (result.Statistics != null)
-                    {
-                        totalStats.Merge(result.Statistics);
-                    }
-                    // Collect symbols for the results panel
-                    foreach (var (key, value) in result.SymbolMap)
-                    {
-                        allSymbols[key] = value;
-                    }
-                    Output.Success($"Completed {file.FileName}: {result.Statistics?.TotalTransformations ?? 0} transformations");
-
-                    // Surface skips and warnings so partial or ineffective protection is visible
-                    // here, not only in an exported report.
-                    if (result.SkippedItems.Count > 0)
-                    {
-                        Output.Warning($"{result.SkippedItems.Count} item(s) in {file.FileName} were skipped and left unobfuscated.");
-                    }
-                    foreach (var warning in result.Warnings)
-                    {
-                        Output.Warning(warning);
-                    }
-                }
-                else
-                {
-                    file.Status = FileStatus.Error;
-                    file.ErrorMessage = result.ErrorMessage;
-                    Output.Error($"Failed {file.FileName}: {result.ErrorMessage}");
-                }
-
-                OverallProgress = (i + 1) * 100.0 / files.Count;
+                await MergeAndObfuscateAsync(files, settings, allSymbols, totalStats, successfulResults, cancellationToken);
+            }
+            else
+            {
+                await ObfuscateEachAsync(files, settings, outputDir, allSymbols, totalStats, successfulResults, cancellationToken);
             }
 
             stopwatch.Stop();
 
-            // Load results
             Results.LoadResults(allSymbols, totalStats, stopwatch.Elapsed);
 
-            // Build and set report for export
-            if (lastSuccessfulResult != null)
+            if (successfulResults.Count > 0)
             {
-                var report = _reportService.BuildReport(lastSuccessfulResult, settings);
-                Results.SetReport(report);
+                var combined = CombineResults(successfulResults, totalStats, allSymbols, stopwatch.Elapsed);
+                Results.SetReport(_reportService.BuildReport(combined, settings));
+            }
+
+            if (Files.GenerateSymbolMap && allSymbols.Count > 0)
+            {
+                await WriteSymbolMapAsync(allSymbols);
             }
 
             ShowResultsPanel = true;
@@ -202,31 +157,32 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var failed = files.Count(f => f.Status == FileStatus.Error);
             if (failed > 0)
             {
-                Output.Error($"Obfuscation finished with errors: {failed} file(s) failed.");
+                var message = $"Obfuscation finished with errors: {failed} file(s) failed.";
+                Output.Error(message);
                 StatusMessage = "Completed with errors";
+                ShowSnackbar("Completed with errors", message, ControlAppearance.Danger);
             }
             else
             {
-                Output.Success($"Obfuscation completed: {totalStats.TotalTransformations} total transformations in {stopwatch.Elapsed:mm\\:ss\\.fff}");
+                var message = $"Obfuscation completed: {totalStats.TotalTransformations} total transformations in {stopwatch.Elapsed:mm\\:ss\\.fff}";
+                Output.Success(message);
                 StatusMessage = "Obfuscation complete";
+                ShowSnackbar("Obfuscation complete", message, ControlAppearance.Success);
             }
         }
         catch (OperationCanceledException)
         {
             Output.Warning("Obfuscation cancelled by user");
             StatusMessage = "Cancelled";
-
-            // Mark remaining files as pending
-            foreach (var file in files.Where(f => f.Status == FileStatus.Processing))
-            {
-                file.Status = FileStatus.Pending;
-                file.Progress = 0;
-            }
+            ResetProcessingFiles(files, error: null);
+            ShowSnackbar("Cancelled", "Obfuscation cancelled by user", ControlAppearance.Caution);
         }
         catch (Exception ex)
         {
             Output.Error($"Obfuscation failed: {ex.Message}");
             StatusMessage = "Error occurred";
+            ResetProcessingFiles(files, ex.Message);
+            ShowSnackbar("Obfuscation failed", ex.Message, ControlAppearance.Danger);
         }
         finally
         {
@@ -234,6 +190,193 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
             ObfuscateCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private async Task ObfuscateEachAsync(
+        List<AssemblyFile> files,
+        ObfySettings settings,
+        string? outputDir,
+        Dictionary<string, string> allSymbols,
+        ObfuscationStatistics totalStats,
+        List<ObfuscationResult> successfulResults,
+        CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < files.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var file = files[i];
+            file.Status = FileStatus.Processing;
+            file.Progress = 0;
+            StatusMessage = $"Processing {file.FileName}...";
+            Output.Info($"Processing {file.FileName}...");
+
+            var outputPath = outputDir != null
+                ? Path.Combine(outputDir, file.FileName)
+                : null;
+
+            var result = await Task.Run(
+                () => _obfuscationService.ObfuscateAsync(
+                    file.FilePath,
+                    outputPath,
+                    settings,
+                    cancellationToken),
+                cancellationToken);
+
+            file.Progress = 100;
+            ApplyResult(file, result, allSymbols, totalStats, successfulResults);
+            OverallProgress = (i + 1) * 100.0 / files.Count;
+        }
+    }
+
+    private async Task MergeAndObfuscateAsync(
+        List<AssemblyFile> files,
+        ObfySettings settings,
+        Dictionary<string, string> allSymbols,
+        ObfuscationStatistics totalStats,
+        List<ObfuscationResult> successfulResults,
+        CancellationToken cancellationToken)
+    {
+        foreach (var file in files)
+        {
+            file.Status = FileStatus.Processing;
+            file.Progress = 0;
+        }
+
+        StatusMessage = "Merging and obfuscating assemblies...";
+        Output.Info($"Merging {files.Count} assemblies...");
+
+        var outputPath = Files.ResolveMergeOutputPath();
+        var result = await Task.Run(
+            () => _obfuscationService.MergeAndObfuscateAsync(
+                files.Select(f => f.FilePath),
+                outputPath,
+                settings,
+                cancellationToken),
+            cancellationToken);
+
+        OverallProgress = 100;
+        foreach (var file in files)
+            file.Progress = 100;
+
+        if (result.Success)
+        {
+            foreach (var file in files)
+            {
+                file.Status = FileStatus.Success;
+                file.OutputPath = result.OutputPath;
+            }
+
+            successfulResults.Add(result);
+            if (result.Statistics != null)
+                totalStats.Merge(result.Statistics);
+            foreach (var (key, value) in result.SymbolMap)
+                allSymbols[key] = value;
+
+            Output.Success($"Merged and obfuscated {files.Count} assemblies: {result.Statistics?.TotalTransformations ?? 0} transformations");
+            if (result.SkippedItems.Count > 0)
+                Output.Warning($"{result.SkippedItems.Count} item(s) were skipped and left unobfuscated.");
+            foreach (var warning in result.Warnings)
+                Output.Warning(warning);
+        }
+        else
+        {
+            foreach (var file in files)
+            {
+                file.Status = FileStatus.Error;
+                file.ErrorMessage = result.ErrorMessage;
+            }
+
+            Output.Error($"Merge failed: {result.ErrorMessage}");
+        }
+    }
+
+    private void ApplyResult(
+        AssemblyFile file,
+        ObfuscationResult result,
+        Dictionary<string, string> allSymbols,
+        ObfuscationStatistics totalStats,
+        List<ObfuscationResult> successfulResults)
+    {
+        if (result.Success)
+        {
+            file.Status = FileStatus.Success;
+            file.OutputPath = result.OutputPath;
+            successfulResults.Add(result);
+            if (result.Statistics != null)
+                totalStats.Merge(result.Statistics);
+
+            foreach (var (key, value) in result.SymbolMap)
+                allSymbols[key] = value;
+
+            Output.Success($"Completed {file.FileName}: {result.Statistics?.TotalTransformations ?? 0} transformations");
+
+            if (result.SkippedItems.Count > 0)
+                Output.Warning($"{result.SkippedItems.Count} item(s) in {file.FileName} were skipped and left unobfuscated.");
+
+            foreach (var warning in result.Warnings)
+                Output.Warning(warning);
+        }
+        else
+        {
+            file.Status = FileStatus.Error;
+            file.ErrorMessage = result.ErrorMessage;
+            Output.Error($"Failed {file.FileName}: {result.ErrorMessage}");
+        }
+    }
+
+    private static bool ShouldMerge(ObfySettings settings, List<AssemblyFile> files)
+        => settings.AssemblyMerge.Enabled
+           && files.Count >= 2
+           && files.All(f => f.IsAssembly);
+
+    private static void ResetProcessingFiles(List<AssemblyFile> files, string? error)
+    {
+        foreach (var file in files.Where(f => f.Status == FileStatus.Processing))
+        {
+            if (error is null)
+            {
+                file.Status = FileStatus.Pending;
+                file.ErrorMessage = null;
+            }
+            else
+            {
+                file.Status = FileStatus.Error;
+                file.ErrorMessage = error;
+            }
+
+            file.Progress = 0;
+        }
+    }
+
+    private static ObfuscationResult CombineResults(
+        List<ObfuscationResult> successful,
+        ObfuscationStatistics totalStats,
+        Dictionary<string, string> allSymbols,
+        TimeSpan elapsed)
+    {
+        return ObfuscationResult.Successful(
+            totalStats,
+            inputPath: string.Join(", ", successful.Select(r => r.InputPath).Where(p => !string.IsNullOrEmpty(p))),
+            outputPath: successful.Last().OutputPath,
+            elapsedTime: elapsed,
+            skippedItems: successful.SelectMany(r => r.SkippedItems).ToList(),
+            symbolMap: allSymbols,
+            warnings: successful.SelectMany(r => r.Warnings).ToList());
+    }
+
+    private async Task WriteSymbolMapAsync(Dictionary<string, string> allSymbols)
+    {
+        var mapPath = Files.ResolveSymbolMapPath();
+        try
+        {
+            await _obfuscationService.WriteSymbolMapAsync(allSymbols, mapPath);
+            Output.Info($"Symbol map written to {mapPath}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Output.Warning($"Failed to write symbol map: {ex.Message}");
         }
     }
 
@@ -249,19 +392,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var filePath = _fileDialogService.ShowSaveConfigDialog();
         if (string.IsNullOrEmpty(filePath))
-        {
             return;
-        }
 
         try
         {
             var settings = Settings.ToObfySettings();
             await _settingsService.SaveSettingsAsync(settings, filePath);
             Output.Info($"Configuration saved to {filePath}");
+            ShowSnackbar("Configuration saved", filePath, ControlAppearance.Success);
         }
         catch (Exception ex)
         {
             Output.Error($"Failed to save configuration: {ex.Message}");
+            ShowSnackbar("Save failed", ex.Message, ControlAppearance.Danger);
         }
     }
 
@@ -270,9 +413,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var filePath = _fileDialogService.ShowOpenConfigDialog();
         if (string.IsNullOrEmpty(filePath))
-        {
             return;
-        }
 
         try
         {
@@ -281,25 +422,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 Settings.FromObfySettings(settings);
                 Output.Info($"Configuration loaded from {filePath}");
+                ShowSnackbar("Configuration loaded", filePath, ControlAppearance.Success);
             }
             else
             {
                 Output.Error($"Failed to load configuration from {filePath}");
+                ShowSnackbar("Load failed", $"Could not read {filePath}", ControlAppearance.Danger);
             }
         }
         catch (Exception ex)
         {
             Output.Error($"Failed to load configuration: {ex.Message}");
+            ShowSnackbar("Load failed", ex.Message, ControlAppearance.Danger);
         }
     }
 
     [RelayCommand]
     private async Task ShowAboutAsync()
     {
-        var version = Assembly.GetExecutingAssembly().GetName().Version;
-        var versionText = version is null
-            ? "1.2.0"
-            : $"{version.Major}.{version.Minor}.{version.Build}";
+        var versionText = GetInformationalVersion();
 
         await _contentDialogService.ShowSimpleDialogAsync(new SimpleContentDialogCreateOptions
         {
@@ -309,8 +450,73 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
+    [RelayCommand]
+    private void OpenOutputFolder()
+    {
+        var path = Files.Files
+            .Select(f => f.OutputPath)
+            .LastOrDefault(p => !string.IsNullOrEmpty(p));
+
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        var directory = File.Exists(path) ? Path.GetDirectoryName(path) : path;
+        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            return;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = directory,
+            UseShellExecute = true
+        });
+    }
+
+    public static string GetInformationalVersion()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            var plus = informational.IndexOf('+');
+            return plus >= 0 ? informational[..plus] : informational;
+        }
+
+        var version = assembly.GetName().Version;
+        return version is null ? "unknown" : $"{version.Major}.{version.Minor}.{version.Build}";
+    }
+
+    private void ShowSnackbar(string title, string message, ControlAppearance appearance)
+    {
+        var symbol = appearance switch
+        {
+            ControlAppearance.Danger => SymbolRegular.ErrorCircle24,
+            ControlAppearance.Caution => SymbolRegular.Warning24,
+            _ => SymbolRegular.Checkmark24
+        };
+
+        _snackbarService.Show(
+            title,
+            message,
+            appearance,
+            CreateSnackbarIcon(symbol),
+            TimeSpan.FromSeconds(4));
+    }
+
+    internal static IconElement CreateSnackbarIcon(SymbolRegular symbol)
+        => System.Windows.Application.Current is null ? null! : new SymbolIcon(symbol);
+
     public void Dispose()
     {
+        Files.Files.CollectionChanged -= _filesChanged;
+        try
+        {
+            _cancellationTokenSource?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
         _cancellationTokenSource?.Dispose();
+        _cancellationTokenSource = null;
     }
 }

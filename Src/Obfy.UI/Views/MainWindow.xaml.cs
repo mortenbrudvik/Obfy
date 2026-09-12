@@ -19,6 +19,6 @@ public partial class MainWindow : FluentWindow
         : this()
     {
         snackbarService.SetSnackbarPresenter(SnackbarPresenter);
-        contentDialogService.SetDialogHost(RootContentDialogPresenter);
+        contentDialogService.SetDialogHost(RootContentDialog);
     }
 }

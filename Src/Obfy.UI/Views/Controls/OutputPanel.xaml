@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:models="clr-namespace:Obfy.UI.Models"
              xmlns:vm="clr-namespace:Obfy.UI.ViewModels"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:OutputViewModel}">
@@ -23,8 +24,10 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="Output" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <ui:TextBlock Text="Output" FontTypography="BodyStrong" VerticalAlignment="Center"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <ui:ToggleSwitch AutomationProperties.AutomationId="ShowTimestampsToggle"
+                                  Content="Timestamps" IsChecked="{Binding ShowTimestamps}" Margin="0,0,12,0"/>
                     <ui:ToggleSwitch AutomationProperties.AutomationId="AutoScrollToggle"
                                   Content="Auto-scroll" IsChecked="{Binding AutoScroll}" Margin="0,0,12,0"/>
                     <ui:Button AutomationProperties.AutomationId="ClearLogsButton"
@@ -58,12 +61,34 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="{Binding Timestamp, StringFormat=HH:mm:ss.fff}"
-                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Grid.Column="1" Text="{Binding Level}"
-                                  Foreground="{Binding Level, Converter={StaticResource LevelToColorConverter}}"
-                                  FontWeight="SemiBold"/>
-                        <TextBlock Grid.Column="2" Text="{Binding Message}" TextWrapping="NoWrap"/>
+                        <ui:TextBlock Grid.Column="0" Text="{Binding Timestamp, StringFormat=HH:mm:ss.fff}"
+                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                  Visibility="{Binding DataContext.ShowTimestamps, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        <ui:TextBlock Grid.Column="1" Text="{Binding Level}" FontWeight="SemiBold">
+                            <ui:TextBlock.Style>
+                                <Style TargetType="ui:TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Level}" Value="{x:Static models:LogLevel.Error}">
+                                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Level}" Value="{x:Static models:LogLevel.Warning}">
+                                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Level}" Value="{x:Static models:LogLevel.Info}">
+                                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorAttentionBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Level}" Value="{x:Static models:LogLevel.Debug}">
+                                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Level}" Value="{x:Static models:LogLevel.Success}">
+                                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ui:TextBlock.Style>
+                        </ui:TextBlock>
+                        <ui:TextBlock Grid.Column="2" Text="{Binding Message}" TextWrapping="NoWrap"/>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>

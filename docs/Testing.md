@@ -78,8 +78,11 @@ Tests the WPF UI ViewModels:
 
 | ViewModel | Tests | Description |
 |-----------|-------|-------------|
-| SettingsViewModel | 35 | Presets, conversions, exclusions |
-| FilesViewModel | 24 | File management, commands |
+| SettingsViewModel | presets, conversions, exclusions, ApplyLevel parity |
+| FilesViewModel | file management, drop filters, commands |
+| MainViewModel | obfuscate/cancel, merge, snackbars, batch report |
+| ResultsViewModel | tree grouping, search, export, copy |
+| Converters | visibility, enum descriptions, status/kind icons |
 
 Key patterns:
 

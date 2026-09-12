@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Desktop UI snackbars for save/load/complete/fail, keyboard shortcuts, and an Open output folder action
+- Settings panel controls for anti-decompiler, assembly merge, exclusions, and tamper-check sites
+- File-list status, size, source vs assembly icons, and error text after a run
 - Anti-dump PE-header wipe at module load (Aggressive preset)
 - Reference proxy for in-module method calls (Aggressive preset)
 - Native `IsDebuggerPresent` check in addition to managed debugger APIs
@@ -22,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Directory.Build.props, `.editorconfig`, and `version.json`
 
 ### Changed
+- WPF-UI 4.2.1 with `ContentDialogHost`, system theme, and CardExpander settings groups
+- UI level presets now match Core `ApplyLevel()`; dropdowns use human-readable descriptions
+- Add Files accepts `.cs` as well as assemblies; empty output path is documented as `*.obfuscated.*`
+- Multi-file runs export a combined report; merge and symbol-map options actually run
 - String and constant encryption now cover try/catch, compiler-generated methods, and compiler-generated types (async/iterator/lambda display classes)
 - Control flow applies opaque predicates to methods with exception handlers (`using`/`await`/`try`) instead of skipping them
 - Opaque predicates use several always-true forms plus a junk dead branch, not only `n*(n+1)%2`
@@ -39,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Junk types no longer live in the `Obfy.Internal` namespace
 
 ### Fixed
+- UI settings no longer disagree with what Aggressive/Minimal/Standard actually apply
+- Failed files no longer look identical to pending ones; mid-run exceptions reset processing status
+- Export report/map I/O failures are shown instead of failing silently
+- Dead About window with a hardcoded 1.2.0 version removed
 - `exclusions.Methods` is honored by assembly symbol renaming
 - `encryptConstantStrings` / `encryptResourceStrings` settings now take effect
 - Source interpolated string parts are encrypted

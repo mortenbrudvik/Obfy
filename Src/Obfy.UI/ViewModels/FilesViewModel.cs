@@ -131,7 +131,16 @@ public partial class FilesViewModel : ObservableObject
         {
             OutputDirectory = folder;
             _settingsService.LastOutputDirectory = folder;
-            await _settingsService.SavePreferencesAsync();
+            try
+            {
+                await _settingsService.SavePreferencesAsync();
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
     }
 
@@ -143,21 +152,47 @@ public partial class FilesViewModel : ObservableObject
         AddFilesInternal(filePaths);
     }
 
+    public static bool CanAcceptDrop(IEnumerable<string>? paths)
+        => paths != null && paths.Any(IsSupportedInputPath);
+
+    public static bool IsSupportedInputPath(string path)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return false;
+            var ext = Path.GetExtension(path);
+            return ext.Equals(".dll", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".exe", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".cs", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
     private void AddFilesInternal(string[] filePaths)
     {
         foreach (var path in filePaths)
         {
-            if (File.Exists(path))
+            try
             {
-                var ext = Path.GetExtension(path).ToLowerInvariant();
-                if (ext == ".dll" || ext == ".exe" || ext == ".cs")
-                {
-                    // Avoid duplicates
-                    if (!Files.Any(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        Files.Add(AssemblyFile.FromPath(path));
-                    }
-                }
+                if (!IsSupportedInputPath(path))
+                    continue;
+
+                if (!Files.Any(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
+                    Files.Add(AssemblyFile.FromPath(path));
+            }
+            catch (ArgumentException)
+            {
+            }
+            catch (IOException)
+            {
             }
         }
     }
@@ -178,11 +213,34 @@ public partial class FilesViewModel : ObservableObject
     partial void OnGenerateSymbolMapChanged(bool value)
     {
         if (_suppressPreferenceSave)
-        {
             return;
-        }
 
         _settingsService.GenerateSymbolMap = value;
-        _ = _settingsService.SavePreferencesAsync();
+    }
+
+    public string ResolveSymbolMapPath()
+    {
+        if (!string.IsNullOrWhiteSpace(SymbolMapPath))
+            return SymbolMapPath;
+
+        var directory = !string.IsNullOrWhiteSpace(OutputDirectory)
+            ? OutputDirectory
+            : Files.Count > 0
+                ? Path.GetDirectoryName(Files[0].FilePath)
+                : null;
+
+        return Path.Combine(directory ?? ".", "symbolmap.json");
+    }
+
+    public string ResolveMergeOutputPath()
+    {
+        var primary = Files.First(f => f.IsAssembly);
+        var directory = !string.IsNullOrWhiteSpace(OutputDirectory)
+            ? OutputDirectory
+            : Path.GetDirectoryName(primary.FilePath) ?? ".";
+        Directory.CreateDirectory(directory);
+        return Path.Combine(
+            directory,
+            $"{Path.GetFileNameWithoutExtension(primary.FileName)}.obfuscated{Path.GetExtension(primary.FileName)}");
     }
 }

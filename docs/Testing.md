@@ -8,8 +8,8 @@ Obfy has comprehensive test coverage across all components:
 |---------|-------|----------|
 | Obfy.Tests | 270 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
 | Obfy.Console.Tests | 106 | CLI parsing & integration |
-| Obfy.UI.Tests | 75 | ViewModel unit tests |
-| **Total** | **451** | |
+| Obfy.UI.Tests | 103 | ViewModel unit tests |
+| **Total** | **479** | |
 
 ## Test Stack
 
@@ -78,8 +78,11 @@ Tests the WPF UI ViewModels:
 
 | ViewModel | Tests | Description |
 |-----------|-------|-------------|
-| SettingsViewModel | 35 | Presets, conversions, exclusions |
-| FilesViewModel | 24 | File management, commands |
+| SettingsViewModel | presets, conversions, exclusions, ApplyLevel parity |
+| FilesViewModel | file management, drop filters, commands |
+| MainViewModel | obfuscate/cancel, merge, snackbars, batch report |
+| ResultsViewModel | tree grouping, search, export, copy |
+| Converters | visibility, enum descriptions, status/kind icons |
 
 Key patterns:
 
@@ -89,6 +92,19 @@ Key patterns:
 - No WPF dispatcher required (pure ViewModel logic)
 
 Location: `Tests/Obfy.UI.Tests/`
+
+### Obfy.UI.AutomationTests (FlaUI)
+
+Launches `ObfyUI.exe` and drives the live window:
+
+- Launch and chrome (toolbar, files, settings, output, status)
+- About ContentDialog (in-window overlay, not a separate window)
+- Settings toggles, Protection and Assembly Merge expanders
+- Add Files opens the native picker (Escape cancels)
+
+Run: `dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj`
+
+Location: `Tests/Obfy.UI.AutomationTests/`
 
 ## Adding Tests
 

@@ -39,11 +39,13 @@ public class FilesViewModelTests : IDisposable
                 Directory.Delete(_tempDirectory, recursive: true);
             }
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            System.Diagnostics.Debug.WriteLine(ex);
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            System.Diagnostics.Debug.WriteLine(ex);
         }
     }
 
@@ -244,6 +246,35 @@ public class FilesViewModelTests : IDisposable
     }
 
     #endregion
+
+    [Fact]
+    public void CanAcceptDrop_TrueWhenAnySupportedFile()
+    {
+        var dll = CreateTestFile("ok.dll");
+        FilesViewModel.CanAcceptDrop(new[] { dll, CreateTestFile("no.txt") }).ShouldBeTrue();
+        FilesViewModel.CanAcceptDrop(new[] { CreateTestFile("no.txt") }).ShouldBeFalse();
+        FilesViewModel.CanAcceptDrop(null).ShouldBeFalse();
+        FilesViewModel.IsSupportedInputPath(":::not-a-path").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void HandleFileDrop_WithInvalidPath_DoesNotThrow()
+    {
+        Should.NotThrow(() => _viewModel.HandleFileDrop(new[] { "\0invalid", "", @"C:\nope\missing.dll" }));
+        _viewModel.Files.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void AddSourceFilesCommand_AddsCsFiles()
+    {
+        var cs = CreateTestFile("Program.cs");
+        _mockFileDialogService.Setup(s => s.ShowOpenSourceDialog()).Returns(new[] { cs });
+
+        _viewModel.AddSourceFilesCommand.Execute(null);
+
+        _viewModel.Files.Count.ShouldBe(1);
+        _viewModel.Files[0].IsSourceFile.ShouldBeTrue();
+    }
 
     #region AddFiles Command Tests
 

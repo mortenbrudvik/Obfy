@@ -26,10 +26,14 @@ public partial class AssemblyFile : ObservableObject
     private string _fileName = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FormattedSize))]
     private long _fileSize;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsProcessing))]
+    [NotifyPropertyChangedFor(nameof(IsSuccess))]
+    [NotifyPropertyChangedFor(nameof(IsError))]
+    [NotifyPropertyChangedFor(nameof(IsPending))]
     private FileStatus _status = FileStatus.Pending;
 
     [ObservableProperty]
@@ -38,10 +42,26 @@ public partial class AssemblyFile : ObservableObject
     [ObservableProperty]
     private string? _errorMessage;
 
+    [ObservableProperty]
+    private string? _outputPath;
+
     /// <summary>
     /// Gets whether this file is currently being processed.
     /// </summary>
     public bool IsProcessing => Status == FileStatus.Processing;
+
+    public bool IsSuccess => Status == FileStatus.Success;
+
+    public bool IsError => Status == FileStatus.Error;
+
+    public bool IsPending => Status == FileStatus.Pending;
+
+    public string FormattedSize => FileSize switch
+    {
+        < 1024 => $"{FileSize} B",
+        < 1024 * 1024 => $"{FileSize / 1024.0:0.#} KB",
+        _ => $"{FileSize / (1024.0 * 1024.0):0.#} MB"
+    };
 
     /// <summary>
     /// Gets whether this is a valid .NET assembly file.

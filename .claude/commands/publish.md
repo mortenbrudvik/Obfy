@@ -10,9 +10,10 @@ Build, package, and distribute Obfy for release.
 4. Build release configuration
 5. Run all tests
 6. Build installer
-7. Copy installer to OneDrive
-8. Create git tag
-9. Push tag to remote
+7. Build MSIX
+8. Copy installer to OneDrive
+9. Create git tag
+10. Push tag to remote
 
 ## Arguments
 
@@ -26,9 +27,11 @@ Build, package, and distribute Obfy for release.
    - `BREAKING CHANGE:` = major
 
 2. Update version in:
+   - `version.json` (source of truth for installer and MSIX pack)
    - `Src/Obfy.Console/Obfy.Console.csproj`
    - `Src/Obfy.Core/Obfy.Core.csproj`
    - `build/ObfySetup.iss` (AppVersion line)
+   - `package/AppxManifest.xml` (Identity Version snapshot, `major.minor.patch.0` — tests pin this to `version.json`; `build-msix.ps1` re-stamps the packed manifest from `version.json`)
 
 3. Update CHANGELOG.md:
    - Move Unreleased to new version section
@@ -49,12 +52,19 @@ dotnet test Obfy.sln -c Release
 .\build\build-installer.ps1
 ```
 
-7. Copy to OneDrive:
+7. Build MSIX (not obfuscated; Store certification scans the product binary).
+   For a Store upload, pass Partner Center `-Name` / `-Publisher` and `-SkipSign`.
+   Do not copy the `.msix` to OneDrive — upload it in Partner Center separately.
+```powershell
+.\build\build-msix.ps1
+```
+
+8. Copy the Inno installer to OneDrive:
 ```powershell
 .\build\copy-to-onedrive.ps1 -Force
 ```
 
-8. If all steps pass, commit and tag:
+9. If all steps pass, commit and tag:
 ```bash
 git add -A
 git commit -m "chore: release v<version>"
@@ -66,6 +76,7 @@ git push && git push --tags
 
 - Release binaries: `Src/Obfy.Console/bin/Release/net10.0-windows/`
 - Installer: `build/output/ObfySetup-X.Y.Z.exe`
+- MSIX: `build/msix-output/Obfy-X.Y.Z.0-x64.msix`
 - OneDrive: `~/OneDrive/Apps/Obfy/`
   - `ObfySetup-X.Y.Z.exe` - installer
   - `ObfySetup-X.Y.Z.sha256` - checksum

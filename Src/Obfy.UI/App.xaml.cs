@@ -7,8 +7,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Obfy.UI.DependencyInjection;
 using Obfy.UI.Services;
-using Obfy.UI.ViewModels;
 using Wpf.Ui;
+using Wpf.Ui.Extensions;
 
 namespace Obfy.UI;
 
@@ -49,10 +49,30 @@ public partial class App : Application
         }
     }
 
-    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    private async void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         TryLog(ex: e.Exception, "Unhandled UI exception");
         e.Handled = true;
+
+        try
+        {
+            var dialog = _host?.Services.GetService<IContentDialogService>();
+            if (dialog is not null)
+            {
+                await dialog.ShowSimpleDialogAsync(new SimpleContentDialogCreateOptions
+                {
+                    Title = "Obfy",
+                    Content = e.Exception.Message,
+                    CloseButtonText = "Close"
+                });
+                return;
+            }
+        }
+        catch (Exception dialogEx)
+        {
+            TryLog(dialogEx, "Failed to show exception dialog");
+        }
+
         MessageBox.Show(e.Exception.Message, "Obfy", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
@@ -86,19 +106,22 @@ public partial class App : Application
         {
             try
             {
-                var files = _host.Services.GetService<FilesViewModel>();
-                if (files is not null)
-                    await files.PersistPreferencesAsync();
-
-                _host.Services.GetService<MainViewModel>()?.Dispose();
+                await _host.StopAsync();
             }
             catch (Exception ex)
             {
-                TryLog(ex, "Failed to save preferences on exit");
+                TryLog(ex, "Failed to stop host");
             }
 
-            await _host.StopAsync();
-            _host.Dispose();
+            try
+            {
+                _host.Dispose();
+            }
+            catch (Exception ex)
+            {
+                TryLog(ex, "Failed to dispose host");
+            }
+
             _host = null;
         }
 

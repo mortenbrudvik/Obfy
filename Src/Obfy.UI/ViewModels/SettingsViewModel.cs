@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Obfy.Core.Models;
 
 namespace Obfy.UI.ViewModels;
@@ -159,6 +160,54 @@ public partial class SettingsViewModel : ObservableObject
     public ObservableCollection<string> ExcludedTypes { get; } = new();
     public ObservableCollection<string> ExcludedMethods { get; } = new();
 
+    [ObservableProperty]
+    private string _newExcludedNamespace = string.Empty;
+
+    [ObservableProperty]
+    private string _newExcludedType = string.Empty;
+
+    [ObservableProperty]
+    private string _newExcludedMethod = string.Empty;
+
+    [RelayCommand]
+    private void AddExcludedNamespace() => AddUnique(ExcludedNamespaces, NewExcludedNamespace, v => NewExcludedNamespace = v);
+
+    [RelayCommand]
+    private void AddExcludedType() => AddUnique(ExcludedTypes, NewExcludedType, v => NewExcludedType = v);
+
+    [RelayCommand]
+    private void AddExcludedMethod() => AddUnique(ExcludedMethods, NewExcludedMethod, v => NewExcludedMethod = v);
+
+    [RelayCommand]
+    private void RemoveExcludedNamespace(string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            ExcludedNamespaces.Remove(value);
+    }
+
+    [RelayCommand]
+    private void RemoveExcludedType(string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            ExcludedTypes.Remove(value);
+    }
+
+    [RelayCommand]
+    private void RemoveExcludedMethod(string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            ExcludedMethods.Remove(value);
+    }
+
+    private static void AddUnique(ObservableCollection<string> items, string raw, Action<string> clear)
+    {
+        var value = raw.Trim();
+        if (value.Length == 0 || items.Contains(value))
+            return;
+        items.Add(value);
+        clear(string.Empty);
+    }
+
     // Available options for dropdowns
     public static ObfuscationLevel[] AvailableLevels { get; } = Enum.GetValues<ObfuscationLevel>();
     public static EncryptionAlgorithm[] AvailableAlgorithms { get; } = Enum.GetValues<EncryptionAlgorithm>();
@@ -183,43 +232,62 @@ public partial class SettingsViewModel : ObservableObject
         _applyingPreset++;
         try
         {
-        switch (level)
-        {
-            case ObfuscationLevel.Minimal:
-                StringEncryptionEnabled = false;
-                ControlFlowEnabled = false;
-                SymbolRenamingEnabled = true;
-                AntiDebugEnabled = false;
-                RemoveDebugInfo = true;
-                ResourceEncryptionEnabled = false;
-                ConstantEncryptionEnabled = false;
-                break;
+            switch (level)
+            {
+                case ObfuscationLevel.Minimal:
+                    StringEncryptionEnabled = false;
+                    ControlFlowEnabled = false;
+                    ControlFlowIntensity = 50;
+                    SymbolRenamingEnabled = true;
+                    AntiDebugEnabled = false;
+                    AntiTamperEnabled = false;
+                    AntiDecompilerEnabled = false;
+                    AntiDumpEnabled = false;
+                    ReferenceProxyEnabled = false;
+                    MethodEncryptionEnabled = false;
+                    RemoveDebugInfo = true;
+                    RemoveAttributes = false;
+                    ResourceEncryptionEnabled = false;
+                    ConstantEncryptionEnabled = false;
+                    ConstantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
+                    break;
 
-            case ObfuscationLevel.Standard:
-                StringEncryptionEnabled = true;
-                ControlFlowEnabled = false;
-                SymbolRenamingEnabled = true;
-                AntiDebugEnabled = false;
-                RemoveDebugInfo = true;
-                ResourceEncryptionEnabled = false;
-                ConstantEncryptionEnabled = false;
-                break;
+                case ObfuscationLevel.Standard:
+                    StringEncryptionEnabled = true;
+                    ControlFlowEnabled = false;
+                    ControlFlowIntensity = 50;
+                    SymbolRenamingEnabled = true;
+                    AntiDebugEnabled = false;
+                    AntiTamperEnabled = false;
+                    AntiDecompilerEnabled = false;
+                    AntiDumpEnabled = false;
+                    ReferenceProxyEnabled = false;
+                    MethodEncryptionEnabled = false;
+                    RemoveDebugInfo = true;
+                    RemoveAttributes = true;
+                    ResourceEncryptionEnabled = false;
+                    ConstantEncryptionEnabled = false;
+                    ConstantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
+                    break;
 
-            case ObfuscationLevel.Aggressive:
-                StringEncryptionEnabled = true;
-                ControlFlowEnabled = true;
-                ControlFlowIntensity = 80;
-                SymbolRenamingEnabled = true;
-                AntiDebugEnabled = true;
-                AntiTamperEnabled = true;
-                AntiDecompilerEnabled = true;
-                RemoveDebugInfo = true;
-                RemoveAttributes = true;
-                ResourceEncryptionEnabled = true;
-                ConstantEncryptionEnabled = true;
-                ConstantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
-                break;
-        }
+                case ObfuscationLevel.Aggressive:
+                    StringEncryptionEnabled = true;
+                    ControlFlowEnabled = true;
+                    ControlFlowIntensity = 80;
+                    SymbolRenamingEnabled = true;
+                    AntiDebugEnabled = true;
+                    AntiTamperEnabled = true;
+                    AntiDecompilerEnabled = true;
+                    AntiDumpEnabled = true;
+                    ReferenceProxyEnabled = true;
+                    MethodEncryptionEnabled = true;
+                    RemoveDebugInfo = true;
+                    RemoveAttributes = true;
+                    ResourceEncryptionEnabled = true;
+                    ConstantEncryptionEnabled = true;
+                    ConstantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
+                    break;
+            }
         }
         finally
         {

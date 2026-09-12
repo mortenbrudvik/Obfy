@@ -133,6 +133,18 @@ public class ReportServiceTests : IDisposable
     }
 
     [Fact]
+    public void BuildReport_IncludesUnusedSettingForMethodEncryption()
+    {
+        var result = CreateSuccessfulResult();
+        var settings = new ObfySettings { Protection = { MethodEncryption = true } };
+
+        var report = _reportService.BuildReport(result, settings);
+
+        report.Warnings.ShouldContain(w => w.Category == WarningCategory.UnusedSetting &&
+                                          w.RelatedItem == "MethodEncryption");
+    }
+
+    [Fact]
     public void BuildReport_IncludesRuntimeWarningsFromResult()
     {
         var result = ObfuscationResult.Successful(

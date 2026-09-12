@@ -8,8 +8,9 @@ using Obfy.Core.Utilities;
 namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
-/// XOR-encrypts method IL in the PE image. A module-initializer decrypts the IL in memory
-/// before JIT, using VirtualProtect on Windows.
+/// XOR-encrypts method IL in the PE image. A module initializer decrypts the IL in memory
+/// before JIT using VirtualProtect. Windows-only; generics, helpers, and NativeAOT are skipped
+/// or unsupported. Decrypt failures leave ciphertext — they do not restore plaintext IL.
 /// </summary>
 public class MethodEncryptionObfuscator : IObfuscator
 {
@@ -36,6 +37,8 @@ public class MethodEncryptionObfuscator : IObfuscator
         try
         {
             var targets = new List<MethodDef>();
+            var genericSkipped = 0;
+            var considered = 0;
             foreach (var type in module.GetTypes())
             {
                 if (ObfuscatorHelpers.IsRuntimeHelper(type))
@@ -46,20 +49,46 @@ public class MethodEncryptionObfuscator : IObfuscator
                 foreach (var method in type.Methods)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (!CanEncrypt(method))
+                    if (!IsEncryptCandidate(method))
                         continue;
+
+                    considered++;
+                    if (method.HasGenericParameters || method.DeclaringType.HasGenericParameters)
+                    {
+                        genericSkipped++;
+                        context.SkippedItems.Add(SkippedItem.GenericMethodSkipped(method.FullName));
+                        continue;
+                    }
+
                     targets.Add(method);
                 }
             }
 
+            if (genericSkipped > 0 && considered > 0 && genericSkipped * 4 >= considered)
+            {
+                var warning =
+                    $"Method encryption: skipped {genericSkipped} of {considered} candidate methods because they are generic " +
+                    $"(not supported). Encrypted {targets.Count}.";
+                context.Warnings.Add(warning);
+                _logger.LogWarning("{Warning}", warning);
+            }
+
             if (targets.Count == 0)
             {
-                _logger.LogInformation("Method encryption: no eligible methods");
+                const string unused =
+                    "Method encryption was enabled but no eligible methods were encrypted.";
+                context.Warnings.Add(unused);
+                _logger.LogWarning("{Warning}", unused);
                 return Task.FromResult(ObfuscationResult.Successful(stats));
             }
 
-            var xorKey = (byte)Random.Shared.Next(1, 256);
-            var decryptor = InjectDecryptor(module, targets.Count, xorKey);
+            const string windowsWarning =
+                "Method encryption is Windows-only (kernel32!VirtualProtect). Encrypted bodies stay ciphertext if decryption fails; invoking them will crash. Not NativeAOT / IL2CPP.";
+            context.Warnings.Add(windowsWarning);
+            _logger.LogWarning("{Warning}", windowsWarning);
+
+            var keys = CreateDistinctKeys(targets.Count);
+            var decryptor = InjectDecryptor(module, targets.Count);
             var decrypt = decryptor.FindMethod("DecryptBodies")
                 ?? throw new InvalidOperationException("Method-encryption decryptor was not injected.");
 
@@ -67,24 +96,24 @@ public class MethodEncryptionObfuscator : IObfuscator
             initializer.Body!.Instructions.Insert(0, Instruction.Create(OpCodes.Call, decrypt));
             initializer.Body.UpdateInstructionOffsets();
 
-            context.MethodEncryptionMetadata = new MethodEncryptionMetadata
-            {
-                Methods = targets,
-                XorKey = xorKey
-            };
+            var entries = new EncryptedMethodBody[targets.Count];
+            for (var i = 0; i < targets.Count; i++)
+                entries[i] = new EncryptedMethodBody(targets[i], keys[i]);
+            context.MethodEncryptionMetadata = new MethodEncryptionMetadata(entries);
 
             stats.ProtectionsApplied = targets.Count;
+            stats.MethodsEncrypted = targets.Count;
             _logger.LogInformation("Prepared {Count} methods for IL encryption", targets.Count);
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Method encryption injection failed");
             return Task.FromResult(ObfuscationResult.Failed($"Method encryption failed: {ex.Message}", ex));
         }
     }
 
-    private static bool CanEncrypt(MethodDef method)
+    private static bool IsEncryptCandidate(MethodDef method)
     {
         if (!method.HasBody || method.Body.Instructions.Count < 2)
             return false;
@@ -92,12 +121,27 @@ public class MethodEncryptionObfuscator : IObfuscator
             return false;
         if (method.IsStaticConstructor)
             return false;
-        if (method.HasGenericParameters || method.DeclaringType.HasGenericParameters)
-            return false;
         return true;
     }
 
-    private static TypeDef InjectDecryptor(ModuleDef module, int methodCount, byte xorKey)
+    private static byte[] CreateDistinctKeys(int count)
+    {
+        var keys = new byte[count];
+        var used = new HashSet<byte>();
+        for (var i = 0; i < count; i++)
+        {
+            byte key;
+            do
+            {
+                key = (byte)Random.Shared.Next(1, 256);
+            } while (used.Count < 255 && !used.Add(key));
+            keys[i] = key;
+        }
+
+        return keys;
+    }
+
+    private static TypeDef InjectDecryptor(ModuleDef module, int methodCount)
     {
         var typeDef = new TypeDefUser(
             "Obfy.Runtime",
@@ -113,13 +157,12 @@ public class MethodEncryptionObfuscator : IObfuscator
             Attributes = TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout |
                          TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit
         };
-        var blobSize = 16 + 8 + methodCount * 12;
+        var blobSize = MethodEncryptionMetadata.BlobSize(methodCount);
         blobType.ClassLayout = new ClassLayoutUser(1, (uint)blobSize);
         typeDef.NestedTypes.Add(blobType);
 
         var blob = new byte[blobSize];
-        Buffer.BlockCopy(MethodEncryptionMetadata.Magic, 0, blob, 0, MethodEncryptionMetadata.Magic.Length);
-        blob[20] = xorKey;
+        MethodEncryptionMetadata.Magic.CopyTo(blob.AsSpan(0, MethodEncryptionMetadata.MagicLength));
 
         var blobField = new FieldDefUser(
             "_blob",
@@ -192,6 +235,11 @@ public class MethodEncryptionObfuscator : IObfuscator
             MethodSig.CreateStatic(module.CorLibTypes.Byte, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32), marshalType);
         var writeByte = new MemberRefUser(module, "WriteByte",
             MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32, module.CorLibTypes.Byte), marshalType);
+        var env = module.CorLibTypes.GetTypeRef("System", "Environment");
+        var failFast = new MemberRefUser(module, "FailFast",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String), env);
+        var dllNotFound = module.CorLibTypes.GetTypeRef("System", "DllNotFoundException");
+        var entryNotFound = module.CorLibTypes.GetTypeRef("System", "EntryPointNotFoundException");
 
         var addr = new Local(module.CorLibTypes.IntPtr);
         var blob = new Local(module.CorLibTypes.IntPtr);
@@ -211,7 +259,8 @@ public class MethodEncryptionObfuscator : IObfuscator
 
         var tryStart = Instruction.Create(OpCodes.Ldtoken, declaringType);
         var ret = Instruction.Create(OpCodes.Ret);
-        var catchPop = Instruction.Create(OpCodes.Pop);
+        var catchDll = Instruction.Create(OpCodes.Pop);
+        var catchEntry = Instruction.Create(OpCodes.Pop);
         var leaveEnd = Instruction.Create(OpCodes.Leave, ret);
         var loopCheck = Instruction.Create(OpCodes.Ldloc, i);
         var innerCheck = Instruction.Create(OpCodes.Ldloc, j);
@@ -232,14 +281,9 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, blob));
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
-        body.Instructions.Add(Instruction.CreateLdcI4(16));
+        body.Instructions.Add(Instruction.CreateLdcI4(MethodEncryptionMetadata.MagicLength));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, count));
-
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
-        body.Instructions.Add(Instruction.CreateLdcI4(20));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, readByte));
-        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, key));
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, i));
@@ -247,9 +291,10 @@ public class MethodEncryptionObfuscator : IObfuscator
 
         var loopBody = Instruction.Create(OpCodes.Ldloc, i);
         body.Instructions.Add(loopBody);
-        body.Instructions.Add(Instruction.CreateLdcI4(12));
+        body.Instructions.Add(Instruction.CreateLdcI4(MethodEncryptionMetadata.EntryBytes));
         body.Instructions.Add(Instruction.Create(OpCodes.Mul));
-        body.Instructions.Add(Instruction.CreateLdcI4(24));
+        body.Instructions.Add(Instruction.CreateLdcI4(
+            MethodEncryptionMetadata.MagicLength + MethodEncryptionMetadata.HeaderBytes));
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, entryOff));
 
@@ -272,6 +317,13 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, size));
 
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
+        body.Instructions.Add(Instruction.CreateLdcI4(MethodEncryptionMetadata.KeyOffset));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, key));
+
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, rva));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, next));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, size));
@@ -287,9 +339,12 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.CreateLdcI4(0x40));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, oldProtect));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, virtualProtect));
-        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        var xorStart = Instruction.Create(OpCodes.Ldc_I4_0);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, xorStart));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, ""));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, failFast));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(xorStart);
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, j));
         body.Instructions.Add(Instruction.Create(OpCodes.Br, innerCheck));
 
@@ -334,17 +389,27 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Blt, loopBody));
 
         body.Instructions.Add(leaveEnd);
-        body.Instructions.Add(catchPop);
+        body.Instructions.Add(catchDll);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, ret));
+        body.Instructions.Add(catchEntry);
         body.Instructions.Add(Instruction.Create(OpCodes.Leave, ret));
         body.Instructions.Add(ret);
 
         body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
         {
             TryStart = tryStart,
-            TryEnd = catchPop,
-            HandlerStart = catchPop,
+            TryEnd = catchDll,
+            HandlerStart = catchDll,
+            HandlerEnd = catchEntry,
+            CatchType = dllNotFound
+        });
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+        {
+            TryStart = tryStart,
+            TryEnd = catchDll,
+            HandlerStart = catchEntry,
             HandlerEnd = ret,
-            CatchType = module.CorLibTypes.Object.ToTypeDefOrRef()
+            CatchType = entryNotFound
         });
 
         body.UpdateInstructionOffsets();

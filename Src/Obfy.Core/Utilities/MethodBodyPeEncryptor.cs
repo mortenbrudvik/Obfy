@@ -12,35 +12,39 @@ internal static class MethodBodyPeEncryptor
 {
     public static void Encrypt(string assemblyPath, MethodEncryptionMetadata metadata)
     {
+        ArgumentNullException.ThrowIfNull(metadata);
         var bytes = File.ReadAllBytes(assemblyPath);
         using var loaded = ModuleDefMD.Load(bytes);
 
-        var entries = new List<(uint Rva, int HeaderSize, int IlSize)>();
-        foreach (var original in metadata.Methods)
+        var entries = new List<(uint Rva, int HeaderSize, int IlSize, byte Key)>(metadata.Entries.Count);
+        foreach (var item in metadata.Entries)
         {
-            var match = FindMethod(loaded, original);
+            var match = FindMethod(loaded, item.Method);
             if (match is null || match.RVA == 0 || match.Body is null)
-                continue;
+                throw new InvalidOperationException($"Could not map {item.Method.FullName} for IL encryption.");
 
             var rva = (uint)match.RVA;
             var fileOffset = RvaToOffset(bytes, rva);
             if (fileOffset < 0 || fileOffset >= bytes.Length)
-                continue;
+                throw new InvalidOperationException($"Could not map RVA 0x{rva:X} for {item.Method.FullName}.");
 
             if (!TryReadMethodBodyLayout(bytes, fileOffset, out var headerSize, out var ilSize))
-                continue;
+                throw new InvalidOperationException($"Could not read method body layout for {item.Method.FullName}.");
 
             var ilOffset = fileOffset + headerSize;
             if (ilOffset + ilSize > bytes.Length)
-                continue;
+                throw new InvalidOperationException($"Method body for {item.Method.FullName} exceeds the PE image.");
 
             for (var i = 0; i < ilSize; i++)
-                bytes[ilOffset + i] ^= metadata.XorKey;
+                bytes[ilOffset + i] ^= item.Key;
 
-            entries.Add((rva, headerSize, ilSize));
+            entries.Add((rva, headerSize, ilSize, item.Key));
         }
 
-        PatchBlob(bytes, metadata.XorKey, entries);
+        if (entries.Count != metadata.Entries.Count)
+            throw new InvalidOperationException("Method-encryption PE rewrite dropped one or more methods.");
+
+        PatchBlob(bytes, entries);
         File.WriteAllBytes(assemblyPath, bytes);
     }
 
@@ -117,10 +121,10 @@ internal static class MethodBodyPeEncryptor
         return -1;
     }
 
-    private static void PatchBlob(byte[] pe, byte xorKey, List<(uint Rva, int HeaderSize, int IlSize)> entries)
+    private static void PatchBlob(byte[] pe, List<(uint Rva, int HeaderSize, int IlSize, byte Key)> entries)
     {
         var magic = MethodEncryptionMetadata.Magic;
-        var max = pe.Length - (magic.Length + 8);
+        var max = pe.Length - (magic.Length + MethodEncryptionMetadata.HeaderBytes);
         for (var i = 0; i <= max; i++)
         {
             var match = true;
@@ -138,16 +142,16 @@ internal static class MethodBodyPeEncryptor
 
             var offset = i + magic.Length;
             BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset), entries.Count);
-            pe[offset + 4] = xorKey;
-            offset += 8;
-            foreach (var (rva, header, size) in entries)
+            offset += MethodEncryptionMetadata.HeaderBytes;
+            foreach (var (rva, header, size, key) in entries)
             {
-                if (offset + 12 > pe.Length)
-                    return;
+                if (offset + MethodEncryptionMetadata.EntryBytes > pe.Length)
+                    throw new InvalidOperationException("Method-encryption blob is too small to store every entry.");
                 BinaryPrimitives.WriteUInt32LittleEndian(pe.AsSpan(offset), rva);
                 BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + 4), header);
                 BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + 8), size);
-                offset += 12;
+                BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + MethodEncryptionMetadata.KeyOffset), key);
+                offset += MethodEncryptionMetadata.EntryBytes;
             }
 
             return;

@@ -51,6 +51,9 @@ public class ReferenceProxyObfuscator : IObfuscator
             {
                 if (type == proxyType)
                     continue;
+                // Keep helper internals as direct calls: a trampoline in <RefProxy> cannot ldftn
+                // a private helper (MethodAccessException / unverifiable). User call sites still
+                // proxy assembly-visible helper entry points. User private methods are still proxied.
                 if (ObfuscatorHelpers.IsRuntimeHelper(type))
                     continue;
                 if (ObfuscatorHelpers.IsExcluded(type, context.Settings.Exclusions))
@@ -105,7 +108,7 @@ public class ReferenceProxyObfuscator : IObfuscator
             _logger.LogInformation("Created {Count} reference proxies", created);
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Reference proxy injection failed");
             return Task.FromResult(ObfuscationResult.Failed($"Reference proxy injection failed: {ex.Message}", ex));
@@ -131,8 +134,6 @@ public class ReferenceProxyObfuscator : IObfuscator
         // are easy to get wrong (this-pointer TypeSig) and are not the calls we need to hide.
         var resolved = called.ResolveMethodDef();
         if (resolved == null || resolved.Module != module)
-            return false;
-        if (ObfuscatorHelpers.IsRuntimeHelper(resolved.DeclaringType))
             return false;
         if (resolved.IsPinvokeImpl || resolved.IsNative)
             return false;

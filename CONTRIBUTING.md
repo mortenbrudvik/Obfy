@@ -109,7 +109,7 @@ We have three test projects:
 | Project | Purpose | Tests |
 |---------|---------|-------|
 | `Obfy.Tests` | Core obfuscation logic | 152 |
-| `Obfy.Console.Tests` | CLI argument parsing, help output | 92 |
+| `Obfy.Console.Tests` | CLI argument parsing, help output | 106 |
 | `Obfy.UI.Tests` | ViewModel logic and commands | 59 |
 
 ```bash

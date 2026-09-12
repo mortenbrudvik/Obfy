@@ -1,6 +1,5 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
-using Obfy.Core.Models;
 
 namespace Obfy.Core.Utilities;
 
@@ -209,11 +208,11 @@ internal static class DecryptorIl
         FieldDef cacheField,
         FieldDef indexXorField,
         MethodDef bytesDecrypt,
-        EncryptionAlgorithm algorithm)
+        string name = "Decrypt")
     {
-        _ = algorithm;
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
         var method = new MethodDefUser(
-            "Decrypt",
+            name,
             MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.Int32),
             MethodAttributes.Assembly | MethodAttributes.Static);
 

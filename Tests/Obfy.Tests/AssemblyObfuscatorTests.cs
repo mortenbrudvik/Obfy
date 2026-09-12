@@ -936,6 +936,145 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task ControlFlow_LinearFlatten_UsesRandomDispatcherStates()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var method = CreateMethodWithMultipleInstructions(type, "Linear", 30);
+
+        var obfuscator = new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        method.Body.Instructions.Any(i => i.OpCode == OpCodes.Switch).ShouldBeFalse();
+        method.Body.Instructions.Any(i => i.OpCode == OpCodes.Beq).ShouldBeTrue();
+
+        var stateVar = method.Body.Variables.Last();
+        var states = new List<int>();
+        var instructions = method.Body.Instructions;
+        for (var i = 0; i < instructions.Count - 1; i++)
+        {
+            if (instructions[i + 1].OpCode != OpCodes.Stloc || !Equals(instructions[i + 1].Operand, stateVar))
+                continue;
+            var value = TryReadLdcI4(instructions[i]);
+            value.ShouldNotBeNull();
+            states.Add(value!.Value);
+        }
+
+        states.Count.ShouldBeGreaterThan(1);
+        states.SequenceEqual(Enumerable.Range(0, states.Count)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ControlFlow_OpaquePredicate_UsesMultipleRuntimeSources()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var method = CreateMethodWithMultipleInstructions(type, "PredicateMethod", 40);
+
+        var obfuscator = new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.OpaquePredicate, Intensity = 100 }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var runtimeCalls = method.Body.Instructions
+            .Select(i => i.Operand as IMethod)
+            .Where(m => m != null)
+            .Select(m => m!.Name.String)
+            .Where(n => n is "get_TickCount" or "get_TickCount64" or "get_ProcessorCount"
+                or "get_CurrentManagedThreadId" or "get_MaxGeneration")
+            .Distinct()
+            .ToList();
+
+        runtimeCalls.Count.ShouldBeGreaterThan(1);
+    }
+
+    [Fact]
+    public async Task ControlFlow_OpaquePredicate_DoesNotEmitTickCount64OnClassicCorlib()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        for (var i = 0; i < 20; i++)
+            CreateMethodWithMultipleInstructions(type, "PredicateMethod" + i, 40);
+
+        var obfuscator = new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.OpaquePredicate, Intensity = 100 }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var names = type.Methods
+            .Where(m => m.HasBody)
+            .SelectMany(m => m.Body.Instructions)
+            .Select(i => i.Operand as IMethod)
+            .Where(m => m != null)
+            .Select(m => m!.Name.String)
+            .ToList();
+        names.ShouldNotContain("get_TickCount64");
+        names.ShouldContain("get_TickCount");
+    }
+
+    [Fact]
+    public async Task ControlFlow_UnknownMode_FailsTheRun()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        CreateMethodWithMultipleInstructions(type, "Go", 20);
+
+        var obfuscator = new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            ControlFlow = { Enabled = true, Mode = (ControlFlowMode)999, Intensity = 100 }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage!.ShouldContain("ControlFlowMode");
+    }
+
+    [Fact]
+    public async Task ControlFlow_DoesNotObfuscateCalliTrampolines()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "App");
+        var target = CreateTestMethod(type, "Target");
+        var trampoline = new MethodDefUser(
+            "Proxy",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Private | MethodAttributes.Static);
+        var body = new CilBody();
+        var calliSig = MethodSig.CreateStatic(module.CorLibTypes.Void);
+        body.Instructions.Add(Instruction.Create(OpCodes.Nop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Nop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldftn, target));
+        body.Instructions.Add(Instruction.Create(OpCodes.Calli, calliSig));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        trampoline.Body = body;
+        type.Methods.Add(trampoline);
+
+        var originalCount = trampoline.Body.Instructions.Count;
+        var obfuscator = new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        trampoline.Body.Instructions.Count.ShouldBe(originalCount);
+        trampoline.Body.Instructions.ShouldContain(i => i.OpCode == OpCodes.Calli);
+    }
+
+    [Fact]
     public async Task ControlFlow_OpaquePredicate_InsertsPredicates()
     {
         // Arrange
@@ -1110,6 +1249,86 @@ public class AssemblyObfuscatorTests
 
         obfuscator.IsEnabled(enabledSettings).ShouldBeTrue();
         obfuscator.IsEnabled(disabledSettings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task AntiDebug_CheckUsesRemoteDebuggerAndTiming()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "App");
+        var entry = CreateTestMethod(type, "Main", isPublic: true);
+        module.EntryPoint = entry;
+
+        var obfuscator = new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDebug = true } });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var anti = module.Types.First(t => t.Name == "<AntiDebug>");
+        anti.FindMethod("CheckRemoteDebuggerPresent").ShouldNotBeNull();
+        anti.FindMethod("GetCurrentProcess").ShouldNotBeNull();
+
+        var check = anti.FindMethod("Check")!;
+        var names = check.Body.Instructions
+            .Select(i => i.Operand as IMethod)
+            .Where(m => m != null)
+            .Select(m => m!.Name.String)
+            .ToList();
+        names.ShouldContain("CheckRemoteDebuggerPresent");
+        names.ShouldContain("GetCurrentProcess");
+        names.Count(n => n == "get_TickCount").ShouldBeGreaterThanOrEqualTo(2);
+        names.ShouldContain("FailFast");
+        check.Body.Instructions.Any(i => i.OpCode == OpCodes.Throw).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task AntiDebug_ScattersChecksIntoUserMethods()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Work");
+        var a = CreateTestMethod(type, "A");
+        var b = CreateTestMethod(type, "B");
+        var c = CreateTestMethod(type, "C");
+        var entry = CreateTestMethod(type, "Main", isPublic: true);
+        module.EntryPoint = entry;
+
+        var obfuscator = new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDebug = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(2);
+
+        foreach (var method in new[] { a, b, c, entry })
+        {
+            method.Body.Instructions[0].OpCode.ShouldBe(OpCodes.Call);
+            ((IMethod)method.Body.Instructions[0].Operand).Name.String.ShouldBe("Check");
+        }
+
+        var cctor = module.GlobalType.FindStaticConstructor();
+        cctor.ShouldNotBeNull();
+        cctor!.Body.Instructions[0].OpCode.ShouldBe(OpCodes.Call);
+        var initCall = (IMethod)cctor.Body.Instructions[0].Operand;
+        initCall.Name.String.ShouldBe("Check");
+        initCall.DeclaringType.Name.String.ShouldBe("<AntiDebug>");
+    }
+
+    [Fact]
+    public async Task AntiDebug_CheckCatchesDllNotFoundAndEntryPointNotFound()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "App");
+        var entry = CreateTestMethod(type, "Main", isPublic: true);
+        module.EntryPoint = entry;
+
+        var obfuscator = new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDebug = true } });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var check = module.Types.First(t => t.Name == "<AntiDebug>").FindMethod("Check")!;
+        var catchNames = check.Body.ExceptionHandlers
+            .Select(h => h.CatchType?.Name.String)
+            .ToList();
+        catchNames.ShouldContain("DllNotFoundException");
+        catchNames.ShouldContain("EntryPointNotFoundException");
     }
 
     #endregion
@@ -3002,7 +3221,350 @@ public class AssemblyObfuscatorTests
         result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
         module.Types.ShouldContain(t => t.Name == "<MethodCrypt>");
         context.MethodEncryptionMetadata.ShouldNotBeNull();
-        context.MethodEncryptionMetadata!.Methods.Count.ShouldBeGreaterThan(0);
+        context.MethodEncryptionMetadata!.Entries.Count.ShouldBeGreaterThan(0);
+
+        var decrypt = module.Types.First(t => t.Name == "<MethodCrypt>").FindMethod("DecryptBodies")!;
+        var catchNames = decrypt.Body.ExceptionHandlers
+            .Select(h => h.CatchType?.Name.String)
+            .ToList();
+        catchNames.ShouldContain("DllNotFoundException");
+        catchNames.ShouldContain("EntryPointNotFoundException");
+        catchNames.ShouldNotContain("Object");
+        decrypt.Body.Instructions.Any(i => i.Operand is IMethod m && m.Name == "FailFast")
+            .ShouldBeTrue("DecryptBodies must FailFast when VirtualProtect returns false");
+    }
+
+    [Fact]
+    public async Task MethodEncryption_AssignsDistinctPerMethodKeys()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Work");
+        CreateMethodWithMultipleInstructions(type, "A", 12);
+        CreateMethodWithMultipleInstructions(type, "B", 12);
+
+        var obfuscator = new MethodEncryptionObfuscator(new Mock<ILogger<MethodEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { MethodEncryption = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        var meta = context.MethodEncryptionMetadata;
+        meta.ShouldNotBeNull();
+        meta!.Entries.Count.ShouldBe(2);
+        meta.Entries[0].Key.ShouldNotBe(meta.Entries[1].Key);
+        meta.Entries.ShouldAllBe(e => e.Key != 0);
+        result.Statistics.MethodsEncrypted.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task MethodEncryption_WarnsWhenManyGenericMethodsSkipped()
+    {
+        var module = CreateTestModule();
+        var generic = new TypeDefUser("TestNamespace", "Box`1", module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            Attributes = TypeAttributes.NotPublic | TypeAttributes.Class
+        };
+        generic.GenericParameters.Add(new GenericParamUser(0, GenericParamAttributes.NonVariant, "T"));
+        module.Types.Add(generic);
+        CreateMethodWithMultipleInstructions(generic, "G0", 12);
+        CreateMethodWithMultipleInstructions(generic, "G1", 12);
+        CreateMethodWithMultipleInstructions(generic, "G2", 12);
+        CreateMethodWithMultipleInstructions(generic, "G3", 12);
+
+        var concrete = CreateTestType(module, "Work");
+        CreateMethodWithMultipleInstructions(concrete, "Go", 12);
+
+        var obfuscator = new MethodEncryptionObfuscator(new Mock<ILogger<MethodEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { MethodEncryption = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBe(1);
+        context.Warnings.ShouldContain(w => w.Contains("generic", StringComparison.OrdinalIgnoreCase));
+        context.Warnings.ShouldContain(w => w.Contains("Windows", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task MethodEncryption_DoesNotWarnWhenGenericShareIsBelow25Percent()
+    {
+        var module = CreateTestModule();
+        var generic = new TypeDefUser("TestNamespace", "Box`1", module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            Attributes = TypeAttributes.NotPublic | TypeAttributes.Class
+        };
+        generic.GenericParameters.Add(new GenericParamUser(0, GenericParamAttributes.NonVariant, "T"));
+        module.Types.Add(generic);
+        CreateMethodWithMultipleInstructions(generic, "G0", 12);
+
+        var concrete = CreateTestType(module, "Work");
+        CreateMethodWithMultipleInstructions(concrete, "A", 12);
+        CreateMethodWithMultipleInstructions(concrete, "B", 12);
+        CreateMethodWithMultipleInstructions(concrete, "C", 12);
+        CreateMethodWithMultipleInstructions(concrete, "D", 12);
+
+        var obfuscator = new MethodEncryptionObfuscator(new Mock<ILogger<MethodEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { MethodEncryption = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        context.SkippedItems.Count(s => s.Reason == SkipReason.GenericMethod).ShouldBe(1);
+        context.Warnings.ShouldNotContain(w => w.Contains("generic", StringComparison.OrdinalIgnoreCase));
+        context.Warnings.ShouldContain(w => w.Contains("Windows", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task MethodEncryption_SkipsGenericMethodsOnConcreteTypes()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Work");
+        var genericMethod = CreateMethodWithMultipleInstructions(type, "Foo", 12);
+        genericMethod.GenericParameters.Add(new GenericParamUser(0, GenericParamAttributes.NonVariant, "T"));
+        CreateMethodWithMultipleInstructions(type, "Go", 12);
+
+        var obfuscator = new MethodEncryptionObfuscator(new Mock<ILogger<MethodEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { MethodEncryption = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        context.SkippedItems.ShouldContain(s =>
+            s.Reason == SkipReason.GenericMethod && s.ItemName.Contains("Foo"));
+        context.MethodEncryptionMetadata!.Entries.ShouldNotContain(e => e.Method.Name == "Foo");
+        context.MethodEncryptionMetadata.Entries.ShouldContain(e => e.Method.Name == "Go");
+    }
+
+    [Fact]
+    public async Task MethodEncryption_WarnsWhenNoEligibleMethods()
+    {
+        var module = CreateTestModule();
+        CreateTestType(module, "Empty");
+
+        var obfuscator = new MethodEncryptionObfuscator(new Mock<ILogger<MethodEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { MethodEncryption = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        result.Statistics.MethodsEncrypted.ShouldBe(0);
+        context.Warnings.ShouldContain(w =>
+            w.Contains("no eligible", StringComparison.OrdinalIgnoreCase)
+            || w.Contains("no methods", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void MethodEncryptionMetadata_RejectsZeroKeysAndEmptyEntries()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Work");
+        var method = CreateMethodWithMultipleInstructions(type, "Go", 12);
+
+        Should.Throw<ArgumentOutOfRangeException>(() => new EncryptedMethodBody(method, 0));
+        Should.Throw<ArgumentException>(() =>
+            new MethodEncryptionMetadata(Array.Empty<EncryptedMethodBody>()));
+    }
+
+    [Fact]
+    public void MethodBodyPeEncryptor_ThrowsWhenMethodCannotBeMapped()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Work");
+        var method = CreateMethodWithMultipleInstructions(type, "Ghost", 12);
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-pe-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var pePath = Path.Combine(dir, "empty.dll");
+            var empty = CreateTestModule();
+            empty.Write(pePath);
+
+            var metadata = new MethodEncryptionMetadata([new EncryptedMethodBody(method, 7)]);
+            Should.Throw<InvalidOperationException>(() => MethodBodyPeEncryptor.Encrypt(pePath, metadata));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task ControlFlow_ObfuscatesRuntimeHelperMethods()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Greeter", isPublic: true);
+        CreateMethodWithString(type, "GetMessage", "HelloWorldSecret");
+
+        var settings = new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 },
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 10 }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        (await new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object)
+            .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var result = await new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object)
+            .ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+
+        var helpers = RuntimeHelperMethods(module, skipCctor: true, skipPinvoke: true)
+            .Where(m => m.HasBody && m.Body.Instructions.Count >= 5)
+            .ToList();
+        helpers.ShouldNotBeEmpty();
+        helpers.Count(LooksControlFlowObfuscated)
+            .ShouldBe(helpers.Count, "runtime helpers must be obfuscated even at low intensity");
+    }
+
+    [Fact]
+    public async Task ControlFlow_DoesNotObfuscateHelperCctorOrPInvoke()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "App");
+        var entry = CreateTestMethod(type, "Main", isPublic: true);
+        module.EntryPoint = entry;
+        CreateMethodWithString(type, "GetMessage", "HelloWorldSecret");
+
+        var settings = new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 },
+            Protection = { AntiDebug = true },
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        (await new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object)
+            .ObfuscateAsync(context)).Success.ShouldBeTrue();
+        (await new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object)
+            .ObfuscateAsync(context)).Success.ShouldBeTrue();
+        (await new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object)
+            .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var cctors = RuntimeHelperMethods(module, skipCctor: false, skipPinvoke: true)
+            .Where(m => m.IsStaticConstructor)
+            .ToList();
+        cctors.ShouldNotBeEmpty();
+        cctors.Count(LooksControlFlowObfuscated).ShouldBe(0);
+
+        var pinvoke = RuntimeHelperMethods(module, skipCctor: true, skipPinvoke: false)
+            .Where(m => m.IsPinvokeImpl)
+            .ToList();
+        pinvoke.ShouldNotBeEmpty();
+        pinvoke.ShouldAllBe(m => !m.HasBody || m.Body.Instructions.Count == 0);
+    }
+
+    [Fact]
+    public async Task ReferenceProxy_ProxiesCallsToRuntimeHelpers()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Greeter", isPublic: true);
+        var method = CreateMethodWithString(type, "GetMessage", "HelloWorldSecret");
+
+        var settings = new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 },
+            Protection = { ReferenceProxy = true }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        (await new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object)
+            .ObfuscateAsync(context)).Success.ShouldBeTrue();
+        (await new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object)
+            .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var call = method.Body.Instructions.First(i => i.OpCode == OpCodes.Call);
+        var called = (IMethod)call.Operand;
+        called.DeclaringType.Name.String.ShouldBe("<RefProxy>");
+        var proxy = called.ResolveMethodDef();
+        proxy.ShouldNotBeNull();
+        proxy!.Body.Instructions.Any(i => i.OpCode == OpCodes.Calli).ShouldBeTrue();
+        var ftn = proxy.Body.Instructions.FirstOrDefault(i =>
+            (i.OpCode == OpCodes.Ldftn || i.OpCode == OpCodes.Ldvirtftn) && i.Operand is IMethod);
+        ftn.ShouldNotBeNull();
+        ((IMethod)ftn!.Operand).DeclaringType.Namespace.ShouldBe("Obfy.Runtime");
+    }
+
+    [Fact]
+    public async Task StringEncryption_EmitsMultipleDecryptEntryPoints()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Greeter", isPublic: true);
+        var m0 = CreateMethodWithString(type, "A", "FirstSecretString");
+        var m1 = CreateMethodWithString(type, "B", "SecondSecretString");
+        var m2 = CreateMethodWithString(type, "C", "ThirdSecretString");
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var decryptor = module.Types.First(t => t.Namespace == "Obfy.Runtime");
+        var entryPoints = decryptor.Methods
+            .Where(IsStringDecryptEntryPoint)
+            .ToList();
+        entryPoints.Count.ShouldBeGreaterThanOrEqualTo(3);
+
+        var targets = new[] { m0, m1, m2 }
+            .Select(m => (IMethod)m.Body.Instructions.First(i => i.OpCode == OpCodes.Call).Operand)
+            .Select(c => c.FullName)
+            .Distinct()
+            .ToList();
+        targets.Count.ShouldBe(3);
+    }
+
+    private static IEnumerable<MethodDef> RuntimeHelperMethods(ModuleDef module, bool skipCctor, bool skipPinvoke)
+    {
+        foreach (var type in module.GetTypes())
+        {
+            if (type.Namespace != "Obfy.Runtime" && !type.Namespace.StartsWith("Obfy.Runtime."))
+                continue;
+            foreach (var method in type.Methods)
+            {
+                if (skipCctor && method.IsStaticConstructor)
+                    continue;
+                if (skipPinvoke && method.IsPinvokeImpl)
+                    continue;
+                yield return method;
+            }
+        }
+    }
+
+    private static bool LooksControlFlowObfuscated(MethodDef method)
+    {
+        if (!method.HasBody)
+            return false;
+        return method.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Switch
+            || i.OpCode == OpCodes.Beq
+            || (i.Operand is IMethod m && m.Name.String is
+                "get_TickCount" or "get_TickCount64" or "get_ProcessorCount"
+                or "get_CurrentManagedThreadId" or "get_MaxGeneration"));
+    }
+
+    private static bool IsStringDecryptEntryPoint(MethodDef method)
+    {
+        if (method.IsConstructor || method.MethodSig == null)
+            return false;
+        if (method.MethodSig.Params.Count != 1)
+            return false;
+        return method.MethodSig.RetType.ElementType == ElementType.String
+            && method.MethodSig.Params[0].ElementType == ElementType.I4;
+    }
+
+    private static int? TryReadLdcI4(Instruction instruction)
+    {
+        if (instruction.OpCode == OpCodes.Ldc_I4_M1) return -1;
+        if (instruction.OpCode == OpCodes.Ldc_I4_0) return 0;
+        if (instruction.OpCode == OpCodes.Ldc_I4_1) return 1;
+        if (instruction.OpCode == OpCodes.Ldc_I4_2) return 2;
+        if (instruction.OpCode == OpCodes.Ldc_I4_3) return 3;
+        if (instruction.OpCode == OpCodes.Ldc_I4_4) return 4;
+        if (instruction.OpCode == OpCodes.Ldc_I4_5) return 5;
+        if (instruction.OpCode == OpCodes.Ldc_I4_6) return 6;
+        if (instruction.OpCode == OpCodes.Ldc_I4_7) return 7;
+        if (instruction.OpCode == OpCodes.Ldc_I4_8) return 8;
+        if (instruction.OpCode == OpCodes.Ldc_I4_S && instruction.Operand is sbyte sb) return sb;
+        if (instruction.OpCode == OpCodes.Ldc_I4 && instruction.Operand is int i) return i;
+        return null;
     }
 
     #endregion

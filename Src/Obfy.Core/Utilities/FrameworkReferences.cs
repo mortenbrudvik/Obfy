@@ -45,6 +45,15 @@ internal static class FrameworkReferences
         return Get(module, "System.Security.Cryptography");
     }
 
+    /// <summary>
+    /// <c>Environment.TickCount64</c> exists on modern .NET, not on .NET Framework / netstandard 2.0.
+    /// </summary>
+    public static bool SupportsTickCount64(ModuleDef module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        return !IsClassicCorlib(module);
+    }
+
     private static bool IsClassicCorlib(ModuleDef module)
     {
         var name = CorlibName(module);

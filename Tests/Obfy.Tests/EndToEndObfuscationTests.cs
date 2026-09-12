@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Runtime.Loader;
 using Autofac;
 using dnlib.DotNet;
@@ -45,6 +46,42 @@ public class EndToEndObfuscationTests
         return path;
     }
 
+    private static List<int> ReadMethodEncryptionBlobKeys(string pePath)
+    {
+        var pe = File.ReadAllBytes(pePath);
+        var magic = MethodEncryptionMetadata.Magic;
+        var max = pe.Length - (magic.Length + MethodEncryptionMetadata.HeaderBytes);
+        for (var i = 0; i <= max; i++)
+        {
+            var match = true;
+            for (var j = 0; j < magic.Length; j++)
+            {
+                if (pe[i + j] != magic[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (!match)
+                continue;
+
+            var count = BinaryPrimitives.ReadInt32LittleEndian(pe.AsSpan(i + MethodEncryptionMetadata.MagicLength));
+            var keys = new List<int>(count);
+            var offset = i + MethodEncryptionMetadata.MagicLength + MethodEncryptionMetadata.HeaderBytes;
+            for (var n = 0; n < count; n++)
+            {
+                keys.Add(BinaryPrimitives.ReadInt32LittleEndian(
+                    pe.AsSpan(offset + MethodEncryptionMetadata.KeyOffset)));
+                offset += MethodEncryptionMetadata.EntryBytes;
+            }
+
+            return keys;
+        }
+
+        throw new InvalidOperationException("Method-encryption blob was not found.");
+    }
+
     private static object? LoadAndInvoke(string assemblyPath, string typeName, string methodName)
     {
         var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
@@ -90,6 +127,47 @@ public class EndToEndObfuscationTests
             (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
 
             var output = Path.Combine(dir, "StrLib.obf.dll");
+            module.Write(output);
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe("IntegrationSecretString");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public async Task StringEncryption_WithHardenedHelpers_RunsOnRealAssembly(EncryptionAlgorithm algorithm)
+    {
+        const string source = "public static class Lib { public static string Get() => \"IntegrationSecretString\"; }";
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-hh-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "StrHelpLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = true, Algorithm = algorithm, MinStringLength = 3 },
+                ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 10 },
+                Protection = { ReferenceProxy = true }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+
+            (await new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+            (await new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+            (await new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "StrHelpLib.obf.dll");
             module.Write(output);
 
             LoadAndInvoke(output, "Lib", "Get").ShouldBe("IntegrationSecretString");
@@ -225,6 +303,44 @@ public class EndToEndObfuscationTests
     }
 
     [Fact]
+    public async Task AntiDebug_ScatteredChecks_UndebuggedRun_Proceeds()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get() => Helper() + 1;
+                static int Helper() => 6;
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-ad-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "AntiDebugScatterLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Protection = { AntiDebug = true }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            (await new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "AntiDebugScatterLib.obf.dll");
+            module.Write(output);
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(7);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public async Task MethodEncryption_RoundTripsOnRealAssembly()
     {
         const string source = """
@@ -263,6 +379,60 @@ public class EndToEndObfuscationTests
             var result = await service.ObfuscateAsync(input, output, settings);
             result.Success.ShouldBeTrue(result.ErrorMessage);
             result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(42);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task MethodEncryption_TwoMethods_RoundTripWithDistinctKeys()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get() => Helper() + 1;
+                static int Helper()
+                {
+                    int x = 7;
+                    x = x + 34;
+                    return x;
+                }
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-mc2-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "Mc2Lib");
+            var output = Path.Combine(dir, "Mc2Lib.obf.dll");
+
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Protection = { MethodEncryption = true }
+            };
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Statistics.ProtectionsApplied.ShouldBeGreaterThanOrEqualTo(2);
+            result.Statistics.MethodsEncrypted.ShouldBeGreaterThanOrEqualTo(2);
+
+            var keys = ReadMethodEncryptionBlobKeys(output);
+            keys.Count.ShouldBeGreaterThanOrEqualTo(2);
+            keys.Distinct().Count().ShouldBe(keys.Count);
 
             LoadAndInvoke(output, "Lib", "Get").ShouldBe(42);
         }

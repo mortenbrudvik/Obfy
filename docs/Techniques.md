@@ -15,6 +15,7 @@ Obfy applies techniques in a specific order (priority):
 | 19 | Anti-Dump | Wipe PE headers in memory |
 | 20 | Anti-Decompiler | Inject junk types and methods |
 | 22 | Anti-Tamper | Verify assembly integrity |
+| 25 | Method Encryption | XOR method IL in the PE (Windows) |
 | 30 | Control Flow | Flatten control flow |
 | 40 | Reference Proxy | Hide call targets behind proxies |
 | 50 | Symbol Renaming | Rename identifiers |
@@ -40,19 +41,23 @@ Console.WriteLine("Hello World");
 
 **After (conceptual):**
 ```csharp
-Console.WriteLine(StringDecryptor.Decrypt(0));
+Console.WriteLine(StringDecryptor.Decrypt(encodedIndex));
+// or Decrypt2 / Decrypt3 — call sites round-robin across several entry points
 ```
 
 **Runtime Decryptor:**
 - Stores encrypted strings in a static array
 - Caches decrypted strings to avoid repeated decryption
 - Key is embedded in the assembly
+- Emits three `string Decrypt*(int)` entry points so a single `Decrypt(int)` is not a decompiler signature for every string
+- When control flow is enabled, decryptor methods (not `.cctor`) are flattened or given opaque predicates at full intensity
+- When reference proxy is enabled, user call sites invoke the decryptor through a `calli` trampoline. A trampoline in `<RefProxy>` cannot `ldftn` a `private` helper (`MethodAccessException` / unverifiable); user `private` methods are still proxied.
 
 **Algorithms:**
 
 | Algorithm | Description |
 |-----------|-------------|
-| **AES-256** | Strong encryption with random IV. Each encryption produces different ciphertext. |
+| **AES-256** | AES-256 obfuscation with random IV (not confidentiality; the key is in the assembly). Each encryption produces different ciphertext. |
 | **XOR** | Fast XOR with key rotation. Lower security but faster startup. |
 
 **Settings:**
@@ -73,8 +78,7 @@ Console.WriteLine(StringDecryptor.Decrypt(0));
 - Adds slight runtime overhead for first access
 - Methods with exception handlers and compiler-generated methods **and types** (async state machines, display classes, iterators) are encrypted
 - Control-flow flattening still skips exception-handler methods (rebuilding EH is unsafe); those methods get opaque predicates instead
-- String decrypt call sites pass `index XOR seed`, not the raw index
-- Aggressive XOR-encrypts method IL in the PE; a module initializer decrypts it in memory before JIT (Windows `VirtualProtect`)
+- String decrypt call sites pass `index XOR seed`, not the raw index, and do not all call the same method
 - Resource strings shorter than `minStringLength` stay plaintext; encrypted resource strings are prefixed so `GetString` does not try to decrypt them
 
 ---
@@ -227,13 +231,35 @@ var data = ResourceDecryptor.GetResource("Config.json");
 
 ---
 
+### Method IL Encryption
+
+XOR-encrypts method IL bytes in the PE image. A module initializer decrypts them in memory with `VirtualProtect` before JIT.
+
+Enabled in the Aggressive preset (`protection.methodEncryption`).
+
+**Limits (not a confidentiality guarantee):**
+
+- Windows only (`kernel32!VirtualProtect`). Decrypt failures are swallowed so module load still succeeds, but encrypted bodies are **not** restored — invoking them will fail. Non-Windows / NativeAOT / IL2CPP are unsupported.
+- Generic methods and methods on generic types are skipped (shared IL / instantiations). When a large share of candidates are generic, the run warns.
+- Distinct nonzero XOR keys when there are 255 or fewer methods; further methods reuse a key. Zero keys are not applied. Keys still live in the PE; this only stops a single-byte dump from recovering every body.
+
+```json
+{
+  "protection": {
+    "methodEncryption": true
+  }
+}
+```
+
+---
+
 ### Control Flow Obfuscation
 
 Transforms the structure of methods to make them harder to analyze.
 
 **Switch Mode:**
 
-Converts linear code into a state machine with a switch dispatcher.
+Converts linear code into a state-machine dispatcher. The conceptual C# below uses `switch`; emitted IL is `ldloc` / `ldc.i4` / `beq` with random state values, not sequential `switch` indices.
 
 **Before:**
 ```csharp
@@ -264,7 +290,7 @@ void Method()
 
 **Opaque Predicate Mode:**
 
-Inserts conditional branches that always evaluate the same way.
+Inserts conditional branches that always evaluate the same way, using runtime values (`Environment.TickCount`, `TickCount64` on modern .NET, `ProcessorCount`, `CurrentManagedThreadId`, `GC.MaxGeneration`) so they are not compile-time constants. A decompiler may still see them as opaque, not as proven always-true. `TickCount64` is not emitted for .NET Framework / netstandard 2.0 modules.
 
 **Before:**
 ```csharp
@@ -273,8 +299,8 @@ DoSomething();
 
 **After (conceptual):**
 ```csharp
-int x = GetValue();
-if (x * x >= 0)  // Always true
+int x = Environment.TickCount;
+if ((x ^ x) == 0)  // Always true, not a compile-time constant
 {
     DoSomething();
 }
@@ -292,10 +318,15 @@ The `intensity` setting (0-100) controls how aggressively the technique is appli
 - **51-75**: Heavy obfuscation
 - **76-100**: Maximum obfuscation, all eligible blocks affected
 
+**Dispatcher states:** Both CFG flattening and the linear-chunk fallback use random `beq` state values, not sequential `switch` indices `0, 1, 2…`.
+
 **Skipped Methods:**
-- Constructors
+- Constructors and static constructors (including runtime helper `.cctor`)
+- P/Invoke stubs and `calli` trampolines
 - Switch-flattening of methods with exception handlers (opaque predicates still apply)
 - Very short methods (<5 instructions)
+
+**Runtime helpers:** Decryptors, anti-debug `Check`, anti-tamper `Verify`, anti-dump `Wipe`, and method-body decrypt are control-flowed whenever control flow is enabled, at intensity 100 (user intensity is ignored for those methods). Helpers prefer flattening at intensity 100; EH / short / unflattenable-with-branches fall back to opaque predicates. Flattening can still no-op.
 
 **Settings:**
 
@@ -392,21 +423,21 @@ public class _‌‌‍‏‌
 
 ### Anti-Debug Protection
 
-Injects code that detects and responds to debugging attempts.
+Injects code that detects and responds to debugging attempts. This raises the cost of casual debugging; it is not debugger immunity.
 
 **How It Works:**
 
 1. Injects a runtime class (`Obfy.Runtime.<AntiDebug>`)
-2. Adds debugger detection checks at entry point
-3. Optionally adds checks in module initializer
+2. Calls `Check` from the module initializer (runs at load)
+3. Scatters `Check` into most user methods with a real body (not P/Invoke/abstract/empty/prefix-first) so patching a single call site is not enough
 
-**Detection Method:**
-```csharp
-if (System.Diagnostics.Debugger.IsAttached || System.Diagnostics.Debugger.IsLogging())
-{
-    Environment.Exit(1);
-}
-```
+**Detection:**
+
+- `Debugger.IsAttached` and `Debugger.IsLogging()`
+- `kernel32!IsDebuggerPresent` and `CheckRemoteDebuggerPresent` (Windows; `DllNotFoundException` and `EntryPointNotFoundException` are swallowed)
+- ~1s delta between two `TickCount` reads inside `Check` (pauses/breakpoints in the probe), not a general single-step detector
+
+Failure paths inside `Check` cycle through `Environment.Exit(1)`, `Environment.FailFast`, and `throw` so patching a single API is not enough.
 
 **Settings:**
 
@@ -424,7 +455,7 @@ if (System.Diagnostics.Debugger.IsAttached || System.Diagnostics.Debugger.IsLogg
 **Limitations:**
 - Can be bypassed by experienced reverse engineers
 - May cause issues with legitimate profilers
-- Some detection methods can be patched out
+- Native checks are Windows-only; managed checks still run elsewhere
 
 ---
 
@@ -438,7 +469,7 @@ Enabled in the Aggressive preset.
 
 ### Reference Proxy
 
-Replaces in-module `call`/`callvirt` targets with small static proxy methods so call sites no longer name the original method. Framework methods are left alone.
+Replaces in-module `call`/`callvirt` targets with small static proxy methods so call sites no longer name the original method. Framework methods are left alone. Assembly-visible runtime helper entry points (string/constant decrypt, anti-debug `Check`, and similar) are proxied from user code; private helper internals stay as direct calls because a trampoline in another type cannot invoke them.
 
 Enabled in the Aggressive preset.
 

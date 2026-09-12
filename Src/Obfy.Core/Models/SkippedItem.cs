@@ -3,7 +3,7 @@ namespace Obfy.Core.Models;
 /// <summary>
 /// Represents an item that was skipped during obfuscation.
 /// </summary>
-public class SkippedItem
+public sealed class SkippedItem
 {
     /// <summary>
     /// Reason the item was skipped.
@@ -28,23 +28,46 @@ public class SkippedItem
     /// <summary>
     /// A method skipped because it uses an unsupported construct (e.g. exception handlers).
     /// </summary>
-    public static SkippedItem UnsupportedMethod(string name, string details) => new()
+    public static SkippedItem UnsupportedMethod(string name, string details)
     {
-        Reason = SkipReason.UnsupportedConstruct,
-        ItemType = SkippedItemType.Method,
-        ItemName = name,
-        Details = details
-    };
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return new()
+        {
+            Reason = SkipReason.UnsupportedConstruct,
+            ItemType = SkippedItemType.Method,
+            ItemName = name,
+            Details = details
+        };
+    }
 
     /// <summary>
     /// An embedded resource skipped because it matched an exclude pattern.
     /// </summary>
-    public static SkippedItem ResourceExcluded(string name) => new()
+    public static SkippedItem ResourceExcluded(string name)
     {
-        Reason = SkipReason.ResourceExcluded,
-        ItemType = SkippedItemType.Resource,
-        ItemName = name
-    };
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return new()
+        {
+            Reason = SkipReason.ResourceExcluded,
+            ItemType = SkippedItemType.Resource,
+            ItemName = name
+        };
+    }
+
+    /// <summary>
+    /// A method skipped by method IL encryption because it is generic.
+    /// </summary>
+    public static SkippedItem GenericMethodSkipped(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return new()
+        {
+            Reason = SkipReason.GenericMethod,
+            ItemType = SkippedItemType.Method,
+            ItemName = name,
+            Details = "Generic methods and methods on generic types are not IL-encrypted."
+        };
+    }
 }
 
 /// <summary>
@@ -120,5 +143,10 @@ public enum SkipReason
     /// <summary>
     /// Resource excluded by pattern.
     /// </summary>
-    ResourceExcluded
+    ResourceExcluded,
+
+    /// <summary>
+    /// Generic method or method on a generic type (method IL encryption skips shared generic IL).
+    /// </summary>
+    GenericMethod
 }

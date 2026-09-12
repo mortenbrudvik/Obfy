@@ -8,8 +8,10 @@ using Obfy.Core.Utilities;
 namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
-/// Injects an in-memory PE-header wipe that runs at module load, breaking common dumpers.
-/// Failures (non-Windows, missing kernel32) are swallowed so the app still starts.
+/// Injects an in-memory PE-header wipe at module load and patches
+/// <c>dbghelp!MiniDumpWriteDump</c> with x86/x64 <c>ret</c> (<c>0xC3</c>) in the current process.
+/// Failures (non-Windows, missing kernel32/dbghelp, ARM64) are swallowed so the app still starts.
+/// Dumpers that use <c>dbgcore</c> or raw <c>ReadProcessMemory</c> are unaffected.
 /// </summary>
 public class AntiDumpObfuscator : IObfuscator
 {
@@ -45,10 +47,17 @@ public class AntiDumpObfuscator : IObfuscator
             initializer.Body.UpdateInstructionOffsets();
             stats.ProtectionsApplied++;
 
+            const string windowsWarning =
+                "Anti-dump is Windows-only (kernel32 VirtualProtect / dbghelp MiniDumpWriteDump). " +
+                "The MiniDumpWriteDump patch writes x86/x64 ret (0xC3); ARM64 is not patched. " +
+                "Failures are swallowed at runtime.";
+            context.Warnings.Add(windowsWarning);
+            _logger.LogWarning("{Warning}", windowsWarning);
+
             _logger.LogInformation("Injected anti-dump protection");
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Anti-dump injection failed");
             return Task.FromResult(ObfuscationResult.Failed($"Anti-dump injection failed: {ex.Message}", ex));
@@ -67,7 +76,21 @@ public class AntiDumpObfuscator : IObfuscator
 
         var virtualProtect = CreateVirtualProtect(module);
         typeDef.Methods.Add(virtualProtect);
-        typeDef.Methods.Add(CreateWipeMethod(module, typeDef, virtualProtect));
+        var getModuleHandle = CreateKernel32PInvoke(module, "GetModuleHandleW",
+            MethodSig.CreateStatic(module.CorLibTypes.IntPtr, module.CorLibTypes.String),
+            PInvokeAttributes.CharSetUnicode);
+        var loadLibrary = CreateKernel32PInvoke(module, "LoadLibraryW",
+            MethodSig.CreateStatic(module.CorLibTypes.IntPtr, module.CorLibTypes.String),
+            PInvokeAttributes.CharSetUnicode);
+        var getProc = CreateKernel32PInvoke(module, "GetProcAddress",
+            MethodSig.CreateStatic(module.CorLibTypes.IntPtr, module.CorLibTypes.IntPtr, module.CorLibTypes.String),
+            PInvokeAttributes.CharSetAnsi);
+        typeDef.Methods.Add(getModuleHandle);
+        typeDef.Methods.Add(loadLibrary);
+        typeDef.Methods.Add(getProc);
+        var neutralize = CreateNeutralizeDumpers(module, virtualProtect, getModuleHandle, loadLibrary, getProc);
+        typeDef.Methods.Add(neutralize);
+        typeDef.Methods.Add(CreateWipeMethod(module, typeDef, virtualProtect, neutralize));
         module.Types.Add(typeDef);
         return typeDef;
     }
@@ -94,7 +117,92 @@ public class AntiDumpObfuscator : IObfuscator
         return method;
     }
 
-    private static MethodDef CreateWipeMethod(ModuleDef module, TypeDef declaringType, MethodDef virtualProtect)
+    private static MethodDef CreateKernel32PInvoke(
+        ModuleDef module, string name, MethodSig sig, PInvokeAttributes charSet)
+    {
+        return new MethodDefUser(
+            name,
+            sig,
+            MethodImplAttributes.PreserveSig,
+            MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.PinvokeImpl)
+        {
+            ImplMap = new ImplMapUser(
+                new ModuleRefUser(module, "kernel32"),
+                name,
+                PInvokeAttributes.SupportsLastError | PInvokeAttributes.CallConvWinapi | PInvokeAttributes.NoMangle | charSet)
+        };
+    }
+
+    private static MethodDef CreateNeutralizeDumpers(
+        ModuleDef module,
+        MethodDef virtualProtect,
+        MethodDef getModuleHandle,
+        MethodDef loadLibrary,
+        MethodDef getProcAddress)
+    {
+        var method = new MethodDefUser(
+            "NeutralizeDumpers",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Private | MethodAttributes.Static);
+
+        var body = new CilBody { InitLocals = true };
+        method.Body = body;
+        var moduleLocal = new Local(module.CorLibTypes.IntPtr);
+        var procLocal = new Local(module.CorLibTypes.IntPtr);
+        var oldProtect = new Local(module.CorLibTypes.UInt32);
+        body.Variables.Add(moduleLocal);
+        body.Variables.Add(procLocal);
+        body.Variables.Add(oldProtect);
+
+        var marshalType = new TypeRefUser(module, "System.Runtime.InteropServices", "Marshal", module.CorLibTypes.AssemblyRef);
+        var writeByte = new MemberRefUser(module, "WriteByte",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.IntPtr, module.CorLibTypes.Byte),
+            marshalType);
+
+        // 0x40 = PAGE_EXECUTE_READWRITE. 0xC3 = x86/x64 ret (not ARM64, whose ret is 0xD65F03C0).
+        // LoadLibraryW("dbghelp.dll") may load dbghelp at startup. VirtualProtect is not restored.
+        var ret = Instruction.Create(OpCodes.Ret);
+        var haveModule = Instruction.Create(OpCodes.Stloc, moduleLocal);
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "dbghelp.dll"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getModuleHandle));
+        body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, haveModule));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "dbghelp.dll"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, loadLibrary));
+        body.Instructions.Add(haveModule);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, moduleLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, ret));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, moduleLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "MiniDumpWriteDump"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getProcAddress));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, procLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, procLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, ret));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, procLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(1));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x40));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, oldProtect));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, virtualProtect));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, procLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(0xC3));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeByte));
+        body.Instructions.Add(ret);
+        body.KeepOldMaxStack = true;
+        body.MaxStack = 8;
+        body.UpdateInstructionOffsets();
+        return method;
+    }
+
+    private static MethodDef CreateWipeMethod(ModuleDef module, TypeDef declaringType, MethodDef virtualProtect, MethodDef neutralize)
     {
         var method = new MethodDefUser(
             "Wipe",
@@ -124,9 +232,13 @@ public class AntiDumpObfuscator : IObfuscator
         var addrLocal = new Local(module.CorLibTypes.IntPtr);
         var peLocal = new Local(module.CorLibTypes.Int32);
         var oldProtect = new Local(module.CorLibTypes.UInt32);
+        var magicLocal = new Local(module.CorLibTypes.Int32);
+        var dirBaseLocal = new Local(module.CorLibTypes.Int32);
         body.Variables.Add(addrLocal);
         body.Variables.Add(peLocal);
         body.Variables.Add(oldProtect);
+        body.Variables.Add(magicLocal);
+        body.Variables.Add(dirBaseLocal);
 
         var tryStart = Instruction.Create(OpCodes.Ldtoken, declaringType);
         var ret = Instruction.Create(OpCodes.Ret);
@@ -162,43 +274,48 @@ public class AntiDumpObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
 
-        // Optional-header CheckSum (PE32+ offset 64)
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
+        // Skip optional-header writes when e_lfanew is outside the 0x1000 VirtualProtect window.
+        var skipPeWrites = Instruction.Create(OpCodes.Call, neutralize);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4(24 + 64));
-        body.Instructions.Add(Instruction.Create(OpCodes.Add));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+        body.Instructions.Add(Instruction.CreateLdcI4(64));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, skipPeWrites));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(0xC00));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bgt, skipPeWrites));
 
-        // Import directory RVA/Size (data directory 1 at optional+120)
+        // Magic at optional+0 (e_lfanew+24). 0x20B = PE32+, otherwise PE32 data-directory layout.
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4(24 + 120));
+        body.Instructions.Add(Instruction.CreateLdcI4(24));
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4(24 + 124));
-        body.Instructions.Add(Instruction.Create(OpCodes.Add));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
+        body.Instructions.Add(Instruction.CreateLdcI4(0xFFFF));
+        body.Instructions.Add(Instruction.Create(OpCodes.And));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, magicLocal));
 
-        // Debug directory RVA
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4(24 + 160));
-        body.Instructions.Add(Instruction.Create(OpCodes.Add));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+        body.Instructions.Add(Instruction.CreateLdcI4(96)); // PE32 data directories
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, dirBaseLocal));
+        var usePe32Dirs = Instruction.Create(OpCodes.Nop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, magicLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x20B));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, usePe32Dirs));
+        body.Instructions.Add(Instruction.CreateLdcI4(112)); // PE32+ data directories
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, dirBaseLocal));
+        body.Instructions.Add(usePe32Dirs);
 
-        // IAT RVA
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4(24 + 208));
-        body.Instructions.Add(Instruction.Create(OpCodes.Add));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+        // Optional-header CheckSum is at +64 for both PE32 and PE32+.
+        EmitWriteZero(body, addrLocal, peLocal, 24 + 64, writeInt32);
+
+        // Import directory RVA/Size (data directory 1)
+        EmitWriteZeroAtDir(body, addrLocal, peLocal, dirBaseLocal, 8, writeInt32);
+        EmitWriteZeroAtDir(body, addrLocal, peLocal, dirBaseLocal, 12, writeInt32);
+
+        // Debug directory RVA (data directory 6)
+        EmitWriteZeroAtDir(body, addrLocal, peLocal, dirBaseLocal, 48, writeInt32);
+
+        // IAT RVA (data directory 12)
+        EmitWriteZeroAtDir(body, addrLocal, peLocal, dirBaseLocal, 96, writeInt32);
+        body.Instructions.Add(skipPeWrites);
         body.Instructions.Add(leaveEnd);
 
         body.Instructions.Add(catchPop);
@@ -216,6 +333,32 @@ public class AntiDumpObfuscator : IObfuscator
 
         body.UpdateInstructionOffsets();
         return method;
+    }
+
+    private static void EmitWriteZero(
+        CilBody body, Local addr, Local pe, int offsetFromPe, MemberRef writeInt32)
+    {
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pe));
+        body.Instructions.Add(Instruction.CreateLdcI4(offsetFromPe));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+    }
+
+    private static void EmitWriteZeroAtDir(
+        CilBody body, Local addr, Local pe, Local dirBase, int dirOffset, MemberRef writeInt32)
+    {
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pe));
+        body.Instructions.Add(Instruction.CreateLdcI4(24));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, dirBase));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.CreateLdcI4(dirOffset));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
     }
 
     private static MethodDef FindOrCreateModuleInitializer(ModuleDef module)

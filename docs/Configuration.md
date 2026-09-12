@@ -19,6 +19,7 @@ Complete JSON configuration schema for Obfy.
   "dependencyEmbedding": { ... },
   "inclusions": { ... },
   "exclusions": { ... },
+  "watermark": { "enabled": false, "id": "" },
   "runtimeProfile": "Default",
   "signing": { "enabled": false, "keyFile": "", "passwordEnvironmentVariable": "" },
   "postBuildEnabled": false
@@ -93,6 +94,7 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
       "enabled": false,
       "injectJunkTypes": true,
       "addSuppressIldasmAttribute": true,
+      "addDecoyAttributes": true,
       "junkTypeCount": 5,
       "junkMethodsPerType": 3
     },
@@ -141,6 +143,11 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
       "XmlElementAttribute",
       "XmlAttributeAttribute"
     ]
+  },
+
+  "watermark": {
+    "enabled": false,
+    "id": ""
   },
 
   "runtimeProfile": "Default",
@@ -337,7 +344,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `antiDebug` | bool | `false` | Inject debugger detection checks |
-| `antiDump` | bool | `false` | Wipe PE headers in memory at load (Windows) |
+| `antiDump` | bool | `false` | Wipe PE headers in memory at load and patch `dbghelp!MiniDumpWriteDump` (Windows, x86/x64) |
 | `referenceProxy` | bool | `false` | Hide in-module call targets behind proxy methods |
 | `proxyExternalCalls` | bool | `false` | Also proxy selected out-of-module calls. Ignored unless `referenceProxy` is true. |
 | `methodEncryption` | bool | `false` | XOR method IL in the PE (Windows) |
@@ -357,6 +364,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `antiDecompiler.enabled` | bool | `false` | Enable anti-decompiler protection |
 | `antiDecompiler.injectJunkTypes` | bool | `true` | Inject decoy types with dead code |
 | `antiDecompiler.addSuppressIldasmAttribute` | bool | `true` | Add SuppressIldasm attribute |
+| `antiDecompiler.addDecoyAttributes` | bool | `true` | Inject pinned `ConfusedByAttribute` / `DotfuscatorAttribute` (name-based detector bait; does not block de4dot) |
 | `antiDecompiler.junkTypeCount` | int | `5` | Number of junk types to inject (1-50) |
 | `antiDecompiler.junkMethodsPerType` | int | `3` | Junk methods per type (1-20) |
 
@@ -424,14 +432,23 @@ Empty lists mean no allow-list. When any list is non-empty, only matching namesp
 - `XmlElementAttribute`
 - `XmlAttributeAttribute`
 
+### watermark
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | Embed a customer/build identifier. Requires a non-whitespace `id`. |
+| `id` | string | `""` | Plaintext identifier stored as the `WatermarkAttribute` constructor argument and `Id` field. The type name is pinned against renaming. |
+
+Opt-in; not flipped by level presets. CLI: `--watermark-id`. Settings panel has a Watermark expander.
+
 ### runtimeProfile
 
 | Value | Effect |
 |-------|--------|
 | `Default` | All protections as configured |
-| `NativeAot` | Disables method encryption, anti-dump, and dependency embedding; emits report warnings. |
+| `NativeAot` | Disables method encryption, anti-dump, and dependency embedding; anti-debug omits kernel32 P/Invoke. Emits report warnings. |
 | `UnityIl2Cpp` | Same gating; Unity wizard also excludes `UnityEngine.*` and `Unity.*` |
-| `BlazorWasm` | Same gating for Blazor WebAssembly (no `AppDomain.AssemblyResolve` / `VirtualProtect`). |
+| `BlazorWasm` | Same gating for Blazor WebAssembly (no `AppDomain.AssemblyResolve` / `VirtualProtect`); anti-debug omits kernel32 P/Invoke. |
 
 ### signing
 

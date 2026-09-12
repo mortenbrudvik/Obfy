@@ -609,6 +609,14 @@ public class CommandParsingTests : IDisposable
     }
 
     [Fact]
+    public void Parse_WatermarkIdOption_SetsValue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --watermark-id customer-42");
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValueForOption(Program.WatermarkIdOption).ShouldBe("customer-42");
+    }
+
+    [Fact]
     public void Parse_MergeWithMultipleInputs_ParsesCorrectly()
     {
         // Arrange - create additional test files

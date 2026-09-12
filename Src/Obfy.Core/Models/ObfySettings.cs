@@ -60,6 +60,12 @@ public class ObfySettings
     public DependencyEmbeddingSettings DependencyEmbedding { get; init; } = new();
 
     /// <summary>
+    /// Embed a build/customer identifier in the output assembly.
+    /// Requires <c>watermark.enabled</c> and a non-whitespace <c>watermark.id</c>.
+    /// </summary>
+    public WatermarkSettings Watermark { get; init; } = new();
+
+    /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
     public ExclusionRules Exclusions { get; init; } = new();
@@ -78,7 +84,8 @@ public class ObfySettings
 
     /// <summary>
     /// Target runtime. NativeAOT, Unity IL2CPP, and Blazor WASM disable method IL encryption,
-    /// anti-dump, and dependency embedding. The pipeline emits report warnings when it turns them off.
+    /// anti-dump, and dependency embedding (PE / kernel32 / AssemblyResolve). Anti-debug stays
+    /// on but omits kernel32 P/Invoke. The pipeline emits report warnings when it turns features off.
     /// </summary>
     public RuntimeProfile RuntimeProfile { get; set; } = RuntimeProfile.Default;
 
@@ -125,8 +132,8 @@ public class ObfySettings
             // constant-encryption algorithm, metadata/debug) so *those* values do not leak from a
             // previously applied level. Other nested settings (control-flow mode, string/resource
             // algorithms, naming mode, PreservePublicApi, PreserveXaml, junk counts, include/exclude
-            // patterns, RuntimeProfile, Signing, DependencyEmbedding) keep their prior or default
-            // values. ProxyExternalCalls is cleared when ReferenceProxy is turned off.
+            // patterns, RuntimeProfile, Signing, Watermark, DependencyEmbedding, AddDecoyAttributes)
+            // keep their prior or default values. ProxyExternalCalls is cleared when ReferenceProxy is turned off.
             case ObfuscationLevel.Minimal:
                 StringEncryption.Enabled = false;
                 ControlFlow.Enabled = false;
@@ -211,6 +218,7 @@ public class ObfySettings
         ValidateObject(Exclusions);
         ValidateObject(Inclusions);
         ValidateObject(Signing);
+        ValidateObject(Watermark);
 
         Inclusions.Namespaces ??= new();
         Inclusions.Types ??= new();
@@ -233,6 +241,11 @@ public class ObfySettings
                 throw new ValidationException(
                     "PFX signing requires Signing.PasswordEnvironmentVariable to name an environment variable that holds the password.");
             }
+        }
+
+        if (Watermark.Enabled && string.IsNullOrWhiteSpace(Watermark.Id))
+        {
+            throw new ValidationException("Watermark is enabled but no id was specified.");
         }
 
         static void ValidateObject(object instance) =>
@@ -452,7 +465,9 @@ public class ProtectionSettings
     public AntiDecompilerSettings AntiDecompiler { get; set; } = new();
 
     /// <summary>
-    /// Whether to inject anti-dump protection (in-memory PE header wipe on Windows).
+    /// Whether to inject anti-dump protection (in-memory PE header wipe and
+    /// x86/x64 <c>dbghelp!MiniDumpWriteDump</c> patch on Windows). Gated off for
+    /// NativeAOT / Unity IL2CPP / Blazor WASM.
     /// </summary>
     public bool AntiDump { get; set; } = false;
 
@@ -514,6 +529,13 @@ public class AntiDecompilerSettings
     /// Whether to add the SuppressIldasm attribute to block ILDasm.
     /// </summary>
     public bool AddSuppressIldasmAttribute { get; set; } = true;
+
+    /// <summary>
+    /// Inject internal <c>ConfusedByAttribute</c> / <c>DotfuscatorAttribute</c> types and assembly
+    /// attributes. Names are pinned against renaming so name-based detectors can see them.
+    /// This does not block de4dot.
+    /// </summary>
+    public bool AddDecoyAttributes { get; set; } = true;
 
     /// <summary>
     /// Number of junk types to inject.
@@ -642,6 +664,19 @@ public class DependencyEmbeddingSettings
     public List<string> IncludePatterns { get; set; } = new() { "*.dll" };
 
     public List<string> ExcludePatterns { get; set; } = new() { "*.resources.dll" };
+}
+
+/// <summary>
+/// Embed a customer or build identifier as an assembly custom-attribute constructor argument
+/// and a public <c>Id</c> field. The type name <c>WatermarkAttribute</c> is pinned against
+/// renaming; recover the id from the CA blob or that field, not by encrypting secrets.
+/// </summary>
+public class WatermarkSettings
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Plaintext identifier written into the custom assembly attribute. Required when <see cref="Enabled"/> is true.</summary>
+    public string Id { get; set; } = "";
 }
 
 /// <summary>

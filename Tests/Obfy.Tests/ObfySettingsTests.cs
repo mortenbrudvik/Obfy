@@ -269,4 +269,49 @@ public class ObfySettingsTests
         settings.DependencyEmbedding.IncludePatterns.ShouldNotBeNull();
         settings.DependencyEmbedding.ExcludePatterns.ShouldNotBeNull();
     }
+
+    [Fact]
+    public void Validate_WatermarkEnabledWithoutId_Throws()
+    {
+        var settings = new ObfySettings { Watermark = { Enabled = true } };
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate())
+            .Message.ShouldContain("id");
+    }
+
+    [Fact]
+    public void Validate_WatermarkEnabledWithWhitespaceId_Throws()
+    {
+        var settings = new ObfySettings { Watermark = { Enabled = true, Id = "  " } };
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate())
+            .Message.ShouldContain("id");
+    }
+
+    [Fact]
+    public void Clone_KeepsWatermarkAndDecoyFlag()
+    {
+        var original = new ObfySettings
+        {
+            Watermark = { Enabled = true, Id = "customer-42" },
+            Protection = { AntiDecompiler = { AddDecoyAttributes = false } }
+        };
+
+        var clone = original.Clone();
+        clone.Watermark.Enabled.ShouldBeTrue();
+        clone.Watermark.Id.ShouldBe("customer-42");
+        clone.Protection.AntiDecompiler.AddDecoyAttributes.ShouldBeFalse();
+        clone.Watermark.ShouldNotBeSameAs(original.Watermark);
+    }
+
+    [Fact]
+    public void ApplyLevel_DoesNotResetWatermark()
+    {
+        var settings = new ObfySettings
+        {
+            Watermark = { Enabled = true, Id = "keep-me" },
+            Level = ObfuscationLevel.Aggressive
+        };
+        settings.ApplyLevel();
+        settings.Watermark.Enabled.ShouldBeTrue();
+        settings.Watermark.Id.ShouldBe("keep-me");
+    }
 }

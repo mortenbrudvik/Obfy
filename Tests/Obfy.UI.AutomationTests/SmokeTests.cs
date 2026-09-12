@@ -94,6 +94,9 @@ public class SmokeTests : TestBase
         FindById("ReferenceProxyToggle").ShouldNotBeNull();
         FindById("MethodEncryptionToggle").ShouldNotBeNull();
 
+        ExpandNamed("Watermark");
+        FindById("WatermarkToggle").ShouldNotBeNull();
+
         ExpandNamed("Assembly Merge");
         FindById("AssemblyMergeToggle").ShouldNotBeNull();
     }

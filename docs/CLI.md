@@ -40,6 +40,7 @@ obfy <input>... [options]
 | `--anti-tamper` | | Enable anti-tamper protection | Off |
 | `--anti-decompiler` | | Enable anti-decompiler protection | Off |
 | `--anti-dump` | | Enable anti-dump protection | Off |
+| `--watermark-id <id>` | | Embed a customer/build identifier as an assembly attribute | Off |
 | `--reference-proxy` | | Enable reference proxy | Off |
 | `--proxy-external` | | Also proxy selected out-of-module calls (enables `--reference-proxy`; skips compiler/interop/pointer signatures) | Off |
 | `--encrypt-methods` | | Encrypt method IL in the PE image (Windows) | Off |

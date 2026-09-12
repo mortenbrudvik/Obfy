@@ -4,9 +4,11 @@ using Obfy.Core.Pipeline;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// Disables method IL encryption, anti-dump, and dependency embedding on NativeAOT, Unity IL2CPP,
-/// and Blazor WASM. <see cref="Apply"/> mutates the working clone of <see cref="ObfySettings"/>
-/// (callers are cloned first by <c>ObfuscationService</c>) and records report warnings.
+/// Disables PE-mutating protections on NativeAOT, Unity IL2CPP, and Blazor WASM:
+/// method IL encryption, anti-dump, and dependency embedding.
+/// Anti-debug stays enabled but omits kernel32 P/Invoke (see <c>AntiDebugObfuscator</c>).
+/// <see cref="Apply"/> mutates the working clone of <see cref="ObfySettings"/> (callers are
+/// cloned first by <c>ObfuscationService</c>) and records report warnings.
 /// </summary>
 public static class RuntimeProfileGating
 {
@@ -16,6 +18,14 @@ public static class RuntimeProfileGating
     public static bool BlocksAssemblyResolve(RuntimeProfile profile) =>
         profile is RuntimeProfile.NativeAot or RuntimeProfile.UnityIl2Cpp or RuntimeProfile.BlazorWasm;
 
+    public static string Describe(RuntimeProfile profile) => profile switch
+    {
+        RuntimeProfile.NativeAot => "NativeAOT",
+        RuntimeProfile.UnityIl2Cpp => "Unity IL2CPP",
+        RuntimeProfile.BlazorWasm => "Blazor WebAssembly",
+        _ => profile.ToString()
+    };
+
     public static void Apply(ObfySettings settings, PipelineContext context)
     {
         if (settings.Protection.ProxyExternalCalls && !settings.Protection.ReferenceProxy)
@@ -24,13 +34,7 @@ public static class RuntimeProfileGating
                 "protection.proxyExternalCalls is ignored unless protection.referenceProxy is true.");
         }
 
-        var label = settings.RuntimeProfile switch
-        {
-            RuntimeProfile.NativeAot => "NativeAOT",
-            RuntimeProfile.UnityIl2Cpp => "Unity IL2CPP",
-            RuntimeProfile.BlazorWasm => "Blazor WebAssembly",
-            _ => settings.RuntimeProfile.ToString()
-        };
+        var label = Describe(settings.RuntimeProfile);
 
         if (BlocksPeProtections(settings.RuntimeProfile))
         {

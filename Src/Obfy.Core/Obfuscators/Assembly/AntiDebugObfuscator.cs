@@ -9,6 +9,9 @@ namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
 /// Injects anti-debugging protection into assemblies.
+/// NativeAOT, Unity IL2CPP, and Blazor WASM omit kernel32 P/Invoke
+/// (<c>IsDebuggerPresent</c> / <c>CheckRemoteDebuggerPresent</c>) and keep managed
+/// <c>Debugger.IsAttached</c> / <c>IsLogging</c> / TickCount checks only.
 /// </summary>
 public class AntiDebugObfuscator : IObfuscator
 {
@@ -47,7 +50,17 @@ public class AntiDebugObfuscator : IObfuscator
         {
             if (settings.AntiDebug)
             {
-                var antiDebugType = InjectAntiDebugType(module);
+                var emitKernel32Checks = !RuntimeProfileGating.BlocksPeProtections(context.Settings.RuntimeProfile);
+                if (!emitKernel32Checks)
+                {
+                    var warning =
+                        $"Anti-debug: kernel32 P/Invoke checks omitted for {RuntimeProfileGating.Describe(context.Settings.RuntimeProfile)}; " +
+                        "managed Debugger and TickCount checks still run.";
+                    context.Warnings.Add(warning);
+                    _logger.LogWarning("{Warning}", warning);
+                }
+
+                var antiDebugType = InjectAntiDebugType(module, emitKernel32Checks);
 
                 var moduleInitializer = FindModuleInitializer(module) ?? CreateModuleInitializer(module);
                 if (InjectDebuggerCheck(moduleInitializer, antiDebugType))
@@ -90,7 +103,7 @@ public class AntiDebugObfuscator : IObfuscator
         }
     }
 
-    private TypeDef InjectAntiDebugType(ModuleDef module)
+    private TypeDef InjectAntiDebugType(ModuleDef module, bool emitKernel32Checks)
     {
         // Create internal static class for anti-debug
         var typeDef = new TypeDefUser(
@@ -100,20 +113,26 @@ public class AntiDebugObfuscator : IObfuscator
 
         typeDef.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract;
 
-        var isDebuggerPresent = CreateKernel32PInvoke(
-            module, "IsDebuggerPresent", MethodSig.CreateStatic(module.CorLibTypes.Boolean));
-        var getCurrentProcess = CreateKernel32PInvoke(
-            module, "GetCurrentProcess", MethodSig.CreateStatic(module.CorLibTypes.IntPtr));
-        var checkRemote = CreateKernel32PInvoke(
-            module, "CheckRemoteDebuggerPresent",
-            MethodSig.CreateStatic(
-                module.CorLibTypes.Boolean,
-                module.CorLibTypes.IntPtr,
-                new ByRefSig(module.CorLibTypes.Boolean)));
+        MethodDef? isDebuggerPresent = null;
+        MethodDef? getCurrentProcess = null;
+        MethodDef? checkRemote = null;
+        if (emitKernel32Checks)
+        {
+            isDebuggerPresent = CreateKernel32PInvoke(
+                module, "IsDebuggerPresent", MethodSig.CreateStatic(module.CorLibTypes.Boolean));
+            getCurrentProcess = CreateKernel32PInvoke(
+                module, "GetCurrentProcess", MethodSig.CreateStatic(module.CorLibTypes.IntPtr));
+            checkRemote = CreateKernel32PInvoke(
+                module, "CheckRemoteDebuggerPresent",
+                MethodSig.CreateStatic(
+                    module.CorLibTypes.Boolean,
+                    module.CorLibTypes.IntPtr,
+                    new ByRefSig(module.CorLibTypes.Boolean)));
 
-        typeDef.Methods.Add(isDebuggerPresent);
-        typeDef.Methods.Add(getCurrentProcess);
-        typeDef.Methods.Add(checkRemote);
+            typeDef.Methods.Add(isDebuggerPresent);
+            typeDef.Methods.Add(getCurrentProcess);
+            typeDef.Methods.Add(checkRemote);
+        }
 
         var checkMethod = CreateCheckDebuggerMethod(module, isDebuggerPresent, getCurrentProcess, checkRemote);
         typeDef.Methods.Add(checkMethod);
@@ -140,9 +159,9 @@ public class AntiDebugObfuscator : IObfuscator
 
     private MethodDef CreateCheckDebuggerMethod(
         ModuleDef module,
-        MethodDef isDebuggerPresent,
-        MethodDef getCurrentProcess,
-        MethodDef checkRemote)
+        MethodDef? isDebuggerPresent,
+        MethodDef? getCurrentProcess,
+        MethodDef? checkRemote)
     {
         var method = new MethodDefUser(
             "Check",
@@ -183,34 +202,54 @@ public class AntiDebugObfuscator : IObfuscator
         EmitFail(body, module);
         body.Instructions.Add(afterLogging);
 
-        var tryStart = Instruction.Create(OpCodes.Call, isDebuggerPresent);
-        var afterPresent = Instruction.Create(OpCodes.Call, getCurrentProcess);
-        var afterRemote = Instruction.Create(OpCodes.Nop);
-        var catchDll = Instruction.Create(OpCodes.Pop);
-        var catchEntry = Instruction.Create(OpCodes.Pop);
         var afterTry = Instruction.Create(OpCodes.Call, getTickCount);
+        if (isDebuggerPresent != null && getCurrentProcess != null && checkRemote != null)
+        {
+            var tryStart = Instruction.Create(OpCodes.Call, isDebuggerPresent);
+            var afterPresent = Instruction.Create(OpCodes.Call, getCurrentProcess);
+            var afterRemote = Instruction.Create(OpCodes.Nop);
+            var catchDll = Instruction.Create(OpCodes.Pop);
+            var catchEntry = Instruction.Create(OpCodes.Pop);
 
-        body.Instructions.Add(tryStart);
-        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterPresent));
-        EmitFail(body, module);
+            body.Instructions.Add(tryStart);
+            body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterPresent));
+            EmitFail(body, module);
 
-        body.Instructions.Add(afterPresent);
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
-        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, remoteLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, remoteLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, checkRemote));
-        var afterProtectOk = Instruction.Create(OpCodes.Ldloc, remoteLocal);
-        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterRemote));
-        body.Instructions.Add(afterProtectOk);
-        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterRemote));
-        EmitFail(body, module);
-        body.Instructions.Add(afterRemote);
-        body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
+            body.Instructions.Add(afterPresent);
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stloc, remoteLocal));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, remoteLocal));
+            body.Instructions.Add(Instruction.Create(OpCodes.Call, checkRemote));
+            var afterProtectOk = Instruction.Create(OpCodes.Ldloc, remoteLocal);
+            body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterRemote));
+            body.Instructions.Add(afterProtectOk);
+            body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterRemote));
+            EmitFail(body, module);
+            body.Instructions.Add(afterRemote);
+            body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
 
-        body.Instructions.Add(catchDll);
-        body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
-        body.Instructions.Add(catchEntry);
-        body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
+            body.Instructions.Add(catchDll);
+            body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
+            body.Instructions.Add(catchEntry);
+            body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
+
+            body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+            {
+                TryStart = tryStart,
+                TryEnd = catchDll,
+                HandlerStart = catchDll,
+                HandlerEnd = catchEntry,
+                CatchType = dllNotFound
+            });
+            body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+            {
+                TryStart = tryStart,
+                TryEnd = catchDll,
+                HandlerStart = catchEntry,
+                HandlerEnd = afterTry,
+                CatchType = entryNotFound
+            });
+        }
 
         body.Instructions.Add(afterTry);
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, tickLocal));
@@ -226,23 +265,6 @@ public class AntiDebugObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ble, afterTiming));
         EmitFail(body, module);
         body.Instructions.Add(afterTiming);
-
-        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
-        {
-            TryStart = tryStart,
-            TryEnd = catchDll,
-            HandlerStart = catchDll,
-            HandlerEnd = catchEntry,
-            CatchType = dllNotFound
-        });
-        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
-        {
-            TryStart = tryStart,
-            TryEnd = catchDll,
-            HandlerStart = catchEntry,
-            HandlerEnd = afterTry,
-            CatchType = entryNotFound
-        });
 
         body.KeepOldMaxStack = true;
         body.MaxStack = 8;

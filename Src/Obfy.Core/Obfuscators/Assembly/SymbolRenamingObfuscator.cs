@@ -201,7 +201,7 @@ public class SymbolRenamingObfuscator : IObfuscator
 
                 foreach (var type in module.GetTypes())
                 {
-                    if (type.Namespace == originalNs)
+                    if (type.Namespace == originalNs && !ObfuscatorHelpers.IsPinnedAttributeType(type))
                         type.Namespace = newNs;
                 }
 
@@ -268,6 +268,9 @@ public class SymbolRenamingObfuscator : IObfuscator
         ICollection<string> warnings)
     {
         if (type.Namespace == "Obfy.Core.Models")
+            return true;
+
+        if (ObfuscatorHelpers.IsPinnedAttributeType(type))
             return true;
 
         if (type.IsGlobalModuleType)

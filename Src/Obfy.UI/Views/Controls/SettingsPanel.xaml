@@ -140,6 +140,9 @@
                            Margin="16,0,0,8">
                     <CheckBox Content="Inject junk types" IsChecked="{Binding InjectJunkTypes}"/>
                     <CheckBox Content="Add SuppressIldasm" IsChecked="{Binding AddSuppressIldasmAttribute}"/>
+                    <CheckBox AutomationProperties.AutomationId="AddDecoyAttributesCheck"
+                              Content="Add decoy ConfusedBy/Dotfuscator attributes"
+                              IsChecked="{Binding AddDecoyAttributes}"/>
                     <TextBlock Text="Junk types" Margin="0,8,0,4"/>
                     <ui:NumberBox AutomationProperties.Name="Junk type count"
                                   Value="{Binding JunkTypeCount}" Minimum="0" Maximum="50"
@@ -166,6 +169,21 @@
                 <CheckBox Content="Remove Debug Info" IsChecked="{Binding RemoveDebugInfo}"/>
                 <CheckBox Content="Remove Attributes" IsChecked="{Binding RemoveAttributes}"/>
                 <CheckBox Content="Strip Documentation" IsChecked="{Binding StripDocumentation}"/>
+            </StackPanel>
+        </ui:CardExpander>
+
+        <ui:CardExpander Header="Watermark" Icon="{ui:SymbolIcon Tag24}" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <ui:ToggleSwitch AutomationProperties.AutomationId="WatermarkToggle"
+                               Content="Enabled" IsChecked="{Binding WatermarkEnabled}"/>
+                <StackPanel Visibility="{Binding WatermarkEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="0,8,0,0">
+                    <TextBlock Text="Customer / build id" Margin="0,0,0,4"/>
+                    <ui:TextBox AutomationProperties.AutomationId="WatermarkIdBox"
+                                AutomationProperties.Name="Watermark id"
+                                Text="{Binding WatermarkId, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="required when watermark is enabled"/>
+                </StackPanel>
             </StackPanel>
         </ui:CardExpander>
 

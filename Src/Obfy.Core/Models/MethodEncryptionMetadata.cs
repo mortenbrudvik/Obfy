@@ -16,5 +16,8 @@ public sealed class MethodEncryptionMetadata
 
     public required IReadOnlyList<MethodDef> Methods { get; init; }
 
-    public required byte XorKey { get; init; }
+    /// <summary>
+    /// Per-method XOR keys, parallel to <see cref="Methods"/>. Never zero.
+    /// </summary>
+    public required IReadOnlyList<byte> Keys { get; init; }
 }

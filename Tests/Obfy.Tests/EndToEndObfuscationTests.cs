@@ -352,6 +352,55 @@ public class EndToEndObfuscationTests
     }
 
     [Fact]
+    public async Task MethodEncryption_TwoMethods_RoundTripWithDistinctKeys()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get() => Helper() + 1;
+                static int Helper()
+                {
+                    int x = 7;
+                    x = x + 34;
+                    return x;
+                }
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-mc2-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "Mc2Lib");
+            var output = Path.Combine(dir, "Mc2Lib.obf.dll");
+
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Protection = { MethodEncryption = true }
+            };
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Statistics.ProtectionsApplied.ShouldBeGreaterThanOrEqualTo(2);
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(42);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public async Task Aggressive_FullPipeline_RunsOnRealAssembly()
     {
         // Individual technique tests would not catch interactions such as switch flattening after

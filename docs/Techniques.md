@@ -15,6 +15,7 @@ Obfy applies techniques in a specific order (priority):
 | 19 | Anti-Dump | Wipe PE headers in memory |
 | 20 | Anti-Decompiler | Inject junk types and methods |
 | 22 | Anti-Tamper | Verify assembly integrity |
+| 25 | Method Encryption | XOR method IL in the PE (Windows) |
 | 30 | Control Flow | Flatten control flow |
 | 40 | Reference Proxy | Hide call targets behind proxies |
 | 50 | Symbol Renaming | Rename identifiers |
@@ -78,7 +79,6 @@ Console.WriteLine(StringDecryptor.Decrypt(encodedIndex));
 - Methods with exception handlers and compiler-generated methods **and types** (async state machines, display classes, iterators) are encrypted
 - Control-flow flattening still skips exception-handler methods (rebuilding EH is unsafe); those methods get opaque predicates instead
 - String decrypt call sites pass `index XOR seed`, not the raw index, and do not all call the same method
-- Aggressive XOR-encrypts method IL in the PE; a module initializer decrypts it in memory before JIT (Windows `VirtualProtect`)
 - Resource strings shorter than `minStringLength` stay plaintext; encrypted resource strings are prefixed so `GetString` does not try to decrypt them
 
 ---
@@ -228,6 +228,29 @@ var data = ResourceDecryptor.GetResource("Config.json");
 - Resources accessed via reflection need code changes
 - System resources (*.resources) may cause runtime issues if encrypted
 - Large resources increase assembly size slightly due to encryption overhead
+
+---
+
+### Method IL Encryption
+
+XOR-encrypts method IL bytes in the PE image. A module initializer decrypts them in memory with `VirtualProtect` before JIT.
+
+Enabled in the Aggressive preset (`protection.methodEncryption`).
+
+**Limits (not a confidentiality guarantee):**
+
+- Windows only (`kernel32!VirtualProtect`). Failures are swallowed so non-Windows still starts, with plaintext IL.
+- Generic methods and methods on generic types are skipped (RVA mapping is unsafe across instantiations). When a large share of candidates are generic, the run warns.
+- Not NativeAOT / IL2CPP compatible.
+- Each method uses its own XOR key (not one key for the whole assembly). The keys still live in the PE; this only stops a single-byte dump from recovering every body.
+
+```json
+{
+  "protection": {
+    "methodEncryption": true
+  }
+}
+```
 
 ---
 

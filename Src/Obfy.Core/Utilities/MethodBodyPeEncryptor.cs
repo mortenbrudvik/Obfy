@@ -15,9 +15,14 @@ internal static class MethodBodyPeEncryptor
         var bytes = File.ReadAllBytes(assemblyPath);
         using var loaded = ModuleDefMD.Load(bytes);
 
-        var entries = new List<(uint Rva, int HeaderSize, int IlSize)>();
-        foreach (var original in metadata.Methods)
+        var entries = new List<(uint Rva, int HeaderSize, int IlSize, byte Key)>();
+        for (var n = 0; n < metadata.Methods.Count; n++)
         {
+            var original = metadata.Methods[n];
+            var key = n < metadata.Keys.Count ? metadata.Keys[n] : (byte)0;
+            if (key == 0)
+                continue;
+
             var match = FindMethod(loaded, original);
             if (match is null || match.RVA == 0 || match.Body is null)
                 continue;
@@ -35,12 +40,12 @@ internal static class MethodBodyPeEncryptor
                 continue;
 
             for (var i = 0; i < ilSize; i++)
-                bytes[ilOffset + i] ^= metadata.XorKey;
+                bytes[ilOffset + i] ^= key;
 
-            entries.Add((rva, headerSize, ilSize));
+            entries.Add((rva, headerSize, ilSize, key));
         }
 
-        PatchBlob(bytes, metadata.XorKey, entries);
+        PatchBlob(bytes, entries);
         File.WriteAllBytes(assemblyPath, bytes);
     }
 
@@ -117,7 +122,7 @@ internal static class MethodBodyPeEncryptor
         return -1;
     }
 
-    private static void PatchBlob(byte[] pe, byte xorKey, List<(uint Rva, int HeaderSize, int IlSize)> entries)
+    private static void PatchBlob(byte[] pe, List<(uint Rva, int HeaderSize, int IlSize, byte Key)> entries)
     {
         var magic = MethodEncryptionMetadata.Magic;
         var max = pe.Length - (magic.Length + 8);
@@ -138,16 +143,16 @@ internal static class MethodBodyPeEncryptor
 
             var offset = i + magic.Length;
             BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset), entries.Count);
-            pe[offset + 4] = xorKey;
             offset += 8;
-            foreach (var (rva, header, size) in entries)
+            foreach (var (rva, header, size, key) in entries)
             {
-                if (offset + 12 > pe.Length)
+                if (offset + 16 > pe.Length)
                     return;
                 BinaryPrimitives.WriteUInt32LittleEndian(pe.AsSpan(offset), rva);
                 BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + 4), header);
                 BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + 8), size);
-                offset += 12;
+                BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + 12), key);
+                offset += 16;
             }
 
             return;

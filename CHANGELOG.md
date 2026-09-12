@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Directory.Build.props, `.editorconfig`, and `version.json`
 
 ### Changed
+- Method IL encryption uses a distinct XOR key per method and warns when many methods are skipped because they are generic (Windows-only, not NativeAOT)
 - Anti-debug scatters `Check` into user methods, adds `CheckRemoteDebuggerPresent` and a TickCount timing probe, and cycles failure through `Exit` / `FailFast` / `throw`
 - Linear control-flow flattening uses random `beq` dispatcher states instead of sequential `switch` indices
 - Opaque predicates draw from `ProcessorCount`, `CurrentManagedThreadId`, `TickCount64`, and `GC.MaxGeneration` as well as `TickCount`

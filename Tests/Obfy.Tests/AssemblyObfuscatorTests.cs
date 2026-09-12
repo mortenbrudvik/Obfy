@@ -3120,6 +3120,56 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task MethodEncryption_AssignsDistinctPerMethodKeys()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Work");
+        CreateMethodWithMultipleInstructions(type, "A", 12);
+        CreateMethodWithMultipleInstructions(type, "B", 12);
+
+        var obfuscator = new MethodEncryptionObfuscator(new Mock<ILogger<MethodEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { MethodEncryption = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        var meta = context.MethodEncryptionMetadata;
+        meta.ShouldNotBeNull();
+        meta!.Keys.Count.ShouldBe(meta.Methods.Count);
+        meta.Keys.Count.ShouldBe(2);
+        meta.Keys[0].ShouldNotBe(meta.Keys[1]);
+        meta.Keys.ShouldAllBe(k => k != 0);
+    }
+
+    [Fact]
+    public async Task MethodEncryption_WarnsWhenManyGenericMethodsSkipped()
+    {
+        var module = CreateTestModule();
+        var generic = new TypeDefUser("TestNamespace", "Box`1", module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            Attributes = TypeAttributes.NotPublic | TypeAttributes.Class
+        };
+        generic.GenericParameters.Add(new GenericParamUser(0, GenericParamAttributes.NonVariant, "T"));
+        module.Types.Add(generic);
+        CreateMethodWithMultipleInstructions(generic, "G0", 12);
+        CreateMethodWithMultipleInstructions(generic, "G1", 12);
+        CreateMethodWithMultipleInstructions(generic, "G2", 12);
+        CreateMethodWithMultipleInstructions(generic, "G3", 12);
+
+        var concrete = CreateTestType(module, "Work");
+        CreateMethodWithMultipleInstructions(concrete, "Go", 12);
+
+        var obfuscator = new MethodEncryptionObfuscator(new Mock<ILogger<MethodEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { MethodEncryption = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBe(1);
+        context.Warnings.ShouldContain(w =>
+            w.Contains("generic", StringComparison.OrdinalIgnoreCase)
+            && w.Contains("Windows", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task ControlFlow_ObfuscatesRuntimeHelperMethods()
     {
         var module = CreateTestModule();

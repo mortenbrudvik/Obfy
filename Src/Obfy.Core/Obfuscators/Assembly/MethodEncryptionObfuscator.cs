@@ -36,6 +36,8 @@ public class MethodEncryptionObfuscator : IObfuscator
         try
         {
             var targets = new List<MethodDef>();
+            var genericSkipped = 0;
+            var considered = 0;
             foreach (var type in module.GetTypes())
             {
                 if (ObfuscatorHelpers.IsRuntimeHelper(type))
@@ -46,10 +48,27 @@ public class MethodEncryptionObfuscator : IObfuscator
                 foreach (var method in type.Methods)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (!CanEncrypt(method))
+                    if (!IsEncryptCandidate(method))
                         continue;
+
+                    considered++;
+                    if (method.HasGenericParameters || method.DeclaringType.HasGenericParameters)
+                    {
+                        genericSkipped++;
+                        continue;
+                    }
+
                     targets.Add(method);
                 }
+            }
+
+            if (genericSkipped > 0 && considered > 0 && genericSkipped * 4 >= considered)
+            {
+                var warning =
+                    $"Method encryption: skipped {genericSkipped} of {considered} candidate methods because they are generic " +
+                    $"(not supported). Encrypted {targets.Count}. Windows-only PE XOR; not NativeAOT.";
+                context.Warnings.Add(warning);
+                _logger.LogWarning("{Warning}", warning);
             }
 
             if (targets.Count == 0)
@@ -58,8 +77,8 @@ public class MethodEncryptionObfuscator : IObfuscator
                 return Task.FromResult(ObfuscationResult.Successful(stats));
             }
 
-            var xorKey = (byte)Random.Shared.Next(1, 256);
-            var decryptor = InjectDecryptor(module, targets.Count, xorKey);
+            var keys = CreateDistinctKeys(targets.Count);
+            var decryptor = InjectDecryptor(module, targets.Count);
             var decrypt = decryptor.FindMethod("DecryptBodies")
                 ?? throw new InvalidOperationException("Method-encryption decryptor was not injected.");
 
@@ -70,7 +89,7 @@ public class MethodEncryptionObfuscator : IObfuscator
             context.MethodEncryptionMetadata = new MethodEncryptionMetadata
             {
                 Methods = targets,
-                XorKey = xorKey
+                Keys = keys
             };
 
             stats.ProtectionsApplied = targets.Count;
@@ -84,7 +103,7 @@ public class MethodEncryptionObfuscator : IObfuscator
         }
     }
 
-    private static bool CanEncrypt(MethodDef method)
+    private static bool IsEncryptCandidate(MethodDef method)
     {
         if (!method.HasBody || method.Body.Instructions.Count < 2)
             return false;
@@ -92,12 +111,27 @@ public class MethodEncryptionObfuscator : IObfuscator
             return false;
         if (method.IsStaticConstructor)
             return false;
-        if (method.HasGenericParameters || method.DeclaringType.HasGenericParameters)
-            return false;
         return true;
     }
 
-    private static TypeDef InjectDecryptor(ModuleDef module, int methodCount, byte xorKey)
+    private static byte[] CreateDistinctKeys(int count)
+    {
+        var keys = new byte[count];
+        var used = new HashSet<byte>();
+        for (var i = 0; i < count; i++)
+        {
+            byte key;
+            do
+            {
+                key = (byte)Random.Shared.Next(1, 256);
+            } while (used.Count < 255 && !used.Add(key));
+            keys[i] = key;
+        }
+
+        return keys;
+    }
+
+    private static TypeDef InjectDecryptor(ModuleDef module, int methodCount)
     {
         var typeDef = new TypeDefUser(
             "Obfy.Runtime",
@@ -113,13 +147,12 @@ public class MethodEncryptionObfuscator : IObfuscator
             Attributes = TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout |
                          TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit
         };
-        var blobSize = 16 + 8 + methodCount * 12;
+        var blobSize = 16 + 8 + methodCount * 16;
         blobType.ClassLayout = new ClassLayoutUser(1, (uint)blobSize);
         typeDef.NestedTypes.Add(blobType);
 
         var blob = new byte[blobSize];
         Buffer.BlockCopy(MethodEncryptionMetadata.Magic, 0, blob, 0, MethodEncryptionMetadata.Magic.Length);
-        blob[20] = xorKey;
 
         var blobField = new FieldDefUser(
             "_blob",
@@ -236,18 +269,13 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, count));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
-        body.Instructions.Add(Instruction.CreateLdcI4(20));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, readByte));
-        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, key));
-
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, i));
         body.Instructions.Add(Instruction.Create(OpCodes.Br, loopCheck));
 
         var loopBody = Instruction.Create(OpCodes.Ldloc, i);
         body.Instructions.Add(loopBody);
-        body.Instructions.Add(Instruction.CreateLdcI4(12));
+        body.Instructions.Add(Instruction.CreateLdcI4(16));
         body.Instructions.Add(Instruction.Create(OpCodes.Mul));
         body.Instructions.Add(Instruction.CreateLdcI4(24));
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
@@ -271,6 +299,13 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, size));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, blob));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, entryOff));
+        body.Instructions.Add(Instruction.CreateLdcI4(12));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, readInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, key));
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, rva));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, next));

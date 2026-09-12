@@ -107,6 +107,7 @@ Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | AntiDump | 19 | Wipes PE headers in memory (Windows) |
 | AntiDecompiler | 20 | Injects junk types and methods |
 | AntiTamper | 22 | Verifies assembly integrity at runtime |
+| MethodEncryption | 25 | XOR-encrypts method IL in the PE (Windows; per-method keys; skips generics) |
 | ControlFlow | 30 | Switch-dispatches basic blocks and/or inserts opaque predicates |
 | ReferenceProxy | 40 | Hides in-module call targets behind proxy methods |
 | SymbolRenaming | 50 | Renames types, methods, fields, properties, events, namespaces |

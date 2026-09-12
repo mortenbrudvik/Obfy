@@ -6,10 +6,10 @@ Obfy has comprehensive test coverage across all components:
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 270 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
+| Obfy.Tests | 285 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
 | Obfy.Console.Tests | 106 | CLI parsing & integration |
 | Obfy.UI.Tests | 103 | ViewModel unit tests |
-| **Total** | **479** | |
+| **Total** | **494** | |
 
 ## Test Stack
 

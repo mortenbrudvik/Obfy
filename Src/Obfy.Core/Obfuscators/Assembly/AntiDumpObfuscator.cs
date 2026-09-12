@@ -3,6 +3,7 @@ using dnlib.DotNet.Emit;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Obfuscators.Assembly;
 
@@ -25,7 +26,8 @@ public class AntiDumpObfuscator : IObfuscator
 
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
 
-    public bool IsEnabled(ObfySettings settings) => settings.Protection.AntiDump;
+    public bool IsEnabled(ObfySettings settings) =>
+        settings.Protection.AntiDump && !RuntimeProfileGating.BlocksPeProtections(settings.RuntimeProfile);
 
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {

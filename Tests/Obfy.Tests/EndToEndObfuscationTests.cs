@@ -491,6 +491,44 @@ public class EndToEndObfuscationTests
         }
     }
 
+    [Fact]
+    public async Task NativeAotProfile_DisablesPeProtections_AndStillRuns()
+    {
+        const string source = "public static class Lib { public static int Get() => 9; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-aot-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "AotLib");
+            var output = Path.Combine(dir, "AotLib.obf.dll");
+
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+
+            var service = container.Resolve<IObfuscationService>();
+            var settings = ObfySettings.ForLevel(ObfuscationLevel.Aggressive);
+            settings.SymbolRenaming.PreservePublicApi = true;
+            settings.RuntimeProfile = RuntimeProfile.NativeAot;
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Warnings.ShouldContain(w => w.Contains("Method encryption disabled", StringComparison.OrdinalIgnoreCase));
+            result.Warnings.ShouldContain(w => w.Contains("Anti-dump disabled", StringComparison.OrdinalIgnoreCase));
+
+            using var loaded = ModuleDefMD.Load(File.ReadAllBytes(output));
+            loaded.Types.ShouldNotContain(t => t.Name == "<MethodCrypt>");
+            loaded.Types.ShouldNotContain(t => t.Name == "<AntiDump>");
+
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(9);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
     [Theory]
     [InlineData(EncryptionAlgorithm.Aes256)]
     public async Task ConstantEncryption_Aes_RunsOnRealAssembly(EncryptionAlgorithm algorithm)

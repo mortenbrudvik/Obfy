@@ -3406,6 +3406,33 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public void MethodEncryption_IsDisabledForNativeAotProfile()
+    {
+        var obfuscator = new MethodEncryptionObfuscator(new Mock<ILogger<MethodEncryptionObfuscator>>().Object);
+        obfuscator.IsEnabled(new ObfySettings
+        {
+            Protection = { MethodEncryption = true },
+            RuntimeProfile = RuntimeProfile.NativeAot
+        }).ShouldBeFalse();
+        obfuscator.IsEnabled(new ObfySettings
+        {
+            Protection = { MethodEncryption = true },
+            RuntimeProfile = RuntimeProfile.Default
+        }).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void AntiDump_IsDisabledForUnityIl2CppProfile()
+    {
+        var obfuscator = new AntiDumpObfuscator(new Mock<ILogger<AntiDumpObfuscator>>().Object);
+        obfuscator.IsEnabled(new ObfySettings
+        {
+            Protection = { AntiDump = true },
+            RuntimeProfile = RuntimeProfile.UnityIl2Cpp
+        }).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task MethodEncryption_AssignsDistinctPerMethodKeys()
     {
         var module = CreateTestModule();

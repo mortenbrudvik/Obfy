@@ -70,6 +70,16 @@ public class ObfySettings
     public bool PostBuildEnabled { get; set; } = false;
 
     /// <summary>
+    /// Target runtime. NativeAOT and Unity IL2CPP disable PE-header tricks (method encryption, anti-dump).
+    /// </summary>
+    public RuntimeProfile RuntimeProfile { get; set; } = RuntimeProfile.Default;
+
+    /// <summary>
+    /// Strong-name re-signing after obfuscation.
+    /// </summary>
+    public SigningSettings Signing { get; init; } = new();
+
+    /// <summary>
     /// Creates a settings instance for the specified level.
     /// </summary>
     public static ObfySettings ForLevel(ObfuscationLevel level)
@@ -539,6 +549,30 @@ public class InclusionRules
     public List<string> Methods { get; set; } = new();
 
     public bool HasAny => Namespaces.Count > 0 || Types.Count > 0 || Methods.Count > 0;
+}
+
+/// <summary>
+/// Runtime the obfuscated assembly will run on. PE-mutating protections are Windows JIT only.
+/// </summary>
+public enum RuntimeProfile
+{
+    Default,
+    NativeAot,
+    UnityIl2Cpp
+}
+
+/// <summary>
+/// Re-sign the output assembly with a strong-name key.
+/// </summary>
+public class SigningSettings
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Path to an .snk or .pfx file.</summary>
+    public string? KeyFile { get; set; }
+
+    /// <summary>Environment variable holding the PFX password, if needed.</summary>
+    public string? PasswordEnvironmentVariable { get; set; }
 }
 
 /// <summary>

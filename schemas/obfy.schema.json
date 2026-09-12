@@ -207,6 +207,12 @@
         }
       }
     },
+    "runtimeProfile": {
+      "type": "string",
+      "description": "Target runtime. NativeAot and UnityIl2Cpp disable method encryption and anti-dump.",
+      "enum": ["Default", "NativeAot", "UnityIl2Cpp"],
+      "default": "Default"
+    },
     "postBuildEnabled": {
       "type": "boolean",
       "description": "Whether post-build obfuscation is enabled (used by the Visual Studio extension).",

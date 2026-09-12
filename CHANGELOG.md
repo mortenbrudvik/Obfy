@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Decompiler-resistance fixtures (ILSpy decryptor output, anti-debug NOP survival, method-encryption skip counts in reports)
 - Default JSON/XML attribute exclusions, `ComVisible(true)` skip, and `symbolRenaming.preserveXaml` for XAML bindings
 - `System.Reflection.ObfuscationAttribute` and optional `inclusions` allow-list
+- `runtimeProfile` (NativeAot / UnityIl2Cpp) disables method encryption and anti-dump with a warning
 
 ### Changed
 - Method IL encryption records generic skips in the report and uses a distinct XOR key per method; warns when many methods are skipped because they are generic

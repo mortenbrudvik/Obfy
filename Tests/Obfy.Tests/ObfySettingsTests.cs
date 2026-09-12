@@ -47,6 +47,7 @@ public class ObfySettingsTests
         settings.Protection.AntiDump.ShouldBeTrue();
         settings.Protection.ReferenceProxy.ShouldBeTrue();
         settings.Protection.MethodEncryption.ShouldBeTrue();
+        settings.RuntimeProfile.ShouldBe(RuntimeProfile.Default);
     }
 
     [Fact]

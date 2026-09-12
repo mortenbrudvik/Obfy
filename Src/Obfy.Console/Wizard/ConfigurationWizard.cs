@@ -202,6 +202,7 @@ public class ConfigurationWizard
             case "Game (Unity)":
                 context.Settings.Exclusions.Namespaces.Add("UnityEngine.*");
                 context.Settings.Exclusions.Namespaces.Add("Unity.*");
+                context.Settings.RuntimeProfile = RuntimeProfile.UnityIl2Cpp;
                 break;
 
             case "Web Application (ASP.NET)":

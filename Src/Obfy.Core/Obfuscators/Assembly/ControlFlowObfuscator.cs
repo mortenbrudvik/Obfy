@@ -153,7 +153,7 @@ public class ControlFlowObfuscator : IObfuscator
         return FlattenLinearMethod(method);
     }
 
-    private static bool FlattenLinearMethod(MethodDef method)
+    private bool FlattenLinearMethod(MethodDef method)
     {
         var body = method.Body;
         var instructions = body.Instructions;
@@ -210,29 +210,48 @@ public class ControlFlowObfuscator : IObfuscator
         if (chunks.Count < 2)
             return false;
 
+        var states = new int[chunks.Count];
+        var used = new HashSet<int>();
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            int state;
+            do
+            {
+                state = _random.Next(1, 1_000_000);
+            } while (!used.Add(state));
+            states[i] = state;
+        }
+
         var stateVar = new Local(method.Module.CorLibTypes.Int32);
         body.Variables.Add(stateVar);
         body.InitLocals = true;
 
-        var dispatcher = Instruction.Create(OpCodes.Ldloc, stateVar);
-        var targets = chunks.Select(_ => Instruction.Create(OpCodes.Nop)).ToList();
-        var switchInstr = Instruction.Create(OpCodes.Switch, targets.ToArray());
+        var dispatcher = Instruction.Create(OpCodes.Nop);
+        var blockHeads = chunks.Select(_ => Instruction.Create(OpCodes.Nop)).ToList();
 
         var rebuilt = new List<Instruction>
         {
-            Instruction.Create(OpCodes.Ldc_I4_0),
+            Instruction.CreateLdcI4(states[0]),
             Instruction.Create(OpCodes.Stloc, stateVar),
-            dispatcher,
-            switchInstr
+            dispatcher
         };
 
         for (var c = 0; c < chunks.Count; c++)
         {
-            rebuilt.Add(targets[c]);
+            rebuilt.Add(Instruction.Create(OpCodes.Ldloc, stateVar));
+            rebuilt.Add(Instruction.CreateLdcI4(states[c]));
+            rebuilt.Add(Instruction.Create(OpCodes.Beq, blockHeads[c]));
+        }
+
+        rebuilt.Add(Instruction.Create(OpCodes.Br, blockHeads[0]));
+
+        for (var c = 0; c < chunks.Count; c++)
+        {
+            rebuilt.Add(blockHeads[c]);
             rebuilt.AddRange(chunks[c]);
             if (c + 1 < chunks.Count)
             {
-                rebuilt.Add(Instruction.CreateLdcI4(c + 1));
+                rebuilt.Add(Instruction.CreateLdcI4(states[c + 1]));
                 rebuilt.Add(Instruction.Create(OpCodes.Stloc, stateVar));
                 rebuilt.Add(Instruction.Create(OpCodes.Br, dispatcher));
             }
@@ -324,6 +343,28 @@ public class ControlFlowObfuscator : IObfuscator
             "get_TickCount",
             MethodSig.CreateStatic(module.CorLibTypes.Int32),
             env);
+        var getProcessorCount = new MemberRefUser(
+            module,
+            "get_ProcessorCount",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            env);
+        var getThreadId = new MemberRefUser(
+            module,
+            "get_CurrentManagedThreadId",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            env);
+        var getTickCount64 = new MemberRefUser(
+            module,
+            "get_TickCount64",
+            MethodSig.CreateStatic(module.CorLibTypes.Int64),
+            env);
+
+        var gcType = new TypeRefUser(module, "System", "GC", module.CorLibTypes.AssemblyRef);
+        var getMaxGeneration = new MemberRefUser(
+            module,
+            "get_MaxGeneration",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            gcType);
 
         var dead = new[]
         {
@@ -332,8 +373,8 @@ public class ControlFlowObfuscator : IObfuscator
             Instruction.Create(OpCodes.Br, target)
         };
 
-        // Always-true predicates using a runtime value so ILSpy cannot fold them at compile time.
-        Instruction[] predicate = _random.Next(4) switch
+        // Always-true / always-false predicates using runtime values so ILSpy cannot fold them.
+        Instruction[] predicate = _random.Next(8) switch
         {
             0 =>
             [
@@ -359,7 +400,7 @@ public class ControlFlowObfuscator : IObfuscator
                 Instruction.Create(OpCodes.Or),
                 Instruction.Create(OpCodes.Brtrue, target)
             ],
-            _ =>
+            3 =>
             [
                 Instruction.Create(OpCodes.Call, getTickCount),
                 Instruction.Create(OpCodes.Dup),
@@ -368,6 +409,34 @@ public class ControlFlowObfuscator : IObfuscator
                 Instruction.Create(OpCodes.Mul),
                 Instruction.Create(OpCodes.Ldc_I4_2),
                 Instruction.Create(OpCodes.Rem),
+                Instruction.Create(OpCodes.Brfalse, target)
+            ],
+            4 =>
+            [
+                Instruction.Create(OpCodes.Call, getProcessorCount),
+                Instruction.Create(OpCodes.Ldc_I4_1),
+                Instruction.Create(OpCodes.Or),
+                Instruction.Create(OpCodes.Brtrue, target)
+            ],
+            5 =>
+            [
+                Instruction.Create(OpCodes.Call, getThreadId),
+                Instruction.Create(OpCodes.Dup),
+                Instruction.Create(OpCodes.Xor),
+                Instruction.Create(OpCodes.Brfalse, target)
+            ],
+            6 =>
+            [
+                Instruction.Create(OpCodes.Call, getTickCount64),
+                Instruction.Create(OpCodes.Dup),
+                Instruction.Create(OpCodes.Xor),
+                Instruction.Create(OpCodes.Brfalse, target)
+            ],
+            _ =>
+            [
+                Instruction.Create(OpCodes.Call, getMaxGeneration),
+                Instruction.Create(OpCodes.Ldc_I4_0),
+                Instruction.Create(OpCodes.Clt),
                 Instruction.Create(OpCodes.Brfalse, target)
             ]
         };

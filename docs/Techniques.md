@@ -268,7 +268,7 @@ void Method()
 
 **Opaque Predicate Mode:**
 
-Inserts conditional branches that always evaluate the same way.
+Inserts conditional branches that always evaluate the same way, using runtime values (`Environment.TickCount`, `TickCount64`, `ProcessorCount`, `CurrentManagedThreadId`, `GC.MaxGeneration`) so decompilers cannot fold them to `true`/`false`.
 
 **Before:**
 ```csharp
@@ -277,8 +277,8 @@ DoSomething();
 
 **After (conceptual):**
 ```csharp
-int x = GetValue();
-if (x * x >= 0)  // Always true
+int x = Environment.TickCount;
+if ((x ^ x) == 0)  // Always true, not a compile-time constant
 {
     DoSomething();
 }
@@ -295,6 +295,8 @@ The `intensity` setting (0-100) controls how aggressively the technique is appli
 - **26-50**: Moderate obfuscation
 - **51-75**: Heavy obfuscation
 - **76-100**: Maximum obfuscation, all eligible blocks affected
+
+**Dispatcher states:** Both CFG flattening and the linear-chunk fallback use random `beq` state values, not sequential `switch` indices `0, 1, 2…`.
 
 **Skipped Methods:**
 - Constructors and static constructors (including runtime helper `.cctor`)

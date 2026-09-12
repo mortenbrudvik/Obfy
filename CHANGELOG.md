@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Directory.Build.props, `.editorconfig`, and `version.json`
 
 ### Changed
+- Linear control-flow flattening uses random `beq` dispatcher states instead of sequential `switch` indices
+- Opaque predicates draw from `ProcessorCount`, `CurrentManagedThreadId`, `TickCount64`, and `GC.MaxGeneration` as well as `TickCount`
 - Runtime helpers (decryptors, anti-debug `Check`, anti-tamper `Verify`, anti-dump `Wipe`, method-body decrypt) are control-flow obfuscated when control flow is on; `.cctor` and P/Invoke are left alone
 - String decryption uses three entry points; call sites round-robin so there is no single `Decrypt(int)` for every string
 - Reference proxies now hide user calls to assembly-visible runtime helper entry points

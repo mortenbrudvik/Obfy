@@ -936,6 +936,67 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task ControlFlow_LinearFlatten_UsesRandomDispatcherStates()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var method = CreateMethodWithMultipleInstructions(type, "Linear", 30);
+
+        var obfuscator = new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        method.Body.Instructions.Any(i => i.OpCode == OpCodes.Switch).ShouldBeFalse();
+        method.Body.Instructions.Any(i => i.OpCode == OpCodes.Beq).ShouldBeTrue();
+
+        var stateVar = method.Body.Variables.Last();
+        var states = new List<int>();
+        var instructions = method.Body.Instructions;
+        for (var i = 0; i < instructions.Count - 1; i++)
+        {
+            if (instructions[i + 1].OpCode != OpCodes.Stloc || !Equals(instructions[i + 1].Operand, stateVar))
+                continue;
+            var value = TryReadLdcI4(instructions[i]);
+            value.ShouldNotBeNull();
+            states.Add(value!.Value);
+        }
+
+        states.Count.ShouldBeGreaterThan(1);
+        states.SequenceEqual(Enumerable.Range(0, states.Count)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ControlFlow_OpaquePredicate_UsesMultipleRuntimeSources()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var method = CreateMethodWithMultipleInstructions(type, "PredicateMethod", 40);
+
+        var obfuscator = new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.OpaquePredicate, Intensity = 100 }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var runtimeCalls = method.Body.Instructions
+            .Select(i => i.Operand as IMethod)
+            .Where(m => m != null)
+            .Select(m => m!.Name.String)
+            .Where(n => n is "get_TickCount" or "get_TickCount64" or "get_ProcessorCount"
+                or "get_CurrentManagedThreadId" or "get_MaxGeneration")
+            .Distinct()
+            .ToList();
+
+        runtimeCalls.Count.ShouldBeGreaterThan(1);
+    }
+
+    [Fact]
     public async Task ControlFlow_OpaquePredicate_InsertsPredicates()
     {
         // Arrange
@@ -3168,6 +3229,23 @@ public class AssemblyObfuscatorTests
             return false;
         return method.MethodSig.RetType.ElementType == ElementType.String
             && method.MethodSig.Params[0].ElementType == ElementType.I4;
+    }
+
+    private static int? TryReadLdcI4(Instruction instruction)
+    {
+        if (instruction.OpCode == OpCodes.Ldc_I4_M1) return -1;
+        if (instruction.OpCode == OpCodes.Ldc_I4_0) return 0;
+        if (instruction.OpCode == OpCodes.Ldc_I4_1) return 1;
+        if (instruction.OpCode == OpCodes.Ldc_I4_2) return 2;
+        if (instruction.OpCode == OpCodes.Ldc_I4_3) return 3;
+        if (instruction.OpCode == OpCodes.Ldc_I4_4) return 4;
+        if (instruction.OpCode == OpCodes.Ldc_I4_5) return 5;
+        if (instruction.OpCode == OpCodes.Ldc_I4_6) return 6;
+        if (instruction.OpCode == OpCodes.Ldc_I4_7) return 7;
+        if (instruction.OpCode == OpCodes.Ldc_I4_8) return 8;
+        if (instruction.OpCode == OpCodes.Ldc_I4_S && instruction.Operand is sbyte sb) return sb;
+        if (instruction.OpCode == OpCodes.Ldc_I4 && instruction.Operand is int i) return i;
+        return null;
     }
 
     #endregion

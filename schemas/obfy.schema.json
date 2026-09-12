@@ -207,6 +207,16 @@
         }
       }
     },
+    "signing": {
+      "type": "object",
+      "description": "Re-sign the output with a strong-name key after obfuscation.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "keyFile": { "type": "string" },
+        "passwordEnvironmentVariable": { "type": "string" }
+      }
+    },
     "runtimeProfile": {
       "type": "string",
       "description": "Target runtime. NativeAot and UnityIl2Cpp disable method encryption and anti-dump.",

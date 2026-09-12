@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Microsoft.CodeAnalysis;
@@ -136,6 +137,45 @@ public class ServiceTests : IDisposable
         // PDB file should not be created
         var pdbPath = Path.ChangeExtension(outputPath, ".pdb");
         File.Exists(pdbPath).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task AssemblyProcessor_Save_SigningWithoutKeyFile_Fails()
+    {
+        var assemblyPath = CreateTestAssembly("Unsigned.dll");
+        var outputPath = Path.Combine(_tempDirectory, "signed-missing.dll");
+        var processor = new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object);
+        var settings = new ObfySettings { Signing = { Enabled = true } };
+        var context = await processor.LoadAsync(assemblyPath, settings);
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await processor.SaveAsync(context, outputPath));
+        ex.Message.ShouldContain("key file");
+    }
+
+    [Fact]
+    public async Task AssemblyProcessor_Save_ResignsWithSnk()
+    {
+        var snkPath = Path.Combine(_tempDirectory, "test.snk");
+#pragma warning disable SYSLIB0028
+        var cspParams = new CspParameters { KeyNumber = (int)KeyNumber.Signature };
+        using (var csp = new RSACryptoServiceProvider(1024, cspParams))
+            File.WriteAllBytes(snkPath, csp.ExportCspBlob(includePrivateParameters: true));
+#pragma warning restore SYSLIB0028
+
+        var assemblyPath = CreateTestAssembly("ToSign.dll");
+        var outputPath = Path.Combine(_tempDirectory, "signed.dll");
+        var processor = new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object);
+        var settings = new ObfySettings { Signing = { Enabled = true, KeyFile = snkPath } };
+        var context = await processor.LoadAsync(assemblyPath, settings);
+
+        await processor.SaveAsync(context, outputPath);
+
+        File.Exists(outputPath).ShouldBeTrue();
+        using var signed = ModuleDefMD.Load(File.ReadAllBytes(outputPath));
+        signed.IsStrongNameSigned.ShouldBeTrue();
+        signed.Assembly.PublicKey.ShouldNotBeNull();
+        signed.Assembly.PublicKey.Data.Length.ShouldBeGreaterThan(0);
     }
 
     #endregion

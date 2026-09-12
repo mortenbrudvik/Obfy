@@ -117,6 +117,9 @@ public class AssemblyProcessor : IAssemblyProcessor
                 MethodBodyPeEncryptor.Encrypt(outputPath, context.MethodEncryptionMetadata);
         }
 
+        if (context.Settings.Signing.Enabled)
+            AssemblySigner.Sign(outputPath, context.Settings.Signing);
+
         if (context.Module is IDisposable disposable)
         {
             disposable.Dispose();

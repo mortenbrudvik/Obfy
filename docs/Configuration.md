@@ -18,6 +18,8 @@ Complete JSON configuration schema for Obfy.
   "assemblyMerge": { ... },
   "inclusions": { ... },
   "exclusions": { ... },
+  "runtimeProfile": "Default",
+  "signing": { "enabled": false, "keyFile": "", "passwordEnvironmentVariable": "" },
   "postBuildEnabled": false
 }
 ```
@@ -373,6 +375,24 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 - `JsonPropertyAttribute`
 - `XmlElementAttribute`
 - `XmlAttributeAttribute`
+
+### runtimeProfile
+
+| Value | Effect |
+|-------|--------|
+| `Default` | All protections as configured |
+| `NativeAot` | Disables method encryption and anti-dump |
+| `UnityIl2Cpp` | Same gating; Unity wizard also excludes `UnityEngine.*` |
+
+### signing
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | Re-sign the output after obfuscation |
+| `keyFile` | string | | Path to `.snk` or `.pfx` |
+| `passwordEnvironmentVariable` | string | | Env var holding the PFX password |
+
+The run fails if signing is enabled and the key cannot be applied.
 
 ## Example Configurations
 

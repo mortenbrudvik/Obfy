@@ -27,10 +27,11 @@ Build, package, and distribute Obfy for release.
    - `BREAKING CHANGE:` = major
 
 2. Update version in:
+   - `version.json` (source of truth for installer and MSIX pack)
    - `Src/Obfy.Console/Obfy.Console.csproj`
    - `Src/Obfy.Core/Obfy.Core.csproj`
    - `build/ObfySetup.iss` (AppVersion line)
-   - `package/AppxManifest.xml` (Identity Version, `major.minor.patch.0`)
+   - `package/AppxManifest.xml` (Identity Version snapshot, `major.minor.patch.0` — tests pin this to `version.json`; `build-msix.ps1` re-stamps the packed manifest from `version.json`)
 
 3. Update CHANGELOG.md:
    - Move Unreleased to new version section
@@ -51,12 +52,14 @@ dotnet test Obfy.sln -c Release
 .\build\build-installer.ps1
 ```
 
-7. Build MSIX (not obfuscated; Store certification scans the product binary):
+7. Build MSIX (not obfuscated; Store certification scans the product binary).
+   For a Store upload, pass Partner Center `-Name` / `-Publisher` and `-SkipSign`.
+   Do not copy the `.msix` to OneDrive — upload it in Partner Center separately.
 ```powershell
 .\build\build-msix.ps1
 ```
 
-8. Copy to OneDrive:
+8. Copy the Inno installer to OneDrive:
 ```powershell
 .\build\copy-to-onedrive.ps1 -Force
 ```

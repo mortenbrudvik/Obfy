@@ -8,8 +8,11 @@
 
   <!--
     Identity Name and Publisher are local/sideload values.
+    Pack rewrites Name, Publisher, Version, and PublisherDisplayName from
+    version.json / script parameters. Keep committed Version in sync with
+    version.json (major.minor.patch.0) so tests pass.
     After reserving the app name in Partner Center, rebuild with:
-      .\build\build-msix.ps1 -Name <StoreIdentityName> -Publisher "<StorePublisher>"
+      .\build\build-msix.ps1 -Name <StoreIdentityName> -Publisher "<StorePublisher>" -PublisherDisplayName "<Publisher display name>"
   -->
   <Identity
     Name="Obfy.Obfy"

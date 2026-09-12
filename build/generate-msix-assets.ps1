@@ -1,10 +1,22 @@
 # Generate Microsoft Store visual assets from Src/Obfy.UI/Images/app.png
-# Requires Windows PowerShell / PowerShell with WPF assemblies.
+# 100% scale package assets only; Partner Center listing art is separate.
+# Requires Windows PowerShell / PowerShell with WPF assemblies, on an STA thread.
 
 $ErrorActionPreference = "Stop"
 
-Add-Type -AssemblyName PresentationCore
-Add-Type -AssemblyName WindowsBase
+if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne "STA") {
+    $hostExe = (Get-Process -Id $PID).Path
+    Write-Host "Relaunching in STA for WPF rendering..." -ForegroundColor Gray
+    & $hostExe -STA -NoProfile -File $PSCommandPath
+    exit $LASTEXITCODE
+}
+
+try {
+    Add-Type -AssemblyName PresentationCore
+    Add-Type -AssemblyName WindowsBase
+} catch {
+    throw "WPF assemblies are unavailable ($($_.Exception.Message)). Use Windows PowerShell with the .NET Desktop pack, not Server Core."
+}
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $SourcePng = Join-Path $ProjectRoot "Src\Obfy.UI\Images\app.png"

@@ -28,14 +28,15 @@ Obfy/
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/            # Core unit tests (239 tests)
-│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (104 tests)
-│   └── Obfy.UI.Tests/         # ViewModel unit tests (75 tests)
+│   ├── Obfy.Tests/            # Core unit tests (258 tests)
+│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (106 tests)
+│   └── Obfy.UI.Tests/         # ViewModel unit tests (103 tests)
 ├── docs/                      # Documentation
 ├── package/                   # MSIX manifest and Store assets
 ├── build/                     # Build scripts and installer
 │   ├── build-installer.ps1    # Installer build automation
 │   ├── build-msix.ps1         # MSIX package for Store / sideload
+│   ├── generate-msix-assets.ps1 # Store logo/splash assets from app.png
 │   ├── ObfySetup.iss          # Inno Setup script
 │   └── generate-icon.ps1      # Icon generation
 └── .claude/                   # Claude Code configuration
@@ -155,6 +156,7 @@ Uses Autofac with module-based registration (`ObfuscationModule`).
 | `Obfy.UI/ViewModels/SettingsViewModel.cs` | UI settings binding to ObfySettings |
 | `package/AppxManifest.xml` | MSIX identity, full-trust capability, CLI alias |
 | `build/build-msix.ps1` | Store/sideload MSIX pack pipeline |
+| `build/generate-msix-assets.ps1` | 100% scale Store logo and splash assets |
 
 ## Development Workflow
 

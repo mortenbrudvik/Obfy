@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- MSIX packaging for Microsoft Store / sideload (`build/build-msix.ps1`)
 - Anti-dump PE-header wipe at module load (Aggressive preset)
 - Reference proxy for in-module method calls (Aggressive preset)
 - Native `IsDebuggerPresent` check in addition to managed debugger APIs

@@ -58,6 +58,10 @@ build/publish-ui/
 build/temp-obfy/
 build/obfuscated-cli/
 build/obfuscated-ui/
+build/msix-layout/
+build/msix-output/
+package/*.pfx
+package/*.cer
 
 # Claude Code
 .claude/settings.local.json

@@ -32,8 +32,10 @@ Obfy/
 │   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (104 tests)
 │   └── Obfy.UI.Tests/         # ViewModel unit tests (75 tests)
 ├── docs/                      # Documentation
+├── package/                   # MSIX manifest and Store assets
 ├── build/                     # Build scripts and installer
 │   ├── build-installer.ps1    # Installer build automation
+│   ├── build-msix.ps1         # MSIX package for Store / sideload
 │   ├── ObfySetup.iss          # Inno Setup script
 │   └── generate-icon.ps1      # Icon generation
 └── .claude/                   # Claude Code configuration
@@ -58,6 +60,9 @@ dotnet run --project Src/Obfy.Console/Obfy.Console.csproj -- --help
 
 # Run UI
 dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
+
+# Build MSIX (Store / sideload)
+.\build\build-msix.ps1
 ```
 
 ## CLI Usage
@@ -148,6 +153,8 @@ Uses Autofac with module-based registration (`ObfuscationModule`).
 | `Obfy.UI/Views/MainWindow.xaml` | UI main window (three-panel layout) |
 | `Obfy.UI/ViewModels/MainViewModel.cs` | UI orchestration and obfuscation logic |
 | `Obfy.UI/ViewModels/SettingsViewModel.cs` | UI settings binding to ObfySettings |
+| `package/AppxManifest.xml` | MSIX identity, full-trust capability, CLI alias |
+| `build/build-msix.ps1` | Store/sideload MSIX pack pipeline |
 
 ## Development Workflow
 

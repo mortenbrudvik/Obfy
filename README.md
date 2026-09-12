@@ -21,6 +21,14 @@ Obfy helps protect your .NET applications from reverse engineering by applying m
 
 Download and run the Obfy installer, which adds the `obfy` command to your PATH.
 
+A Microsoft Store MSIX package is also available to build locally:
+
+```powershell
+.\build\build-msix.ps1
+```
+
+See `package/README.md` for sideload and Partner Center identity steps.
+
 ## Quick Start
 
 ### Command Line

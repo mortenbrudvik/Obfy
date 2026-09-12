@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Directory.Build.props, `.editorconfig`, and `version.json`
 
 ### Changed
+- Product roadmap retargeted after the protection investigation: harden existing techniques and compatibility before a custom VM
 - WPF-UI 4.2.1 with `ContentDialogHost`, system theme, and CardExpander settings groups
 - UI level presets now match Core `ApplyLevel()`; dropdowns use human-readable descriptions
 - Add Files accepts `.cs` as well as assemblies; empty output path is documented as `*.obfuscated.*`

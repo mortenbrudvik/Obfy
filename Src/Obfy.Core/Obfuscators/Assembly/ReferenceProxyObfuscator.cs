@@ -74,7 +74,7 @@ public class ReferenceProxyObfuscator : IObfuscator
                             continue;
                         if (instr.Operand is not IMethod called)
                             continue;
-                        if (!CanProxy(called, module))
+                        if (!CanProxy(called, module, context.Settings.Protection.ProxyExternalCalls))
                             continue;
 
                         var key = called.FullName + "|" + instr.OpCode.Code;
@@ -115,7 +115,7 @@ public class ReferenceProxyObfuscator : IObfuscator
         }
     }
 
-    private static bool CanProxy(IMethod called, ModuleDef module)
+    private static bool CanProxy(IMethod called, ModuleDef module, bool proxyExternal)
     {
         if (called.Name == ".ctor" || called.Name == ".cctor")
             return false;
@@ -130,16 +130,47 @@ public class ReferenceProxyObfuscator : IObfuscator
         if (called.DeclaringType.Name.String == "<RefProxy>")
             return false;
 
-        // Only proxy methods defined in this module. MemberRefs into corlib (e.g. String.get_Length)
-        // are easy to get wrong (this-pointer TypeSig) and are not the calls we need to hide.
         var resolved = called.ResolveMethodDef();
-        if (resolved == null || resolved.Module != module)
-            return false;
-        if (resolved.IsPinvokeImpl || resolved.IsNative)
+        var inModule = resolved != null && resolved.Module == module;
+        if (!inModule)
+        {
+            if (!proxyExternal)
+                return false;
+            return !IsUnsafeExternal(called);
+        }
+
+        if (resolved!.IsPinvokeImpl || resolved.IsNative)
             return false;
 
         return true;
     }
+
+    private static bool IsUnsafeExternal(IMethod called)
+    {
+        var ns = called.DeclaringType?.Namespace ?? "";
+        var typeName = called.DeclaringType?.Name.String ?? "";
+        if (ns.StartsWith("System.Runtime.CompilerServices", StringComparison.Ordinal) ||
+            ns.StartsWith("System.Runtime.InteropServices", StringComparison.Ordinal))
+            return true;
+        if (typeName is "RuntimeHelpers" or "Unsafe" or "Interlocked" or "Volatile" or "GCHandle" or "Buffer")
+            return true;
+
+        var sig = called.MethodSig!;
+        if (sig.CallingConvention == CallingConvention.VarArg)
+            return true;
+        if (IsPointerLike(sig.RetType))
+            return true;
+        foreach (var p in sig.Params)
+        {
+            if (IsPointerLike(p))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsPointerLike(TypeSig? sig) =>
+        sig?.ElementType is ElementType.Ptr or ElementType.FnPtr or ElementType.ByRef;
 
     private static MethodDef? CreateProxy(ModuleDef module, TypeDef proxyType, IMethod target, bool virt)
     {

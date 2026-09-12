@@ -3415,6 +3415,54 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task ReferenceProxy_DoesNotProxyExternalCallsByDefault()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Calc");
+        var getLength = new MemberRefUser(module, "get_Length",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32), module.CorLibTypes.String.TypeDefOrRef);
+        var caller = CreateTestMethod(type, "Run");
+        caller.Body.Instructions.Clear();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "ab"));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getLength));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        var obfuscator = new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { ReferenceProxy = true } });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var called = (IMethod)caller.Body.Instructions[1].Operand;
+        called.Name.String.ShouldBe("get_Length");
+    }
+
+    [Fact]
+    public async Task ReferenceProxy_ProxiesExternalCallsWhenEnabled()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Calc");
+        var getLength = new MemberRefUser(module, "get_Length",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32), module.CorLibTypes.String.TypeDefOrRef);
+        var caller = CreateTestMethod(type, "Run");
+        caller.Body.Instructions.Clear();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "ab"));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getLength));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        var obfuscator = new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Protection = { ReferenceProxy = true, ProxyExternalCalls = true }
+        });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var called = (IMethod)caller.Body.Instructions[1].Operand;
+        called.DeclaringType.Name.String.ShouldBe("<RefProxy>");
+        var proxy = called.ResolveMethodDef();
+        proxy!.Body.Instructions.ShouldContain(i => i.OpCode == OpCodes.Calli);
+        proxy.Body.Instructions.ShouldContain(i => i.OpCode == OpCodes.Ldvirtftn);
+    }
+
+    [Fact]
     public async Task StringEncryption_EncryptsCompilerGeneratedTypes()
     {
         var module = CreateTestModule();

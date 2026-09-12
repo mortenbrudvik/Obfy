@@ -180,6 +180,34 @@ public class EndToEndObfuscationTests
     }
 
     [Fact]
+    public async Task ReferenceProxy_ExternalCalls_RunOnRealAssembly()
+    {
+        const string source = "public static class Lib { public static int Get() => \"hello\".Length; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-ext-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "ExtProxyLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var settings = new ObfySettings
+            {
+                Protection = { ReferenceProxy = true, ProxyExternalCalls = true }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            (await new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "ExtProxyLib.obf.dll");
+            module.Write(output);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(5);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public async Task AntiTamper_VerifyPassesOnUntamperedRealAssembly()
     {
         // Exercises the full anti-tamper chain on a real assembly: inject -> AssemblyProcessor.SaveAsync

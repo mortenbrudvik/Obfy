@@ -29,6 +29,7 @@ public class Program
     internal static Option<bool> AntiDecompilerOption { get; private set; } = null!;
     internal static Option<bool> AntiDumpOption { get; private set; } = null!;
     internal static Option<bool> ReferenceProxyOption { get; private set; } = null!;
+    internal static Option<bool> ProxyExternalOption { get; private set; } = null!;
     internal static Option<bool> EncryptMethodsOption { get; private set; } = null!;
     internal static Option<bool> NoStringEncryptOption { get; private set; } = null!;
     internal static Option<bool> NoRenameOption { get; private set; } = null!;
@@ -104,6 +105,10 @@ public class Program
         ReferenceProxyOption = new Option<bool>(
             name: "--reference-proxy",
             description: "Enable reference proxy");
+
+        ProxyExternalOption = new Option<bool>(
+            name: "--proxy-external",
+            description: "Also proxy calls into other assemblies (requires --reference-proxy)");
 
         EncryptMethodsOption = new Option<bool>(
             name: "--encrypt-methods",
@@ -181,6 +186,7 @@ public class Program
             AntiDecompilerOption,
             AntiDumpOption,
             ReferenceProxyOption,
+            ProxyExternalOption,
             EncryptMethodsOption,
             NoStringEncryptOption,
             NoRenameOption,
@@ -270,6 +276,7 @@ public class Program
             var antiDecompiler = context.ParseResult.GetValueForOption(AntiDecompilerOption);
             var antiDump = context.ParseResult.GetValueForOption(AntiDumpOption);
             var referenceProxy = context.ParseResult.GetValueForOption(ReferenceProxyOption);
+            var proxyExternal = context.ParseResult.GetValueForOption(ProxyExternalOption);
             var encryptMethods = context.ParseResult.GetValueForOption(EncryptMethodsOption);
             var noStringEncrypt = context.ParseResult.GetValueForOption(NoStringEncryptOption);
             var noRename = context.ParseResult.GetValueForOption(NoRenameOption);
@@ -297,7 +304,7 @@ public class Program
                     config, level ?? "standard", stringEncrypt, controlFlow, rename,
                     antiDebug, stripMetadata, encryptResources, preservePublic,
                     antiTamper, antiDecompiler, noStringEncrypt, noRename,
-                    antiDump, referenceProxy, encryptConstants, noControlFlow, encryptMethods).ConfigureAwait(false);
+                    antiDump, referenceProxy, encryptConstants, noControlFlow, encryptMethods, proxyExternal).ConfigureAwait(false);
 
                 if (merge)
                 {
@@ -343,7 +350,8 @@ public class Program
         bool referenceProxy = false,
         bool encryptConstants = false,
         bool noControlFlow = false,
-        bool encryptMethods = false)
+        bool encryptMethods = false,
+        bool proxyExternal = false)
     {
         ObfySettings settings;
 
@@ -371,7 +379,7 @@ public class Program
         var anyOverride = stringEncrypt || controlFlow || rename || antiDebug || stripMetadata
             || encryptResources || preservePublic || antiTamper || antiDecompiler
             || noStringEncrypt || noRename
-            || antiDump || referenceProxy || encryptConstants || noControlFlow || encryptMethods;
+            || antiDump || referenceProxy || encryptConstants || noControlFlow || encryptMethods || proxyExternal;
 
         if (stringEncrypt) settings.StringEncryption.Enabled = true;
         if (noStringEncrypt) settings.StringEncryption.Enabled = false;
@@ -384,6 +392,11 @@ public class Program
         if (antiDecompiler) settings.Protection.AntiDecompiler.Enabled = true;
         if (antiDump) settings.Protection.AntiDump = true;
         if (referenceProxy) settings.Protection.ReferenceProxy = true;
+        if (proxyExternal)
+        {
+            settings.Protection.ReferenceProxy = true;
+            settings.Protection.ProxyExternalCalls = true;
+        }
         if (encryptMethods) settings.Protection.MethodEncryption = true;
         if (stripMetadata) settings.Metadata.RemoveDebugInfo = true;
         if (encryptResources) settings.ResourceEncryption.Enabled = true;

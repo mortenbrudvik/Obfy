@@ -151,6 +151,8 @@
                 </StackPanel>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ReferenceProxyToggle"
                                Content="Reference Proxy" IsChecked="{Binding ReferenceProxyEnabled}"/>
+                <ui:ToggleSwitch Content="Proxy external calls" IsChecked="{Binding ProxyExternalCalls}"
+                               Margin="0,8,0,0"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="MethodEncryptionToggle"
                                Content="Method IL Encryption" IsChecked="{Binding MethodEncryptionEnabled}"/>
             </StackPanel>

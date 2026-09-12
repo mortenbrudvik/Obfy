@@ -451,6 +451,12 @@ public class ProtectionSettings
     public bool ReferenceProxy { get; set; } = false;
 
     /// <summary>
+    /// When reference proxy is on, also proxy selected calls into other assemblies (corlib, frameworks).
+    /// Off by default; in-module calls are still proxied.
+    /// </summary>
+    public bool ProxyExternalCalls { get; set; } = false;
+
+    /// <summary>
     /// Whether to XOR-encrypt method IL in the PE and decrypt it at module load (Windows).
     /// </summary>
     public bool MethodEncryption { get; set; } = false;

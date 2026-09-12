@@ -77,6 +77,7 @@
         "antiDebug": { "type": "boolean", "default": false },
         "antiDump": { "type": "boolean", "default": false },
         "referenceProxy": { "type": "boolean", "default": false },
+        "proxyExternalCalls": { "type": "boolean", "default": false },
         "methodEncryption": { "type": "boolean", "default": false },
         "antiTamper": {
           "type": "object",

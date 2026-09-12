@@ -79,6 +79,10 @@ public class ProtectionStep : WizardStep
         if (referenceProxy)
         {
             WriteInfo("Call targets will be hidden behind proxy methods.");
+            var proxyExternal = AnsiConsole.Confirm(
+                "Also proxy calls into other assemblies (framework methods)?",
+                defaultValue: context.Settings.Protection.ProxyExternalCalls);
+            context.Settings.Protection.ProxyExternalCalls = proxyExternal;
         }
 
         // Resource Encryption

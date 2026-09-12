@@ -84,6 +84,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _referenceProxyEnabled = false;
 
     [ObservableProperty]
+    private bool _proxyExternalCalls = false;
+
+    [ObservableProperty]
     private bool _methodEncryptionEnabled = false;
 
     // Protection
@@ -379,6 +382,7 @@ public partial class SettingsViewModel : ObservableObject
                 },
                 AntiDump = AntiDumpEnabled,
                 ReferenceProxy = ReferenceProxyEnabled,
+                ProxyExternalCalls = ProxyExternalCalls,
                 MethodEncryption = MethodEncryptionEnabled
             },
             Metadata = new MetadataSettings
@@ -480,6 +484,7 @@ public partial class SettingsViewModel : ObservableObject
         AntiDumpEnabled = settings.Protection.AntiDump;
         MethodEncryptionEnabled = settings.Protection.MethodEncryption;
         ReferenceProxyEnabled = settings.Protection.ReferenceProxy;
+        ProxyExternalCalls = settings.Protection.ProxyExternalCalls;
 
         // Metadata
         RemoveDebugInfo = settings.Metadata.RemoveDebugInfo;

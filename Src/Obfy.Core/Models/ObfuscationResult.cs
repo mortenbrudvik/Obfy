@@ -163,6 +163,11 @@ public class ObfuscationStatistics
     public int ProtectionsApplied { get; set; }
 
     /// <summary>
+    /// Number of method bodies prepared for PE IL encryption.
+    /// </summary>
+    public int MethodsEncrypted { get; set; }
+
+    /// <summary>
     /// Number of metadata items removed.
     /// </summary>
     public int MetadataItemsRemoved { get; set; }
@@ -192,6 +197,7 @@ public class ObfuscationStatistics
         NamespacesRenamed +
         MethodsControlFlowObfuscated +
         ProtectionsApplied +
+        MethodsEncrypted +
         MetadataItemsRemoved +
         ResourcesEncrypted;
 
@@ -211,6 +217,7 @@ public class ObfuscationStatistics
         NamespacesRenamed += other.NamespacesRenamed;
         MethodsControlFlowObfuscated += other.MethodsControlFlowObfuscated;
         ProtectionsApplied += other.ProtectionsApplied;
+        MethodsEncrypted += other.MethodsEncrypted;
         MetadataItemsRemoved += other.MetadataItemsRemoved;
         ResourcesEncrypted += other.ResourcesEncrypted;
     }

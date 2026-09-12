@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Runtime.Loader;
 using Autofac;
 using dnlib.DotNet;
@@ -43,6 +44,42 @@ public class EndToEndObfuscationTests
         var emit = compilation.Emit(path);
         emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
         return path;
+    }
+
+    private static List<int> ReadMethodEncryptionBlobKeys(string pePath)
+    {
+        var pe = File.ReadAllBytes(pePath);
+        var magic = MethodEncryptionMetadata.Magic;
+        var max = pe.Length - (magic.Length + MethodEncryptionMetadata.HeaderBytes);
+        for (var i = 0; i <= max; i++)
+        {
+            var match = true;
+            for (var j = 0; j < magic.Length; j++)
+            {
+                if (pe[i + j] != magic[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (!match)
+                continue;
+
+            var count = BinaryPrimitives.ReadInt32LittleEndian(pe.AsSpan(i + MethodEncryptionMetadata.MagicLength));
+            var keys = new List<int>(count);
+            var offset = i + MethodEncryptionMetadata.MagicLength + MethodEncryptionMetadata.HeaderBytes;
+            for (var n = 0; n < count; n++)
+            {
+                keys.Add(BinaryPrimitives.ReadInt32LittleEndian(
+                    pe.AsSpan(offset + MethodEncryptionMetadata.KeyOffset)));
+                offset += MethodEncryptionMetadata.EntryBytes;
+            }
+
+            return keys;
+        }
+
+        throw new InvalidOperationException("Method-encryption blob was not found.");
     }
 
     private static object? LoadAndInvoke(string assemblyPath, string typeName, string methodName)
@@ -391,6 +428,11 @@ public class EndToEndObfuscationTests
             var result = await service.ObfuscateAsync(input, output, settings);
             result.Success.ShouldBeTrue(result.ErrorMessage);
             result.Statistics.ProtectionsApplied.ShouldBeGreaterThanOrEqualTo(2);
+            result.Statistics.MethodsEncrypted.ShouldBeGreaterThanOrEqualTo(2);
+
+            var keys = ReadMethodEncryptionBlobKeys(output);
+            keys.Count.ShouldBeGreaterThanOrEqualTo(2);
+            keys.Distinct().Count().ShouldBe(keys.Count);
 
             LoadAndInvoke(output, "Lib", "Get").ShouldBe(42);
         }

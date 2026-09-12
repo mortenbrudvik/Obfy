@@ -28,8 +28,8 @@ Obfy/
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/            # Core unit tests (239 tests)
-│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (104 tests)
+│   ├── Obfy.Tests/            # Core unit tests (270 tests)
+│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (106 tests)
 │   └── Obfy.UI.Tests/         # ViewModel unit tests (75 tests)
 ├── docs/                      # Documentation
 ├── build/                     # Build scripts and installer
@@ -108,7 +108,7 @@ Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | AntiDecompiler | 20 | Injects junk types and methods |
 | AntiTamper | 22 | Verifies assembly integrity at runtime |
 | MethodEncryption | 25 | XOR-encrypts method IL in the PE (Windows; per-method keys; skips generics) |
-| ControlFlow | 30 | Switch-dispatches basic blocks and/or inserts opaque predicates |
+| ControlFlow | 30 | State-machine dispatch of basic blocks and/or opaque predicates |
 | ReferenceProxy | 40 | Hides in-module call targets behind proxy methods |
 | SymbolRenaming | 50 | Renames types, methods, fields, properties, events, namespaces |
 | MetadataRemoval | 90 | Strips debug info and attributes |
@@ -121,7 +121,7 @@ Tech stack: WPF-UI 4.1.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | SourceControlFlow | 30 | Adds opaque predicates and transforms control flow |
 | SourceSymbolRenaming | 50 | Renames identifiers in source code |
 
-> **Security note:** String/constant/resource "encryption" is *obfuscation*, not confidentiality.
+> **Security note:** String/constant/resource/method-IL "encryption" is *obfuscation*, not confidentiality.
 > The decryption key is embedded in the output assembly and is recoverable by anyone who runs or
 > inspects it — XOR trivially, AES-256 with a little more effort. These techniques raise the cost of
 > casual reverse engineering; they are not a substitute for encrypting secrets that must stay secret.

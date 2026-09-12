@@ -23,10 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Decompiler-resistance fixtures (ILSpy decryptor output, anti-debug NOP survival, method-encryption skip counts in reports)
 
 ### Changed
-- Method IL encryption records generic skips in the report and uses a distinct XOR key per method; warns when many methods are skipped because they are generic (Windows-only, not NativeAOT)
-- Anti-debug scatters `Check` into user methods, adds `CheckRemoteDebuggerPresent` and a TickCount timing probe, and cycles failure through `Exit` / `FailFast` / `throw`
+- Method IL encryption records generic skips in the report and uses a distinct XOR key per method; warns when many methods are skipped because they are generic
+- Method IL encryption always warns that it is Windows-only / not NativeAOT; decrypt failure leaves ciphertext
+- Anti-debug scatters `Check` into user methods, adds `CheckRemoteDebuggerPresent` and a TickCount timing probe, and cycles failure through `Exit` / `FailFast` / `throw` inside `Check`
 - Linear control-flow flattening uses random `beq` dispatcher states instead of sequential `switch` indices
-- Opaque predicates draw from `ProcessorCount`, `CurrentManagedThreadId`, `TickCount64`, and `GC.MaxGeneration` as well as `TickCount`
+- Opaque predicates draw from `ProcessorCount`, `CurrentManagedThreadId`, `TickCount64` (modern .NET only), and `GC.MaxGeneration` as well as `TickCount`
 - Runtime helpers (decryptors, anti-debug `Check`, anti-tamper `Verify`, anti-dump `Wipe`, method-body decrypt) are control-flow obfuscated when control flow is on; `.cctor` and P/Invoke are left alone
 - String decryption uses three entry points; call sites round-robin so there is no single `Decrypt(int)` for every string
 - Reference proxies now hide user calls to assembly-visible runtime helper entry points
@@ -47,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Junk types no longer live in the `Obfy.Internal` namespace
 
 ### Fixed
+- Opaque predicates no longer emit `Environment.TickCount64` on .NET Framework / netstandard 2.0
+- Method IL encryption no longer documents a plaintext fallback; decrypt failure leaves ciphertext
 - `exclusions.Methods` is honored by assembly symbol renaming
 - `encryptConstantStrings` / `encryptResourceStrings` settings now take effect
 - Source interpolated string parts are encrypted

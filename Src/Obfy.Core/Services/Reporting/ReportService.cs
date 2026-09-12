@@ -211,7 +211,7 @@ public class ReportService : IReportService
                 .GroupBy(s => s.Reason)
                 .OrderByDescending(g => g.Count());
 
-            foreach (var group in groupedSkips.Take(5))
+            foreach (var group in groupedSkips)
             {
                 var examples = string.Join(", ", group.Take(3).Select(i => i.ItemName));
                 if (group.Count() > 3)
@@ -278,6 +278,18 @@ public class ReportService : IReportService
                 Message = "Control flow obfuscation was enabled but no methods were obfuscated",
                 RelatedItem = "ControlFlow",
                 Details = "Methods may be too simple, contain exception handlers, or be excluded."
+            });
+        }
+
+        if (settings.Protection.MethodEncryption && result.Statistics.MethodsEncrypted == 0)
+        {
+            warnings.Add(new ReportWarning
+            {
+                Severity = WarningSeverity.Warning,
+                Category = WarningCategory.UnusedSetting,
+                Message = "Method encryption was enabled but no methods were encrypted",
+                RelatedItem = "MethodEncryption",
+                Details = "Methods may be generic, too short, runtime helpers, or otherwise ineligible."
             });
         }
 
@@ -403,7 +415,7 @@ public class ReportService : IReportService
                 .GroupBy(s => s.Reason)
                 .OrderByDescending(g => g.Count());
 
-            foreach (var group in groupedSkips.Take(5))
+            foreach (var group in groupedSkips)
             {
                 var examples = string.Join(", ", group.Take(3).Select(i => i.ItemName));
                 if (group.Count() > 3)
@@ -470,6 +482,18 @@ public class ReportService : IReportService
                 Message = "Control flow obfuscation was enabled but no methods were obfuscated",
                 RelatedItem = "ControlFlow",
                 Details = "Methods may be too simple, contain exception handlers, or be excluded."
+            });
+        }
+
+        if (settings.Protection.MethodEncryption && result.Statistics.MethodsEncrypted == 0)
+        {
+            warnings.Add(new ReportWarning
+            {
+                Severity = WarningSeverity.Warning,
+                Category = WarningCategory.UnusedSetting,
+                Message = "Method encryption was enabled but no methods were encrypted",
+                RelatedItem = "MethodEncryption",
+                Details = "Methods may be generic, too short, runtime helpers, or otherwise ineligible."
             });
         }
 

@@ -12,8 +12,10 @@ namespace Obfy.Core.Obfuscators.Assembly;
 /// </summary>
 public class AntiDebugObfuscator : IObfuscator
 {
+    private enum FailKind { Exit = 0, FailFast = 1, Throw = 2 }
+
     private readonly ILogger<AntiDebugObfuscator> _logger;
-    private int _failKind;
+    private FailKind _nextFail;
 
     public AntiDebugObfuscator(ILogger<AntiDebugObfuscator> logger)
     {
@@ -67,7 +69,7 @@ public class AntiDebugObfuscator : IObfuscator
                 if (stats.ProtectionsApplied == 0)
                 {
                     const string warning =
-                        "Anti-debug: runtime type was injected but no call site could be instrumented (entry point/module initializer missing or has no body).";
+                        "Anti-debug: runtime type was injected but no method body could be instrumented (all P/Invoke/abstract/empty/prefix-only).";
                     context.Warnings.Add(warning);
                     _logger.LogWarning("{Warning}", warning);
                 }
@@ -77,7 +79,7 @@ public class AntiDebugObfuscator : IObfuscator
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Anti-debug injection failed");
             return Task.FromResult(ObfuscationResult.Failed($"Anti-debug injection failed: {ex.Message}", ex));
@@ -163,6 +165,7 @@ public class AntiDebugObfuscator : IObfuscator
             module, "get_TickCount",
             MethodSig.CreateStatic(module.CorLibTypes.Int32), env);
         var dllNotFound = module.CorLibTypes.GetTypeRef("System", "DllNotFoundException");
+        var entryNotFound = module.CorLibTypes.GetTypeRef("System", "EntryPointNotFoundException");
 
         var afterAttached = Instruction.Create(OpCodes.Nop);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isAttachedGetter));
@@ -179,7 +182,8 @@ public class AntiDebugObfuscator : IObfuscator
         var tryStart = Instruction.Create(OpCodes.Call, isDebuggerPresent);
         var afterPresent = Instruction.Create(OpCodes.Call, getCurrentProcess);
         var afterRemote = Instruction.Create(OpCodes.Nop);
-        var catchStart = Instruction.Create(OpCodes.Pop);
+        var catchDll = Instruction.Create(OpCodes.Pop);
+        var catchEntry = Instruction.Create(OpCodes.Pop);
         var afterTry = Instruction.Create(OpCodes.Call, getTickCount);
 
         body.Instructions.Add(tryStart);
@@ -191,14 +195,17 @@ public class AntiDebugObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, remoteLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, remoteLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, checkRemote));
-        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, remoteLocal));
+        var afterProtectOk = Instruction.Create(OpCodes.Ldloc, remoteLocal);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterRemote));
+        body.Instructions.Add(afterProtectOk);
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterRemote));
         EmitFail(body, module);
         body.Instructions.Add(afterRemote);
         body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
 
-        body.Instructions.Add(catchStart);
+        body.Instructions.Add(catchDll);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
+        body.Instructions.Add(catchEntry);
         body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
 
         body.Instructions.Add(afterTry);
@@ -219,10 +226,18 @@ public class AntiDebugObfuscator : IObfuscator
         body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
         {
             TryStart = tryStart,
-            TryEnd = catchStart,
-            HandlerStart = catchStart,
-            HandlerEnd = afterTry,
+            TryEnd = catchDll,
+            HandlerStart = catchDll,
+            HandlerEnd = catchEntry,
             CatchType = dllNotFound
+        });
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+        {
+            TryStart = tryStart,
+            TryEnd = catchDll,
+            HandlerStart = catchEntry,
+            HandlerEnd = afterTry,
+            CatchType = entryNotFound
         });
 
         body.KeepOldMaxStack = true;
@@ -234,9 +249,9 @@ public class AntiDebugObfuscator : IObfuscator
     private void EmitFail(CilBody body, ModuleDef module)
     {
         var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
-        switch (_failKind++ % 3)
+        switch (_nextFail)
         {
-            case 0:
+            case FailKind.Exit:
                 var exit = new MemberRefUser(
                     module, "Exit",
                     MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32),
@@ -244,7 +259,7 @@ public class AntiDebugObfuscator : IObfuscator
                 body.Instructions.Add(Instruction.CreateLdcI4(1));
                 body.Instructions.Add(Instruction.Create(OpCodes.Call, exit));
                 break;
-            case 1:
+            case FailKind.FailFast:
                 var failFast = new MemberRefUser(
                     module, "FailFast",
                     MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String),
@@ -262,6 +277,8 @@ public class AntiDebugObfuscator : IObfuscator
                 body.Instructions.Add(Instruction.Create(OpCodes.Throw));
                 break;
         }
+
+        _nextFail = (FailKind)(((int)_nextFail + 1) % 3);
     }
 
     private static bool InjectDebuggerCheck(MethodDef method, TypeDef antiDebugType)
@@ -285,10 +302,13 @@ public class AntiDebugObfuscator : IObfuscator
             return false;
         }
 
-        if (instructions[0].OpCode.FlowControl == FlowControl.Meta)
+        var insertAt = 0;
+        while (insertAt < instructions.Count && instructions[insertAt].OpCode.FlowControl == FlowControl.Meta)
+            insertAt++;
+        if (insertAt >= instructions.Count)
             return false;
 
-        instructions.Insert(0, Instruction.Create(OpCodes.Call, checkMethod));
+        instructions.Insert(insertAt, Instruction.Create(OpCodes.Call, checkMethod));
         body.UpdateInstructionOffsets();
         return true;
     }

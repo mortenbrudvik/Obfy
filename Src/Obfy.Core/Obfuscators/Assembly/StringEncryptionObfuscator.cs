@@ -135,7 +135,7 @@ public class StringEncryptionObfuscator : IObfuscator
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "String encryption failed");
             return Task.FromResult(ObfuscationResult.Failed($"String encryption failed: {ex.Message}", ex));
@@ -188,7 +188,7 @@ public class StringEncryptionObfuscator : IObfuscator
         {
             var name = v == 0 ? "Decrypt" : "Decrypt" + (v + 1);
             typeDef.Methods.Add(DecryptorIl.CreateStringDecrypt(
-                module, keyField, stringsField, cacheField, indexXorField, bytesDecrypt, algorithm, name));
+                module, keyField, stringsField, cacheField, indexXorField, bytesDecrypt, name));
         }
 
         var cctor = new MethodDefUser(

@@ -16,9 +16,9 @@ using Shouldly;
 namespace Obfy.Tests;
 
 /// <summary>
-/// QT-06: decompiler-resistance fixtures. These lock v1.4 protection quality:
-/// decryptors are not a trivial <c>Decrypt(int)</c> in ILSpy output, anti-debug
-/// survives NOP-ing one call site, and reports show method-encryption skip counts.
+/// QT-06: decompiler-resistance fixtures. These lock protection quality:
+/// multiple decrypt entry points and non-straight-line helper IL, anti-debug
+/// survives NOP-ing one user call site, and reports show method-encryption skip counts.
 /// </summary>
 public class DecompilerResistanceTests
 {
@@ -101,6 +101,8 @@ public class DecompilerResistanceTests
             module.Write(output);
 
             LoadAndInvoke(output, "Lib", "Get").ShouldBe(secret);
+            LoadAndInvoke(output, "Lib", "Get2").ShouldBe("AnotherSecretValue!!");
+            LoadAndInvoke(output, "Lib", "Get3").ShouldBe("ThirdSecretLiteral!!!");
 
             var csharp = new CSharpDecompiler(output, new DecompilerSettings()).DecompileWholeModuleAsString();
             csharp.ShouldNotContain(secret);
@@ -146,10 +148,10 @@ public class DecompilerResistanceTests
             var check = module.Types.First(t => t.Name == "<AntiDebug>").FindMethod("Check")!;
             var callSites = module.GetTypes()
                 .SelectMany(t => t.Methods)
-                .Where(m => m.HasBody)
+                .Where(m => m.HasBody && !m.IsStaticConstructor && m.DeclaringType.Name != "<AntiDebug>")
                 .SelectMany(m => m.Body.Instructions.Select(i => (Method: m, Instr: i)))
                 .Where(x => x.Instr.OpCode == OpCodes.Call && x.Instr.Operand is IMethod called &&
-                            (called == check || called.Name == "Check"))
+                            (called == check || called.Name == "Check" && called.DeclaringType?.Name == "<AntiDebug>"))
                 .ToList();
             callSites.Count.ShouldBeGreaterThan(1);
 
@@ -157,14 +159,21 @@ public class DecompilerResistanceTests
             victim.Instr.OpCode = OpCodes.Nop;
             victim.Instr.Operand = null;
 
-            var remaining = module.GetTypes()
+            var remainingUser = module.GetTypes()
                 .SelectMany(t => t.Methods)
-                .Where(m => m.HasBody)
+                .Where(m => m.HasBody && !m.IsStaticConstructor && m.DeclaringType.Name != "<AntiDebug>")
                 .SelectMany(m => m.Body.Instructions)
                 .Count(i => i.OpCode == OpCodes.Call && i.Operand is IMethod called &&
-                            (called == check || called.Name == "Check"));
-            remaining.ShouldBe(callSites.Count - 1);
-            remaining.ShouldBeGreaterThan(0);
+                            (called == check || called.Name == "Check" && called.DeclaringType?.Name == "<AntiDebug>"));
+            remainingUser.ShouldBe(callSites.Count - 1);
+            remainingUser.ShouldBeGreaterThan(0);
+
+            var cctor = module.GlobalType.FindStaticConstructor();
+            cctor.ShouldNotBeNull();
+            cctor!.Body.Instructions.Any(i =>
+                i.OpCode == OpCodes.Call && i.Operand is IMethod called &&
+                (called == check || called.Name == "Check" && called.DeclaringType?.Name == "<AntiDebug>"))
+                .ShouldBeTrue("module initializer must still call Check");
 
             var output = Path.Combine(dir, "AdNopLib.obf.dll");
             module.Write(output);

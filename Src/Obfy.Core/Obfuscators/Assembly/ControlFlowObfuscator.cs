@@ -8,7 +8,7 @@ using Obfy.Core.Utilities;
 namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
-/// Obfuscates control flow by converting linear code to state machines.
+/// Obfuscates control flow with basic-block / linear-chunk state machines and opaque predicates.
 /// </summary>
 public class ControlFlowObfuscator : IObfuscator
 {
@@ -66,7 +66,8 @@ public class ControlFlowObfuscator : IObfuscator
                             ControlFlowMode.Switch => ApplySwitchFlattening(method, intensity, isHelper, context),
                             ControlFlowMode.OpaquePredicate => ApplyOpaquePredicates(method, intensity),
                             ControlFlowMode.Combined => ApplyCombined(method, intensity, isHelper, context),
-                            _ => false
+                            _ => throw new ArgumentOutOfRangeException(
+                                nameof(settings.Mode), settings.Mode, "Unknown ControlFlowMode.")
                         };
 
                         if (obfuscated)
@@ -74,7 +75,7 @@ public class ControlFlowObfuscator : IObfuscator
                             stats.MethodsControlFlowObfuscated++;
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         // Flattening mutates the body in place (Clear + rebuild, or incremental
                         // inserts). A throw mid-mutation can leave unverifiable IL; do not report
@@ -90,7 +91,7 @@ public class ControlFlowObfuscator : IObfuscator
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Control flow obfuscation failed");
             return Task.FromResult(ObfuscationResult.Failed($"Control flow obfuscation failed: {ex.Message}", ex));
@@ -353,11 +354,16 @@ public class ControlFlowObfuscator : IObfuscator
             "get_CurrentManagedThreadId",
             MethodSig.CreateStatic(module.CorLibTypes.Int32),
             env);
-        var getTickCount64 = new MemberRefUser(
-            module,
-            "get_TickCount64",
-            MethodSig.CreateStatic(module.CorLibTypes.Int64),
-            env);
+        MemberRefUser? getTickCount64 = null;
+        var hasTickCount64 = FrameworkReferences.SupportsTickCount64(module);
+        if (hasTickCount64)
+        {
+            getTickCount64 = new MemberRefUser(
+                module,
+                "get_TickCount64",
+                MethodSig.CreateStatic(module.CorLibTypes.Int64),
+                env);
+        }
 
         var gcType = new TypeRefUser(module, "System", "GC", module.CorLibTypes.AssemblyRef);
         var getMaxGeneration = new MemberRefUser(
@@ -373,8 +379,9 @@ public class ControlFlowObfuscator : IObfuscator
             Instruction.Create(OpCodes.Br, target)
         };
 
-        // Always-true / always-false predicates using runtime values so ILSpy cannot fold them.
-        Instruction[] predicate = _random.Next(8) switch
+        // Runtime values so they are not compile-time constants. A decompiler may still see them as opaque.
+        var formCount = hasTickCount64 ? 8 : 7;
+        Instruction[] predicate = _random.Next(formCount) switch
         {
             0 =>
             [
@@ -425,9 +432,9 @@ public class ControlFlowObfuscator : IObfuscator
                 Instruction.Create(OpCodes.Xor),
                 Instruction.Create(OpCodes.Brfalse, target)
             ],
-            6 =>
+            6 when hasTickCount64 =>
             [
-                Instruction.Create(OpCodes.Call, getTickCount64),
+                Instruction.Create(OpCodes.Call, getTickCount64!),
                 Instruction.Create(OpCodes.Dup),
                 Instruction.Create(OpCodes.Xor),
                 Instruction.Create(OpCodes.Brfalse, target)

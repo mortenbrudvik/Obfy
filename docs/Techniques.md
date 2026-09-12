@@ -51,13 +51,13 @@ Console.WriteLine(StringDecryptor.Decrypt(encodedIndex));
 - Key is embedded in the assembly
 - Emits three `string Decrypt*(int)` entry points so a single `Decrypt(int)` is not a decompiler signature for every string
 - When control flow is enabled, decryptor methods (not `.cctor`) are flattened or given opaque predicates at full intensity
-- When reference proxy is enabled, user call sites invoke the decryptor through a `calli` trampoline
+- When reference proxy is enabled, user call sites invoke the decryptor through a `calli` trampoline. A trampoline in `<RefProxy>` cannot `ldftn` a `private` helper (`MethodAccessException` / unverifiable); user `private` methods are still proxied.
 
 **Algorithms:**
 
 | Algorithm | Description |
 |-----------|-------------|
-| **AES-256** | Strong encryption with random IV. Each encryption produces different ciphertext. |
+| **AES-256** | AES-256 obfuscation with random IV (not confidentiality; the key is in the assembly). Each encryption produces different ciphertext. |
 | **XOR** | Fast XOR with key rotation. Lower security but faster startup. |
 
 **Settings:**
@@ -239,10 +239,9 @@ Enabled in the Aggressive preset (`protection.methodEncryption`).
 
 **Limits (not a confidentiality guarantee):**
 
-- Windows only (`kernel32!VirtualProtect`). Failures are swallowed so non-Windows still starts, with plaintext IL.
-- Generic methods and methods on generic types are skipped (RVA mapping is unsafe across instantiations). When a large share of candidates are generic, the run warns.
-- Not NativeAOT / IL2CPP compatible.
-- Each method uses its own XOR key (not one key for the whole assembly). The keys still live in the PE; this only stops a single-byte dump from recovering every body.
+- Windows only (`kernel32!VirtualProtect`). Decrypt failures are swallowed so module load still succeeds, but encrypted bodies are **not** restored — invoking them will fail. Non-Windows / NativeAOT / IL2CPP are unsupported.
+- Generic methods and methods on generic types are skipped (shared IL / instantiations). When a large share of candidates are generic, the run warns.
+- Distinct nonzero XOR keys when there are 255 or fewer methods; further methods reuse a key. Zero keys are not applied. Keys still live in the PE; this only stops a single-byte dump from recovering every body.
 
 ```json
 {
@@ -260,7 +259,7 @@ Transforms the structure of methods to make them harder to analyze.
 
 **Switch Mode:**
 
-Converts linear code into a state machine with a switch dispatcher.
+Converts linear code into a state-machine dispatcher. The conceptual C# below uses `switch`; emitted IL is `ldloc` / `ldc.i4` / `beq` with random state values, not sequential `switch` indices.
 
 **Before:**
 ```csharp
@@ -291,7 +290,7 @@ void Method()
 
 **Opaque Predicate Mode:**
 
-Inserts conditional branches that always evaluate the same way, using runtime values (`Environment.TickCount`, `TickCount64`, `ProcessorCount`, `CurrentManagedThreadId`, `GC.MaxGeneration`) so decompilers cannot fold them to `true`/`false`.
+Inserts conditional branches that always evaluate the same way, using runtime values (`Environment.TickCount`, `TickCount64` on modern .NET, `ProcessorCount`, `CurrentManagedThreadId`, `GC.MaxGeneration`) so they are not compile-time constants. A decompiler may still see them as opaque, not as proven always-true. `TickCount64` is not emitted for .NET Framework / netstandard 2.0 modules.
 
 **Before:**
 ```csharp
@@ -327,7 +326,7 @@ The `intensity` setting (0-100) controls how aggressively the technique is appli
 - Switch-flattening of methods with exception handlers (opaque predicates still apply)
 - Very short methods (<5 instructions)
 
-**Runtime helpers:** Decryptors, anti-debug `Check`, anti-tamper `Verify`, anti-dump `Wipe`, and method-body decrypt are control-flowed whenever control flow is enabled, at intensity 100 (user intensity is ignored for those methods). If switch flattening cannot run, they get opaque predicates instead of being left as clean IL.
+**Runtime helpers:** Decryptors, anti-debug `Check`, anti-tamper `Verify`, anti-dump `Wipe`, and method-body decrypt are control-flowed whenever control flow is enabled, at intensity 100 (user intensity is ignored for those methods). Helpers prefer flattening at intensity 100; EH / short / unflattenable-with-branches fall back to opaque predicates. Flattening can still no-op.
 
 **Settings:**
 
@@ -430,15 +429,15 @@ Injects code that detects and responds to debugging attempts. This raises the co
 
 1. Injects a runtime class (`Obfy.Runtime.<AntiDebug>`)
 2. Calls `Check` from the module initializer (runs at load)
-3. Scatters `Check` into every user method with a body so patching a single call site is not enough
+3. Scatters `Check` into most user methods with a real body (not P/Invoke/abstract/empty/prefix-first) so patching a single call site is not enough
 
 **Detection:**
 
 - `Debugger.IsAttached` and `Debugger.IsLogging()`
-- `kernel32!IsDebuggerPresent` and `CheckRemoteDebuggerPresent` (Windows; `DllNotFoundException` is swallowed)
-- Tick-count timing probe (~1s threshold) to catch single-stepping
+- `kernel32!IsDebuggerPresent` and `CheckRemoteDebuggerPresent` (Windows; `DllNotFoundException` and `EntryPointNotFoundException` are swallowed)
+- ~1s delta between two `TickCount` reads inside `Check` (pauses/breakpoints in the probe), not a general single-step detector
 
-Failure is not always `Environment.Exit(1)`: call sites cycle through `Exit`, `Environment.FailFast`, and `throw`.
+Failure paths inside `Check` cycle through `Environment.Exit(1)`, `Environment.FailFast`, and `throw` so patching a single API is not enough.
 
 **Settings:**
 

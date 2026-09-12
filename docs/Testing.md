@@ -93,6 +93,19 @@ Key patterns:
 
 Location: `Tests/Obfy.UI.Tests/`
 
+### Obfy.UI.AutomationTests (FlaUI)
+
+Launches `ObfyUI.exe` and drives the live window:
+
+- Launch and chrome (toolbar, files, settings, output, status)
+- About ContentDialog (in-window overlay, not a separate window)
+- Settings toggles, Protection and Assembly Merge expanders
+- Add Files opens the native picker (Escape cancels)
+
+Run: `dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj`
+
+Location: `Tests/Obfy.UI.AutomationTests/`
+
 ## Adding Tests
 
 ### For CLI Changes

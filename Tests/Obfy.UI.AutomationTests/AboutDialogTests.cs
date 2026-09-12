@@ -1,11 +1,10 @@
 using FlaUI.Core.AutomationElements;
-using FlaUI.Core.AutomationElements.Infrastructure;
 using Shouldly;
 
 namespace Obfy.UI.AutomationTests;
 
 /// <summary>
-/// Tests for the About dialog functionality.
+/// About is a WPF-UI ContentDialog overlay, not a separate window.
 /// </summary>
 public class AboutDialogTests : TestBase
 {
@@ -14,51 +13,12 @@ public class AboutDialogTests : TestBase
     {
         var aboutButton = FindById("AboutButton")?.AsButton();
         aboutButton.ShouldNotBeNull();
-
         aboutButton.Click();
 
-        // Wait for dialog to appear with retry
-        Window? aboutWindow = null;
-        for (int i = 0; i < 10; i++)
-        {
-            Thread.Sleep(200);
-            var windows = App.GetAllTopLevelWindows(Automation);
-            // Look for any window that's not the main window
-            aboutWindow = windows.FirstOrDefault(w => w != MainWindow);
-            if (aboutWindow != null) break;
-        }
+        var title = WaitForName("About Obfy", TimeSpan.FromSeconds(5));
+        title.ShouldNotBeNull("About ContentDialog should open in the main window");
 
-        aboutWindow.ShouldNotBeNull("About dialog should open");
-        aboutWindow.Close();
-    }
-
-    [Fact]
-    public void AboutDialog_HasCloseButton()
-    {
-        var aboutButton = FindById("AboutButton")?.AsButton();
-        aboutButton.ShouldNotBeNull();
-
-        aboutButton.Click();
-
-        // Wait for dialog with retry
-        Window? aboutWindow = null;
-        for (int i = 0; i < 10; i++)
-        {
-            Thread.Sleep(200);
-            var windows = App.GetAllTopLevelWindows(Automation);
-            aboutWindow = windows.FirstOrDefault(w => w != MainWindow);
-            if (aboutWindow != null) break;
-        }
-
-        if (aboutWindow == null)
-        {
-            // Skip test if dialog doesn't open (may be environmental)
-            return;
-        }
-
-        // WPF-UI FluentWindow may not expose AutomationIds for all child controls
-        // Just verify we can find the dialog - the close button may need different approach
-        aboutWindow.Close();
+        CloseAbout();
     }
 
     [Fact]
@@ -66,40 +26,33 @@ public class AboutDialogTests : TestBase
     {
         var aboutButton = FindById("AboutButton")?.AsButton();
         aboutButton.ShouldNotBeNull();
-
         aboutButton.Click();
 
-        // Wait for dialog with retry
-        Window? aboutWindow = null;
-        for (int i = 0; i < 10; i++)
+        WaitForName("About Obfy", TimeSpan.FromSeconds(5)).ShouldNotBeNull();
+        CloseAbout();
+        Thread.Sleep(400);
+
+        MainWindow.FindFirstDescendant(cf => cf.ByName("About Obfy")).ShouldBeNull();
+    }
+
+    private AutomationElement? WaitForName(string name, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
         {
-            Thread.Sleep(200);
-            var windows = App.GetAllTopLevelWindows(Automation);
-            aboutWindow = windows.FirstOrDefault(w => w != MainWindow);
-            if (aboutWindow != null) break;
+            var element = MainWindow.FindFirstDescendant(cf => cf.ByName(name));
+            if (element != null)
+                return element;
+            Thread.Sleep(100);
         }
 
-        if (aboutWindow == null)
-        {
-            // Skip test if dialog doesn't open (may be environmental)
-            return;
-        }
+        return null;
+    }
 
-        var closeButton = aboutWindow.FindFirstDescendant(
-            cf => cf.ByAutomationId("CloseAboutButton"))?.AsButton();
-
-        if (closeButton != null)
-        {
-            closeButton.Click();
-            Thread.Sleep(300);
-
-            // Verify dialog is closed
-            var windows = App.GetAllTopLevelWindows(Automation);
-            windows.Count().ShouldBe(1, "Only main window should remain after closing About dialog");
-        }
-        else
-        {
-            aboutWindow.Close();
-        }
+    private void CloseAbout()
+    {
+        var close = WaitForName("Close", TimeSpan.FromSeconds(3))?.AsButton();
+        close.ShouldNotBeNull();
+        close.Click();
     }
 }

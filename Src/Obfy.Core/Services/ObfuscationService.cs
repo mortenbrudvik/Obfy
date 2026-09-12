@@ -74,11 +74,20 @@ public class ObfuscationService : IObfuscationService
             IncrementalCache.TryHit(inputPath, effectiveOutputEarly, settings))
         {
             _logger.LogInformation("Incremental cache hit for {InputPath}", inputPath);
+            string? packed = null;
+            var warnings = new List<string> { "Incremental: reused cached output" };
+            if (settings.Packing.Enabled)
+            {
+                packed = ManagedLauncherPacker.LauncherPathFor(effectiveOutputEarly);
+                warnings.Add("Packed launcher: " + packed);
+            }
+
             return ObfuscationResult.Successful(
                 new ObfuscationStatistics(),
                 inputPath: inputPath,
                 outputPath: effectiveOutputEarly,
-                warnings: new List<string> { "Incremental: reused cached output" });
+                warnings: warnings,
+                packedLauncherPath: packed);
         }
 
         PipelineContext context;
@@ -131,14 +140,31 @@ public class ObfuscationService : IObfuscationService
 
                 _logger.LogInformation("Obfuscation completed. Output written to {OutputPath}", effectiveOutput);
 
-                if (settings.Incremental.Enabled && target.TargetType == TargetType.Assembly)
-                    IncrementalCache.Write(inputPath, effectiveOutput, settings);
+                if (settings.Packing.Enabled && target.TargetType != TargetType.Assembly)
+                {
+                    context.Warnings.Add(
+                        "Packing skipped: it applies only to assemblies with an entry point, not source.");
+                    _logger.LogWarning("Packing enabled but target {Path} is {Type}", inputPath, target.TargetType);
+                }
 
+                string? packedPath = null;
                 if (settings.Packing.Enabled && target.TargetType == TargetType.Assembly)
                 {
-                    var packed = NativePacker.Pack(effectiveOutput);
-                    context.Warnings.Add("Packed launcher: " + packed);
+                    try
+                    {
+                        packedPath = ManagedLauncherPacker.Pack(effectiveOutput);
+                        context.Warnings.Add("Packed launcher: " + packedPath);
+                        _logger.LogInformation("Packed launcher written to {Launcher}", packedPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Packing failed for {Output}", effectiveOutput);
+                        return ObfuscationResult.Failed($"Packing failed: {ex.Message}", ex);
+                    }
                 }
+
+                if (settings.Incremental.Enabled && target.TargetType == TargetType.Assembly)
+                    IncrementalCache.Write(inputPath, effectiveOutput, settings);
 
                 return ObfuscationResult.Successful(
                     context.Statistics,
@@ -148,7 +174,8 @@ public class ObfuscationService : IObfuscationService
                     processingTimes: context.ProcessingTimes.ToList(),
                     skippedItems: context.SkippedItems.ToList(),
                     symbolMap: new Dictionary<string, string>(context.SymbolMap),
-                    warnings: context.Warnings.ToList());
+                    warnings: context.Warnings.ToList(),
+                    packedLauncherPath: packedPath);
             }
             catch (Exception ex)
             {

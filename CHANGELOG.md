@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Packing writes the incremental cache only after a successful launcher emit; cache hits require the launcher files
+- Preview failures no longer fail a successful obfuscation run
+- Packed host awaits async Main, resolves sibling assemblies, and extracts the payload to disk so anti-tamper can hash it
 - Anti-dump MiniDumpWriteDump patch is skipped unless the process is X86/X64 (ARM64 is no longer written with `0xC3`)
 - Requested watermark/decoy skips are reported as warnings instead of silent success
 - `--watermark-id` with only whitespace is an error instead of a silent no-op
@@ -19,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Incremental obfuscation cache (`incremental.enabled`)
 - Selective IL virtualization for simple static int methods (`virtualization.enabled`)
-- Windows EXE launcher packer (`packing.enabled`)
-- Results panel Preview tab (ILSpy decompile of the last output)
+- Framework-dependent managed launcher (`packing.enabled`): writes `{name}.launcher.exe` + `.runtimeconfig.json`; run with `dotnet`. Requires an entry point. Not a native/unmanaged packer.
+- Results Preview tab: ILSpy-engine C# of the last successful output assembly (truncated; not the launcher)
 - MSIX packaging for Microsoft Store / sideload (`build/build-msix.ps1`)
 - Desktop UI snackbars for save/load/complete/fail, keyboard shortcuts, and an Open output folder action
 - Settings panel controls for anti-decompiler, assembly merge, exclusions, and tamper-check sites

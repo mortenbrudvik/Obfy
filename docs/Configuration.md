@@ -22,6 +22,9 @@ Complete JSON configuration schema for Obfy.
   "watermark": { "enabled": false, "id": "" },
   "runtimeProfile": "Default",
   "signing": { "enabled": false, "keyFile": "", "passwordEnvironmentVariable": "" },
+  "incremental": { "enabled": false },
+  "packing": { "enabled": false },
+  "virtualization": { "enabled": false, "maxMethods": 32 },
   "postBuildEnabled": false
 }
 ```
@@ -155,6 +158,19 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
     "enabled": false,
     "keyFile": "",
     "passwordEnvironmentVariable": ""
+  },
+
+  "incremental": {
+    "enabled": false
+  },
+
+  "packing": {
+    "enabled": false
+  },
+
+  "virtualization": {
+    "enabled": false,
+    "maxMethods": 32
   },
 
   "postBuildEnabled": false
@@ -554,6 +570,17 @@ JSON/XML property attributes are excluded from renaming by default. Add extra se
   }
 }
 ```
+
+## Packing (managed launcher)
+
+`packing.enabled` is a delivery option, not a protection level. It is **off** in every preset.
+
+When true, Obfy writes a sibling framework-dependent host next to the obfuscated assembly:
+
+- `{name}.launcher.exe` — managed console app (run with `dotnet`)
+- `{name}.launcher.runtimeconfig.json`
+
+The host embeds the obfuscated assembly and invokes its entry point. The original obfuscated file is not replaced. Packing requires an entry point; class libraries fail the run with `Packing failed: ...`. Source inputs skip packing with a warning. Not a native/unmanaged packer.
 
 ## Generating Configuration Files
 

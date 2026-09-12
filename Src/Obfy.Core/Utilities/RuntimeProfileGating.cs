@@ -63,5 +63,12 @@ public static class RuntimeProfileGating
             context.Warnings.Add(
                 $"Dependency embedding disabled for {label}: AssemblyResolve is not available on this runtime.");
         }
+
+        if (!AllowsPeMutation(settings.RuntimeProfile) && settings.Packing.Enabled)
+        {
+            settings.Packing.Enabled = false;
+            context.Warnings.Add(
+                $"Managed launcher packing disabled for {label}: it emits a framework-dependent host that is not used on this runtime.");
+        }
     }
 }

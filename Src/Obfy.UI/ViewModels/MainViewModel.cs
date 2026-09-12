@@ -157,7 +157,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var combined = CombineResults(successfulResults, totalStats, allSymbols, stopwatch.Elapsed);
                 Results.SetReport(_reportService.BuildReport(combined, settings));
-                Results.LoadPreview(successfulResults[0].OutputPath);
+                var previewPath = successfulResults
+                    .Select(r => r.OutputPath)
+                    .LastOrDefault(p => p is not null &&
+                                        File.Exists(p) &&
+                                        Path.GetExtension(p) is ".dll" or ".exe");
+                await LoadPreviewAsync(previewPath, cancellationToken);
             }
 
             if (Files.GenerateSymbolMap && allSymbols.Count > 0)
@@ -363,6 +368,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    private async Task LoadPreviewAsync(string? previewPath, CancellationToken cancellationToken)
+    {
+        if (previewPath is null)
+        {
+            Results.LoadPreview(null);
+            return;
+        }
+
+        try
+        {
+            var text = await Task.Run(
+                () => Obfy.Core.Utilities.AssemblyPreview.Decompile(previewPath),
+                cancellationToken);
+            Results.PreviewError = null;
+            Results.PreviewText = text;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Results.PreviewText = string.Empty;
+            Results.PreviewError = "Preview failed: " + ex.Message;
+            Output.Warning($"Preview failed: {ex.Message}");
+        }
+    }
+
     private static ObfuscationResult CombineResults(
         List<ObfuscationResult> successful,
         ObfuscationStatistics totalStats,
@@ -376,7 +409,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             elapsedTime: elapsed,
             skippedItems: successful.SelectMany(r => r.SkippedItems).ToList(),
             symbolMap: allSymbols,
-            warnings: successful.SelectMany(r => r.Warnings).ToList());
+            warnings: successful.SelectMany(r => r.Warnings).ToList(),
+            packedLauncherPath: successful.LastOrDefault(r => r.PackedLauncherPath is not null)?.PackedLauncherPath);
     }
 
     private async Task WriteSymbolMapAsync(Dictionary<string, string> allSymbols)

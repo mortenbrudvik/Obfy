@@ -240,10 +240,14 @@
     },
     "packing": {
       "type": "object",
-      "description": "Wrap the obfuscated assembly in a Windows EXE launcher.",
+      "description": "Emit a sibling framework-dependent managed launcher that embeds the obfuscated assembly and invokes its entry point. Requires an entry point. Output is {name}.launcher.exe plus .runtimeconfig.json (run with dotnet).",
       "additionalProperties": true,
       "properties": {
-        "enabled": { "type": "boolean", "default": false }
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, fail the run if the assembly has no entry point; write {name}.launcher.exe and .runtimeconfig.json beside the obfuscated output."
+        }
       }
     },
     "virtualization": {

@@ -59,6 +59,8 @@ public class IntegrationTests : IDisposable
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         });
         settings.ShouldNotBeNull();
+        settings!.Packing.Enabled.ShouldBeFalse();
+        json.ShouldContain("\"packing\"");
     }
 
     [Fact]

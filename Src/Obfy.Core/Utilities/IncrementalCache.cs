@@ -32,6 +32,10 @@ public static class IncrementalCache
     {
         if (!File.Exists(outputPath) || !File.Exists(CachePath(outputPath)))
             return false;
+        if (settings.Packing.Enabled &&
+            (!File.Exists(ManagedLauncherPacker.LauncherPathFor(outputPath)) ||
+             !File.Exists(ManagedLauncherPacker.RuntimeConfigPathFor(outputPath))))
+            return false;
         var expected = ComputeKey(inputPath, settings);
         var actual = File.ReadAllText(CachePath(outputPath)).Trim();
         return string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);

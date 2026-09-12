@@ -42,6 +42,7 @@ public class MainWindowElements
     public AutomationElement? AntiDebugToggle => Find("AntiDebugToggle");
     public AutomationElement? AntiTamperToggle => Find("AntiTamperToggle");
     public AutomationElement? AntiDumpToggle => Find("AntiDumpToggle");
+    public AutomationElement? PackingToggle => Find("PackingToggle");
     public AutomationElement? ResourceEncryptionToggle => Find("ResourceEncryptionToggle");
 
     // Output Panel

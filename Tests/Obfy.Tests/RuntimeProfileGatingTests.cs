@@ -17,6 +17,7 @@ public class RuntimeProfileGatingTests
         {
             RuntimeProfile = profile,
             DependencyEmbedding = { Enabled = true },
+            Packing = { Enabled = true },
             Protection = { MethodEncryption = true, AntiDump = true }
         };
         var context = PipelineContext.ForAssembly(new dnlib.DotNet.ModuleDefUser("t"), settings);
@@ -24,9 +25,12 @@ public class RuntimeProfileGatingTests
         RuntimeProfileGating.Apply(settings, context);
 
         settings.DependencyEmbedding.Enabled.ShouldBeFalse();
+        settings.Packing.Enabled.ShouldBeFalse();
         settings.Protection.MethodEncryption.ShouldBeFalse();
         settings.Protection.AntiDump.ShouldBeFalse();
         context.Warnings.ShouldContain(w => w.Contains("Dependency embedding disabled", StringComparison.OrdinalIgnoreCase)
+                                           && w.Contains(label));
+        context.Warnings.ShouldContain(w => w.Contains("Managed launcher packing disabled", StringComparison.OrdinalIgnoreCase)
                                            && w.Contains(label));
         RuntimeProfileGating.BlocksAssemblyResolve(profile).ShouldBeTrue();
         RuntimeProfileGating.BlocksPeProtections(profile).ShouldBeTrue();
@@ -62,6 +66,7 @@ public class RuntimeProfileGatingTests
         var settings = new ObfySettings
         {
             DependencyEmbedding = { Enabled = true },
+            Packing = { Enabled = true },
             Protection = { MethodEncryption = true, AntiDump = true }
         };
         var context = PipelineContext.ForAssembly(new dnlib.DotNet.ModuleDefUser("t"), settings);
@@ -69,6 +74,7 @@ public class RuntimeProfileGatingTests
         RuntimeProfileGating.Apply(settings, context);
 
         settings.DependencyEmbedding.Enabled.ShouldBeTrue();
+        settings.Packing.Enabled.ShouldBeTrue();
         settings.Protection.MethodEncryption.ShouldBeTrue();
         settings.Protection.AntiDump.ShouldBeTrue();
         RuntimeProfileGating.AllowsPeMutation(RuntimeProfile.Default).ShouldBeTrue();

@@ -699,6 +699,42 @@ public class SettingsViewModelTests
         roundTripped.Protection.AntiDecompiler.AddDecoyAttributes.ShouldBeFalse();
     }
 
+    [Fact]
+    public void ToObfySettings_ConvertsPackingEnabled()
+    {
+        var viewModel = new SettingsViewModel { PackingEnabled = true };
+
+        var settings = viewModel.ToObfySettings();
+
+        settings.Packing.Enabled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void FromObfySettings_RoundTripsPackingEnabled()
+    {
+        var settings = new ObfySettings { Packing = { Enabled = true } };
+
+        var viewModel = new SettingsViewModel();
+        viewModel.FromObfySettings(settings);
+        var roundTripped = viewModel.ToObfySettings();
+
+        viewModel.PackingEnabled.ShouldBeTrue();
+        roundTripped.Packing.Enabled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ApplyPreset_Aggressive_DoesNotEnablePacking()
+    {
+        var viewModel = new SettingsViewModel { PackingEnabled = true };
+        viewModel.ApplyPreset(ObfuscationLevel.Aggressive);
+
+        viewModel.PackingEnabled.ShouldBeTrue();
+
+        viewModel.PackingEnabled = false;
+        viewModel.ApplyPreset(ObfuscationLevel.Aggressive);
+        viewModel.PackingEnabled.ShouldBeFalse();
+    }
+
     #endregion
 
     #region Exclusion Collection Tests

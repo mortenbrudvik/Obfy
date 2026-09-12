@@ -16,6 +16,7 @@ public class ObfySettingsTests
         settings.ControlFlow.Enabled.ShouldBeFalse();
         settings.SymbolRenaming.Enabled.ShouldBeTrue();
         settings.Protection.AntiDebug.ShouldBeFalse();
+        settings.Packing.Enabled.ShouldBeFalse();
     }
 
     [Fact]
@@ -29,6 +30,7 @@ public class ObfySettingsTests
         settings.ControlFlow.Enabled.ShouldBeFalse();
         settings.SymbolRenaming.Enabled.ShouldBeTrue();
         settings.Metadata.RemoveDebugInfo.ShouldBeTrue();
+        settings.Packing.Enabled.ShouldBeFalse();
     }
 
     [Fact]
@@ -48,6 +50,7 @@ public class ObfySettingsTests
         settings.Protection.ReferenceProxy.ShouldBeTrue();
         settings.Protection.MethodEncryption.ShouldBeTrue();
         settings.RuntimeProfile.ShouldBe(RuntimeProfile.Default);
+        settings.Packing.Enabled.ShouldBeFalse();
     }
 
     [Fact]
@@ -286,6 +289,17 @@ public class ObfySettingsTests
         var settings = new ObfySettings { Watermark = { Enabled = true, Id = "  " } };
         Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate())
             .Message.ShouldContain("id");
+    }
+
+    [Fact]
+    public void Clone_KeepsPacking()
+    {
+        var original = new ObfySettings { Packing = { Enabled = true } };
+
+        var clone = original.Clone();
+
+        clone.Packing.Enabled.ShouldBeTrue();
+        clone.Packing.ShouldNotBeSameAs(original.Packing);
     }
 
     [Fact]

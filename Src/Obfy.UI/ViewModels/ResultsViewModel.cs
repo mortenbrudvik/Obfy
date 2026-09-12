@@ -13,7 +13,8 @@ using Wpf.Ui.Controls;
 namespace Obfy.UI.ViewModels;
 
 /// <summary>
-/// ViewModel for the results panel showing obfuscation statistics and symbol mappings.
+/// ViewModel for the results panel showing obfuscation statistics, symbol mappings,
+/// and a C# decompile preview of the output assembly.
 /// </summary>
 public partial class ResultsViewModel : ObservableObject
 {
@@ -39,7 +40,18 @@ public partial class ResultsViewModel : ObservableObject
     private string _searchText = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
+    [NotifyPropertyChangedFor(nameof(HasPreviewError))]
     private string _previewText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
+    [NotifyPropertyChangedFor(nameof(HasPreviewError))]
+    private string? _previewError;
+
+    public bool HasPreview => PreviewError is null && PreviewText.Length > 0;
+
+    public bool HasPreviewError => !string.IsNullOrEmpty(PreviewError);
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExportReportCommand))]
@@ -87,6 +99,7 @@ public partial class ResultsViewModel : ObservableObject
         _symbolMap.Clear();
         SearchText = string.Empty;
         PreviewText = string.Empty;
+        PreviewError = null;
         _currentReport = null;
         HasReport = false;
         SelectedNode = null;
@@ -102,11 +115,31 @@ public partial class ResultsViewModel : ObservableObject
         HasReport = true;
     }
 
+    /// <summary>
+    /// Decompiles the obfuscated assembly (not the packed launcher) for the Preview tab.
+    /// Failures never throw; they set <see cref="PreviewError"/>. Truncated by
+    /// <see cref="Obfy.Core.Utilities.AssemblyPreview.Decompile"/>.
+    /// </summary>
     public void LoadPreview(string? assemblyPath)
     {
-        if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath))
+        PreviewText = string.Empty;
+        PreviewError = null;
+
+        if (string.IsNullOrWhiteSpace(assemblyPath))
         {
-            PreviewText = string.Empty;
+            PreviewError = "Preview unavailable: no output path was recorded.";
+            return;
+        }
+
+        if (Directory.Exists(assemblyPath))
+        {
+            PreviewError = "Preview is only available for assemblies, not source output: " + assemblyPath;
+            return;
+        }
+
+        if (!File.Exists(assemblyPath))
+        {
+            PreviewError = "Preview unavailable: output file not found:" + Environment.NewLine + assemblyPath;
             return;
         }
 
@@ -114,9 +147,13 @@ public partial class ResultsViewModel : ObservableObject
         {
             PreviewText = Obfy.Core.Utilities.AssemblyPreview.Decompile(assemblyPath);
         }
-        catch (Exception ex) when (ex is IOException or BadImageFormatException or InvalidOperationException)
+        catch (OperationCanceledException)
         {
-            PreviewText = "Preview failed: " + ex.Message;
+            throw;
+        }
+        catch (Exception ex)
+        {
+            PreviewError = "Preview failed: " + ex.Message;
         }
     }
 

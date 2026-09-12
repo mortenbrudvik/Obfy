@@ -159,6 +159,38 @@ public class MainViewModelTests : IDisposable
         _viewModel.Output.Logs.ShouldContain(l => l.Level == Obfy.UI.Models.LogLevel.Success);
         _reportService.Verify(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()), Times.Once);
         VerifySnackbar(ControlAppearance.Success, "complete");
+        _viewModel.Results.HasPreviewError.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ObfuscateCommand_Success_PreviewsLastAssemblyOutput()
+    {
+        var csOut = Path.Combine(_tempDirectory, "first.cs");
+        File.WriteAllText(csOut, "class C {}");
+        var dll = typeof(MainViewModelTests).Assembly.Location;
+
+        _obfuscationService
+            .SetupSequence(s => s.ObfuscateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ObfuscationResult.Successful(new ObfuscationStatistics(), outputPath: csOut))
+            .ReturnsAsync(ObfuscationResult.Successful(new ObfuscationStatistics(), outputPath: dll));
+
+        _reportService
+            .Setup(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()))
+            .Returns(new ObfuscationReport());
+
+        AddTestFile("a.dll");
+        AddTestFile("b.dll");
+
+        await _viewModel.ObfuscateCommand.ExecuteAsync(null);
+
+        _viewModel.ShowResultsPanel.ShouldBeTrue();
+        _viewModel.Results.PreviewError.ShouldBeNull();
+        _viewModel.Results.PreviewText.ShouldNotBeEmpty();
+        _viewModel.Results.HasPreview.ShouldBeTrue();
     }
 
     [Fact]

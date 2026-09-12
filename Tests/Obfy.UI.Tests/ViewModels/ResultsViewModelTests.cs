@@ -181,6 +181,77 @@ public class ResultsViewModelTests : IDisposable
     }
 
     [Fact]
+    public void LoadPreview_MissingPath_SetsError()
+    {
+        _viewModel.LoadPreview(null);
+
+        _viewModel.PreviewText.ShouldBeEmpty();
+        _viewModel.PreviewError.ShouldNotBeNull();
+        _viewModel.HasPreview.ShouldBeFalse();
+        _viewModel.HasPreviewError.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void LoadPreview_MissingFile_SetsError()
+    {
+        _viewModel.LoadPreview(Path.Combine(_tempDirectory, "missing.dll"));
+
+        _viewModel.PreviewError.ShouldNotBeNull();
+        _viewModel.PreviewError!.ShouldContain("not found");
+        _viewModel.HasPreview.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void LoadPreview_Directory_SetsError()
+    {
+        _viewModel.LoadPreview(_tempDirectory);
+
+        _viewModel.PreviewError.ShouldNotBeNull();
+        _viewModel.PreviewError!.ShouldContain("assemblies");
+        _viewModel.HasPreview.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void LoadPreview_NonAssembly_SetsErrorWithoutThrowing()
+    {
+        var path = Path.Combine(_tempDirectory, "notpe.txt");
+        File.WriteAllText(path, "not an assembly");
+
+        Should.NotThrow(() => _viewModel.LoadPreview(path));
+        _viewModel.PreviewError.ShouldNotBeNull();
+        _viewModel.PreviewError.ShouldStartWith("Preview failed:");
+        _viewModel.PreviewText.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void LoadPreview_ValidAssembly_SetsPreviewText()
+    {
+        var path = typeof(ResultsViewModelTests).Assembly.Location;
+        File.Exists(path).ShouldBeTrue();
+
+        _viewModel.LoadPreview(path);
+
+        _viewModel.PreviewError.ShouldBeNull();
+        _viewModel.PreviewText.ShouldNotBeEmpty();
+        _viewModel.HasPreview.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Clear_ResetsPreview()
+    {
+        var path = typeof(ResultsViewModelTests).Assembly.Location;
+        _viewModel.LoadPreview(path);
+        _viewModel.HasPreview.ShouldBeTrue();
+
+        _viewModel.Clear();
+
+        _viewModel.PreviewText.ShouldBeEmpty();
+        _viewModel.PreviewError.ShouldBeNull();
+        _viewModel.HasPreview.ShouldBeFalse();
+        _viewModel.HasPreviewError.ShouldBeFalse();
+    }
+
+    [Fact]
     public void CopySymbol_UsesClipboardService()
     {
         var node = SymbolTreeNode.Create("Foo", "a", SymbolType.Type);

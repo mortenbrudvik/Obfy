@@ -68,6 +68,63 @@ public class EndToEndObfuscationTests
         return path;
     }
 
+    private static string CompileToExeWithRef(string source, string dir, string assemblyName, string referencePath)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator)
+            .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
+            .Append(MetadataReference.CreateFromFile(referencePath));
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            new[] { tree },
+            references,
+            new CSharpCompilationOptions(OutputKind.ConsoleApplication));
+
+        var path = Path.Combine(dir, assemblyName + ".exe");
+        var emit = compilation.Emit(path);
+        emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        return path;
+    }
+
+    private static IObfuscationService CreateService()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+        builder.RegisterModule<ObfuscationModule>();
+        return builder.Build().Resolve<IObfuscationService>();
+    }
+
+    private static ObfySettings PackingSettings() => new()
+    {
+        Level = ObfuscationLevel.Custom,
+        StringEncryption = { Enabled = false },
+        SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+        Packing = { Enabled = true }
+    };
+
+    private static int RunLauncher(string launcher, string extraArgs = "")
+    {
+        var args = string.IsNullOrEmpty(extraArgs) ? $"\"{launcher}\"" : $"\"{launcher}\" {extraArgs}";
+        var start = new System.Diagnostics.ProcessStartInfo("dotnet", args)
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        using var process = System.Diagnostics.Process.Start(start);
+        process.ShouldNotBeNull();
+        process!.WaitForExit(15000).ShouldBeTrue(process.StandardError.ReadToEnd());
+        return process.ExitCode;
+    }
+
+    private static void TryDeleteDir(string dir)
+    {
+        try { Directory.Delete(dir, true); } catch { /* ignore */ }
+    }
+
     private static List<int> ReadMethodEncryptionBlobKeys(string pePath)
     {
         var pe = File.ReadAllBytes(pePath);
@@ -232,39 +289,223 @@ public class EndToEndObfuscationTests
         {
             var input = CompileToExe(source, dir, "PackApp");
             var output = Path.Combine(dir, "PackApp.obf.exe");
-            var builder = new ContainerBuilder();
-            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
-            builder.RegisterModule<ObfuscationModule>();
-            await using var container = builder.Build();
-            var service = container.Resolve<IObfuscationService>();
-            var settings = new ObfySettings
-            {
-                Level = ObfuscationLevel.Custom,
-                StringEncryption = { Enabled = false },
-                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
-                Packing = { Enabled = true }
-            };
+            var service = CreateService();
+            var settings = PackingSettings();
 
             var result = await service.ObfuscateAsync(input, output, settings);
             result.Success.ShouldBeTrue(result.ErrorMessage);
             result.Warnings.ShouldContain(w => w.Contains("Packed launcher:"));
+            result.PackedLauncherPath.ShouldNotBeNull();
 
-            var launcher = Path.Combine(dir, "PackApp.obf.launcher.exe");
+            File.Exists(output).ShouldBeTrue();
+            var launcher = ManagedLauncherPacker.LauncherPathFor(output);
             File.Exists(launcher).ShouldBeTrue();
+            File.Exists(ManagedLauncherPacker.RuntimeConfigPathFor(output)).ShouldBeTrue();
+            result.PackedLauncherPath.ShouldBe(launcher);
 
-            var start = new System.Diagnostics.ProcessStartInfo("dotnet", $"\"{launcher}\"")
-            {
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            using var process = System.Diagnostics.Process.Start(start);
-            process.ShouldNotBeNull();
-            process!.WaitForExit(15000).ShouldBeTrue();
-            process.ExitCode.ShouldBe(11);
+            RunLauncher(launcher).ShouldBe(11);
         }
         finally
         {
-            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_LibraryWithoutEntryPoint_FailsWithEntryPointError()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-lib-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly("public static class Lib { public static int Get() => 1; }", dir, "Lib");
+            var output = Path.Combine(dir, "Lib.obf.dll");
+            var result = await CreateService().ObfuscateAsync(input, output, PackingSettings());
+
+            result.Success.ShouldBeFalse();
+            result.ErrorMessage.ShouldNotBeNull();
+            result.ErrorMessage.ShouldContain("Packing failed");
+            result.ErrorMessage.ShouldContain("entry point");
+            File.Exists(output).ShouldBeTrue();
+            File.Exists(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBeFalse();
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_WhenPackFails_DoesNotLeaveSuccessfulIncrementalCache()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-inc-fail-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly("public static class Lib { public static int Get() => 1; }", dir, "Lib");
+            var output = Path.Combine(dir, "Lib.obf.dll");
+            var settings = PackingSettings();
+            settings.Incremental.Enabled = true;
+            var service = CreateService();
+
+            var first = await service.ObfuscateAsync(input, output, settings);
+            first.Success.ShouldBeFalse();
+
+            var second = await service.ObfuscateAsync(input, output, settings);
+            second.Success.ShouldBeFalse();
+            second.Warnings.ShouldNotContain(w => w.Contains("Incremental: reused cached output"));
+            File.Exists(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBeFalse();
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task IncrementalHit_WithPackingEnabled_StillProducesLauncher()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-inc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "PackApp");
+            var output = Path.Combine(dir, "PackApp.obf.exe");
+            var settings = PackingSettings();
+            settings.Incremental.Enabled = true;
+            var service = CreateService();
+
+            var first = await service.ObfuscateAsync(input, output, settings);
+            first.Success.ShouldBeTrue(first.ErrorMessage);
+            var launcher = ManagedLauncherPacker.LauncherPathFor(output);
+            File.Exists(launcher).ShouldBeTrue();
+            File.Delete(launcher);
+            File.Delete(ManagedLauncherPacker.RuntimeConfigPathFor(output));
+
+            var second = await service.ObfuscateAsync(input, output, settings);
+            second.Success.ShouldBeTrue(second.ErrorMessage);
+            second.Warnings.ShouldNotContain(w => w.Contains("Incremental: reused cached output"));
+            File.Exists(launcher).ShouldBeTrue();
+            RunLauncher(launcher).ShouldBe(11);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_ForwardsMainArgs()
+    {
+        const string source = "public static class Program { public static int Main(string[] args) => args.Length == 1 && args[0] == \"ping\" ? 7 : 1; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-args-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "ArgsApp");
+            var output = Path.Combine(dir, "ArgsApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, PackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            RunLauncher(ManagedLauncherPacker.LauncherPathFor(output), "ping").ShouldBe(7);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_WaitsForAsyncTaskMain()
+    {
+        const string source = """
+            public static class Program
+            {
+                public static async System.Threading.Tasks.Task<int> Main()
+                {
+                    await System.Threading.Tasks.Task.Yield();
+                    return 9;
+                }
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-async-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "AsyncApp");
+            var output = Path.Combine(dir, "AsyncApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, PackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            RunLauncher(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBe(9);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_ResolvesSiblingAssemblies()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-sib-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var lib = CompileToAssembly("public static class Lib { public static int Get() => 13; }", dir, "Lib");
+            var input = CompileToExeWithRef("public static class Program { public static int Main() => Lib.Get(); }", dir, "SibApp", lib);
+            var output = Path.Combine(dir, "SibApp.obf.exe");
+
+            var result = await CreateService().ObfuscateAsync(input, output, PackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            RunLauncher(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBe(13);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_WithAntiTamper_Runs()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-tamper-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "TamperApp");
+            var output = Path.Combine(dir, "TamperApp.obf.exe");
+            var settings = PackingSettings();
+            settings.Protection.AntiTamper.Enabled = true;
+
+            var result = await CreateService().ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            RunLauncher(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBe(11);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_SourceInput_SkipsWithWarning()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-src-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = Path.Combine(dir, "App.cs");
+            await File.WriteAllTextAsync(input, "class C { static void Main() {} }");
+            var output = Path.Combine(dir, "App.obf.cs");
+            var result = await CreateService().ObfuscateAsync(input, output, PackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Warnings.ShouldContain(w => w.Contains("Packing skipped"));
+            result.PackedLauncherPath.ShouldBeNull();
+        }
+        finally
+        {
+            TryDeleteDir(dir);
         }
     }
 
@@ -282,7 +523,25 @@ public class EndToEndObfuscationTests
         }
         finally
         {
-            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public void AssemblyPreview_TruncatesLongOutput()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-prev-trunc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var dll = CompileToAssembly("public static class Lib { public static int Get() => 4; }", dir, "PrevLib");
+            var text = AssemblyPreview.Decompile(dll, maxChars: 32);
+            text.Length.ShouldBe(32 + "\n/* truncated */".Length);
+            text.ShouldEndWith("/* truncated */");
+        }
+        finally
+        {
+            TryDeleteDir(dir);
         }
     }
 

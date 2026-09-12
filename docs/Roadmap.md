@@ -75,7 +75,7 @@ Source mode is a subset: strings, renaming, control flow only.
 | PF-18 | Anti-de4dot signatures | P2 | Low | Low | ✅ Done (detector bait; does not block de4dot) |
 | PF-19 | Dumper-hook anti-dump | P3 | High | Medium | ✅ Partial (in-process MiniDumpWriteDump `0xC3` only) |
 | PF-08 | Code virtualization | P3 | Very High | High | Future |
-| PF-09 | Native code generation | P3 | Very High | Medium | Future |
+| PF-09 | Native code generation | P3 | Very High | Medium | ✅ Partial (managed FDD launcher; native packer remaining) |
 
 ### Developer experience
 
@@ -86,7 +86,7 @@ Source mode is a subset: strings, renaming, control flow only.
 | DX-04 | JetBrains Rider plugin | P2 | Low | Medium | ✅ Done |
 | DX-05 | Configuration wizard | P2 | Low | Medium | ✅ Done |
 | DX-03 | VS Code extension | P2 | Low | Medium | Backlog |
-| DX-06 | Real-time preview | P3 | High | Medium | Future |
+| DX-06 | Real-time preview | P3 | High | Medium | ✅ Done (post-run ILSpy preview in desktop Results tab) |
 
 ### Platform support
 
@@ -105,7 +105,7 @@ Source mode is a subset: strings, renaming, control flow only.
 | UF-04 | Obfuscation report | P1 | Low | Medium | ✅ Done |
 | UF-03 | Assembly signing (re-sign after obfuscation) | P1 | Low | Medium | ✅ Done |
 | UF-02 | Dependency embedding | P2 | Medium | Medium | Backlog |
-| UF-05 | Incremental obfuscation | P3 | High | Medium | Future |
+| UF-05 | Incremental obfuscation | P3 | High | Medium | ✅ Done (unreleased) |
 
 ### Quality and testing
 

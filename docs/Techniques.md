@@ -790,6 +790,12 @@ Transforms control flow structures in source code.
 }
 ```
 
+## Post-processing: managed launcher
+
+`packing.enabled` compiles a framework-dependent managed console host (`{name}.launcher.exe` + `.runtimeconfig.json`) that embeds the obfuscated assembly as `packed.dll` and invokes its entry point. Run with `dotnet {name}.launcher.exe`. This is not native code generation (PF-09 remaining work).
+
+The payload is extracted to `{launcher}.payload.dll` at runtime so `Assembly.Location` is a real path (anti-tamper hashes that file). Sibling assemblies next to the launcher are resolved from `AppContext.BaseDirectory`.
+
 ## See Also
 
 - [Configuration](Configuration.md) - Full settings reference

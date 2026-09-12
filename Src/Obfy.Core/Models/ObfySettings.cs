@@ -76,7 +76,9 @@ public class ObfySettings
     public VirtualizationSettings Virtualization { get; init; } = new();
 
     /// <summary>
-    /// Wrap the obfuscated assembly in a Windows EXE launcher that embeds and runs it.
+    /// After save, emit a sibling framework-dependent managed launcher
+    /// (<c>{name}.launcher.exe</c> + <c>.runtimeconfig.json</c>) that embeds the obfuscated assembly
+    /// and invokes its entry point. Requires an entry point; not a native packer.
     /// </summary>
     public PackingSettings Packing { get; init; } = new();
 
@@ -147,7 +149,8 @@ public class ObfySettings
             // constant-encryption algorithm, metadata/debug) so *those* values do not leak from a
             // previously applied level. Other nested settings (control-flow mode, string/resource
             // algorithms, naming mode, PreservePublicApi, PreserveXaml, junk counts, include/exclude
-            // patterns, RuntimeProfile, Signing, Watermark, DependencyEmbedding, AddDecoyAttributes)
+            // patterns, RuntimeProfile, Signing, Watermark, DependencyEmbedding, AddDecoyAttributes,
+            // Packing, Incremental, Virtualization)
             // keep their prior or default values. ProxyExternalCalls is cleared when ReferenceProxy is turned off.
             case ObfuscationLevel.Minimal:
                 StringEncryption.Enabled = false;
@@ -737,8 +740,9 @@ public class VirtualizationSettings
 }
 
 /// <summary>
-/// Produce a Windows EXE host that embeds the obfuscated assembly.
-/// Requires an entry point.
+/// Produce a sibling framework-dependent managed launcher that embeds the obfuscated assembly
+/// and invokes its entry point. Requires an entry point; a missing entry point fails the run
+/// after the obfuscated file has already been written. Not a native packer.
 /// </summary>
 public class PackingSettings
 {

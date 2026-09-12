@@ -61,6 +61,11 @@ public class ObfuscationResult
     /// </summary>
     public List<string> Warnings { get; private init; } = new();
 
+    /// <summary>
+    /// Gets the path of the framework-dependent managed launcher written when packing succeeded.
+    /// </summary>
+    public string? PackedLauncherPath { get; private init; }
+
     private ObfuscationResult()
     {
     }
@@ -76,7 +81,8 @@ public class ObfuscationResult
         List<ProcessingTimeEntry>? processingTimes = null,
         List<SkippedItem>? skippedItems = null,
         Dictionary<string, string>? symbolMap = null,
-        List<string>? warnings = null)
+        List<string>? warnings = null,
+        string? packedLauncherPath = null)
     {
         return new ObfuscationResult
         {
@@ -88,7 +94,8 @@ public class ObfuscationResult
             ProcessingTimes = processingTimes ?? new(),
             SkippedItems = skippedItems ?? new(),
             SymbolMap = symbolMap ?? new(),
-            Warnings = warnings ?? new()
+            Warnings = warnings ?? new(),
+            PackedLauncherPath = packedLauncherPath
         };
     }
 

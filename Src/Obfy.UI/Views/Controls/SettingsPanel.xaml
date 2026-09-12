@@ -134,7 +134,6 @@
                 </StackPanel>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDumpToggle"
                                Content="Anti-Dump" IsChecked="{Binding AntiDumpEnabled}"/>
-                <ui:ToggleSwitch Content="Pack Windows launcher" IsChecked="{Binding PackingEnabled}"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDecompilerToggle"
                                Content="Anti-Decompiler" IsChecked="{Binding AntiDecompilerEnabled}"/>
                 <StackPanel Visibility="{Binding AntiDecompilerEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
@@ -185,6 +184,15 @@
                                 Text="{Binding WatermarkId, UpdateSourceTrigger=PropertyChanged}"
                                 PlaceholderText="required when watermark is enabled"/>
                 </StackPanel>
+            </StackPanel>
+        </ui:CardExpander>
+
+        <ui:CardExpander Header="Managed launcher" Icon="{ui:SymbolIcon Window24}" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <ui:ToggleSwitch AutomationProperties.AutomationId="PackingToggle"
+                               Content="Pack managed launcher"
+                               ToolTip="Writes {name}.launcher.exe (framework-dependent; run with dotnet). Requires an entry point. Not a native packer."
+                               IsChecked="{Binding PackingEnabled}"/>
             </StackPanel>
         </ui:CardExpander>
 

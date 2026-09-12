@@ -135,16 +135,25 @@
         </Grid>
             </TabItem>
             <TabItem Header="Preview">
-                <TextBox Text="{Binding PreviewText, Mode=OneWay}"
-                         IsReadOnly="True"
-                         FontFamily="Cascadia Mono, Consolas"
-                         FontSize="12"
-                         TextWrapping="NoWrap"
-                         HorizontalScrollBarVisibility="Auto"
-                         VerticalScrollBarVisibility="Auto"
-                         AcceptsReturn="True"
-                         BorderThickness="0"
-                         Background="Transparent"/>
+                <Grid>
+                    <ui:TextBlock Text="{Binding PreviewError}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                                 TextWrapping="Wrap"
+                                 Margin="16"
+                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                 Visibility="{Binding HasPreviewError, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <TextBox Text="{Binding PreviewText, Mode=OneWay}"
+                             IsReadOnly="True"
+                             FontFamily="Cascadia Mono, Consolas"
+                             FontSize="12"
+                             TextWrapping="NoWrap"
+                             HorizontalScrollBarVisibility="Auto"
+                             VerticalScrollBarVisibility="Auto"
+                             AcceptsReturn="True"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Visibility="{Binding HasPreview, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                </Grid>
             </TabItem>
         </TabControl>
     </Grid>

@@ -227,11 +227,13 @@ public enum EncryptionAlgorithm
     /// <summary>
     /// XOR encryption with key rotation.
     /// </summary>
+    [System.ComponentModel.Description("XOR")]
     Xor,
 
     /// <summary>
     /// AES-256 encryption.
     /// </summary>
+    [System.ComponentModel.Description("AES-256")]
     Aes256
 }
 
@@ -265,16 +267,19 @@ public enum ControlFlowMode
     /// <summary>
     /// Convert linear code to switch-based state machine.
     /// </summary>
+    [System.ComponentModel.Description("Switch flattening")]
     Switch,
 
     /// <summary>
     /// Insert opaque predicates (always-true/false conditions).
     /// </summary>
+    [System.ComponentModel.Description("Opaque predicates")]
     OpaquePredicate,
 
     /// <summary>
     /// Combine switch flattening with opaque predicates.
     /// </summary>
+    [System.ComponentModel.Description("Combined")]
     Combined
 }
 
@@ -342,21 +347,25 @@ public enum NamingMode
     /// <summary>
     /// Generate unreadable names using non-printable or confusing characters.
     /// </summary>
+    [System.ComponentModel.Description("Unreadable")]
     Unreadable,
 
     /// <summary>
     /// Generate sequential names (a, b, c, aa, ab, etc.).
     /// </summary>
+    [System.ComponentModel.Description("Sequential")]
     Sequential,
 
     /// <summary>
     /// Generate hash-based names from original names.
     /// </summary>
+    [System.ComponentModel.Description("Hash")]
     Hash,
 
     /// <summary>
     /// Generate random alphanumeric names.
     /// </summary>
+    [System.ComponentModel.Description("Random")]
     Random
 }
 

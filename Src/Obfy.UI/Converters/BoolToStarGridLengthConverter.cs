@@ -1,28 +1,21 @@
 using System.Globalization;
+using System.Windows;
 using System.Windows.Data;
 
 namespace Obfy.UI.Converters;
 
 /// <summary>
-/// Inverts a boolean value.
+/// Maps true to a 1* grid row and false to a zero-height row.
 /// </summary>
-public class InverseBooleanConverter : IValueConverter
+public class BoolToStarGridLengthConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        if (value is bool boolValue)
-        {
-            return !boolValue;
-        }
-        return false;
+        return value is true
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(0);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        if (value is bool boolValue)
-        {
-            return !boolValue;
-        }
-        return false;
-    }
+        => throw new NotSupportedException();
 }

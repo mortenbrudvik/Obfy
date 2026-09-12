@@ -13,10 +13,12 @@ namespace Obfy.UI.Services;
 public sealed class ApplicationHostService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
+    private readonly FilesViewModel _files;
 
-    public ApplicationHostService(IServiceProvider serviceProvider)
+    public ApplicationHostService(IServiceProvider serviceProvider, FilesViewModel files)
     {
         _serviceProvider = serviceProvider;
+        _files = files;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -38,10 +40,6 @@ public sealed class ApplicationHostService : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        var files = _serviceProvider.GetService<FilesViewModel>();
-        if (files is not null)
-        {
-            await files.PersistPreferencesAsync();
-        }
+        await _files.PersistPreferencesAsync();
     }
 }

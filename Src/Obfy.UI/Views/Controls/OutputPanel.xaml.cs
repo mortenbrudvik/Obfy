@@ -13,6 +13,13 @@ public partial class OutputPanel : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnUnloaded(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (DataContext is OutputViewModel vm)
+            vm.Logs.CollectionChanged -= OnLogsCollectionChanged;
     }
 
     private void OnDataContextChanged(object sender, System.Windows.DependencyPropertyChangedEventArgs e)

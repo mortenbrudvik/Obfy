@@ -7,6 +7,7 @@ using Obfy.UI.Services;
 using Obfy.UI.ViewModels;
 using Shouldly;
 using Wpf.Ui;
+using Wpf.Ui.Controls;
 
 namespace Obfy.UI.Tests.ViewModels;
 
@@ -17,6 +18,7 @@ public class MainViewModelTests : IDisposable
     private readonly Mock<ISettingsService> _settingsService = new();
     private readonly Mock<IReportService> _reportService = new();
     private readonly Mock<IContentDialogService> _contentDialogService = new();
+    private readonly Mock<ISnackbarService> _snackbarService = new();
     private readonly Mock<IClipboardService> _clipboard = new();
     private readonly SettingsViewModel _settings = new();
     private readonly FilesViewModel _files;
@@ -36,7 +38,11 @@ public class MainViewModelTests : IDisposable
 
         _files = new FilesViewModel(_fileDialogService.Object, _settingsService.Object);
         _output = new OutputViewModel(new InlineUiDispatcher(), _clipboard.Object);
-        _results = new ResultsViewModel(_fileDialogService.Object, _reportService.Object);
+        _results = new ResultsViewModel(
+            _fileDialogService.Object,
+            _reportService.Object,
+            _clipboard.Object,
+            _snackbarService.Object);
 
         _viewModel = new MainViewModel(
             _obfuscationService.Object,
@@ -44,6 +50,7 @@ public class MainViewModelTests : IDisposable
             _settingsService.Object,
             _reportService.Object,
             _contentDialogService.Object,
+            _snackbarService.Object,
             _settings,
             _files,
             _output,
@@ -63,11 +70,13 @@ public class MainViewModelTests : IDisposable
                 Directory.Delete(_tempDirectory, recursive: true);
             }
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            System.Diagnostics.Debug.WriteLine(ex);
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            System.Diagnostics.Debug.WriteLine(ex);
         }
     }
 
@@ -135,6 +144,7 @@ public class MainViewModelTests : IDisposable
         _viewModel.Files.Files[0].Status.ShouldBe(Obfy.UI.Models.FileStatus.Success);
         _viewModel.Output.Logs.ShouldContain(l => l.Level == Obfy.UI.Models.LogLevel.Success);
         _reportService.Verify(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()), Times.Once);
+        VerifySnackbar(ControlAppearance.Success, "complete");
     }
 
     [Fact]
@@ -200,6 +210,7 @@ public class MainViewModelTests : IDisposable
 
         _settingsService.Verify(s => s.SaveSettingsAsync(It.IsAny<ObfySettings>(), path), Times.Once);
         _viewModel.Output.Logs.ShouldContain(l => l.Message.Contains(path));
+        VerifySnackbar(ControlAppearance.Success, path);
     }
 
     [Fact]
@@ -229,9 +240,161 @@ public class MainViewModelTests : IDisposable
         _viewModel.Files.GenerateSymbolMap.ShouldBeTrue();
     }
 
-    private void AddTestFile()
+    [Fact]
+    public async Task ObfuscateCommand_Exception_MarksProcessingFileAsError()
     {
-        var path = Path.Combine(_tempDirectory, "input.dll");
+        _obfuscationService
+            .Setup(s => s.ObfuscateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("pipeline exploded"));
+
+        AddTestFile();
+
+        await _viewModel.ObfuscateCommand.ExecuteAsync(null);
+
+        _viewModel.IsObfuscating.ShouldBeFalse();
+        _viewModel.Files.Files[0].Status.ShouldBe(Obfy.UI.Models.FileStatus.Error);
+        _viewModel.Files.Files[0].ErrorMessage.ShouldBe("pipeline exploded");
+        _viewModel.StatusMessage.ShouldBe("Error occurred");
+        VerifySnackbar(ControlAppearance.Danger, "pipeline exploded");
+    }
+
+    [Fact]
+    public async Task ObfuscateCommand_MultipleFiles_BuildsReportFromCombinedSymbols()
+    {
+        ObfuscationResult? captured = null;
+        _obfuscationService
+            .SetupSequence(s => s.ObfuscateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ObfuscationResult.Successful(
+                new ObfuscationStatistics { StringsEncrypted = 2 },
+                symbolMap: new Dictionary<string, string> { ["One"] = "a" }))
+            .ReturnsAsync(ObfuscationResult.Successful(
+                new ObfuscationStatistics { StringsEncrypted = 3 },
+                symbolMap: new Dictionary<string, string> { ["Two"] = "b" }));
+
+        _reportService
+            .Setup(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()))
+            .Callback<ObfuscationResult, ObfySettings>((result, _) => captured = result)
+            .Returns(new ObfuscationReport());
+
+        AddTestFile("first.dll");
+        AddTestFile("second.dll");
+
+        await _viewModel.ObfuscateCommand.ExecuteAsync(null);
+
+        captured.ShouldNotBeNull();
+        captured!.SymbolMap.Keys.ShouldContain("One");
+        captured.SymbolMap.Keys.ShouldContain("Two");
+        captured.Statistics.StringsEncrypted.ShouldBe(5);
+        _reportService.Verify(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ObfuscateCommand_MergeEnabled_CallsMergeAndObfuscate()
+    {
+        _settings.AssemblyMergeEnabled = true;
+        _obfuscationService
+            .Setup(s => s.MergeAndObfuscateAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<string>(),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ObfuscationResult.Successful(
+                new ObfuscationStatistics { TypesRenamed = 1 },
+                outputPath: Path.Combine(_tempDirectory, "first.obfuscated.dll")));
+
+        _reportService
+            .Setup(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()))
+            .Returns(new ObfuscationReport());
+
+        AddTestFile("first.dll");
+        AddTestFile("second.dll");
+
+        await _viewModel.ObfuscateCommand.ExecuteAsync(null);
+
+        _obfuscationService.Verify(
+            s => s.MergeAndObfuscateAsync(
+                It.Is<IEnumerable<string>>(p => p.Count() == 2),
+                It.Is<string>(path => path.Contains("obfuscated", StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        _obfuscationService.Verify(
+            s => s.ObfuscateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        _viewModel.Files.Files.ShouldAllBe(f => f.Status == Obfy.UI.Models.FileStatus.Success);
+    }
+
+    [Fact]
+    public async Task ObfuscateCommand_GenerateSymbolMap_WritesMap()
+    {
+        var mapPath = Path.Combine(_tempDirectory, "symbolmap.json");
+        _files.GenerateSymbolMap = true;
+        _files.SymbolMapPath = mapPath;
+        _obfuscationService
+            .Setup(s => s.ObfuscateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ObfuscationResult.Successful(
+                new ObfuscationStatistics(),
+                symbolMap: new Dictionary<string, string> { ["Foo"] = "a" }));
+        _obfuscationService
+            .Setup(s => s.WriteSymbolMapAsync(It.IsAny<Dictionary<string, string>>(), mapPath))
+            .Returns(Task.CompletedTask);
+        _reportService
+            .Setup(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()))
+            .Returns(new ObfuscationReport());
+
+        AddTestFile();
+
+        await _viewModel.ObfuscateCommand.ExecuteAsync(null);
+
+        _obfuscationService.Verify(
+            s => s.WriteSymbolMapAsync(
+                It.Is<Dictionary<string, string>>(m => m.ContainsKey("Foo")),
+                mapPath),
+            Times.Once);
+    }
+
+    [Fact]
+    public void GetInformationalVersion_IsNotHardcodedLegacyValue()
+    {
+        var version = MainViewModel.GetInformationalVersion();
+        version.ShouldNotBeNullOrWhiteSpace();
+        version.ShouldNotBe("1.2.0");
+    }
+
+    private void VerifySnackbar(ControlAppearance appearance, string messagePart)
+    {
+        _snackbarService.Verify(
+            s => s.Show(
+                It.IsAny<string>(),
+                It.Is<string>(m => m.Contains(messagePart, StringComparison.OrdinalIgnoreCase)),
+                appearance,
+                It.IsAny<IconElement?>(),
+                It.IsAny<TimeSpan>()),
+            Times.AtLeastOnce);
+    }
+
+    private void AddTestFile()
+        => AddTestFile("input.dll");
+
+    private void AddTestFile(string name)
+    {
+        var path = Path.Combine(_tempDirectory, name);
         File.WriteAllBytes(path, Array.Empty<byte>());
         _files.HandleFileDrop(new[] { path });
     }

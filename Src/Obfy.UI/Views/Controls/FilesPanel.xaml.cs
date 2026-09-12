@@ -16,7 +16,9 @@ public partial class FilesPanel : UserControl
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        if (e.Data.GetDataPresent(DataFormats.FileDrop)
+            && e.Data.GetData(DataFormats.FileDrop) is string[] paths
+            && FilesViewModel.CanAcceptDrop(paths))
         {
             e.Effects = DragDropEffects.Copy;
             DropOverlay.Visibility = Visibility.Visible;
@@ -24,6 +26,7 @@ public partial class FilesPanel : UserControl
         else
         {
             e.Effects = DragDropEffects.None;
+            DropOverlay.Visibility = Visibility.Collapsed;
         }
         e.Handled = true;
     }
@@ -37,13 +40,11 @@ public partial class FilesPanel : UserControl
     {
         DropOverlay.Visibility = Visibility.Collapsed;
 
-        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        if (e.Data.GetDataPresent(DataFormats.FileDrop)
+            && e.Data.GetData(DataFormats.FileDrop) is string[] files
+            && DataContext is FilesViewModel viewModel)
         {
-            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-            if (files != null && DataContext is FilesViewModel viewModel)
-            {
-                viewModel.HandleFileDrop(files);
-            }
+            viewModel.HandleFileDrop(files);
         }
     }
 }

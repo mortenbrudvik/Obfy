@@ -22,6 +22,7 @@ public class SettingsService : ISettingsService
     };
 
     private readonly ILogger<SettingsService> _logger;
+    private readonly object _preferencesLock = new();
 
     public SettingsService(ILogger<SettingsService> logger)
     {
@@ -69,7 +70,24 @@ public class SettingsService : ISettingsService
         };
 
         var json = JsonSerializer.Serialize(preferences, _jsonOptions);
-        await File.WriteAllTextAsync(_preferencesPath, json);
+        var tempPath = _preferencesPath + ".tmp";
+
+        try
+        {
+            await File.WriteAllTextAsync(tempPath, json);
+            lock (_preferencesLock)
+            {
+                File.Move(tempPath, _preferencesPath, overwrite: true);
+            }
+        }
+        catch (IOException ex)
+        {
+            _logger.LogWarning(ex, "Failed to save UI preferences to {Path}", _preferencesPath);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Failed to save UI preferences to {Path}", _preferencesPath);
+        }
     }
 
     public async Task LoadPreferencesAsync()

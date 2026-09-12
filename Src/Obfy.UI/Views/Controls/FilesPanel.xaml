@@ -23,11 +23,13 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Text="Input Files" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center"/>
+            <ui:TextBlock Text="Input Files" FontTypography="BodyStrong" FontSize="16" VerticalAlignment="Center"/>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
                 <ui:Button AutomationProperties.AutomationId="AddFilesButton"
+                          AutomationProperties.Name="Add files"
                           Icon="{ui:SymbolIcon Add24}" Content="Add Files" Command="{Binding AddFilesCommand}" Margin="0,0,8,0"/>
                 <ui:Button AutomationProperties.AutomationId="ClearFilesButton"
+                          AutomationProperties.Name="Clear files"
                           Icon="{ui:SymbolIcon Delete24}" Content="Clear" Command="{Binding ClearFilesCommand}"/>
             </StackPanel>
         </Grid>
@@ -40,8 +42,8 @@
                 <Border x:Name="DropOverlay" Background="{DynamicResource ApplicationBackgroundBrush}" Opacity="0.85" Visibility="Collapsed" Panel.ZIndex="100" CornerRadius="8">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                         <ui:SymbolIcon Symbol="ArrowUpload24" FontSize="48"/>
-                        <TextBlock Text="Drop assemblies here" FontSize="18" Margin="0,12,0,0" HorizontalAlignment="Center"/>
-                        <TextBlock Text=".dll, .exe, .cs files" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
+                        <ui:TextBlock Text="Drop assemblies here" FontSize="18" Margin="0,12,0,0" HorizontalAlignment="Center"/>
+                        <ui:TextBlock Text=".dll, .exe, .cs files" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
@@ -49,12 +51,13 @@
                 <StackPanel Visibility="{Binding HasNoFiles, Converter={StaticResource BooleanToVisibilityConverter}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center">
                     <ui:SymbolIcon Symbol="DocumentMultiple24" FontSize="48" Opacity="0.5"/>
-                    <TextBlock Text="Drag and drop assemblies here" Margin="0,12,0,4" HorizontalAlignment="Center"/>
-                    <TextBlock Text="or click Add Files" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
+                    <ui:TextBlock Text="Drag and drop assemblies here" Margin="0,12,0,4" HorizontalAlignment="Center"/>
+                    <ui:TextBlock Text="or click Add Files (.dll, .exe, .cs)" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- File List -->
                 <ListView AutomationProperties.AutomationId="FilesList"
+                         AutomationProperties.Name="Input files"
                          ItemsSource="{Binding Files}"
                          Visibility="{Binding HasFiles, Converter={StaticResource BooleanToVisibilityConverter}}"
                          Background="Transparent" BorderThickness="0">
@@ -63,22 +66,35 @@
                             <Grid Margin="8,4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
-                                <ui:SymbolIcon Grid.Column="0" Symbol="Document24" Margin="0,0,8,0"/>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding FileName}" FontWeight="SemiBold"/>
-                                    <TextBlock Text="{Binding FilePath}" FontSize="11"
+                                <ui:SymbolIcon Grid.Column="0"
+                                              Symbol="{Binding Status, Converter={StaticResource FileStatusToIconConverter}}"
+                                              Margin="0,0,8,0"/>
+                                <ui:SymbolIcon Grid.Column="1"
+                                              Symbol="{Binding IsSourceFile, Converter={StaticResource FileKindToIconConverter}}"
+                                              Margin="0,0,8,0"
+                                              Opacity="0.7"/>
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                    <ui:TextBlock Text="{Binding FileName}" FontWeight="SemiBold"/>
+                                    <ui:TextBlock Text="{Binding FilePath}" FontSize="11"
                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                               TextTrimming="CharacterEllipsis"/>
+                                    <ui:TextBlock Text="{Binding FormattedSize}" FontSize="11"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <ui:TextBlock Text="{Binding ErrorMessage}" FontSize="11"
+                                              Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                              TextWrapping="Wrap"
+                                              Visibility="{Binding IsError, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                 </StackPanel>
-                                <ProgressBar Grid.Column="2" Width="80" Value="{Binding Progress}" Maximum="100" Margin="8,0"
+                                <ProgressBar Grid.Column="3" Width="80" Value="{Binding Progress}" Maximum="100" Margin="8,0"
                                             AutomationProperties.Name="File obfuscation progress"
                                             Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                                <ui:Button Grid.Column="3" Icon="{ui:SymbolIcon Dismiss24}"
+                                <ui:Button Grid.Column="4" Icon="{ui:SymbolIcon Dismiss24}"
                                           AutomationProperties.Name="Remove file"
                                           ToolTip="Remove file"
                                           MinWidth="40" MinHeight="40"
@@ -96,21 +112,29 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Output Directory" Margin="0,0,0,4"/>
-            <ui:TextBox AutomationProperties.AutomationId="OutputDirectoryTextBox"
-                       Grid.Row="1" Grid.Column="0" Text="{Binding OutputDirectory}" PlaceholderText="Same as input"/>
+            <Label Grid.Row="0" Grid.ColumnSpan="2" Content="Output Directory" Target="{Binding ElementName=OutputDirectoryTextBox}" Margin="0,0,0,4"/>
+            <ui:TextBox x:Name="OutputDirectoryTextBox"
+                       AutomationProperties.AutomationId="OutputDirectoryTextBox"
+                       AutomationProperties.Name="Output directory"
+                       Grid.Row="1" Grid.Column="0" Text="{Binding OutputDirectory}"
+                       PlaceholderText="Next to input as *.obfuscated.*"/>
             <ui:Button AutomationProperties.AutomationId="BrowseOutputButton"
                       AutomationProperties.Name="Browse output directory"
                       ToolTip="Browse output directory"
                       MinWidth="40" MinHeight="40"
                       Grid.Row="1" Grid.Column="1" Icon="{ui:SymbolIcon FolderOpen24}"
                       Command="{Binding BrowseOutputDirectoryCommand}" Margin="8,0,0,0"/>
+            <ui:ToggleSwitch Grid.Row="2" Grid.ColumnSpan="2" Margin="0,8,0,0"
+                            AutomationProperties.Name="Write symbol map after obfuscation"
+                            Content="Write symbol map after obfuscation"
+                            IsChecked="{Binding GenerateSymbolMap}"/>
         </Grid>
     </Grid>
 </UserControl>

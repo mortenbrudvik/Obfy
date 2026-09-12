@@ -12,7 +12,7 @@ public class FileDialogService : IFileDialogService
         var dialog = new OpenFileDialog
         {
             Title = "Select Assembly Files",
-            Filter = "Assembly Files (*.dll;*.exe)|*.dll;*.exe|All Files (*.*)|*.*",
+            Filter = "Assemblies and source (*.dll;*.exe;*.cs)|*.dll;*.exe;*.cs|Assembly Files (*.dll;*.exe)|*.dll;*.exe|C# Files (*.cs)|*.cs|All Files (*.*)|*.*",
             Multiselect = true
         };
 

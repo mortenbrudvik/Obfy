@@ -7,16 +7,21 @@
              xmlns:vm="clr-namespace:Obfy.UI.ViewModels"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}">
+    <UserControl.Resources>
+        <DataTemplate x:Key="EnumDescriptionTemplate">
+            <TextBlock Text="{Binding Converter={StaticResource EnumDescriptionConverter}}"/>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <StackPanel Margin="12">
-        <!-- Level Selector -->
-        <TextBlock Text="Obfuscation Level" FontWeight="SemiBold" Margin="0,0,0,8"/>
         <ComboBox AutomationProperties.AutomationId="LevelSelector"
                   AutomationProperties.Name="Obfuscation level"
-                  ItemsSource="{Binding AvailableLevels}" SelectedItem="{Binding Level}" Margin="0,0,0,16"/>
+                  ItemsSource="{Binding AvailableLevels}"
+                  SelectedItem="{Binding Level}"
+                  ItemTemplate="{StaticResource EnumDescriptionTemplate}"
+                  Margin="0,0,0,16"/>
 
-        <!-- String Encryption -->
-        <Expander Header="String Encryption" IsExpanded="True" Margin="0,0,0,8">
+        <ui:CardExpander Header="String Encryption" Icon="{ui:SymbolIcon LockClosed24}" IsExpanded="True" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="StringEncryptionToggle"
                                Content="Enabled" IsChecked="{Binding StringEncryptionEnabled}"/>
@@ -24,16 +29,18 @@
                            Margin="0,8,0,0">
                     <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
                     <ComboBox AutomationProperties.Name="String encryption algorithm"
-                              ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding StringEncryptionAlgorithm}"/>
-                    <TextBlock Text="Min String Length" Margin="0,12,0,4"/>
+                              ItemsSource="{Binding AvailableAlgorithms}"
+                              SelectedItem="{Binding StringEncryptionAlgorithm}"
+                              ItemTemplate="{StaticResource EnumDescriptionTemplate}"/>
+                    <TextBlock Text="Min string length" Margin="0,12,0,4"/>
                     <ui:NumberBox AutomationProperties.Name="Min string length"
-                                  Value="{Binding MinStringLength}" Minimum="1" Maximum="100" SpinButtonPlacementMode="Compact"/>
+                                  Value="{Binding MinStringLength}" Minimum="1" Maximum="100"
+                                  SpinButtonPlacementMode="Compact"/>
                 </StackPanel>
             </StackPanel>
-        </Expander>
+        </ui:CardExpander>
 
-        <!-- Constant Encryption -->
-        <Expander Header="Constant Encryption" Margin="0,0,0,8">
+        <ui:CardExpander Header="Constant Encryption" Icon="{ui:SymbolIcon NumberSymbol24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ConstantEncryptionToggle"
                                Content="Enabled" IsChecked="{Binding ConstantEncryptionEnabled}"/>
@@ -41,7 +48,9 @@
                            Margin="0,8,0,0">
                     <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
                     <ComboBox AutomationProperties.Name="Constant encryption algorithm"
-                              ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding ConstantEncryptionAlgorithm}"/>
+                              ItemsSource="{Binding AvailableAlgorithms}"
+                              SelectedItem="{Binding ConstantEncryptionAlgorithm}"
+                              ItemTemplate="{StaticResource EnumDescriptionTemplate}"/>
 
                     <TextBlock Text="Types to Encrypt" FontWeight="SemiBold" Margin="0,12,0,8"/>
                     <CheckBox Content="Integers (int)" IsChecked="{Binding EncryptIntegers}"/>
@@ -49,20 +58,20 @@
                     <CheckBox Content="Floats (float)" IsChecked="{Binding EncryptFloats}"/>
                     <CheckBox Content="Doubles (double)" IsChecked="{Binding EncryptDoubles}"/>
 
-                    <TextBlock Text="Thresholds" FontWeight="SemiBold" Margin="0,12,0,8"/>
-                    <TextBlock Text="Integer Threshold" Margin="0,0,0,4"/>
+                    <TextBlock Text="Integer threshold" Margin="0,12,0,4"/>
                     <ui:NumberBox AutomationProperties.Name="Integer threshold"
-                                  Value="{Binding IntegerThreshold}" Minimum="0" Maximum="1000" SpinButtonPlacementMode="Compact"/>
-                    <TextBlock Text="Skip integers with |value| &lt; threshold" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,8"/>
+                                  Value="{Binding IntegerThreshold}" Minimum="0" Maximum="1000"
+                                  SpinButtonPlacementMode="Compact"/>
+                    <TextBlock Text="Skip integers with |value| &lt; threshold" FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,8"/>
 
                     <CheckBox Content="Skip common floats (0, 1, -1)" IsChecked="{Binding SkipCommonFloats}"/>
                     <CheckBox Content="Skip common doubles (0, 1, -1)" IsChecked="{Binding SkipCommonDoubles}"/>
                 </StackPanel>
             </StackPanel>
-        </Expander>
+        </ui:CardExpander>
 
-        <!-- Control Flow -->
-        <Expander Header="Control Flow" Margin="0,0,0,8">
+        <ui:CardExpander Header="Control Flow" Icon="{ui:SymbolIcon Flowchart24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ControlFlowToggle"
                                Content="Enabled" IsChecked="{Binding ControlFlowEnabled}"/>
@@ -70,16 +79,17 @@
                            Margin="0,8,0,0">
                     <TextBlock Text="Mode" Margin="0,0,0,4"/>
                     <ComboBox AutomationProperties.Name="Control flow mode"
-                              ItemsSource="{Binding AvailableModes}" SelectedItem="{Binding ControlFlowMode}"/>
+                              ItemsSource="{Binding AvailableModes}"
+                              SelectedItem="{Binding ControlFlowMode}"
+                              ItemTemplate="{StaticResource EnumDescriptionTemplate}"/>
                     <TextBlock Text="{Binding ControlFlowIntensity, StringFormat='Intensity: {0}%'}" Margin="0,12,0,4"/>
                     <Slider AutomationProperties.Name="Control flow intensity"
                             Value="{Binding ControlFlowIntensity}" Minimum="0" Maximum="100"/>
                 </StackPanel>
             </StackPanel>
-        </Expander>
+        </ui:CardExpander>
 
-        <!-- Symbol Renaming -->
-        <Expander Header="Symbol Renaming" Margin="0,0,0,8">
+        <ui:CardExpander Header="Symbol Renaming" Icon="{ui:SymbolIcon Rename24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="SymbolRenamingToggle"
                                Content="Enabled" IsChecked="{Binding SymbolRenamingEnabled}"/>
@@ -87,7 +97,9 @@
                            Margin="0,8,0,0">
                     <TextBlock Text="Naming Mode" Margin="0,0,0,4"/>
                     <ComboBox AutomationProperties.Name="Naming mode"
-                              ItemsSource="{Binding AvailableNamingModes}" SelectedItem="{Binding NamingMode}"/>
+                              ItemsSource="{Binding AvailableNamingModes}"
+                              SelectedItem="{Binding NamingMode}"
+                              ItemTemplate="{StaticResource EnumDescriptionTemplate}"/>
                     <CheckBox Content="Rename Types" IsChecked="{Binding RenameTypes}" Margin="0,8,0,0"/>
                     <CheckBox Content="Rename Methods" IsChecked="{Binding RenameMethods}"/>
                     <CheckBox Content="Rename Fields" IsChecked="{Binding RenameFields}"/>
@@ -98,35 +110,52 @@
                     <ui:ToggleSwitch Content="Preserve Public API" IsChecked="{Binding PreservePublicApi}" Margin="0,8,0,0"/>
                 </StackPanel>
             </StackPanel>
-        </Expander>
+        </ui:CardExpander>
 
-        <!-- Protection -->
-        <Expander Header="Protection" Margin="0,0,0,8">
+        <ui:CardExpander Header="Protection" Icon="{ui:SymbolIcon Shield24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDebugToggle"
                                Content="Anti-Debug" IsChecked="{Binding AntiDebugEnabled}"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="AntiTamperToggle"
                                Content="Anti-Tamper" IsChecked="{Binding AntiTamperEnabled}"/>
+                <StackPanel Visibility="{Binding AntiTamperEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="16,0,0,8">
+                    <CheckBox Content="Check entry point" IsChecked="{Binding TamperCheckEntryPoint}"/>
+                    <CheckBox Content="Check module initializer" IsChecked="{Binding TamperCheckModuleInit}"/>
+                </StackPanel>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDumpToggle"
                                Content="Anti-Dump" IsChecked="{Binding AntiDumpEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDecompilerToggle"
+                               Content="Anti-Decompiler" IsChecked="{Binding AntiDecompilerEnabled}"/>
+                <StackPanel Visibility="{Binding AntiDecompilerEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="16,0,0,8">
+                    <CheckBox Content="Inject junk types" IsChecked="{Binding InjectJunkTypes}"/>
+                    <CheckBox Content="Add SuppressIldasm" IsChecked="{Binding AddSuppressIldasmAttribute}"/>
+                    <TextBlock Text="Junk types" Margin="0,8,0,4"/>
+                    <ui:NumberBox AutomationProperties.Name="Junk type count"
+                                  Value="{Binding JunkTypeCount}" Minimum="0" Maximum="50"
+                                  SpinButtonPlacementMode="Compact"/>
+                    <TextBlock Text="Junk methods per type" Margin="0,8,0,4"/>
+                    <ui:NumberBox AutomationProperties.Name="Junk methods per type"
+                                  Value="{Binding JunkMethodsPerType}" Minimum="0" Maximum="20"
+                                  SpinButtonPlacementMode="Compact"/>
+                </StackPanel>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ReferenceProxyToggle"
                                Content="Reference Proxy" IsChecked="{Binding ReferenceProxyEnabled}"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="MethodEncryptionToggle"
                                Content="Method IL Encryption" IsChecked="{Binding MethodEncryptionEnabled}"/>
             </StackPanel>
-        </Expander>
+        </ui:CardExpander>
 
-        <!-- Metadata -->
-        <Expander Header="Metadata" Margin="0,0,0,8">
+        <ui:CardExpander Header="Metadata" Icon="{ui:SymbolIcon Document24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <CheckBox Content="Remove Debug Info" IsChecked="{Binding RemoveDebugInfo}"/>
                 <CheckBox Content="Remove Attributes" IsChecked="{Binding RemoveAttributes}"/>
                 <CheckBox Content="Strip Documentation" IsChecked="{Binding StripDocumentation}"/>
             </StackPanel>
-        </Expander>
+        </ui:CardExpander>
 
-        <!-- Resource Encryption -->
-        <Expander Header="Resource Encryption" Margin="0,0,0,8">
+        <ui:CardExpander Header="Resource Encryption" Icon="{ui:SymbolIcon Archive24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ResourceEncryptionToggle"
                                Content="Enabled" IsChecked="{Binding ResourceEncryptionEnabled}"/>
@@ -134,9 +163,124 @@
                            Margin="0,8,0,0">
                     <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
                     <ComboBox AutomationProperties.Name="Resource encryption algorithm"
-                              ItemsSource="{Binding AvailableAlgorithms}" SelectedItem="{Binding ResourceAlgorithm}"/>
+                              ItemsSource="{Binding AvailableAlgorithms}"
+                              SelectedItem="{Binding ResourceAlgorithm}"
+                              ItemTemplate="{StaticResource EnumDescriptionTemplate}"/>
                 </StackPanel>
             </StackPanel>
-        </Expander>
+        </ui:CardExpander>
+
+        <ui:CardExpander Header="Assembly Merge" Icon="{ui:SymbolIcon Merge24}" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <ui:ToggleSwitch AutomationProperties.AutomationId="AssemblyMergeToggle"
+                               Content="Merge input assemblies" IsChecked="{Binding AssemblyMergeEnabled}"/>
+                <CheckBox Content="Internalize merged types" IsChecked="{Binding InternalizeMergedTypes}"
+                          Visibility="{Binding AssemblyMergeEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                          Margin="0,8,0,0"/>
+            </StackPanel>
+        </ui:CardExpander>
+
+        <ui:CardExpander Header="Exclusions" Icon="{ui:SymbolIcon DismissCircle24}" Margin="0,0,0,8">
+            <StackPanel Margin="16,8">
+                <TextBlock Text="Namespaces" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBox AutomationProperties.Name="Excluded namespace"
+                                Text="{Binding NewExcludedNamespace, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="e.g. MyApp.Internal">
+                        <ui:TextBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding AddExcludedNamespaceCommand}"/>
+                        </ui:TextBox.InputBindings>
+                    </ui:TextBox>
+                    <ui:Button Grid.Column="1" Content="Add" Command="{Binding AddExcludedNamespaceCommand}" Margin="8,0,0,0"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding ExcludedNamespaces}" Margin="0,0,0,12">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                                <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Dismiss24}"
+                                          AutomationProperties.Name="Remove excluded namespace"
+                                          Command="{Binding DataContext.RemoveExcludedNamespaceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          CommandParameter="{Binding}" Padding="4" MinWidth="32" MinHeight="32"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="Types" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBox AutomationProperties.Name="Excluded type"
+                                Text="{Binding NewExcludedType, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="e.g. MyApp.PublicApi">
+                        <ui:TextBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding AddExcludedTypeCommand}"/>
+                        </ui:TextBox.InputBindings>
+                    </ui:TextBox>
+                    <ui:Button Grid.Column="1" Content="Add" Command="{Binding AddExcludedTypeCommand}" Margin="8,0,0,0"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding ExcludedTypes}" Margin="0,0,0,12">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                                <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Dismiss24}"
+                                          AutomationProperties.Name="Remove excluded type"
+                                          Command="{Binding DataContext.RemoveExcludedTypeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          CommandParameter="{Binding}" Padding="4" MinWidth="32" MinHeight="32"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="Methods" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ui:TextBox AutomationProperties.Name="Excluded method"
+                                Text="{Binding NewExcludedMethod, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="e.g. Main">
+                        <ui:TextBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding AddExcludedMethodCommand}"/>
+                        </ui:TextBox.InputBindings>
+                    </ui:TextBox>
+                    <ui:Button Grid.Column="1" Content="Add" Command="{Binding AddExcludedMethodCommand}" Margin="8,0,0,0"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding ExcludedMethods}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                                <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Dismiss24}"
+                                          AutomationProperties.Name="Remove excluded method"
+                                          Command="{Binding DataContext.RemoveExcludedMethodCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          CommandParameter="{Binding}" Padding="4" MinWidth="32" MinHeight="32"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ui:CardExpander>
     </StackPanel>
 </UserControl>

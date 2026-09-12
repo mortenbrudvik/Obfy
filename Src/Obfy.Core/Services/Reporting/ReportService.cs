@@ -334,6 +334,7 @@ public class ReportService : IReportService
         SkipReason.CompilerGenerated => "compiler-generated",
         SkipReason.UnsupportedConstruct => "unsupported construct",
         SkipReason.ResourceExcluded => "resource excluded by pattern",
+        SkipReason.GenericMethod => "generic method (IL encryption)",
         _ => reason.ToString()
     };
 

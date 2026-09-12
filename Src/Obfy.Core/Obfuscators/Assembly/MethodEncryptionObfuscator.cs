@@ -55,6 +55,7 @@ public class MethodEncryptionObfuscator : IObfuscator
                     if (method.HasGenericParameters || method.DeclaringType.HasGenericParameters)
                     {
                         genericSkipped++;
+                        context.SkippedItems.Add(SkippedItem.GenericMethodSkipped(method.FullName));
                         continue;
                     }
 

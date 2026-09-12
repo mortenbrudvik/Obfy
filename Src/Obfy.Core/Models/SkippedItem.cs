@@ -45,6 +45,17 @@ public class SkippedItem
         ItemType = SkippedItemType.Resource,
         ItemName = name
     };
+
+    /// <summary>
+    /// A method skipped by method IL encryption because it is generic.
+    /// </summary>
+    public static SkippedItem GenericMethodSkipped(string name) => new()
+    {
+        Reason = SkipReason.GenericMethod,
+        ItemType = SkippedItemType.Method,
+        ItemName = name,
+        Details = "Generic methods and methods on generic types are not IL-encrypted."
+    };
 }
 
 /// <summary>
@@ -120,5 +131,10 @@ public enum SkipReason
     /// <summary>
     /// Resource excluded by pattern.
     /// </summary>
-    ResourceExcluded
+    ResourceExcluded,
+
+    /// <summary>
+    /// Generic method or method on a generic type (method IL encryption cannot map RVAs).
+    /// </summary>
+    GenericMethod
 }

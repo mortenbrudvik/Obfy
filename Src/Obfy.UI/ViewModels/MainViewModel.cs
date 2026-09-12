@@ -157,6 +157,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var combined = CombineResults(successfulResults, totalStats, allSymbols, stopwatch.Elapsed);
                 Results.SetReport(_reportService.BuildReport(combined, settings));
+                Results.LoadPreview(successfulResults[0].OutputPath);
             }
 
             if (Files.GenerateSymbolMap && allSymbols.Count > 0)

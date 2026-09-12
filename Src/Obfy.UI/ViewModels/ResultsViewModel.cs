@@ -39,6 +39,9 @@ public partial class ResultsViewModel : ObservableObject
     private string _searchText = string.Empty;
 
     [ObservableProperty]
+    private string _previewText = string.Empty;
+
+    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExportReportCommand))]
     private bool _hasReport;
 
@@ -83,6 +86,7 @@ public partial class ResultsViewModel : ObservableObject
         ElapsedTime = TimeSpan.Zero;
         _symbolMap.Clear();
         SearchText = string.Empty;
+        PreviewText = string.Empty;
         _currentReport = null;
         HasReport = false;
         SelectedNode = null;
@@ -96,6 +100,24 @@ public partial class ResultsViewModel : ObservableObject
     {
         _currentReport = report;
         HasReport = true;
+    }
+
+    public void LoadPreview(string? assemblyPath)
+    {
+        if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath))
+        {
+            PreviewText = string.Empty;
+            return;
+        }
+
+        try
+        {
+            PreviewText = Obfy.Core.Utilities.AssemblyPreview.Decompile(assemblyPath);
+        }
+        catch (Exception ex) when (ex is IOException or BadImageFormatException or InvalidOperationException)
+        {
+            PreviewText = "Preview failed: " + ex.Message;
+        }
     }
 
     private void BuildSymbolTree(IEnumerable<KeyValuePair<string, string>> symbols)

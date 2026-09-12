@@ -86,7 +86,9 @@
                    Grid.Row="2" Margin="12,8,12,0" PlaceholderText="Search symbols..."
                    Icon="{ui:SymbolIcon Search24}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
 
-        <Grid Grid.Row="3">
+        <TabControl Grid.Row="3" Margin="12,8,12,12" Background="Transparent">
+            <TabItem Header="Symbols">
+        <Grid>
             <ui:TextBlock Text="No symbols were renamed."
                          HorizontalAlignment="Center" VerticalAlignment="Center"
                          Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -131,5 +133,19 @@
                 </TreeView.ItemTemplate>
             </TreeView>
         </Grid>
+            </TabItem>
+            <TabItem Header="Preview">
+                <TextBox Text="{Binding PreviewText, Mode=OneWay}"
+                         IsReadOnly="True"
+                         FontFamily="Cascadia Mono, Consolas"
+                         FontSize="12"
+                         TextWrapping="NoWrap"
+                         HorizontalScrollBarVisibility="Auto"
+                         VerticalScrollBarVisibility="Auto"
+                         AcceptsReturn="True"
+                         BorderThickness="0"
+                         Background="Transparent"/>
+            </TabItem>
+        </TabControl>
     </Grid>
 </UserControl>

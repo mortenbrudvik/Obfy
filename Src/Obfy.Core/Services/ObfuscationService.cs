@@ -134,6 +134,12 @@ public class ObfuscationService : IObfuscationService
                 if (settings.Incremental.Enabled && target.TargetType == TargetType.Assembly)
                     IncrementalCache.Write(inputPath, effectiveOutput, settings);
 
+                if (settings.Packing.Enabled && target.TargetType == TargetType.Assembly)
+                {
+                    var packed = NativePacker.Pack(effectiveOutput);
+                    context.Warnings.Add("Packed launcher: " + packed);
+                }
+
                 return ObfuscationResult.Successful(
                     context.Statistics,
                     inputPath: inputPath,

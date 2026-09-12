@@ -134,6 +134,7 @@
                 </StackPanel>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDumpToggle"
                                Content="Anti-Dump" IsChecked="{Binding AntiDumpEnabled}"/>
+                <ui:ToggleSwitch Content="Pack Windows launcher" IsChecked="{Binding PackingEnabled}"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="AntiDecompilerToggle"
                                Content="Anti-Decompiler" IsChecked="{Binding AntiDecompilerEnabled}"/>
                 <StackPanel Visibility="{Binding AntiDecompilerEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"

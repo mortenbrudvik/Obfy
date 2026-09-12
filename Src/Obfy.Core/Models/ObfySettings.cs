@@ -76,6 +76,11 @@ public class ObfySettings
     public VirtualizationSettings Virtualization { get; init; } = new();
 
     /// <summary>
+    /// Wrap the obfuscated assembly in a Windows EXE launcher that embeds and runs it.
+    /// </summary>
+    public PackingSettings Packing { get; init; } = new();
+
+    /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
     public ExclusionRules Exclusions { get; init; } = new();
@@ -729,6 +734,15 @@ public class VirtualizationSettings
 
     [Range(1, 256)]
     public int MaxMethods { get; set; } = 32;
+}
+
+/// <summary>
+/// Produce a Windows EXE host that embeds the obfuscated assembly.
+/// Requires an entry point.
+/// </summary>
+public class PackingSettings
+{
+    public bool Enabled { get; set; }
 }
 
 /// <summary>

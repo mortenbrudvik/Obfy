@@ -75,6 +75,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _signingEnabled = false;
 
     [ObservableProperty]
+    private bool _packingEnabled = false;
+
+    [ObservableProperty]
     private string _signingKeyFile = string.Empty;
 
     [ObservableProperty]
@@ -479,7 +482,8 @@ public partial class SettingsViewModel : ObservableObject
                 PasswordEnvironmentVariable = string.IsNullOrWhiteSpace(SigningPasswordEnvironmentVariable)
                     ? null
                     : SigningPasswordEnvironmentVariable
-            }
+            },
+            Packing = new PackingSettings { Enabled = PackingEnabled }
         };
     }
 
@@ -595,6 +599,7 @@ public partial class SettingsViewModel : ObservableObject
         SigningEnabled = settings.Signing.Enabled;
         SigningKeyFile = settings.Signing.KeyFile ?? string.Empty;
         SigningPasswordEnvironmentVariable = settings.Signing.PasswordEnvironmentVariable ?? string.Empty;
+        PackingEnabled = settings.Packing.Enabled;
         }
         finally
         {

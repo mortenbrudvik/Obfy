@@ -48,6 +48,26 @@ public class EndToEndObfuscationTests
         return path;
     }
 
+    private static string CompileToExe(string source, string dir, string assemblyName)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator)
+            .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p));
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            new[] { tree },
+            references,
+            new CSharpCompilationOptions(OutputKind.ConsoleApplication));
+
+        var path = Path.Combine(dir, assemblyName + ".exe");
+        var emit = compilation.Emit(path);
+        emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        return path;
+    }
+
     private static List<int> ReadMethodEncryptionBlobKeys(string pePath)
     {
         var pe = File.ReadAllBytes(pePath);
@@ -195,6 +215,70 @@ public class EndToEndObfuscationTests
                 loaded.Types.ShouldContain(t => t.Name == "<Vm>");
 
             LoadAndInvoke(output, "Lib", "Add", 2, 3).ShouldBe(5);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Packing_ProducesRunnableLauncher()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "PackApp");
+            var output = Path.Combine(dir, "PackApp.obf.exe");
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Packing = { Enabled = true }
+            };
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Warnings.ShouldContain(w => w.Contains("Packed launcher:"));
+
+            var launcher = Path.Combine(dir, "PackApp.obf.launcher.exe");
+            File.Exists(launcher).ShouldBeTrue();
+
+            var start = new System.Diagnostics.ProcessStartInfo("dotnet", $"\"{launcher}\"")
+            {
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            using var process = System.Diagnostics.Process.Start(start);
+            process.ShouldNotBeNull();
+            process!.WaitForExit(15000).ShouldBeTrue();
+            process.ExitCode.ShouldBe(11);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public void AssemblyPreview_DecompilesCompiledAssembly()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-prev-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var dll = CompileToAssembly("public static class Lib { public static int Get() => 4; }", dir, "PrevLib");
+            var text = AssemblyPreview.Decompile(dll);
+            text.ShouldContain("class Lib");
+            text.ShouldContain("Get");
         }
         finally
         {

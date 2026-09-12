@@ -3039,6 +3039,102 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task SymbolRenaming_HonorsObfuscationExcludeAttribute()
+    {
+        var module = CreateTestModule();
+        var kept = CreateTestType(module, "License");
+        var renamed = CreateTestType(module, "Hidden");
+        AddObfuscationAttribute(kept, exclude: true);
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameTypes = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        kept.Name.String.ShouldBe("License");
+        renamed.Name.String.ShouldNotBe("Hidden");
+    }
+
+    [Fact]
+    public async Task StringEncryption_HonorsObfuscationFeatureStrings()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Secrets");
+        var skipped = CreateMethodWithString(type, "KeepPlain", "KeepThisSecretString");
+        var encrypted = CreateMethodWithString(type, "HideMe", "EncryptThisSecretString");
+        AddObfuscationAttribute(skipped, exclude: true, feature: "strings");
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        skipped.Body.Instructions.ShouldContain(i =>
+            i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "KeepThisSecretString");
+        encrypted.Body.Instructions.ShouldNotContain(i =>
+            i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "EncryptThisSecretString");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_HonorsInclusionTypes()
+    {
+        var module = CreateTestModule();
+        var included = CreateTestType(module, "OnlyThis");
+        var other = CreateTestType(module, "LeaveMe");
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameTypes = true, Mode = NamingMode.Sequential },
+            Inclusions = { Types = { "OnlyThis" } }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        included.Name.String.ShouldNotBe("OnlyThis");
+        other.Name.String.ShouldBe("LeaveMe");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_IgnoresUnknownObfuscationFeature()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Widget");
+        AddObfuscationAttribute(type, exclude: true, feature: "virtualization");
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameTypes = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        type.Name.String.ShouldNotBe("Widget");
+    }
+
+    private static void AddObfuscationAttribute(IHasCustomAttribute target, bool exclude, string? feature = null)
+    {
+        var module = target switch
+        {
+            TypeDef t => t.Module,
+            MethodDef m => m.Module,
+            _ => throw new ArgumentOutOfRangeException(nameof(target))
+        };
+        var attrType = new TypeRefUser(module, "System.Reflection", "ObfuscationAttribute", module.CorLibTypes.AssemblyRef);
+        var ctor = new MemberRefUser(module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void), attrType);
+        var attr = new CustomAttribute(ctor);
+        attr.NamedArguments.Add(new CANamedArgument(
+            false, module.CorLibTypes.Boolean, "Exclude", new CAArgument(module.CorLibTypes.Boolean, exclude)));
+        if (feature != null)
+            attr.NamedArguments.Add(new CANamedArgument(
+                false, module.CorLibTypes.String, "Feature", new CAArgument(module.CorLibTypes.String, feature)));
+        target.CustomAttributes.Add(attr);
+    }
+
+    [Fact]
     public async Task ControlFlow_FlattensBranchedMethods()
     {
         var module = CreateTestModule();

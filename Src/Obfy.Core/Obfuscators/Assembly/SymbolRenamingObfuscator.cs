@@ -57,7 +57,7 @@ public class SymbolRenamingObfuscator : IObfuscator
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (ShouldSkipType(type, settings, context.Settings.Exclusions))
+                if (ShouldSkipType(type, settings, context.Settings.Exclusions, context.Settings.Inclusions))
                     continue;
 
                 // Rename type
@@ -207,7 +207,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 {
                     // Respect the same type-level exclusions used for members above (runtime-injected
                     // types, Obfy models, excluded namespaces/types).
-                    if (ShouldSkipType(type, settings, context.Settings.Exclusions))
+                    if (ShouldSkipType(type, settings, context.Settings.Exclusions, context.Settings.Inclusions))
                         continue;
 
                     foreach (var method in type.Methods)
@@ -245,7 +245,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         }
     }
 
-    private bool ShouldSkipType(TypeDef type, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    private bool ShouldSkipType(TypeDef type, SymbolRenamingSettings settings, ExclusionRules exclusions, InclusionRules inclusions)
     {
         if (type.Namespace == "Obfy.Core.Models")
             return true;
@@ -265,6 +265,12 @@ public class SymbolRenamingObfuscator : IObfuscator
             return true;
 
         if (ObfuscatorHelpers.IsComVisibleTrue(type))
+            return true;
+
+        if (ObfuscationAttributeRules.IsExcluded(type, ObfuscationFeature.Renaming))
+            return true;
+
+        if (!ObfuscationAttributeRules.MatchesInclusions(type, null, inclusions))
             return true;
 
         return false;
@@ -305,7 +311,8 @@ public class SymbolRenamingObfuscator : IObfuscator
             return false;
 
         if (ObfuscatorHelpers.HasExcludedAttribute(method, exclusions) ||
-            ObfuscatorHelpers.IsComVisibleTrue(method))
+            ObfuscatorHelpers.IsComVisibleTrue(method) ||
+            ObfuscationAttributeRules.IsExcluded(method, ObfuscationFeature.Renaming))
             return false;
 
         if (method.HasOverrides)

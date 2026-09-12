@@ -63,7 +63,7 @@ public class StringEncryptionObfuscator : IObfuscator
             // Process all methods
             foreach (var type in module.GetTypes())
             {
-                if (ObfuscatorHelpers.IsRuntimeOrExcluded(type, context.Settings.Exclusions))
+                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.Strings))
                     continue;
 
                 foreach (var method in type.Methods)
@@ -71,7 +71,7 @@ public class StringEncryptionObfuscator : IObfuscator
                     if (!method.HasBody)
                         continue;
 
-                    if (ObfuscatorHelpers.MethodMatchesExclusion(method, context.Settings.Exclusions))
+                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.Strings))
                         continue;
 
                     var body = method.Body;

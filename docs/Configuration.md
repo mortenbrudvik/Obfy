@@ -16,6 +16,7 @@ Complete JSON configuration schema for Obfy.
   "protection": { ... },
   "metadata": { ... },
   "assemblyMerge": { ... },
+  "inclusions": { ... },
   "exclusions": { ... },
   "postBuildEnabled": false
 }

@@ -68,7 +68,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
             // Process all methods
             foreach (var type in module.GetTypes())
             {
-                if (IsExcluded(type, context.Settings.Exclusions))
+                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.Constants))
                     continue;
 
                 foreach (var method in type.Methods)
@@ -76,7 +76,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
                     if (!method.HasBody)
                         continue;
 
-                    if (ObfuscatorHelpers.MethodMatchesExclusion(method, context.Settings.Exclusions))
+                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.Constants))
                         continue;
 
                     var body = method.Body;

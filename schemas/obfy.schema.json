@@ -162,6 +162,16 @@
         }
       }
     },
+    "inclusions": {
+      "type": "object",
+      "description": "Optional allow-list. When any pattern is set, only matching items are obfuscated.",
+      "additionalProperties": true,
+      "properties": {
+        "namespaces": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "types": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "methods": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    },
     "exclusions": {
       "type": "object",
       "description": "Exclusion rules (types, methods, namespaces to skip).",

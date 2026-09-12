@@ -2,6 +2,25 @@
 
 Exclusion rules, best practices, and troubleshooting for Obfy.
 
+## `[Obfuscation]` attribute
+
+Obfy honors `System.Reflection.ObfuscationAttribute` on types and members:
+
+```csharp
+[Obfuscation(Exclude = true)]
+public class License { }
+
+[Obfuscation(Exclude = true, Feature = "renaming")]
+public class Dto { }
+
+[Obfuscation(Exclude = true, Feature = "strings")]
+public string GetSecret() => "plain";
+```
+
+Supported `Feature` values: `all` (default), `renaming`, `controlflow`, `strings`, `constants`. Unknown features are ignored. Type-level `ApplyToMembers` (default true) applies the directive to members.
+
+Optional allow-list (`inclusions`) in `obfy.json`: when any pattern is set, only matching namespaces/types/methods are obfuscated (exclusions still apply).
+
 ## Exclusion Rules
 
 Exclusions prevent specific code from being obfuscated.

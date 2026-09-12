@@ -59,6 +59,12 @@ public class ObfySettings
     public ExclusionRules Exclusions { get; init; } = new();
 
     /// <summary>
+    /// Optional allow-list. When any pattern is set, only matching types/methods are obfuscated
+    /// (exclusions still apply).
+    /// </summary>
+    public InclusionRules Inclusions { get; init; } = new();
+
+    /// <summary>
     /// Whether post-build obfuscation is enabled (used by VS extension).
     /// </summary>
     public bool PostBuildEnabled { get; set; } = false;
@@ -519,6 +525,20 @@ public class ExclusionRules
         "XmlElementAttribute",
         "XmlAttributeAttribute"
     };
+}
+
+/// <summary>
+/// Optional allow-list. Empty lists mean "no allow-list" (everything is a candidate).
+/// </summary>
+public class InclusionRules
+{
+    public List<string> Namespaces { get; set; } = new();
+
+    public List<string> Types { get; set; } = new();
+
+    public List<string> Methods { get; set; } = new();
+
+    public bool HasAny => Namespaces.Count > 0 || Types.Count > 0 || Methods.Count > 0;
 }
 
 /// <summary>

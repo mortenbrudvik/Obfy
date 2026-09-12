@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- MSIX packaging for Microsoft Store / sideload (`build/build-msix.ps1`)
 - Desktop UI snackbars for save/load/complete/fail, keyboard shortcuts, and an Open output folder action
 - Settings panel controls for anti-decompiler, assembly merge, exclusions, and tamper-check sites
 - File-list status, size, source vs assembly icons, and error text after a run

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json",
+  "level": "custom",
+  "runtimeProfile": "BlazorWasm",
+  "stringEncryption": { "enabled": true },
+  "symbolRenaming": { "enabled": true, "preservePublicApi": false },
+  "controlFlow": { "enabled": true, "intensity": 30 },
+  "protection": {
+    "antiDebug": false,
+    "antiDump": false,
+    "methodEncryption": false,
+    "referenceProxy": true
+  }
+}

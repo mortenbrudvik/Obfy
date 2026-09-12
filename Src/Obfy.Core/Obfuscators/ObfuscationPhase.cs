@@ -11,6 +11,9 @@ public enum ObfuscationPhase
     /// Encrypt string literals. Runs first so later control-flow rewrites see decrypt calls, and
     /// injected helper types exist before renaming/metadata.
     /// </summary>
+    /// <summary>Embed referenced DLLs as resources and hook AssemblyResolve.</summary>
+    DependencyEmbedding = 8,
+
     StringEncryption = 10,
 
     /// <summary>Encrypt numeric constants.</summary>

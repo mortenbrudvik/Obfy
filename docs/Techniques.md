@@ -469,9 +469,9 @@ Enabled in the Aggressive preset.
 
 ### Reference Proxy
 
-Replaces in-module `call`/`callvirt` targets with small static proxy methods so call sites no longer name the original method. Framework methods are left alone. Assembly-visible runtime helper entry points (string/constant decrypt, anti-debug `Check`, and similar) are proxied from user code; private helper internals stay as direct calls because a trampoline in another type cannot invoke them.
+Replaces in-module `call`/`callvirt` targets with small static proxy methods so call sites no longer name the original method. Framework methods are left alone unless `protection.proxyExternalCalls` is true (opt-in; skips compiler/interop/pointer signatures). Assembly-visible runtime helper entry points (string/constant decrypt, anti-debug `Check`, and similar) are proxied from user code; private helper internals stay as direct calls because a trampoline in another type cannot invoke them.
 
-Enabled in the Aggressive preset.
+Enabled in the Aggressive preset (`proxyExternalCalls` stays off).
 
 ---
 

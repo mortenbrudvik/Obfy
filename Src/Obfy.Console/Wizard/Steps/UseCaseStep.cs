@@ -25,6 +25,8 @@ public class UseCaseStep : WizardStep
                     "Console Application",
                     "Class Library / NuGet Package",
                     "Web Application (ASP.NET)",
+                    "Blazor WebAssembly",
+                    "MAUI / Mobile",
                     "Game (Unity)",
                     "Other"
                 ]));

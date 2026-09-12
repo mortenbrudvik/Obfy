@@ -41,6 +41,7 @@ obfy <input>... [options]
 | `--anti-decompiler` | | Enable anti-decompiler protection | Off |
 | `--anti-dump` | | Enable anti-dump protection | Off |
 | `--reference-proxy` | | Enable reference proxy | Off |
+| `--proxy-external` | | Also proxy calls into other assemblies | Off |
 | `--encrypt-methods` | | Encrypt method IL in the PE image (Windows) | Off |
 | `--no-string-encryption` | | Disable string encryption | Off |
 | `--no-symbol-renaming` | | Disable symbol renaming | Off |

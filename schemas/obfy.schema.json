@@ -77,6 +77,7 @@
         "antiDebug": { "type": "boolean", "default": false },
         "antiDump": { "type": "boolean", "default": false },
         "referenceProxy": { "type": "boolean", "default": false },
+        "proxyExternalCalls": { "type": "boolean", "default": false },
         "methodEncryption": { "type": "boolean", "default": false },
         "antiTamper": {
           "type": "object",
@@ -211,6 +212,16 @@
         }
       }
     },
+    "dependencyEmbedding": {
+      "type": "object",
+      "description": "Embed referenced DLLs as resources and load them via AssemblyResolve.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "includePatterns": { "type": "array", "items": { "type": "string" }, "default": ["*.dll"] },
+        "excludePatterns": { "type": "array", "items": { "type": "string" }, "default": ["*.resources.dll"] }
+      }
+    },
     "signing": {
       "type": "object",
       "description": "Re-sign the output with a strong-name key after obfuscation.",
@@ -227,7 +238,7 @@
     "runtimeProfile": {
       "type": "string",
       "description": "Target runtime. NativeAot and UnityIl2Cpp disable method encryption and anti-dump.",
-      "enum": ["Default", "NativeAot", "UnityIl2Cpp"],
+      "enum": ["Default", "NativeAot", "UnityIl2Cpp", "BlazorWasm"],
       "default": "Default"
     },
     "postBuildEnabled": {

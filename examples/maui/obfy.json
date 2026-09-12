@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json",
+  "level": "standard",
+  "symbolRenaming": {
+    "enabled": true,
+    "preserveXaml": true,
+    "preservePublicApi": false
+  },
+  "stringEncryption": { "enabled": true },
+  "exclusions": {
+    "namespaces": ["Microsoft.Maui.*", "Microsoft.Extensions.*"]
+  }
+}

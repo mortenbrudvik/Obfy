@@ -55,6 +55,11 @@ public class ObfySettings
     public AssemblyMergeSettings AssemblyMerge { get; init; } = new();
 
     /// <summary>
+    /// Embed referenced assemblies as resources and load them via AssemblyResolve.
+    /// </summary>
+    public DependencyEmbeddingSettings DependencyEmbedding { get; init; } = new();
+
+    /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
     public ExclusionRules Exclusions { get; init; } = new();
@@ -451,6 +456,12 @@ public class ProtectionSettings
     public bool ReferenceProxy { get; set; } = false;
 
     /// <summary>
+    /// When reference proxy is on, also proxy selected calls into other assemblies (corlib, frameworks).
+    /// Off by default; in-module calls are still proxied.
+    /// </summary>
+    public bool ProxyExternalCalls { get; set; } = false;
+
+    /// <summary>
     /// Whether to XOR-encrypt method IL in the PE and decrypt it at module load (Windows).
     /// </summary>
     public bool MethodEncryption { get; set; } = false;
@@ -591,7 +602,8 @@ public enum RuntimeProfile
 {
     Default,
     NativeAot,
-    UnityIl2Cpp
+    UnityIl2Cpp,
+    BlazorWasm
 }
 
 /// <summary>
@@ -609,6 +621,18 @@ public class SigningSettings
     /// unused for .snk. Empty PFX passwords are not supported.
     /// </summary>
     public string? PasswordEnvironmentVariable { get; set; }
+}
+
+/// <summary>
+/// Embed referenced assemblies as resources loaded via AssemblyResolve.
+/// </summary>
+public class DependencyEmbeddingSettings
+{
+    public bool Enabled { get; set; }
+
+    public List<string> IncludePatterns { get; set; } = new() { "*.dll" };
+
+    public List<string> ExcludePatterns { get; set; } = new() { "*.resources.dll" };
 }
 
 /// <summary>
@@ -637,7 +661,7 @@ public class ResourceEncryptionSettings
     /// Excluded patterns take precedence over include patterns.
     /// *.resources is excluded by default so ResourceManager satellite files keep working.
     /// </summary>
-    public List<string> ExcludePatterns { get; set; } = new() { "*.resources" };
+    public List<string> ExcludePatterns { get; set; } = new() { "*.resources", "Obfy.Embedded.*" };
 }
 
 /// <summary>

@@ -1,0 +1,44 @@
+{
+  "name": "obfy",
+  "displayName": "Obfy",
+  "description": "Obfuscate .NET assemblies with Obfy from VS Code: JSON schema, tasks, and a problem matcher.",
+  "version": "0.1.0",
+  "publisher": "obfy",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onTaskType:obfy"],
+  "contributes": {
+    "jsonValidation": [
+      {
+        "fileMatch": ["obfy.json", "*.obfy.json"],
+        "url": "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "obfy",
+        "required": ["input"],
+        "properties": {
+          "input": { "type": "string", "description": "Assembly or source to obfuscate" },
+          "config": { "type": "string", "description": "Path to obfy.json", "default": "obfy.json" },
+          "output": { "type": "string", "description": "Output path" }
+        }
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "obfy",
+        "owner": "obfy",
+        "pattern": {
+          "regexp": "^(error|warning):\\s+(.*)$",
+          "severity": 1,
+          "message": 2
+        }
+      }
+    ]
+  },
+  "scripts": {},
+  "obfyTask": {
+    "command": "obfy ${input} -c ${config} -o ${output}"
+  }
+}

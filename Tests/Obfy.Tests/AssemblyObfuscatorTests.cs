@@ -2654,7 +2654,7 @@ public class AssemblyObfuscatorTests
 
         // Assert
         result.Success.ShouldBeTrue();
-        module.Types.Count.ShouldBe(initialTypeCount + 3);
+        module.Types.Count.ShouldBe(initialTypeCount + 5); // 3 junk + ConfusedBy + Dotfuscator
     }
 
     [Fact]
@@ -2771,7 +2771,7 @@ public class AssemblyObfuscatorTests
 
         var settings = new ObfySettings
         {
-            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = false, AddSuppressIldasmAttribute = false } }
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = false, AddSuppressIldasmAttribute = false, AddDecoyAttributes = false } }
         };
         var context = PipelineContext.ForAssembly(module, settings);
 
@@ -2807,8 +2807,8 @@ public class AssemblyObfuscatorTests
 
         // Assert
         result.Success.ShouldBeTrue();
-        result.Statistics.ProtectionsApplied.ShouldBe(10);
-        module.Types.Count.ShouldBe(initialTypeCount + 10);
+        result.Statistics.ProtectionsApplied.ShouldBe(12);
+        module.Types.Count.ShouldBe(initialTypeCount + 12);
     }
 
     [Fact]
@@ -2832,7 +2832,7 @@ public class AssemblyObfuscatorTests
         // Assert
         result.Success.ShouldBeTrue();
         // 5 junk types + 1 for SuppressIldasm
-        result.Statistics.ProtectionsApplied.ShouldBe(6);
+        result.Statistics.ProtectionsApplied.ShouldBe(8);
     }
 
     #endregion
@@ -3558,6 +3558,11 @@ public class AssemblyObfuscatorTests
         var writeCount = wipe.Body.Instructions.Count(i =>
             i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "WriteInt32");
         writeCount.ShouldBeGreaterThan(1);
+        var dump = module.Types.First(t => t.Name == "<AntiDump>");
+        dump.FindMethod("NeutralizeDumpers").ShouldNotBeNull();
+        dump.FindMethod("GetProcAddress").ShouldNotBeNull();
+        dump.FindMethod("Wipe")!.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "NeutralizeDumpers").ShouldBeTrue();
     }
 
     [Fact]
@@ -3620,6 +3625,60 @@ public class AssemblyObfuscatorTests
         var anti = module.Types.First(t => t.Name == "<AntiDebug>");
         anti.FindMethod("Check").ShouldNotBeNull();
         anti.FindMethod("IsDebuggerPresent").ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task AntiDebug_NativeAot_OmitsKernel32PInvoke()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "App");
+        var entry = CreateTestMethod(type, "Main", isPublic: true);
+        module.EntryPoint = entry;
+
+        var obfuscator = new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Protection = { AntiDebug = true },
+            RuntimeProfile = RuntimeProfile.NativeAot
+        });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var anti = module.Types.First(t => t.Name == "<AntiDebug>");
+        anti.FindMethod("Check").ShouldNotBeNull();
+        anti.FindMethod("IsDebuggerPresent").ShouldBeNull();
+        anti.Methods.ShouldNotContain(m => m.IsPinvokeImpl);
+    }
+
+    [Fact]
+    public async Task Watermark_EmbedsIdOnAssembly()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new WatermarkObfuscator(new Mock<ILogger<WatermarkObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Watermark = { Enabled = true, Id = "customer-42" }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        module.Types.ShouldContain(t => t.Name == "WatermarkAttribute");
+        var attr = module.Assembly.CustomAttributes.First(a => a.AttributeType.Name == "WatermarkAttribute");
+        attr.ConstructorArguments[0].Value.ShouldBe("customer-42");
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_InjectsDecoyObfuscatorAttributes()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new AntiDecompilerObfuscator(new Mock<ILogger<AntiDecompilerObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = false, AddSuppressIldasmAttribute = false } }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        module.Types.ShouldContain(t => t.Name == "ConfusedByAttribute");
+        module.Types.ShouldContain(t => t.Name == "DotfuscatorAttribute");
+        module.Assembly.CustomAttributes.ShouldContain(a => a.AttributeType.Name == "ConfusedByAttribute");
     }
 
     [Fact]

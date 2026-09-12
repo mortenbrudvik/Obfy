@@ -31,6 +31,9 @@ public enum ObfuscationPhase
     /// <summary>Inject anti-decompiler junk (before renaming).</summary>
     AntiDecompiler = 20,
 
+    /// <summary>Embed a watermark attribute.</summary>
+    Watermark = 21,
+
     /// <summary>Inject anti-tamper verification (before renaming).</summary>
     AntiTamper = 22,
 

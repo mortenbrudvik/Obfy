@@ -60,6 +60,11 @@ public class ObfySettings
     public DependencyEmbeddingSettings DependencyEmbedding { get; init; } = new();
 
     /// <summary>
+    /// Embed a build/customer identifier in the output assembly.
+    /// </summary>
+    public WatermarkSettings Watermark { get; init; } = new();
+
+    /// <summary>
     /// Exclusion rules (types, methods, namespaces to skip).
     /// </summary>
     public ExclusionRules Exclusions { get; init; } = new();
@@ -509,6 +514,11 @@ public class AntiDecompilerSettings
     public bool AddSuppressIldasmAttribute { get; set; } = true;
 
     /// <summary>
+    /// Inject decoy ConfuserEx/Dotfuscator attributes so de4dot-class tools mis-identify the protector.
+    /// </summary>
+    public bool AddDecoyAttributes { get; set; } = true;
+
+    /// <summary>
     /// Number of junk types to inject.
     /// </summary>
     [Range(1, 50)]
@@ -633,6 +643,17 @@ public class DependencyEmbeddingSettings
     public List<string> IncludePatterns { get; set; } = new() { "*.dll" };
 
     public List<string> ExcludePatterns { get; set; } = new() { "*.resources.dll" };
+}
+
+/// <summary>
+/// Embed a customer or build identifier that survives renaming.
+/// </summary>
+public class WatermarkSettings
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Identifier written into a custom assembly attribute.</summary>
+    public string Id { get; set; } = "";
 }
 
 /// <summary>

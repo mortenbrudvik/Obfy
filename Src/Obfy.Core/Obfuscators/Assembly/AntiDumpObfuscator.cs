@@ -67,7 +67,18 @@ public class AntiDumpObfuscator : IObfuscator
 
         var virtualProtect = CreateVirtualProtect(module);
         typeDef.Methods.Add(virtualProtect);
-        typeDef.Methods.Add(CreateWipeMethod(module, typeDef, virtualProtect));
+        var getModuleHandle = CreateKernel32PInvoke(module, "GetModuleHandleW",
+            MethodSig.CreateStatic(module.CorLibTypes.IntPtr, module.CorLibTypes.String));
+        var loadLibrary = CreateKernel32PInvoke(module, "LoadLibraryW",
+            MethodSig.CreateStatic(module.CorLibTypes.IntPtr, module.CorLibTypes.String));
+        var getProc = CreateKernel32PInvoke(module, "GetProcAddress",
+            MethodSig.CreateStatic(module.CorLibTypes.IntPtr, module.CorLibTypes.IntPtr, module.CorLibTypes.String));
+        typeDef.Methods.Add(getModuleHandle);
+        typeDef.Methods.Add(loadLibrary);
+        typeDef.Methods.Add(getProc);
+        var neutralize = CreateNeutralizeDumpers(module, virtualProtect, getModuleHandle, loadLibrary, getProc);
+        typeDef.Methods.Add(neutralize);
+        typeDef.Methods.Add(CreateWipeMethod(module, typeDef, virtualProtect, neutralize));
         module.Types.Add(typeDef);
         return typeDef;
     }
@@ -94,7 +105,89 @@ public class AntiDumpObfuscator : IObfuscator
         return method;
     }
 
-    private static MethodDef CreateWipeMethod(ModuleDef module, TypeDef declaringType, MethodDef virtualProtect)
+    private static MethodDef CreateKernel32PInvoke(ModuleDef module, string name, MethodSig sig)
+    {
+        return new MethodDefUser(
+            name,
+            sig,
+            MethodImplAttributes.PreserveSig,
+            MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.PinvokeImpl)
+        {
+            ImplMap = new ImplMapUser(
+                new ModuleRefUser(module, "kernel32"),
+                name,
+                PInvokeAttributes.SupportsLastError | PInvokeAttributes.CallConvWinapi | PInvokeAttributes.NoMangle)
+        };
+    }
+
+    private static MethodDef CreateNeutralizeDumpers(
+        ModuleDef module,
+        MethodDef virtualProtect,
+        MethodDef getModuleHandle,
+        MethodDef loadLibrary,
+        MethodDef getProcAddress)
+    {
+        var method = new MethodDefUser(
+            "NeutralizeDumpers",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Private | MethodAttributes.Static);
+
+        var body = new CilBody { InitLocals = true };
+        method.Body = body;
+        var moduleLocal = new Local(module.CorLibTypes.IntPtr);
+        var procLocal = new Local(module.CorLibTypes.IntPtr);
+        var oldProtect = new Local(module.CorLibTypes.UInt32);
+        body.Variables.Add(moduleLocal);
+        body.Variables.Add(procLocal);
+        body.Variables.Add(oldProtect);
+
+        var marshalType = new TypeRefUser(module, "System.Runtime.InteropServices", "Marshal", module.CorLibTypes.AssemblyRef);
+        var writeByte = new MemberRefUser(module, "WriteByte",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.IntPtr, module.CorLibTypes.Byte),
+            marshalType);
+
+        var ret = Instruction.Create(OpCodes.Ret);
+        var haveModule = Instruction.Create(OpCodes.Stloc, moduleLocal);
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "dbghelp.dll"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getModuleHandle));
+        body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, haveModule));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "dbghelp.dll"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, loadLibrary));
+        body.Instructions.Add(haveModule);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, moduleLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, ret));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, moduleLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "MiniDumpWriteDump"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getProcAddress));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, procLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, procLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, ret));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, procLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(1));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x40));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, oldProtect));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, virtualProtect));
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, procLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(0xC3));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, writeByte));
+        body.Instructions.Add(ret);
+        body.KeepOldMaxStack = true;
+        body.MaxStack = 8;
+        body.UpdateInstructionOffsets();
+        return method;
+    }
+
+    private static MethodDef CreateWipeMethod(ModuleDef module, TypeDef declaringType, MethodDef virtualProtect, MethodDef neutralize)
     {
         var method = new MethodDefUser(
             "Wipe",
@@ -199,6 +292,7 @@ public class AntiDumpObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Add));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, neutralize));
         body.Instructions.Add(leaveEnd);
 
         body.Instructions.Add(catchPop);

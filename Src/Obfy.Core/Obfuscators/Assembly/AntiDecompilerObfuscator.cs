@@ -68,6 +68,12 @@ public class AntiDecompilerObfuscator : IObfuscator
                 _logger.LogDebug("Injected {Count} junk types", junkCount);
             }
 
+            if (settings.AddDecoyAttributes)
+            {
+                stats.ProtectionsApplied += InjectDecoyAttributes(module);
+                _logger.LogDebug("Injected decoy obfuscator attributes");
+            }
+
             _logger.LogInformation("Applied {Count} anti-decompiler protections", stats.ProtectionsApplied);
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
@@ -111,6 +117,48 @@ public class AntiDecompilerObfuscator : IObfuscator
         module.Assembly.CustomAttributes.Add(attr);
 
         return true;
+    }
+
+    private int InjectDecoyAttributes(ModuleDef module)
+    {
+        var assembly = module.Assembly;
+        if (assembly == null)
+            return 0;
+
+        var count = 0;
+        count += AddNamedDecoy(module, assembly, "ConfusedByAttribute", "ConfuserEx v1.0.0");
+        count += AddNamedDecoy(module, assembly, "DotfuscatorAttribute", "v5.0");
+        return count;
+    }
+
+    private static int AddNamedDecoy(ModuleDef module, AssemblyDef assembly, string typeName, string value)
+    {
+        if (assembly.CustomAttributes.Any(a => a.TypeFullName.EndsWith("." + typeName, StringComparison.Ordinal) ||
+                                               a.AttributeType.Name == typeName))
+            return 0;
+
+        var attrType = new TypeDefUser("", typeName,
+            new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))
+        {
+            Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit
+        };
+        var ctor = new MethodDefUser(
+            ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.String),
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
+        ctor.Body = new CilBody();
+        ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call,
+            new MemberRefUser(module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void),
+                new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))));
+        ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        attrType.Methods.Add(ctor);
+        module.Types.Add(attrType);
+
+        var attr = new CustomAttribute(ctor);
+        attr.ConstructorArguments.Add(new CAArgument(module.CorLibTypes.String, value));
+        assembly.CustomAttributes.Add(attr);
+        return 1;
     }
 
     /// <summary>

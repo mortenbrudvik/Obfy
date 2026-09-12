@@ -95,6 +95,7 @@
             "enabled": { "type": "boolean", "default": false },
             "injectJunkTypes": { "type": "boolean", "default": true },
             "addSuppressIldasmAttribute": { "type": "boolean", "default": true },
+            "addDecoyAttributes": { "type": "boolean", "default": true },
             "junkTypeCount": { "type": "integer", "minimum": 1, "maximum": 50, "default": 5 },
             "junkMethodsPerType": { "type": "integer", "minimum": 1, "maximum": 20, "default": 3 }
           }
@@ -210,6 +211,15 @@
             "XmlAttributeAttribute"
           ]
         }
+      }
+    },
+    "watermark": {
+      "type": "object",
+      "description": "Embed a customer/build identifier as an assembly attribute.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "id": { "type": "string" }
       }
     },
     "dependencyEmbedding": {

@@ -84,6 +84,10 @@ public class ObfuscationModule : Module
             .As<IObfuscator>()
             .SingleInstance();
 
+        builder.RegisterType<WatermarkObfuscator>()
+            .As<IObfuscator>()
+            .SingleInstance();
+
         // Register source code obfuscators
         builder.RegisterType<SourceStringEncryptor>()
             .As<IObfuscator>()

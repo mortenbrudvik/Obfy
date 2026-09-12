@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependency embedding (`dependencyEmbedding.enabled`) loads referenced DLLs from resources via AssemblyResolve
 - Unity / Blazor / MAUI recipes and wizard presets; `runtimeProfile: BlazorWasm`
 - VS Code extension stub (`Src/Obfy.VSCode`) with `obfy.json` schema, task type, and problem matcher
+- Watermark attribute (`watermark.id`)
+- Anti-de4dot decoy `ConfusedBy` / `Dotfuscator` attributes
+- Anti-dump patches `MiniDumpWriteDump` to `ret`
+- NativeAOT/Blazor anti-debug keeps managed checks only (no kernel32 P/Invoke)
 
 ### Changed
 - Strong-name signing refreshes the signature blob in place after method-IL XOR; anti-tamper hashing skips the signature so Aggressive + `signing.keyFile` keeps both protections

@@ -50,7 +50,7 @@ public class AntiDebugObfuscator : IObfuscator
         {
             if (settings.AntiDebug)
             {
-                var emitKernel32Checks = !RuntimeProfileGating.BlocksPeProtections(context.Settings.RuntimeProfile);
+                var emitKernel32Checks = RuntimeProfileGating.AllowsKernel32PInvoke(context.Settings.RuntimeProfile);
                 if (!emitKernel32Checks)
                 {
                     var warning =
@@ -58,6 +58,14 @@ public class AntiDebugObfuscator : IObfuscator
                         "managed Debugger and TickCount checks still run.";
                     context.Warnings.Add(warning);
                     _logger.LogWarning("{Warning}", warning);
+                }
+                else
+                {
+                    const string windowsWarning =
+                        "Anti-debug kernel32 checks (IsDebuggerPresent / CheckRemoteDebuggerPresent) are Windows-only. " +
+                        "On non-Windows they are swallowed; managed Debugger and TickCount checks still run.";
+                    context.Warnings.Add(windowsWarning);
+                    _logger.LogWarning("{Warning}", windowsWarning);
                 }
 
                 var antiDebugType = InjectAntiDebugType(module, emitKernel32Checks);
@@ -105,13 +113,13 @@ public class AntiDebugObfuscator : IObfuscator
 
     private TypeDef InjectAntiDebugType(ModuleDef module, bool emitKernel32Checks)
     {
-        // Create internal static class for anti-debug
         var typeDef = new TypeDefUser(
             "Obfy.Runtime",
             "<AntiDebug>",
-            module.CorLibTypes.Object.TypeDefOrRef);
-
-        typeDef.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract;
+            module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract
+        };
 
         MethodDef? isDebuggerPresent = null;
         MethodDef? getCurrentProcess = null;

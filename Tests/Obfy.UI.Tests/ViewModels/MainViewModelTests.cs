@@ -87,6 +87,20 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public void ObfuscateCommand_CannotExecute_WhenWatermarkEnabledWithoutId()
+    {
+        AddTestFile();
+        _viewModel.ObfuscateCommand.CanExecute(null).ShouldBeTrue();
+
+        _settings.WatermarkEnabled = true;
+        _settings.WatermarkId = "";
+        _viewModel.ObfuscateCommand.CanExecute(null).ShouldBeFalse();
+
+        _settings.WatermarkId = "customer-42";
+        _viewModel.ObfuscateCommand.CanExecute(null).ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task ObfuscateCommand_CannotExecute_WhenObfuscating()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

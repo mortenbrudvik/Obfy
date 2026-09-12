@@ -19,6 +19,7 @@ public interface IObfuscator
     /// Recommended ranges:
     /// - 8: Resource injection (dependency embedding)
     /// - 10-20: Encoding and runtime helper injection
+    /// - 21-25: Watermark, anti-tamper, method IL encryption
     /// - 30-40: Control flow and reference proxies
     /// - 50-60: Symbol renaming
     /// - 90-100: Metadata cleanup (last)

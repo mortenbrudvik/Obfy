@@ -12,9 +12,10 @@ Obfy applies techniques in a specific order (priority):
 | 10 | String Encryption | Encrypt string literals |
 | 11 | Constant Encryption | Encrypt numeric constants |
 | 15 | Resource Encryption | Encrypt embedded resources |
-| 18 | Anti-Debug | Inject debugger detection |
-| 19 | Anti-Dump | Wipe PE headers in memory |
-| 20 | Anti-Decompiler | Inject junk types and methods |
+| 18 | Anti-Debug | Inject debugger detection (kernel32 omitted on NativeAOT / IL2CPP / Blazor WASM) |
+| 19 | Anti-Dump | Wipe PE headers; in-process MiniDumpWriteDump `0xC3` on x86/x64 |
+| 20 | Anti-Decompiler | Junk types, SuppressIldasm, decoy ConfusedBy/Dotfuscator attributes |
+| 21 | Watermark | Assembly-level pinned WatermarkAttribute |
 | 22 | Anti-Tamper | Verify assembly integrity |
 | 25 | Method Encryption | XOR method IL in the PE (Windows) |
 | 30 | Control Flow | Flatten control flow |
@@ -463,7 +464,7 @@ Failure paths inside `Check` cycle through `Environment.Exit(1)`, `Environment.F
 
 ### Anti-Dump Protection
 
-Wipes in-memory PE header fields at module load so dumpers that reconstruct the image from the loaded module get a corrupted header. On Windows x86/x64 it also overwrites the first byte of `dbghelp!MiniDumpWriteDump` with `ret` (`0xC3`). Failures (missing `kernel32`/`dbghelp`, non-Windows, ARM64) are swallowed. Dumpers that use `dbgcore` or raw `ReadProcessMemory` are unaffected.
+Wipes in-memory PE header fields at module load so dumpers that reconstruct the image from the loaded module get a corrupted header. On Windows it also overwrites the first byte of **in-process** `dbghelp!MiniDumpWriteDump` with x86/x64 `ret` (`0xC3`) after an X86/X64 architecture check; ARM64 is skipped (there is no ARM64 encoding). `VirtualProtect` failure skips the write. Missing `kernel32`/`dbghelp` and non-Windows throws are swallowed so the app still starts. External dumpers (ProcDump, Task Manager, other processes' `MiniDumpWriteDump`), `dbgcore`, and raw `ReadProcessMemory` are unaffected.
 
 PE32 vs PE32+ data-directory layouts are selected from the optional-header magic. Enabled in the Aggressive preset. Not used on NativeAOT / Unity IL2CPP / Blazor WASM.
 
@@ -580,7 +581,7 @@ static int JunkMethod(int a, int b)
 
 Embeds a customer or build identifier as an assembly-level `Obfy.Runtime.WatermarkAttribute`. The type name is pinned against renaming. The id is stored as a constructor argument and a public `Id` field (plaintext metadata, not confidentiality).
 
-Requires `watermark.enabled` and a non-whitespace `watermark.id`. Not part of level presets. CLI: `--watermark-id`. Recover the id from the custom-attribute blob or the `Id` field.
+Requires `watermark.enabled` and a non-whitespace `watermark.id`. Not part of level presets. CLI: `--watermark-id` (enables watermarking and sets the trimmed id; whitespace-only is an error). Recover the id from the custom-attribute blob or the `Id` field. Re-obfuscating with the same id is a no-op (warning); a different requested id replaces the constructor argument (warning).
 
 ---
 

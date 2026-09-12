@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Anti-dump MiniDumpWriteDump patch is skipped unless the process is X86/X64 (ARM64 is no longer written with `0xC3`)
+- Requested watermark/decoy skips are reported as warnings instead of silent success
+- `--watermark-id` with only whitespace is an error instead of a silent no-op
 - External reference proxy skips `constrained.` prefixes (foreach/`using` on structs) so the output stays verifiable
 - Resource encryption hard-skips `Obfy.Embedded.*` even if `excludePatterns` is overwritten
 - UI load/save/run preserves `dependencyEmbedding` instead of dropping it
@@ -41,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VS Code extension stub (`Src/Obfy.VSCode`) with `obfy.json` schema, task type, and problem matcher
 - Watermark (`watermark.enabled` + `watermark.id`; empty/whitespace `id` is rejected). Type name `WatermarkAttribute` is pinned against renaming; the id is a plaintext CA constructor argument and `Id` field
 - Decoy `ConfusedByAttribute` / `DotfuscatorAttribute` (`protection.antiDecompiler.addDecoyAttributes`, default true when anti-decompiler is on). Names are pinned against renaming. Name-based detector bait; does not block de4dot
-- Anti-dump also overwrites the first byte of `dbghelp!MiniDumpWriteDump` with x86/x64 `ret` (`0xC3`) in the current process (Windows; ARM64 is not patched)
+- Anti-dump also overwrites the first byte of in-process `dbghelp!MiniDumpWriteDump` with x86/x64 `ret` (`0xC3`) after an X86/X64 architecture check (Windows; ARM64 is skipped; `VirtualProtect` failure skips the write). External dumpers are unaffected.
 - NativeAOT / Unity IL2CPP / Blazor WASM anti-debug keeps managed checks only (no kernel32 P/Invoke) and emits a report warning
 - CLI `--watermark-id` and Settings panel watermark / decoy-attribute controls
 

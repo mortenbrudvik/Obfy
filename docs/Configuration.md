@@ -344,7 +344,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `antiDebug` | bool | `false` | Inject debugger detection checks |
-| `antiDump` | bool | `false` | Wipe PE headers in memory at load and patch `dbghelp!MiniDumpWriteDump` (Windows, x86/x64) |
+| `antiDump` | bool | `false` | Wipe PE headers in memory at load and in-process first-byte `0xC3` patch of `dbghelp!MiniDumpWriteDump` (Windows X86/X64; ARM64 skipped). External dumpers are unaffected. Gated off NativeAOT / IL2CPP / Blazor WASM. |
 | `referenceProxy` | bool | `false` | Hide in-module call targets behind proxy methods |
 | `proxyExternalCalls` | bool | `false` | Also proxy selected out-of-module calls. Ignored unless `referenceProxy` is true. |
 | `methodEncryption` | bool | `false` | XOR method IL in the PE (Windows) |
@@ -437,7 +437,7 @@ Empty lists mean no allow-list. When any list is non-empty, only matching namesp
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `enabled` | bool | `false` | Embed a customer/build identifier. Requires a non-whitespace `id`. |
-| `id` | string | `""` | Plaintext identifier stored as the `WatermarkAttribute` constructor argument and `Id` field. The type name is pinned against renaming. |
+| `id` | string | `""` | Plaintext identifier stored as the `WatermarkAttribute` constructor argument and `Id` field. Trimmed on validate. Do not put secrets in `id`. The type `Obfy.Runtime.WatermarkAttribute` is pinned against renaming. |
 
 Opt-in; not flipped by level presets. CLI: `--watermark-id`. Settings panel has a Watermark expander.
 

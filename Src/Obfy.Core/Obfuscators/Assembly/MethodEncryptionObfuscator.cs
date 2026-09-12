@@ -28,7 +28,7 @@ public class MethodEncryptionObfuscator : IObfuscator
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
 
     public bool IsEnabled(ObfySettings settings) =>
-        settings.Protection.MethodEncryption && !RuntimeProfileGating.BlocksPeProtections(settings.RuntimeProfile);
+        settings.Protection.MethodEncryption && RuntimeProfileGating.AllowsPeMutation(settings.RuntimeProfile);
 
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {

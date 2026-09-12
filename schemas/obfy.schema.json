@@ -74,8 +74,16 @@
       "description": "Runtime protection settings.",
       "additionalProperties": true,
       "properties": {
-        "antiDebug": { "type": "boolean", "default": false },
-        "antiDump": { "type": "boolean", "default": false },
+        "antiDebug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Inject debugger detection. NativeAot / UnityIl2Cpp / BlazorWasm omit kernel32 P/Invoke and keep managed Debugger/TickCount checks. Kernel32 checks are Windows-only."
+        },
+        "antiDump": {
+          "type": "boolean",
+          "default": false,
+          "description": "Wipe PE headers in memory at load and in-process first-byte 0xC3 patch of dbghelp!MiniDumpWriteDump (Windows X86/X64; ARM64 skipped). External dumpers are unaffected. Gated off NativeAot / UnityIl2Cpp / BlazorWasm."
+        },
         "referenceProxy": { "type": "boolean", "default": false },
         "proxyExternalCalls": {
           "type": "boolean",
@@ -227,7 +235,7 @@
       "description": "Embed a customer/build identifier as an assembly attribute. Requires enabled=true and a non-whitespace id.",
       "additionalProperties": true,
       "properties": {
-        "enabled": { "type": "boolean", "default": false, "description": "Must be true together with a non-empty id; enabled with a blank id fails validation." },
+        "enabled": { "type": "boolean", "default": false, "description": "Must be true together with a non-whitespace id; enabled with a blank id fails validation." },
         "id": { "type": "string", "description": "Plaintext identifier stored as the WatermarkAttribute constructor argument and Id field." }
       }
     },

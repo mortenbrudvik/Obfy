@@ -617,6 +617,61 @@ public class CommandParsingTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildSettings_WatermarkId_EnablesWatermarkAndSetsCustomLevel()
+    {
+        var settings = await Program.BuildSettingsAsync(
+            configFile: null,
+            level: "standard",
+            stringEncrypt: false,
+            controlFlow: false,
+            rename: false,
+            antiDebug: false,
+            stripMetadata: false,
+            encryptResources: false,
+            preservePublic: false,
+            watermarkId: "  customer-42  ");
+
+        settings.Watermark.Enabled.ShouldBeTrue();
+        settings.Watermark.Id.ShouldBe("customer-42");
+        settings.Level.ShouldBe(ObfuscationLevel.Custom);
+    }
+
+    [Fact]
+    public async Task BuildSettings_WhitespaceWatermarkId_Throws()
+    {
+        var ex = await Should.ThrowAsync<ArgumentException>(() => Program.BuildSettingsAsync(
+            configFile: null,
+            level: "standard",
+            stringEncrypt: false,
+            controlFlow: false,
+            rename: false,
+            antiDebug: false,
+            stripMetadata: false,
+            encryptResources: false,
+            preservePublic: false,
+            watermarkId: "  "));
+
+        ex.Message.ShouldContain("--watermark-id");
+    }
+
+    [Fact]
+    public async Task BuildSettings_NullWatermarkId_LeavesWatermarkOff()
+    {
+        var settings = await Program.BuildSettingsAsync(
+            configFile: null,
+            level: "standard",
+            stringEncrypt: false,
+            controlFlow: false,
+            rename: false,
+            antiDebug: false,
+            stripMetadata: false,
+            encryptResources: false,
+            preservePublic: false);
+
+        settings.Watermark.Enabled.ShouldBeFalse();
+    }
+
+    [Fact]
     public void Parse_MergeWithMultipleInputs_ParsesCorrectly()
     {
         // Arrange - create additional test files

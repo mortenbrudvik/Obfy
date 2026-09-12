@@ -29,7 +29,7 @@ public enum ObfuscationPhase
     /// <summary>Inject anti-debugging checks (before control flow/renaming so helpers are obfuscated).</summary>
     AntiDebug = 18,
 
-    /// <summary>Inject anti-dump PE-header wipe and dbghelp MiniDumpWriteDump patch (before control flow/renaming).</summary>
+    /// <summary>Inject anti-dump PE-header wipe and in-process MiniDumpWriteDump 0xC3 patch (before control flow/renaming).</summary>
     AntiDump = 19,
 
     /// <summary>

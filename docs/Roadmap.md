@@ -24,8 +24,9 @@ Assembly pipeline (priority order):
 | 11 | Constant encryption | Shipped |
 | 15 | Resource encryption | Shipped |
 | 18 | Anti-debug (`IsAttached`, `IsLogging`, `IsDebuggerPresent`) | Shipped |
-| 19 | Anti-dump (in-memory PE header wipe, Windows) | Shipped (unreleased) |
-| 20 | Anti-decompiler (junk types, `SuppressIldasm`) | Shipped |
+| 19 | Anti-dump (PE wipe + in-process MiniDump hook, Windows x86/x64) | Shipped (unreleased) |
+| 20 | Anti-decompiler (junk types, `SuppressIldasm`, decoy attributes) | Shipped |
+| 21 | Watermark (`WatermarkAttribute`) | Shipped |
 | 22 | Anti-tamper (whole-file SHA-256) | Shipped |
 | 25 | Method IL encryption (XOR in PE, decrypt at load) | Shipped (unreleased) |
 | 30 | Control flow (CFG flatten + opaque predicates) | Shipped |
@@ -70,9 +71,9 @@ Source mode is a subset: strings, renaming, control flow only.
 | PF-17 | Safer default exclusions (JSON/XML/WPF/COM) | P1 | Low | High | Planned |
 | PF-16 | NativeAOT / Unity protection gating | P1 | Low | Medium | Planned |
 | PF-15 | Optional external call proxies | P2 | Medium | Medium | Planned |
-| PF-06 | Watermarking | P2 | Low | Low | Backlog |
-| PF-18 | Anti-de4dot signatures | P2 | Low | Low | Backlog |
-| PF-19 | Dumper-hook anti-dump | P3 | High | Medium | Future |
+| PF-06 | Watermarking | P2 | Low | Low | ✅ Done |
+| PF-18 | Anti-de4dot signatures | P2 | Low | Low | ✅ Done (detector bait; does not block de4dot) |
+| PF-19 | Dumper-hook anti-dump | P3 | High | Medium | ✅ Partial (in-process MiniDumpWriteDump `0xC3` only) |
 | PF-08 | Code virtualization | P3 | Very High | High | Future |
 | PF-09 | Native code generation | P3 | Very High | Medium | Future |
 
@@ -221,9 +222,9 @@ Add an opt-in flag to proxy selected external calls. Default remains in-module o
 
 Re-sign with an SNK/PFX after obfuscation so strong-named libraries remain loadable. Config: path + optional password env var. Fail the run if signing is requested and fails.
 
-### PF-06 / PF-18: Watermarking and anti-de4dot (v2.0)
+### PF-06 / PF-18: Watermarking and anti-de4dot (v2.0) ✅
 
-Low protection value. Watermark embeds a build/customer id. Anti-de4dot adds decoy attributes. Cheap; do not prioritize over hardening.
+Shipped. Watermark embeds a plaintext build/customer id as pinned `Obfy.Runtime.WatermarkAttribute`. Anti-de4dot adds decoy `ConfusedByAttribute` / `DotfuscatorAttribute` names; this does not block de4dot.
 
 ### PF-08 / PF-09: Virtualization and native packer (v3.0+)
 
@@ -309,9 +310,9 @@ Already in the tree; not yet cut as a release:
 
 | Feature | Notes |
 |---------|--------|
-| PF-06 Watermarking | Build/customer id |
-| PF-18 Anti-de4dot | Decoy attributes |
-| PF-19 Dumper-hook anti-dump | Beyond PE wipe |
+| PF-06 Watermarking | ✅ Build/customer id (plaintext CA) |
+| PF-18 Anti-de4dot | ✅ Decoy attributes (does not block de4dot) |
+| PF-19 Dumper-hook anti-dump | ✅ Partial: in-process `MiniDumpWriteDump` `0xC3` only |
 | PS-04 NativeAOT (real) | After PF-16 gating, make remaining techniques AOT-safe |
 
 ### Future (v3.0+)

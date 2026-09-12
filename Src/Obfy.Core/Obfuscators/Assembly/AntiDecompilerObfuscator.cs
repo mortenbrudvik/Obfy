@@ -3,6 +3,7 @@ using dnlib.DotNet.Emit;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Obfuscators.Assembly;
 
@@ -13,8 +14,8 @@ namespace Obfy.Core.Obfuscators.Assembly;
 /// </summary>
 public class AntiDecompilerObfuscator : IObfuscator
 {
-    public const string ConfusedByAttributeName = "ConfusedByAttribute";
-    public const string DotfuscatorAttributeName = "DotfuscatorAttribute";
+    public const string ConfusedByAttributeName = ObfuscatorHelpers.PinnedAttributeNames.ConfusedBy;
+    public const string DotfuscatorAttributeName = ObfuscatorHelpers.PinnedAttributeNames.Dotfuscator;
 
     private readonly ILogger<AntiDecompilerObfuscator> _logger;
     private readonly Random _random = new();
@@ -51,6 +52,7 @@ public class AntiDecompilerObfuscator : IObfuscator
         var settings = context.Settings.Protection.AntiDecompiler;
         var stats = new ObfuscationStatistics();
 
+        cancellationToken.ThrowIfCancellationRequested();
         _logger.LogDebug("Starting anti-decompiler protection injection");
 
         try
@@ -68,7 +70,7 @@ public class AntiDecompilerObfuscator : IObfuscator
             // Inject junk types
             if (settings.InjectJunkTypes)
             {
-                var junkCount = InjectJunkTypes(module, settings);
+                var junkCount = InjectJunkTypes(module, settings, cancellationToken);
                 stats.ProtectionsApplied += junkCount;
                 _logger.LogDebug("Injected {Count} junk types", junkCount);
             }
@@ -79,6 +81,13 @@ public class AntiDecompilerObfuscator : IObfuscator
                 stats.ProtectionsApplied += decoys;
                 if (decoys > 0)
                     _logger.LogDebug("Injected decoy obfuscator attributes");
+                else
+                {
+                    const string warning =
+                        "Anti-decompiler: decoy ConfusedBy/Dotfuscator attributes were already present; none injected.";
+                    context.Warnings.Add(warning);
+                    _logger.LogWarning("{Warning}", warning);
+                }
             }
 
             _logger.LogInformation("Applied {Count} anti-decompiler protections", stats.ProtectionsApplied);
@@ -148,23 +157,34 @@ public class AntiDecompilerObfuscator : IObfuscator
                                                a.AttributeType.Name == typeName))
             return 0;
 
-        var attrType = new TypeDefUser("", typeName,
-            new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))
+        var attrType = module.Types.FirstOrDefault(t => t.Name == typeName && string.IsNullOrEmpty(t.Namespace));
+        MethodDef ctor;
+        if (attrType != null)
         {
-            Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit
-        };
-        var ctor = new MethodDefUser(
-            ".ctor",
-            MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.String),
-            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
-        ctor.Body = new CilBody();
-        ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
-        ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call,
-            new MemberRefUser(module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void),
-                new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))));
-        ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-        attrType.Methods.Add(ctor);
-        module.Types.Add(attrType);
+            ctor = attrType.FindMethod(".ctor");
+            if (ctor == null)
+                return 0;
+        }
+        else
+        {
+            attrType = new TypeDefUser("", typeName,
+                new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))
+            {
+                Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit
+            };
+            ctor = new MethodDefUser(
+                ".ctor",
+                MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.String),
+                MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
+            ctor.Body = new CilBody();
+            ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+            ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call,
+                new MemberRefUser(module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void),
+                    new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))));
+            ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+            attrType.Methods.Add(ctor);
+            module.Types.Add(attrType);
+        }
 
         var attr = new CustomAttribute(ctor);
         attr.ConstructorArguments.Add(new CAArgument(module.CorLibTypes.String, value));
@@ -175,12 +195,13 @@ public class AntiDecompilerObfuscator : IObfuscator
     /// <summary>
     /// Injects junk types with confusing methods to clutter decompiler output.
     /// </summary>
-    private int InjectJunkTypes(ModuleDef module, AntiDecompilerSettings settings)
+    private int InjectJunkTypes(ModuleDef module, AntiDecompilerSettings settings, CancellationToken cancellationToken)
     {
         var count = 0;
 
         for (int i = 0; i < settings.JunkTypeCount; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var junkType = CreateJunkType(module, i, settings.JunkMethodsPerType);
             module.Types.Add(junkType);
             count++;

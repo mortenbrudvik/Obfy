@@ -3,6 +3,7 @@ using System.Runtime.Loader;
 using System.Security.Cryptography;
 using Autofac;
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
@@ -701,6 +702,12 @@ public class EndToEndObfuscationTests
             loaded.Types.ShouldNotContain(t => t.Name == "<MethodCrypt>");
             loaded.Types.ShouldNotContain(t => t.Name == "<AntiDump>");
             loaded.Types.ShouldNotContain(t => t.Name == "<Embed>");
+            result.Warnings.ShouldContain(w => w.Contains("kernel32", StringComparison.OrdinalIgnoreCase));
+            var antiDebug = loaded.Types.FirstOrDefault(t => t.Methods.Any(m =>
+                m.HasBody && m.Body.Instructions.Any(i =>
+                    i.Operand is IMethod im && im.Name == "get_IsAttached")));
+            antiDebug.ShouldNotBeNull();
+            antiDebug!.Methods.ShouldNotContain(m => m.IsPinvokeImpl);
 
             LoadAndInvoke(output, "Lib", "Get").ShouldBe(9);
         }

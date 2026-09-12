@@ -4,19 +4,23 @@ using Obfy.Core.Pipeline;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// Disables PE-mutating protections on NativeAOT, Unity IL2CPP, and Blazor WASM:
-/// method IL encryption, anti-dump, and dependency embedding.
+/// Disables PE/kernel32 protections (method IL encryption, anti-dump) and AssemblyResolve
+/// embedding on NativeAOT, Unity IL2CPP, and Blazor WASM.
 /// Anti-debug stays enabled but omits kernel32 P/Invoke (see <c>AntiDebugObfuscator</c>).
 /// <see cref="Apply"/> mutates the working clone of <see cref="ObfySettings"/> (callers are
 /// cloned first by <c>ObfuscationService</c>) and records report warnings.
 /// </summary>
 public static class RuntimeProfileGating
 {
-    public static bool BlocksPeProtections(RuntimeProfile profile) =>
-        profile is RuntimeProfile.NativeAot or RuntimeProfile.UnityIl2Cpp or RuntimeProfile.BlazorWasm;
+    public static bool AllowsPeMutation(RuntimeProfile profile) =>
+        profile is RuntimeProfile.Default;
 
-    public static bool BlocksAssemblyResolve(RuntimeProfile profile) =>
-        profile is RuntimeProfile.NativeAot or RuntimeProfile.UnityIl2Cpp or RuntimeProfile.BlazorWasm;
+    public static bool AllowsKernel32PInvoke(RuntimeProfile profile) =>
+        profile is RuntimeProfile.Default;
+
+    public static bool BlocksPeProtections(RuntimeProfile profile) => !AllowsPeMutation(profile);
+
+    public static bool BlocksAssemblyResolve(RuntimeProfile profile) => !AllowsPeMutation(profile);
 
     public static string Describe(RuntimeProfile profile) => profile switch
     {
@@ -36,7 +40,7 @@ public static class RuntimeProfileGating
 
         var label = Describe(settings.RuntimeProfile);
 
-        if (BlocksPeProtections(settings.RuntimeProfile))
+        if (!AllowsPeMutation(settings.RuntimeProfile))
         {
             if (settings.Protection.MethodEncryption)
             {
@@ -49,7 +53,7 @@ public static class RuntimeProfileGating
             {
                 settings.Protection.AntiDump = false;
                 context.Warnings.Add(
-                    $"Anti-dump disabled for {label}: it wipes PE headers via kernel32 and is not safe on this runtime.");
+                    $"Anti-dump disabled for {label}: PE wipe and MiniDumpWriteDump patch via kernel32/dbghelp are not safe on this runtime.");
             }
         }
 

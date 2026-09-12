@@ -450,7 +450,8 @@ public enum NamingMode
 public class ProtectionSettings
 {
     /// <summary>
-    /// Whether to inject anti-debugging checks.
+    /// Whether to inject anti-debugging checks. Stays on for NativeAOT / Unity IL2CPP / Blazor WASM
+    /// but those profiles omit kernel32 P/Invoke (managed <c>Debugger</c> / TickCount only).
     /// </summary>
     public bool AntiDebug { get; set; } = false;
 
@@ -465,8 +466,9 @@ public class ProtectionSettings
     public AntiDecompilerSettings AntiDecompiler { get; set; } = new();
 
     /// <summary>
-    /// Whether to inject anti-dump protection (in-memory PE header wipe and
-    /// x86/x64 <c>dbghelp!MiniDumpWriteDump</c> patch on Windows). Gated off for
+    /// Whether to inject anti-dump protection (in-memory PE header wipe and in-process
+    /// first-byte <c>0xC3</c> patch of <c>dbghelp!MiniDumpWriteDump</c> on Windows X86/X64;
+    /// ARM64 is skipped). External dumpers are unaffected. Gated off for
     /// NativeAOT / Unity IL2CPP / Blazor WASM.
     /// </summary>
     public bool AntiDump { get; set; } = false;
@@ -626,13 +628,21 @@ public class InclusionRules
 
 /// <summary>
 /// Runtime the obfuscated assembly will run on. NativeAOT, Unity IL2CPP, and Blazor WASM
-/// disable method encryption, anti-dump, and AssemblyResolve embedding.
+/// disable method encryption, anti-dump, and AssemblyResolve embedding; anti-debug stays
+/// on without kernel32 P/Invoke.
 /// </summary>
 public enum RuntimeProfile
 {
+    [System.ComponentModel.Description("Default")]
     Default,
+
+    [System.ComponentModel.Description("NativeAOT")]
     NativeAot,
+
+    [System.ComponentModel.Description("Unity IL2CPP")]
     UnityIl2Cpp,
+
+    [System.ComponentModel.Description("Blazor WebAssembly")]
     BlazorWasm
 }
 
@@ -669,14 +679,27 @@ public class DependencyEmbeddingSettings
 /// <summary>
 /// Embed a customer or build identifier as an assembly custom-attribute constructor argument
 /// and a public <c>Id</c> field. The type name <c>WatermarkAttribute</c> is pinned against
-/// renaming; recover the id from the CA blob or that field, not by encrypting secrets.
+/// renaming. Plaintext metadata, not confidentiality — do not put secrets in <see cref="Id"/>.
 /// </summary>
-public class WatermarkSettings
+public class WatermarkSettings : IValidatableObject
 {
     public bool Enabled { get; set; }
 
     /// <summary>Plaintext identifier written into the custom assembly attribute. Required when <see cref="Enabled"/> is true.</summary>
     public string Id { get; set; } = "";
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (!string.IsNullOrEmpty(Id))
+            Id = Id.Trim();
+
+        if (Enabled && string.IsNullOrWhiteSpace(Id))
+        {
+            yield return new ValidationResult(
+                "Watermark is enabled but no id was specified.",
+                new[] { nameof(Id) });
+        }
+    }
 }
 
 /// <summary>

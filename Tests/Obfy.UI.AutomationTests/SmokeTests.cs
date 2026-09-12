@@ -96,6 +96,10 @@ public class SmokeTests : TestBase
 
         ExpandNamed("Watermark");
         FindById("WatermarkToggle").ShouldNotBeNull();
+        FindById("WatermarkIdBox").ShouldNotBeNull();
+
+        ExpandNamed("Protection");
+        FindById("AddDecoyAttributesCheck").ShouldNotBeNull();
 
         ExpandNamed("Assembly Merge");
         FindById("AssemblyMergeToggle").ShouldNotBeNull();

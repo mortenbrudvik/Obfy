@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Microsoft.Extensions.Logging;
@@ -8,10 +9,13 @@ using Obfy.Core.Utilities;
 namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
-/// Injects an in-memory PE-header wipe at module load and patches
-/// <c>dbghelp!MiniDumpWriteDump</c> with x86/x64 <c>ret</c> (<c>0xC3</c>) in the current process.
-/// Failures (non-Windows, missing kernel32/dbghelp, ARM64) are swallowed so the app still starts.
-/// Dumpers that use <c>dbgcore</c> or raw <c>ReadProcessMemory</c> are unaffected.
+/// Injects an in-memory PE-header wipe at module load and, on Windows X86/X64, overwrites the
+/// first byte of in-process <c>dbghelp!MiniDumpWriteDump</c> with <c>0xC3</c> (x86/x64 <c>ret</c>).
+/// There is no ARM64 encoding; non-X86/X64 processes skip the write. <c>VirtualProtect</c> failure
+/// skips the write. Missing <c>kernel32</c>/<c>dbghelp</c> and non-Windows throws are caught in
+/// <c>Wipe</c> so the app still starts. The dump hook always runs after the PE wipe attempt.
+/// External dumpers (ProcDump, Task Manager, other processes' <c>MiniDumpWriteDump</c>),
+/// <c>dbgcore</c>, and raw <c>ReadProcessMemory</c> are unaffected.
 /// </summary>
 public class AntiDumpObfuscator : IObfuscator
 {
@@ -29,10 +33,11 @@ public class AntiDumpObfuscator : IObfuscator
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
 
     public bool IsEnabled(ObfySettings settings) =>
-        settings.Protection.AntiDump && !RuntimeProfileGating.BlocksPeProtections(settings.RuntimeProfile);
+        settings.Protection.AntiDump && RuntimeProfileGating.AllowsPeMutation(settings.RuntimeProfile);
 
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var module = context.RequireModule();
         var stats = new ObfuscationStatistics();
 
@@ -43,14 +48,22 @@ public class AntiDumpObfuscator : IObfuscator
                 ?? throw new InvalidOperationException("Anti-dump wipe method was not injected.");
 
             var initializer = FindOrCreateModuleInitializer(module);
-            initializer.Body!.Instructions.Insert(0, Instruction.Create(OpCodes.Call, wipe));
+            if (initializer.Body is null)
+            {
+                throw new InvalidOperationException(
+                    "Cannot inject anti-dump: module initializer has no IL body (native or abstract .cctor).");
+            }
+
+            initializer.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Call, wipe));
             initializer.Body.UpdateInstructionOffsets();
             stats.ProtectionsApplied++;
 
             const string windowsWarning =
                 "Anti-dump is Windows-only (kernel32 VirtualProtect / dbghelp MiniDumpWriteDump). " +
-                "The MiniDumpWriteDump patch writes x86/x64 ret (0xC3); ARM64 is not patched. " +
-                "Failures are swallowed at runtime.";
+                "The MiniDumpWriteDump patch writes 0xC3 (x86/x64 ret) in this process after an X86/X64 " +
+                "architecture check; ARM64 is skipped. VirtualProtect failure skips the write. " +
+                "External dumpers (ProcDump, Task Manager) are unaffected. " +
+                "PE-wipe failures are swallowed at runtime.";
             context.Warnings.Add(windowsWarning);
             _logger.LogWarning("{Warning}", windowsWarning);
 
@@ -147,9 +160,16 @@ public class AntiDumpObfuscator : IObfuscator
 
         var body = new CilBody { InitLocals = true };
         method.Body = body;
+        var architectureType = new TypeRefUser(module, "System.Runtime.InteropServices", "Architecture", module.CorLibTypes.AssemblyRef);
+        var runtimeInformationType = new TypeRefUser(module, "System.Runtime.InteropServices", "RuntimeInformation", module.CorLibTypes.AssemblyRef);
+        var getProcessArchitecture = new MemberRefUser(module, "get_ProcessArchitecture",
+            MethodSig.CreateStatic(new ValueTypeSig(architectureType)), runtimeInformationType);
+
+        var archLocal = new Local(new ValueTypeSig(architectureType));
         var moduleLocal = new Local(module.CorLibTypes.IntPtr);
         var procLocal = new Local(module.CorLibTypes.IntPtr);
         var oldProtect = new Local(module.CorLibTypes.UInt32);
+        body.Variables.Add(archLocal);
         body.Variables.Add(moduleLocal);
         body.Variables.Add(procLocal);
         body.Variables.Add(oldProtect);
@@ -159,12 +179,23 @@ public class AntiDumpObfuscator : IObfuscator
             MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.IntPtr, module.CorLibTypes.Byte),
             marshalType);
 
-        // 0x40 = PAGE_EXECUTE_READWRITE. 0xC3 = x86/x64 ret (not ARM64, whose ret is 0xD65F03C0).
-        // LoadLibraryW("dbghelp.dll") may load dbghelp at startup. VirtualProtect is not restored.
+        // Always GetModuleHandle then LoadLibrary. If MiniDumpWriteDump is found, VirtualProtect
+        // must succeed before writing 0xC3. ARM64 ret is 0xD65F03C0 — skipped via ProcessArchitecture.
+        // VirtualProtect is not restored.
         var ret = Instruction.Create(OpCodes.Ret);
         var haveModule = Instruction.Create(OpCodes.Stloc, moduleLocal);
+        var loadDbghelp = Instruction.Create(OpCodes.Ldstr, "dbghelp.dll");
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "dbghelp.dll"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getProcessArchitecture));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, archLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, archLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4((int)Architecture.X86));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, loadDbghelp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, archLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4((int)Architecture.X64));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, ret));
+
+        body.Instructions.Add(loadDbghelp);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getModuleHandle));
         body.Instructions.Add(Instruction.Create(OpCodes.Dup));
         body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, haveModule));
@@ -191,7 +222,7 @@ public class AntiDumpObfuscator : IObfuscator
         body.Instructions.Add(Instruction.CreateLdcI4(0x40));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, oldProtect));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, virtualProtect));
-        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, ret));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, procLocal));
         body.Instructions.Add(Instruction.CreateLdcI4(0xC3));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, writeByte));
@@ -241,10 +272,10 @@ public class AntiDumpObfuscator : IObfuscator
         body.Variables.Add(dirBaseLocal);
 
         var tryStart = Instruction.Create(OpCodes.Ldtoken, declaringType);
+        var afterTry = Instruction.Create(OpCodes.Call, neutralize);
         var ret = Instruction.Create(OpCodes.Ret);
         var catchPop = Instruction.Create(OpCodes.Pop);
-        var afterAddr = Instruction.Create(OpCodes.Ldloc, addrLocal);
-        var leaveEnd = Instruction.Create(OpCodes.Leave, ret);
+        var leaveEnd = Instruction.Create(OpCodes.Leave, afterTry);
 
         body.Instructions.Add(tryStart);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
@@ -256,12 +287,18 @@ public class AntiDumpObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
         body.Instructions.Add(Instruction.Create(OpCodes.Beq, leaveEnd));
 
-        body.Instructions.Add(afterAddr);
+        // Dynamic/emit modules report HINSTANCE -1; skip PE writes, still neutralize dumpers.
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_M1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, leaveEnd));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
         body.Instructions.Add(Instruction.CreateLdcI4(0x1000));
         body.Instructions.Add(Instruction.CreateLdcI4(0x40));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, oldProtect));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, virtualProtect));
-        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, leaveEnd));
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
         body.Instructions.Add(Instruction.CreateLdcI4(0x3C));
@@ -275,13 +312,12 @@ public class AntiDumpObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
 
         // Skip optional-header writes when e_lfanew is outside the 0x1000 VirtualProtect window.
-        var skipPeWrites = Instruction.Create(OpCodes.Call, neutralize);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
         body.Instructions.Add(Instruction.CreateLdcI4(64));
-        body.Instructions.Add(Instruction.Create(OpCodes.Blt, skipPeWrites));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, leaveEnd));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peLocal));
         body.Instructions.Add(Instruction.CreateLdcI4(0xC00));
-        body.Instructions.Add(Instruction.Create(OpCodes.Bgt, skipPeWrites));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bgt, leaveEnd));
 
         // Magic at optional+0 (e_lfanew+24). 0x20B = PE32+, otherwise PE32 data-directory layout.
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addrLocal));
@@ -315,11 +351,11 @@ public class AntiDumpObfuscator : IObfuscator
 
         // IAT RVA (data directory 12)
         EmitWriteZeroAtDir(body, addrLocal, peLocal, dirBaseLocal, 96, writeInt32);
-        body.Instructions.Add(skipPeWrites);
         body.Instructions.Add(leaveEnd);
 
         body.Instructions.Add(catchPop);
-        body.Instructions.Add(Instruction.Create(OpCodes.Leave, ret));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
+        body.Instructions.Add(afterTry);
         body.Instructions.Add(ret);
 
         body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
@@ -327,7 +363,7 @@ public class AntiDumpObfuscator : IObfuscator
             TryStart = tryStart,
             TryEnd = catchPop,
             HandlerStart = catchPop,
-            HandlerEnd = ret,
+            HandlerEnd = afterTry,
             CatchType = module.CorLibTypes.Object.ToTypeDefOrRef()
         });
 
@@ -375,7 +411,15 @@ public class AntiDumpObfuscator : IObfuscator
 
         var cctor = globalType.Methods.FirstOrDefault(m => m.IsStaticConstructor || m.Name == ".cctor");
         if (cctor != null)
+        {
+            if (cctor.Body is null)
+            {
+                throw new InvalidOperationException(
+                    "Cannot inject anti-dump: module initializer has no IL body (native or abstract .cctor).");
+            }
+
             return cctor;
+        }
 
         cctor = new MethodDefUser(
             ".cctor",

@@ -6,7 +6,7 @@ See [Unity.md](Unity.md). Use `runtimeProfile: UnityIl2Cpp` for IL2CPP players.
 
 ## Blazor WebAssembly
 
-Use `runtimeProfile: BlazorWasm` (wizard preset). Method encryption, anti-dump, and AssemblyResolve embedding are disabled. Obfuscate the published managed DLLs (`_framework/*.dll`) **before** they are served. Trimming and linker XML often need extra rename exclusions.
+Use `runtimeProfile: BlazorWasm` (wizard preset). Method encryption, anti-dump, and AssemblyResolve embedding are disabled. Anti-debug still runs; kernel32 P/Invoke is omitted and a report warning is emitted. Obfuscate the published managed DLLs (`_framework/*.dll`) **before** they are served. Trimming and linker XML often need extra rename exclusions.
 
 Example: `examples/blazor/obfy.json`.
 
@@ -18,4 +18,4 @@ Example: `examples/maui/obfy.json`.
 
 ## NativeAOT
 
-`runtimeProfile: NativeAot` disables `VirtualProtect`-based method encryption, anti-dump, and AssemblyResolve embedding. Remaining techniques (rename, strings, control flow, in-module proxies) still apply to the IL that the AOT compiler sees **if you obfuscate before `dotnet publish`**.
+`runtimeProfile: NativeAot` disables `VirtualProtect`-based method encryption, anti-dump, and AssemblyResolve embedding. Anti-debug still runs; kernel32 P/Invoke is omitted and a report warning is emitted. Remaining techniques (rename, strings, control flow, in-module proxies) still apply to the IL that the AOT compiler sees **if you obfuscate before `dotnet publish`**.

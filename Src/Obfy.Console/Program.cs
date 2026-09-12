@@ -174,7 +174,7 @@ public class Program
 
         WatermarkIdOption = new Option<string?>(
             name: "--watermark-id",
-            description: "Embed a customer/build identifier as an assembly attribute");
+            description: "Enable watermarking and set watermark.id (trimmed; whitespace-only is an error)");
 
         // Root command
         var rootCommand = new RootCommand("Obfy - C# Obfuscation Tool")
@@ -384,6 +384,9 @@ public class Program
         {
             settings = ObfySettings.ForLevel(ParseLevel(level));
         }
+
+        if (watermarkId is not null && string.IsNullOrWhiteSpace(watermarkId))
+            throw new ArgumentException("--watermark-id requires a non-whitespace identifier.");
 
         var watermarkRequested = !string.IsNullOrWhiteSpace(watermarkId);
         var anyOverride = stringEncrypt || controlFlow || rename || antiDebug || stripMetadata

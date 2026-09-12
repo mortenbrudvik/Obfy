@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -27,6 +28,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IContentDialogService _contentDialogService;
     private readonly ISnackbarService _snackbarService;
     private readonly NotifyCollectionChangedEventHandler _filesChanged;
+    private readonly PropertyChangedEventHandler _settingsChanged;
     private CancellationTokenSource? _cancellationTokenSource;
 
     /// <summary>
@@ -86,6 +88,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Results = results;
         _filesChanged = (_, _) => ObfuscateCommand.NotifyCanExecuteChanged();
         Files.Files.CollectionChanged += _filesChanged;
+        _settingsChanged = (_, e) =>
+        {
+            if (e.PropertyName is nameof(SettingsViewModel.WatermarkEnabled)
+                or nameof(SettingsViewModel.WatermarkId)
+                or null)
+                ObfuscateCommand.NotifyCanExecuteChanged();
+        };
+        Settings.PropertyChanged += _settingsChanged;
     }
 
     /// <summary>
@@ -98,7 +108,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Output.Info("Obfy UI initialized. Add files and configure settings to begin.");
     }
 
-    private bool CanObfuscate() => !IsObfuscating && Files.HasFiles;
+    private bool CanObfuscate() =>
+        !IsObfuscating && Files.HasFiles &&
+        (!Settings.WatermarkEnabled || !string.IsNullOrWhiteSpace(Settings.WatermarkId));
 
     [RelayCommand(CanExecute = nameof(CanObfuscate))]
     private async Task ObfuscateAsync()
@@ -508,6 +520,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         Files.Files.CollectionChanged -= _filesChanged;
+        Settings.PropertyChanged -= _settingsChanged;
         try
         {
             _cancellationTokenSource?.Cancel();

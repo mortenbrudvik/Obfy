@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
@@ -3418,6 +3419,7 @@ public class AssemblyObfuscatorTests
         var cctor = module.GlobalType.FindMethod(".cctor");
         cctor.ShouldNotBeNull();
         cctor!.Body.Instructions[0].OpCode.ShouldBe(OpCodes.Call);
+        ((IMethod)cctor.Body.Instructions[0].Operand!).Name.String.ShouldBe("Wipe");
     }
 
     [Fact]
@@ -3687,6 +3689,24 @@ public class AssemblyObfuscatorTests
         neutralize.Body.Instructions.Any(i => i.IsLdcI4() && i.GetLdcI4Value() == 0xC3).ShouldBeTrue();
         neutralize.Body.Instructions.Any(i =>
             i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "VirtualProtect").ShouldBeTrue();
+        neutralize.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "LoadLibraryW").ShouldBeTrue();
+        neutralize.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "GetModuleHandleW").ShouldBeTrue();
+        neutralize.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "get_ProcessArchitecture").ShouldBeTrue();
+        neutralize.Body.Instructions.Any(i =>
+            i.IsLdcI4() && i.GetLdcI4Value() == (int)Architecture.X86).ShouldBeTrue();
+        neutralize.Body.Instructions.Any(i =>
+            i.IsLdcI4() && i.GetLdcI4Value() == (int)Architecture.X64).ShouldBeTrue();
+        neutralize.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Brfalse && i.Operand is Instruction).ShouldBeTrue();
+
+        wipe.Body.ExceptionHandlers.Count.ShouldBe(1);
+        wipe.Body.ExceptionHandlers[0].HandlerType.ShouldBe(ExceptionHandlerType.Catch);
+        wipe.Body.ExceptionHandlers[0].CatchType.FullName.ShouldBe("System.Object");
+        wipe.Body.Instructions.Any(i => i.IsLdcI4() && i.GetLdcI4Value() == 64).ShouldBeTrue();
+        wipe.Body.Instructions.Any(i => i.IsLdcI4() && i.GetLdcI4Value() == 0xC00).ShouldBeTrue();
 
         var charset = PInvokeAttributes.CharSetMask;
         (dump.FindMethod("GetModuleHandleW")!.ImplMap!.Attributes & charset).ShouldBe(PInvokeAttributes.CharSetUnicode);
@@ -3697,6 +3717,113 @@ public class AssemblyObfuscatorTests
         wipe.Body.Instructions.Any(i => i.IsLdcI4() && i.GetLdcI4Value() == 96).ShouldBeTrue();
         wipe.Body.Instructions.Any(i => i.IsLdcI4() && i.GetLdcI4Value() == 112).ShouldBeTrue();
         context.Warnings.ShouldContain(w => w.Contains("Windows-only", StringComparison.OrdinalIgnoreCase));
+        context.Warnings.ShouldContain(w =>
+            w.Contains("X86/X64", StringComparison.OrdinalIgnoreCase) &&
+            w.Contains("ARM64 is skipped", StringComparison.Ordinal));
+        context.Warnings.ShouldNotContain(w =>
+            w.Contains("ARM64 is not patched", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AntiDump_WipeSelectsPe32PlusDirectoryBaseFromMagic()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new AntiDumpObfuscator(new Mock<ILogger<AntiDumpObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDump = true } });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var wipe = module.Types.First(t => t.Name == "<AntiDump>").FindMethod("Wipe")!;
+        var ins = wipe.Body.Instructions.ToList();
+        var magicIdx = ins.FindIndex(i => i.IsLdcI4() && i.GetLdcI4Value() == 0x20B);
+        magicIdx.ShouldBeGreaterThan(0);
+        ins[magicIdx + 1].OpCode.ShouldBe(OpCodes.Bne_Un);
+
+        var before = ins.Take(magicIdx).ToList();
+        var ldc96Idx = before.FindLastIndex(i => i.IsLdcI4() && i.GetLdcI4Value() == 96);
+        ldc96Idx.ShouldBeGreaterThanOrEqualTo(0);
+        before[ldc96Idx + 1].OpCode.ShouldBe(OpCodes.Stloc);
+
+        var ldc112Idx = ins.FindIndex(magicIdx + 2, i => i.IsLdcI4() && i.GetLdcI4Value() == 112);
+        ldc112Idx.ShouldBeGreaterThan(magicIdx);
+        ins[ldc112Idx + 1].OpCode.ShouldBe(OpCodes.Stloc);
+
+        ins.ShouldContain(i => i.IsLdcI4() && i.GetLdcI4Value() == 88);
+        foreach (var offset in new[] { 8, 12, 48 })
+            ins.ShouldContain(i => i.IsLdcI4() && i.GetLdcI4Value() == offset);
+    }
+
+    [Fact]
+    public async Task AntiDump_NeutralizeDumpersRunsAfterPeWipeTry()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new AntiDumpObfuscator(new Mock<ILogger<AntiDumpObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDump = true } });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var wipe = module.Types.First(t => t.Name == "<AntiDump>").FindMethod("Wipe")!;
+        var eh = wipe.Body.ExceptionHandlers.ShouldHaveSingleItem();
+        eh.HandlerType.ShouldBe(ExceptionHandlerType.Catch);
+
+        var neutralizeIdx = wipe.Body.Instructions
+            .Select((instruction, i) => (instruction, i))
+            .First(t => t.instruction.OpCode == OpCodes.Call &&
+                        t.instruction.Operand is IMethod m && m.Name == "NeutralizeDumpers").i;
+        var tryEndIdx = wipe.Body.Instructions.IndexOf(eh.TryEnd);
+        neutralizeIdx.ShouldBeGreaterThanOrEqualTo(tryEndIdx);
+
+        var blt = wipe.Body.Instructions.First(i => i.OpCode == OpCodes.Blt);
+        ((Instruction)blt.Operand!).OpCode.ShouldBe(OpCodes.Leave);
+        var bgt = wipe.Body.Instructions.First(i => i.OpCode == OpCodes.Bgt);
+        ((Instruction)bgt.Operand!).OpCode.ShouldBe(OpCodes.Leave);
+    }
+
+    [Fact]
+    public async Task AntiDump_NeutralizeDumpersGatesArchitectureAndVirtualProtect()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new AntiDumpObfuscator(new Mock<ILogger<AntiDumpObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDump = true } });
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        var dump = module.Types.First(t => t.Name == "<AntiDump>");
+        var neutralize = dump.FindMethod("NeutralizeDumpers")!;
+        neutralize.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "get_ProcessArchitecture").ShouldBeTrue();
+
+        var vpIdx = neutralize.Body.Instructions
+            .Select((instruction, i) => (instruction, i))
+            .First(t => t.instruction.OpCode == OpCodes.Call &&
+                        t.instruction.Operand is IMethod m && m.Name == "VirtualProtect").i;
+        neutralize.Body.Instructions[vpIdx + 1].OpCode.ShouldBe(OpCodes.Brfalse);
+
+        var wipe = dump.FindMethod("Wipe")!;
+        var wipeVpIdx = wipe.Body.Instructions
+            .Select((instruction, i) => (instruction, i))
+            .First(t => t.instruction.OpCode == OpCodes.Call &&
+                        t.instruction.Operand is IMethod m && m.Name == "VirtualProtect").i;
+        wipe.Body.Instructions[wipeVpIdx + 1].OpCode.ShouldBe(OpCodes.Brfalse);
+        wipe.Body.Instructions.ShouldContain(i => i.OpCode == OpCodes.Ldc_I4_M1);
+    }
+
+    [Fact]
+    public async Task AntiDump_FailsWhenModuleInitializerHasNoBody()
+    {
+        var module = CreateTestModule();
+        var global = module.GlobalType;
+        foreach (var existing in global.Methods.Where(m => m.IsStaticConstructor || m.Name == ".cctor").ToList())
+            global.Methods.Remove(existing);
+
+        global.Methods.Add(new MethodDefUser(
+            ".cctor",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Private | MethodAttributes.Static |
+            MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName));
+
+        var obfuscator = new AntiDumpObfuscator(new Mock<ILogger<AntiDumpObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDump = true } });
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("no IL body");
     }
 
     [Fact]
@@ -3759,6 +3886,7 @@ public class AssemblyObfuscatorTests
         var anti = module.Types.First(t => t.Name == "<AntiDebug>");
         anti.FindMethod("Check").ShouldNotBeNull();
         anti.FindMethod("IsDebuggerPresent").ShouldNotBeNull();
+        context.Warnings.ShouldContain(w => w.Contains("Windows-only", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -3788,6 +3916,8 @@ public class AssemblyObfuscatorTests
         check.Body.Instructions.Any(i => i.Operand is IMethod m && m.Name == "get_TickCount").ShouldBeTrue();
         check.Body.ExceptionHandlers.ShouldBeEmpty();
         context.Warnings.ShouldContain(w => w.Contains("kernel32", StringComparison.OrdinalIgnoreCase));
+        module.EntryPoint.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "Check").ShouldBeTrue();
     }
 
     [Theory]
@@ -3810,6 +3940,10 @@ public class AssemblyObfuscatorTests
         var anti = module.Types.First(t => t.Name == "<AntiDebug>");
         anti.FindMethod("Check").ShouldNotBeNull();
         anti.Methods.ShouldNotContain(m => m.IsPinvokeImpl);
+        var check = anti.FindMethod("Check")!;
+        check.Body.Instructions.Any(i => i.Operand is IMethod m && m.Name == "get_IsAttached").ShouldBeTrue();
+        check.Body.Instructions.Any(i => i.Operand is IMethod m && m.Name == "IsLogging").ShouldBeTrue();
+        check.Body.Instructions.Any(i => i.Operand is IMethod m && m.Name == "get_TickCount").ShouldBeTrue();
         context.Warnings.ShouldContain(w => w.Contains("kernel32", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -3827,7 +3961,22 @@ public class AssemblyObfuscatorTests
         module.Types.ShouldContain(t => t.Name == "WatermarkAttribute");
         var attr = module.Assembly.CustomAttributes.First(a => a.AttributeType.Name == "WatermarkAttribute");
         attr.ConstructorArguments[0].Value.ShouldBe("customer-42");
-        module.Types.First(t => t.Name == "WatermarkAttribute").FindField("Id").ShouldNotBeNull();
+        var watermarkType = module.Types.First(t => t.Name == "WatermarkAttribute");
+        var idField = watermarkType.FindField("Id");
+        idField.ShouldNotBeNull();
+        var ctor = watermarkType.FindMethod(".ctor")!;
+        ctor.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldarg_1).ShouldBeTrue();
+        ctor.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Stfld && i.Operand is IField f && f.Name == "Id").ShouldBeTrue();
+
+        using var ms = new MemoryStream();
+        module.Write(ms);
+        ms.Position = 0;
+        using var reloaded = ModuleDefMD.Load(ms);
+        var reloadedAttr = reloaded.Assembly.CustomAttributes.First(a => a.AttributeType.Name == "WatermarkAttribute");
+        reloadedAttr.ConstructorArguments[0].Value.ToString().ShouldBe("customer-42");
+        reloaded.Types.First(t => t.Name == "WatermarkAttribute").FindField("Id").ShouldNotBeNull();
+        reloaded.Types.ShouldContain(t => t.Name == "WatermarkAttribute" && t.Namespace == "Obfy.Runtime");
     }
 
     [Theory]
@@ -3863,6 +4012,68 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task Watermark_EmptyId_ReturnsFailed()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new WatermarkObfuscator(new Mock<ILogger<WatermarkObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Watermark = { Enabled = true, Id = "  " }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("id");
+    }
+
+    [Fact]
+    public async Task Watermark_AlreadyPresentSameId_WarnsAndDoesNotDuplicate()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new WatermarkObfuscator(new Mock<ILogger<WatermarkObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Watermark = { Enabled = true, Id = "customer-42" }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        context.Warnings.Clear();
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBe(0);
+        module.Assembly.CustomAttributes.Count(a => a.AttributeType.Name == "WatermarkAttribute").ShouldBe(1);
+        module.Types.Count(t => t.Name == "WatermarkAttribute").ShouldBe(1);
+        context.Warnings.ShouldContain(w => w.Contains("already present", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Watermark_AlreadyPresentDifferentId_ReplacesId()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new WatermarkObfuscator(new Mock<ILogger<WatermarkObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Watermark = { Enabled = true, Id = "customer-42" }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        context.Settings.Watermark.Id = "customer-99";
+        context.Warnings.Clear();
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBe(1);
+        module.Assembly.CustomAttributes.Count(a => a.AttributeType.Name == "WatermarkAttribute").ShouldBe(1);
+        module.Types.Count(t => t.Name == "WatermarkAttribute").ShouldBe(1);
+        module.Assembly.CustomAttributes.First(a => a.AttributeType.Name == "WatermarkAttribute")
+            .ConstructorArguments[0].Value.ToString().ShouldBe("customer-99");
+        context.Warnings.ShouldContain(w =>
+            w.Contains("customer-42", StringComparison.Ordinal) &&
+            w.Contains("customer-99", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task WatermarkAndDecoys_SurviveSymbolRenaming()
     {
         var module = CreateTestModule();
@@ -3870,24 +4081,33 @@ public class AssemblyObfuscatorTests
 
         var watermark = new WatermarkObfuscator(new Mock<ILogger<WatermarkObfuscator>>().Object);
         var decoys = new AntiDecompilerObfuscator(new Mock<ILogger<AntiDecompilerObfuscator>>().Object);
+        var dump = new AntiDumpObfuscator(new Mock<ILogger<AntiDumpObfuscator>>().Object);
         var renaming = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
         var settings = new ObfySettings
         {
             Watermark = { Enabled = true, Id = "customer-42" },
-            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = false, AddSuppressIldasmAttribute = false } },
+            Protection =
+            {
+                AntiDump = true,
+                AntiDecompiler = { Enabled = true, InjectJunkTypes = false, AddSuppressIldasmAttribute = false }
+            },
             SymbolRenaming = { Enabled = true, RenameTypes = true, RenameNamespaces = true, Mode = NamingMode.Sequential }
         };
         var context = PipelineContext.ForAssembly(module, settings);
 
         (await watermark.ObfuscateAsync(context)).Success.ShouldBeTrue();
         (await decoys.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        (await dump.ObfuscateAsync(context)).Success.ShouldBeTrue();
         (await renaming.ObfuscateAsync(context)).Success.ShouldBeTrue();
 
         module.Types.ShouldContain(t => t.Name == WatermarkObfuscator.AttributeTypeName);
         module.Types.ShouldContain(t => t.Name == AntiDecompilerObfuscator.ConfusedByAttributeName);
         module.Types.ShouldContain(t => t.Name == AntiDecompilerObfuscator.DotfuscatorAttributeName);
-        module.Types.First(t => t.Name == WatermarkObfuscator.AttributeTypeName)
-            .Namespace.String.ShouldBe(WatermarkObfuscator.AttributeNamespace);
+        var watermarkType = module.Types.First(t => t.Name == WatermarkObfuscator.AttributeTypeName);
+        watermarkType.Namespace.String.ShouldBe(WatermarkObfuscator.AttributeNamespace);
+        watermarkType.FindField(WatermarkObfuscator.IdFieldName).ShouldNotBeNull();
+        module.Types.Count(t => t.Namespace == WatermarkObfuscator.AttributeNamespace).ShouldBe(1);
+        module.Types.ShouldNotContain(t => t.Name == "<AntiDump>" && t.Namespace == "Obfy.Runtime");
 
         var watermarkAttr = module.Assembly.CustomAttributes.First(a => a.AttributeType.Name == WatermarkObfuscator.AttributeTypeName);
         watermarkAttr.ConstructorArguments[0].Value.ShouldBe("customer-42");
@@ -3919,6 +4139,40 @@ public class AssemblyObfuscatorTests
             a.AttributeType.Name == "ConfusedByAttribute" && Equals(a.ConstructorArguments[0].Value, "ConfuserEx v1.0.0"));
         module.Assembly.CustomAttributes.ShouldContain(a =>
             a.AttributeType.Name == "DotfuscatorAttribute" && Equals(a.ConstructorArguments[0].Value, "v5.0"));
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_DecoysAlreadyPresent_WarnsAndDoesNotDuplicate()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new AntiDecompilerObfuscator(new Mock<ILogger<AntiDecompilerObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = false, AddSuppressIldasmAttribute = false } }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        context.Warnings.Clear();
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        module.Types.Count(t => t.Name == AntiDecompilerObfuscator.ConfusedByAttributeName).ShouldBe(1);
+        module.Types.Count(t => t.Name == AntiDecompilerObfuscator.DotfuscatorAttributeName).ShouldBe(1);
+        context.Warnings.ShouldContain(w => w.Contains("decoy", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_HonorsCancellationDuringJunkInjection()
+    {
+        var module = CreateTestModule();
+        var obfuscator = new AntiDecompilerObfuscator(new Mock<ILogger<AntiDecompilerObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Protection = { AntiDecompiler = { Enabled = true, InjectJunkTypes = true, JunkTypeCount = 10 } }
+        });
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(() => obfuscator.ObfuscateAsync(context, cts.Token));
     }
 
     [Fact]
@@ -4004,6 +4258,16 @@ public class AssemblyObfuscatorTests
             Protection = { AntiDump = true },
             RuntimeProfile = RuntimeProfile.BlazorWasm
         }).ShouldBeFalse();
+        obfuscator.IsEnabled(new ObfySettings
+        {
+            Protection = { AntiDump = true },
+            RuntimeProfile = RuntimeProfile.NativeAot
+        }).ShouldBeFalse();
+        obfuscator.IsEnabled(new ObfySettings
+        {
+            Protection = { AntiDump = true },
+            RuntimeProfile = RuntimeProfile.Default
+        }).ShouldBeTrue();
     }
 
     [Fact]

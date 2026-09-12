@@ -30,6 +30,30 @@ public class RuntimeProfileGatingTests
                                            && w.Contains(label));
         RuntimeProfileGating.BlocksAssemblyResolve(profile).ShouldBeTrue();
         RuntimeProfileGating.BlocksPeProtections(profile).ShouldBeTrue();
+        RuntimeProfileGating.AllowsPeMutation(profile).ShouldBeFalse();
+        RuntimeProfileGating.AllowsKernel32PInvoke(profile).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(RuntimeProfile.NativeAot)]
+    [InlineData(RuntimeProfile.UnityIl2Cpp)]
+    [InlineData(RuntimeProfile.BlazorWasm)]
+    public void Apply_RestrictedProfiles_KeepAntiDebugEnabled(RuntimeProfile profile)
+    {
+        var settings = new ObfySettings
+        {
+            RuntimeProfile = profile,
+            Protection = { AntiDebug = true, AntiDump = true, MethodEncryption = true }
+        };
+        var context = PipelineContext.ForAssembly(new dnlib.DotNet.ModuleDefUser("t"), settings);
+
+        RuntimeProfileGating.Apply(settings, context);
+
+        settings.Protection.AntiDebug.ShouldBeTrue();
+        settings.Protection.AntiDump.ShouldBeFalse();
+        settings.Protection.MethodEncryption.ShouldBeFalse();
+        RuntimeProfileGating.AllowsKernel32PInvoke(profile).ShouldBeFalse();
+        RuntimeProfileGating.AllowsPeMutation(profile).ShouldBeFalse();
     }
 
     [Fact]
@@ -47,6 +71,8 @@ public class RuntimeProfileGatingTests
         settings.DependencyEmbedding.Enabled.ShouldBeTrue();
         settings.Protection.MethodEncryption.ShouldBeTrue();
         settings.Protection.AntiDump.ShouldBeTrue();
+        RuntimeProfileGating.AllowsPeMutation(RuntimeProfile.Default).ShouldBeTrue();
+        RuntimeProfileGating.AllowsKernel32PInvoke(RuntimeProfile.Default).ShouldBeTrue();
         context.Warnings.ShouldBeEmpty();
     }
 

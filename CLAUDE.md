@@ -110,7 +110,7 @@ Tech stack: WPF-UI 4.2.1 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | ConstantEncryption | 11 | Encrypts numeric constants (int, long, float, double; XOR or AES-256) |
 | ResourceEncryption | 15 | Encrypts embedded resources (XOR or AES-256) |
 | AntiDebug | 18 | Injects debugger detection (kernel32 omitted on NativeAOT / IL2CPP / Blazor WASM) |
-| AntiDump | 19 | Wipes PE headers in memory and patches `dbghelp!MiniDumpWriteDump` (Windows; x86/x64) |
+| AntiDump | 19 | Wipes PE headers in memory and in-process `0xC3` patch of `dbghelp!MiniDumpWriteDump` (Windows X86/X64; ARM64 skipped; gated off NativeAOT / IL2CPP / Blazor WASM). External dumpers are unaffected. |
 | AntiDecompiler | 20 | Injects junk types/methods and optional decoy ConfusedBy/Dotfuscator attributes |
 | Watermark | 21 | Embeds a customer/build id as a pinned `WatermarkAttribute` |
 | AntiTamper | 22 | Verifies assembly integrity at runtime |

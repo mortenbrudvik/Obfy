@@ -5,7 +5,7 @@ using Obfy.Core.Models;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// Shared helpers for assembly obfuscators (exclusions, compiler-generated detection, IL emit).
+/// Shared helpers for assembly obfuscators (exclusions, compiler-generated detection, IL emit, pinned attribute names).
 /// </summary>
 public static class ObfuscatorHelpers
 {
@@ -68,13 +68,33 @@ public static class ObfuscatorHelpers
     }
 
     /// <summary>
+    /// Detector/lookup attribute names that must survive symbol renaming.
+    /// Watermark lives in <c>Obfy.Runtime</c>; decoys are injected in the global namespace.
+    /// </summary>
+    public static class PinnedAttributeNames
+    {
+        public const string Watermark = "WatermarkAttribute";
+        public const string WatermarkNamespace = "Obfy.Runtime";
+        public const string ConfusedBy = "ConfusedByAttribute";
+        public const string Dotfuscator = "DotfuscatorAttribute";
+    }
+
+    /// <summary>
     /// Attribute types whose names are a public contract (de4dot decoys, watermark lookup).
     /// Symbol renaming must leave the type name, members, and namespace intact.
+    /// Matched by full identity: global <c>ConfusedByAttribute</c>/<c>DotfuscatorAttribute</c>,
+    /// and <c>Obfy.Runtime.WatermarkAttribute</c>. A user type with the same simple name in
+    /// another namespace is not pinned.
     /// </summary>
     public static bool IsPinnedAttributeType(TypeDef type)
     {
         var name = type.Name.String;
-        return name is "ConfusedByAttribute" or "DotfuscatorAttribute" or "WatermarkAttribute";
+        var ns = type.Namespace.String;
+        if (name is PinnedAttributeNames.ConfusedBy or PinnedAttributeNames.Dotfuscator)
+            return ns.Length == 0;
+
+        return name == PinnedAttributeNames.Watermark &&
+               ns == PinnedAttributeNames.WatermarkNamespace;
     }
 
     public static bool IsRuntimeOrExcluded(TypeDef type, ExclusionRules exclusions)

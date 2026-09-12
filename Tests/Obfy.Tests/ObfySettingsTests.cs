@@ -83,6 +83,8 @@ public class ObfySettingsTests
         settings.SymbolRenaming.Mode.ShouldBe(NamingMode.Unreadable);
         settings.ControlFlow.Enabled.ShouldBeFalse();
         settings.Protection.AntiDebug.ShouldBeFalse();
+        settings.Protection.AntiDecompiler.AddDecoyAttributes.ShouldBeTrue();
+        settings.Watermark.Enabled.ShouldBeFalse();
         settings.Exclusions.Attributes.ShouldContain("JsonPropertyNameAttribute");
         settings.Exclusions.Attributes.ShouldContain("JsonPropertyAttribute");
         settings.Exclusions.Attributes.ShouldContain("XmlElementAttribute");
@@ -303,6 +305,14 @@ public class ObfySettingsTests
     }
 
     [Fact]
+    public void Validate_WatermarkTrimsId()
+    {
+        var settings = new ObfySettings { Watermark = { Enabled = true, Id = "  customer-42  " } };
+        settings.Validate();
+        settings.Watermark.Id.ShouldBe("customer-42");
+    }
+
+    [Fact]
     public void ApplyLevel_DoesNotResetWatermark()
     {
         var settings = new ObfySettings
@@ -313,5 +323,18 @@ public class ObfySettingsTests
         settings.ApplyLevel();
         settings.Watermark.Enabled.ShouldBeTrue();
         settings.Watermark.Id.ShouldBe("keep-me");
+    }
+
+    [Fact]
+    public void ApplyLevel_DoesNotResetDecoyAttributes()
+    {
+        var settings = new ObfySettings
+        {
+            Protection = { AntiDecompiler = { AddDecoyAttributes = false } },
+            Level = ObfuscationLevel.Aggressive
+        };
+        settings.ApplyLevel();
+        settings.Protection.AntiDecompiler.AddDecoyAttributes.ShouldBeFalse();
+        settings.Protection.AntiDecompiler.Enabled.ShouldBeTrue();
     }
 }

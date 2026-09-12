@@ -2964,6 +2964,81 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task SymbolRenaming_SkipsJsonPropertyNameMembersByDefault()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Dto");
+        var kept = CreateTestProperty(type, "Title");
+        var renamed = CreateTestProperty(type, "InternalNote");
+        var attrType = new TypeRefUser(module, "System.Text.Json.Serialization", "JsonPropertyNameAttribute",
+            module.CorLibTypes.AssemblyRef);
+        kept.CustomAttributes.Add(new CustomAttribute(new MemberRefUser(
+            module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.String), attrType),
+            new CAArgument[] { new(module.CorLibTypes.String, "title") }));
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameProperties = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        kept.Name.String.ShouldBe("Title");
+        renamed.Name.String.ShouldNotBe("InternalNote");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_SkipsComVisibleTrueTypes()
+    {
+        var module = CreateTestModule();
+        var visible = CreateTestType(module, "ComApi");
+        var hidden = CreateTestType(module, "Internal");
+        var com = new TypeRefUser(module, "System.Runtime.InteropServices", "ComVisibleAttribute",
+            module.CorLibTypes.AssemblyRef);
+        var ctor = new MemberRefUser(module, ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.Boolean), com);
+        var attr = new CustomAttribute(ctor);
+        attr.ConstructorArguments.Add(new CAArgument(module.CorLibTypes.Boolean, true));
+        visible.CustomAttributes.Add(attr);
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, RenameTypes = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        visible.Name.String.ShouldBe("ComApi");
+        hidden.Name.String.ShouldNotBe("Internal");
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_PreserveXaml_KeepsViewModelPublicProperties()
+    {
+        var module = CreateTestModule();
+        var vm = CreateTestType(module, "MainViewModel");
+        var bindable = CreateTestProperty(vm, "Title", isPublic: true);
+        var secret = CreateTestField(vm, "_scratch");
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming =
+            {
+                Enabled = true,
+                RenameProperties = true,
+                RenameFields = true,
+                PreserveXaml = true,
+                Mode = NamingMode.Sequential
+            }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        bindable.Name.String.ShouldBe("Title");
+        secret.Name.String.ShouldNotBe("_scratch");
+    }
+
+    [Fact]
     public async Task ControlFlow_FlattensBranchedMethods()
     {
         var module = CreateTestModule();

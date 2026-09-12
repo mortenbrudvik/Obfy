@@ -337,6 +337,12 @@ public class SymbolRenamingSettings
     /// Whether to preserve public API names (types and members with public visibility).
     /// </summary>
     public bool PreservePublicApi { get; set; } = false;
+
+    /// <summary>
+    /// Preserve public instance properties on view-model / DependencyObject-like types for XAML bindings.
+    /// Off by default; the Desktop wizard preset turns it on.
+    /// </summary>
+    public bool PreserveXaml { get; set; } = false;
 }
 
 /// <summary>
@@ -507,7 +513,11 @@ public class ExclusionRules
     {
         "SerializableAttribute",
         "DataContractAttribute",
-        "DataMemberAttribute"
+        "DataMemberAttribute",
+        "JsonPropertyNameAttribute",
+        "JsonPropertyAttribute",
+        "XmlElementAttribute",
+        "XmlAttributeAttribute"
     };
 }
 

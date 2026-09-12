@@ -66,6 +66,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _preservePublicApi = false;
 
     [ObservableProperty]
+    private bool _preserveXaml = false;
+
+    [ObservableProperty]
     private bool _referenceProxyEnabled = false;
 
     [ObservableProperty]
@@ -337,7 +340,8 @@ public partial class SettingsViewModel : ObservableObject
                 RenameParameters = RenameParameters,
                 RenameEvents = RenameEvents,
                 RenameNamespaces = RenameNamespaces,
-                PreservePublicApi = PreservePublicApi
+                PreservePublicApi = PreservePublicApi,
+                PreserveXaml = PreserveXaml
             },
             Protection = new ProtectionSettings
             {
@@ -429,6 +433,7 @@ public partial class SettingsViewModel : ObservableObject
         RenameEvents = settings.SymbolRenaming.RenameEvents;
         RenameNamespaces = settings.SymbolRenaming.RenameNamespaces;
         PreservePublicApi = settings.SymbolRenaming.PreservePublicApi;
+        PreserveXaml = settings.SymbolRenaming.PreserveXaml;
 
         // Protection
         AntiDebugEnabled = settings.Protection.AntiDebug;

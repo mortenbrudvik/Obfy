@@ -98,6 +98,45 @@ public static class ObfuscatorHelpers
     public static bool MethodMatchesExclusion(MethodDef method, ExclusionRules exclusions) =>
         exclusions.Methods.Any(m => MatchesPattern(method.Name, m));
 
+    public static bool IsComVisibleTrue(IHasCustomAttribute provider)
+    {
+        if (!provider.HasCustomAttributes)
+            return false;
+
+        foreach (var attr in provider.CustomAttributes)
+        {
+            if (!attr.TypeFullName.EndsWith("ComVisibleAttribute", StringComparison.Ordinal))
+                continue;
+            if (attr.ConstructorArguments.Count == 0)
+                continue;
+            if (attr.ConstructorArguments[0].Value is bool visible && visible)
+                return true;
+        }
+
+        return false;
+    }
+
+    public static bool LooksLikeXamlBindable(TypeDef type)
+    {
+        var name = type.Name.String;
+        if (name.EndsWith("ViewModel", StringComparison.Ordinal) ||
+            name.EndsWith("View", StringComparison.Ordinal))
+            return true;
+
+        if (type.Interfaces.Any(i => i.Interface.Name.Contains("INotifyPropertyChanged")))
+            return true;
+
+        for (var current = type; current != null; current = current.BaseType?.ResolveTypeDef())
+        {
+            if (current.Name.Contains("DependencyObject"))
+                return true;
+            if (current.Fields.Any(f => f.FieldType?.TypeName == "DependencyProperty"))
+                return true;
+        }
+
+        return false;
+    }
+
     public static bool IsPrefix(Instruction instruction) =>
         instruction.OpCode.FlowControl == FlowControl.Meta;
 

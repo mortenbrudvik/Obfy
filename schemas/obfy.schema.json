@@ -61,7 +61,8 @@
         "renameParameters": { "type": "boolean", "default": true },
         "renameEvents": { "type": "boolean", "default": true },
         "renameNamespaces": { "type": "boolean", "default": true },
-        "preservePublicApi": { "type": "boolean", "default": false }
+        "preservePublicApi": { "type": "boolean", "default": false },
+        "preserveXaml": { "type": "boolean", "default": false }
       }
     },
     "protection": {
@@ -187,7 +188,11 @@
           "default": [
             "SerializableAttribute",
             "DataContractAttribute",
-            "DataMemberAttribute"
+            "DataMemberAttribute",
+            "JsonPropertyNameAttribute",
+            "JsonPropertyAttribute",
+            "XmlElementAttribute",
+            "XmlAttributeAttribute"
           ]
         }
       }

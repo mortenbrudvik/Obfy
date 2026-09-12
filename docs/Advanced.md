@@ -85,13 +85,16 @@ Members with specific attributes are automatically excluded.
 
 **Default Excluded Attributes:**
 - `SerializableAttribute` - Binary serialization
-- `DataContractAttribute` - WCF serialization
-- `DataMemberAttribute` - WCF serialization
+- `DataContractAttribute` / `DataMemberAttribute` - WCF serialization
+- `JsonPropertyNameAttribute` - System.Text.Json
+- `JsonPropertyAttribute` - JSON.NET
+- `XmlElementAttribute` / `XmlAttributeAttribute` - XML serialization
+
+`ComVisible(true)` types and members are never renamed.
+
+Set `symbolRenaming.preserveXaml` (Desktop wizard preset) to keep public instance properties on `*ViewModel` / `*View` / `DependencyObject` types for XAML bindings.
 
 **Common Additions:**
-- `JsonPropertyAttribute` - JSON.NET
-- `JsonPropertyNameAttribute` - System.Text.Json
-- `XmlElementAttribute` - XML serialization
 - `ProtoMemberAttribute` - protobuf-net
 
 ### Automatic Exclusions

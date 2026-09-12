@@ -108,6 +108,7 @@
                     <CheckBox Content="Rename Events" IsChecked="{Binding RenameEvents}"/>
                     <CheckBox Content="Rename Namespaces" IsChecked="{Binding RenameNamespaces}"/>
                     <ui:ToggleSwitch Content="Preserve Public API" IsChecked="{Binding PreservePublicApi}" Margin="0,8,0,0"/>
+                    <ui:ToggleSwitch Content="Preserve XAML bindings" IsChecked="{Binding PreserveXaml}" Margin="0,8,0,0"/>
                 </StackPanel>
             </StackPanel>
         </ui:CardExpander>

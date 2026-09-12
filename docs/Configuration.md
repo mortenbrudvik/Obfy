@@ -74,7 +74,8 @@ Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](.
     "renameParameters": true,
     "renameEvents": true,
     "renameNamespaces": true,
-    "preservePublicApi": false
+    "preservePublicApi": false,
+    "preserveXaml": false
   },
 
   "protection": {
@@ -291,6 +292,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `renameEvents` | bool | `true` | Rename events and add_/remove_ accessors |
 | `renameNamespaces` | bool | `true` | Rename namespaces (public namespaces kept when `preservePublicApi`) |
 | `preservePublicApi` | bool | `false` | Keep public members unchanged |
+| `preserveXaml` | bool | `false` | Keep public instance properties on view-model / XAML types |
 
 **Naming Modes:**
 
@@ -366,6 +368,10 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 - `SerializableAttribute`
 - `DataContractAttribute`
 - `DataMemberAttribute`
+- `JsonPropertyNameAttribute`
+- `JsonPropertyAttribute`
+- `XmlElementAttribute`
+- `XmlAttributeAttribute`
 
 ## Example Configurations
 

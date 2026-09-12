@@ -87,7 +87,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 {
                     foreach (var field in type.Fields)
                     {
-                        if (CanRenameField(field, settings))
+                        if (CanRenameField(field, settings, context.Settings.Exclusions))
                         {
                             var newName = _nameGenerator.Generate(field.Name, settings.Mode);
                             fieldRenames[field] = newName;
@@ -100,7 +100,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 {
                     foreach (var property in type.Properties)
                     {
-                        if (CanRenameProperty(property, settings))
+                        if (CanRenameProperty(property, settings, context.Settings.Exclusions))
                         {
                             var newName = _nameGenerator.Generate(property.Name, settings.Mode);
                             propertyRenames[property] = newName;
@@ -264,6 +264,9 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (ObfuscatorHelpers.HasExcludedAttribute(type, exclusions))
             return true;
 
+        if (ObfuscatorHelpers.IsComVisibleTrue(type))
+            return true;
+
         return false;
     }
 
@@ -299,6 +302,10 @@ public class SymbolRenamingObfuscator : IObfuscator
             return false;
 
         if (ObfuscatorHelpers.MethodMatchesExclusion(method, exclusions))
+            return false;
+
+        if (ObfuscatorHelpers.HasExcludedAttribute(method, exclusions) ||
+            ObfuscatorHelpers.IsComVisibleTrue(method))
             return false;
 
         if (method.HasOverrides)
@@ -346,7 +353,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         return true;
     }
 
-    private bool CanRenameField(FieldDef field, SymbolRenamingSettings settings)
+    private bool CanRenameField(FieldDef field, SymbolRenamingSettings settings, ExclusionRules exclusions)
     {
         // Preserve public API if configured
         if (settings.PreservePublicApi && field.IsPublic)
@@ -360,10 +367,14 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (field.IsLiteral)
             return false;
 
+        if (ObfuscatorHelpers.HasExcludedAttribute(field, exclusions) ||
+            ObfuscatorHelpers.IsComVisibleTrue(field))
+            return false;
+
         return true;
     }
 
-    private bool CanRenameProperty(PropertyDef property, SymbolRenamingSettings settings)
+    private bool CanRenameProperty(PropertyDef property, SymbolRenamingSettings settings, ExclusionRules exclusions)
     {
         // Check if getter/setter is public
         var isPublic = (property.GetMethod?.IsPublic ?? false) || (property.SetMethod?.IsPublic ?? false);
@@ -373,6 +384,15 @@ public class SymbolRenamingObfuscator : IObfuscator
 
         // Don't rename special properties
         if (property.IsRuntimeSpecialName || property.IsSpecialName)
+            return false;
+
+        if (ObfuscatorHelpers.HasExcludedAttribute(property, exclusions) ||
+            ObfuscatorHelpers.IsComVisibleTrue(property))
+            return false;
+
+        if (settings.PreserveXaml && isPublic &&
+            !(property.GetMethod?.IsStatic ?? false) &&
+            ObfuscatorHelpers.LooksLikeXamlBindable(property.DeclaringType))
             return false;
 
         return true;

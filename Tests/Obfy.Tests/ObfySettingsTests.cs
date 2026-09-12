@@ -82,6 +82,11 @@ public class ObfySettingsTests
         settings.SymbolRenaming.Mode.ShouldBe(NamingMode.Unreadable);
         settings.ControlFlow.Enabled.ShouldBeFalse();
         settings.Protection.AntiDebug.ShouldBeFalse();
+        settings.Exclusions.Attributes.ShouldContain("JsonPropertyNameAttribute");
+        settings.Exclusions.Attributes.ShouldContain("JsonPropertyAttribute");
+        settings.Exclusions.Attributes.ShouldContain("XmlElementAttribute");
+        settings.Exclusions.Attributes.ShouldContain("XmlAttributeAttribute");
+        settings.SymbolRenaming.PreserveXaml.ShouldBeFalse();
     }
 
     [Fact]

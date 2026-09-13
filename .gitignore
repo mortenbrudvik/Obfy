@@ -71,6 +71,7 @@ package/*.cer
 
 # Per-project obfuscation configs (generated)
 **/obfy.json
+!Tests/Obfy.ScenarioTests/**/obfy.json
 
 # Utility scripts
 install-gradle.ps1

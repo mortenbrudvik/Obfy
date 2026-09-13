@@ -117,7 +117,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 | QT-04 | UI automation tests | P3 | High | Low | ✅ Done (local FlaUI; `Category=UI`, skipped in CI) |
 | QT-05 | Aggressive pipeline e2e (compile → run) | P0 | Medium | High | ✅ Done (unreleased) |
 | QT-06 | Decompiler-resistance fixtures | P0 | Medium | High | ✅ Done |
-| QT-07 | Scenario / SDK project tests | P1 | Medium | High | Open — [Testing-Roadmap.md](Testing-Roadmap.md) |
+| QT-07 | Scenario / SDK project tests | P1 | Medium | High | ✅ Done (Phase 1 — [Testing-Roadmap.md](Testing-Roadmap.md)) |
 
 ---
 

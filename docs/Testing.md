@@ -4,15 +4,16 @@ How to run and extend the current suite. Planned gaps (real SDK/WPF solutions, p
 
 ## Overview
 
-Technique-level coverage is strong (655 tests as of 2026-09-13). Integration against real app/project types is not; see the testing roadmap.
+Technique-level coverage is strong. SDK project scenarios (WPF app, WPF+library, shipped examples) run in `Obfy.ScenarioTests`. Remaining platform gaps are in [Testing-Roadmap.md](Testing-Roadmap.md).
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 382 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
+| Obfy.Tests | 381 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
 | Obfy.Console.Tests | 117 | CLI parsing, wizard defaults, and a thin integration file |
 | Obfy.UI.Tests | 132 | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 24 | 6 locator unit tests (CI) + 18 FlaUI live-window tests (`Category=UI`, local) |
-| **Total** | **655** | |
+| Obfy.ScenarioTests | 4 | SDK fixtures: examples, WPF app, WPF+library (merge skipped: ILRepack net10 host) |
+| **Total** | **658** | |
 
 ## Test Stack
 
@@ -38,6 +39,7 @@ dotnet test
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
+dotnet test Tests/Obfy.ScenarioTests
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 ```
 
@@ -129,6 +131,26 @@ Run FlaUI: `dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.cs
 
 Location: `Tests/Obfy.UI.AutomationTests/`
 
+### Obfy.ScenarioTests (SDK fixtures)
+
+Compile → obfuscate → run real SDK projects. Fixtures live under `Tests/Obfy.ScenarioTests/Fixtures/` (not `examples/`). `examples/BasicConsoleApp` and `examples/LibraryWithPublicApi` are copied and run as-is so those recipes cannot bitrot.
+
+| Test | What it proves |
+|------|----------------|
+| `ExampleScenarioTests` | Shipped example `obfy.json` still builds, obfuscates, and runs |
+| `WpfAppTests` | `preserveXaml` + MainWindow exclusion: window constructs, `{Binding Title}` survives, non-ViewModel type is renamed |
+| `WpfSolutionTests` | WPF app + class library: both outputs obfuscated, app still calls into the library |
+
+Harness: copy fixture to `%TEMP%`, `dotnet build -c Release`, obfuscate with `IObfuscationService`, `dotnet <assembly>` (WPF uses `--smoke`).
+
+To add a fixture:
+
+1. Create `Tests/Obfy.ScenarioTests/Fixtures/<Name>/` with a `.csproj` (and `obfy.json` if needed). Keep it out of `Obfy.sln` as a built project — it is test data.
+2. Copy with `ScenarioHarness.CopyToTemp`, build with `ScenarioHarness.DotnetBuild`, obfuscate with `ScenarioHarness.ObfuscateAsync`.
+3. Assert by running the output (`RunDotnet`) and/or inspecting it with dnlib.
+
+Location: `Tests/Obfy.ScenarioTests/`
+
 ## Adding Tests
 
 ### For CLI Changes
@@ -181,7 +203,7 @@ public void NewProperty_WhenChanged_UpdatesState()
 
 ## Test Configuration
 
-`Obfy.Console.Tests`, `Obfy.UI.Tests`, and `Obfy.UI.AutomationTests` use `xunit.runner.json` to disable parallel test execution:
+`Obfy.Console.Tests`, `Obfy.UI.Tests`, `Obfy.UI.AutomationTests`, and `Obfy.ScenarioTests` use `xunit.runner.json` to disable parallel test execution:
 
 ```json
 {

@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--proxy-external` help text matches that it enables `--reference-proxy`
 
 ### Added
+- SDK scenario tests (`Obfy.ScenarioTests`): shipped examples, WPF app, and WPF+library solution compile → obfuscate → run
 - Desktop UI opens input files and `-o`/`--output` from the command line
 - Incremental obfuscation cache (`incremental.enabled`)
 - Selective IL virtualization for simple static int methods (`virtualization.enabled`)

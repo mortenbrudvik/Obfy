@@ -1,0 +1,15 @@
+{
+  "level": "standard",
+  "stringEncryption": {
+    "enabled": true
+  },
+  "symbolRenaming": {
+    "enabled": true,
+    "mode": "sequential",
+    "preserveXaml": true,
+    "preservePublicApi": false
+  },
+  "exclusions": {
+    "types": [ "MainWindow" ]
+  }
+}

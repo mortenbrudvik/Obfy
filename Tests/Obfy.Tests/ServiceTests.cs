@@ -902,41 +902,6 @@ namespace Test
     }
 
     [Fact]
-    public async Task AssemblyMerger_ReturnsCorrectAssemblyCount_OnSuccess()
-    {
-        // Arrange
-        var logger = new Mock<ILogger<AssemblyMerger>>();
-        var merger = new AssemblyMerger(logger.Object);
-
-        var assembly1 = CreateTestAssembly("Merge1.dll");
-        var assembly2 = CreateTestAssembly("Merge2.dll");
-        var outputPath = Path.Combine(_tempDirectory, "merged_count.dll");
-        var settings = new AssemblyMergeSettings();
-
-        // Act
-        var result = await merger.MergeAsync(
-            new[] { assembly1, assembly2 },
-            outputPath,
-            settings);
-
-        // Assert - ILRepack may fail with minimal test assemblies, so we test the flow
-        // If it succeeded, verify the count; if it failed, verify duration is set
-        if (result.Success)
-        {
-            result.MergedAssemblyCount.ShouldBe(2);
-            result.MergedAssemblies.ShouldContain("Merge1.dll");
-            result.MergedAssemblies.ShouldContain("Merge2.dll");
-        }
-        else
-        {
-            // Merge failed (possibly due to ILRepack incompatibility with minimal assemblies)
-            // but the error handling should work correctly
-            result.Duration.ShouldBeGreaterThan(TimeSpan.Zero);
-            result.ErrorMessage.ShouldNotBeNullOrEmpty();
-        }
-    }
-
-    [Fact]
     public async Task AssemblyMerger_ExcludesPatternMatches()
     {
         // Arrange

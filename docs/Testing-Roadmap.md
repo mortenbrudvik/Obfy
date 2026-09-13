@@ -91,11 +91,11 @@ Build fixtures with `dotnet build -c Release` in a temp copy (or `OutputPath` un
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
-| TR-10 | **WPF app fixture.** Window with `{Binding}`, `x:Name`, a public property on a type that does **not** match `LooksLikeXamlBindable`’s `*ViewModel`/`*View` suffix (or an extra type that does). Aggressive or Standard rename + `preserveXaml`. Headless or process-start smoke: window constructs, bound value is readable. | M | High | Open |
-| TR-11 | **WPF + class library solution.** App references a library; both outputs obfuscated (app with rename, library with `preservePublicApi` or as a private impl). App still calls into the library. | M | High | Open |
-| TR-12 | **Promote `examples/BasicConsoleApp` and `examples/LibraryWithPublicApi` to CI.** Build, obfuscate with their `obfy.json`, run / invoke. Fail if the example recipe bitrots. | S | High | Open |
-| TR-13 | **Merge happy path on real assemblies.** Two Roslyn- or SDK-built DLLs, `IAssemblyMerger.MergeAsync` **must** succeed, merged output loads and runs. Replace `AssemblyMerger_ReturnsCorrectAssemblyCount_OnSuccess` accepting failure. | S | Medium | Open |
-| TR-14 | **CLI dry-run is a real handler test.** Stop using `SetupMainHandler` no-op for tests that claim integration. Keep parse-only tests separate. | S | Medium | Open |
+| TR-10 | **WPF app fixture.** Window with `{Binding}`, `x:Name`, a public property on a type that does **not** match `LooksLikeXamlBindable`’s `*ViewModel`/`*View` suffix (or an extra type that does). Aggressive or Standard rename + `preserveXaml`. Headless or process-start smoke: window constructs, bound value is readable. | M | High | ✅ Done (`WpfAppTests`, MainWindow excluded for BAML) |
+| TR-11 | **WPF + class library solution.** App references a library; both outputs obfuscated (app with rename, library with `preservePublicApi` or as a private impl). App still calls into the library. | M | High | ✅ Done (`WpfSolutionTests`) |
+| TR-12 | **Promote `examples/BasicConsoleApp` and `examples/LibraryWithPublicApi` to CI.** Build, obfuscate with their `obfy.json`, run / invoke. Fail if the example recipe bitrots. | S | High | ✅ Done (`ExampleScenarioTests`) |
+| TR-13 | **Merge happy path on real assemblies.** Two Roslyn- or SDK-built DLLs, `IAssemblyMerger.MergeAsync` **must** succeed, merged output loads and runs. Replace `AssemblyMerger_ReturnsCorrectAssemblyCount_OnSuccess` accepting failure. | S | Medium | Blocked — `MergeScenarioTests` exists; ILRepack.NETStandard 2.0.4 throws `NotSupportedException` on a net10 host |
+| TR-14 | **CLI dry-run is a real handler test.** Stop using `SetupMainHandler` no-op for tests that claim integration. Keep parse-only tests separate. | S | Medium | ✅ Done |
 
 **Done when:** a WPF solution and the two examples are obfuscated and executed on CI; merge success is asserted; `docs/Testing.md` describes how to add a fixture.
 

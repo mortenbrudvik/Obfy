@@ -150,7 +150,6 @@ public class IntegrationTests : IDisposable
         Directory.CreateDirectory(outputDir);
 
         var rootCommand = Program.CreateRootCommand();
-        SetupMainHandler(rootCommand);
         var console = new TestConsole();
 
         // Act
@@ -158,8 +157,7 @@ public class IntegrationTests : IDisposable
             $"\"{assemblyPath}\" -o \"{outputDir}\" --dry-run --no-logo",
             console);
 
-        // Assert
-        // Dry run should not create any output files
+        exitCode.ShouldBe(0);
         var outputFile = Path.Combine(outputDir, "DryRunTest.dll");
         File.Exists(outputFile).ShouldBeFalse();
     }
@@ -344,17 +342,6 @@ public class IntegrationTests : IDisposable
         return path;
     }
 
-    private static void SetupMainHandler(RootCommand rootCommand)
-    {
-        // Set up a minimal handler that doesn't actually run obfuscation
-        // This is for testing parsing behavior only
-        rootCommand.SetHandler((context) =>
-        {
-            // Handler that does nothing - for testing parsing only
-            return Task.CompletedTask;
-        });
-    }
-
     #endregion
 
     #region Real end-to-end obfuscation
@@ -362,8 +349,7 @@ public class IntegrationTests : IDisposable
     [Fact]
     public async Task Main_RunsRealObfuscationHandler_EndToEnd()
     {
-        // The other "integration" tests replace the obfuscation handler with a no-op. This drives the
-        // real handler through Program.Main: parse args -> build DI -> run the pipeline -> write output.
+        // Drives the real handler through Program.Main: parse args -> build DI -> run the pipeline.
         var input = CreateTestAssembly("MainE2E.dll");
         var outputDir = Path.Combine(_tempDirectory, "out");
 

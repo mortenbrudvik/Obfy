@@ -1,0 +1,10 @@
+<Window x:Class="WpfApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WpfSolution fixture"
+        Height="200"
+        Width="320">
+    <StackPanel Margin="16">
+        <TextBlock x:Name="TitleText" Text="{Binding Title}" FontSize="16" />
+    </StackPanel>
+</Window>

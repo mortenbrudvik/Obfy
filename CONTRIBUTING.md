@@ -64,6 +64,7 @@ Obfy/
 │   ├── Obfy.Tests/              # Core unit tests (382 tests)
 │   ├── Obfy.Console.Tests/      # CLI parsing tests (117 tests)
 │   ├── Obfy.UI.Tests/           # ViewModel unit tests (120 tests)
+│   ├── Obfy.ScenarioTests/      # SDK fixtures: examples, WPF app, WPF+library
 │   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
 ├── docs/                   # Documentation
 └── examples/               # Example projects
@@ -112,13 +113,14 @@ Examples:
 
 ### Testing
 
-We have four test projects:
+We have five test projects:
 
 | Project | Purpose | Tests |
 |---------|---------|-------|
-| `Obfy.Tests` | Core obfuscation logic | 382 |
+| `Obfy.Tests` | Core obfuscation logic | 381 |
 | `Obfy.Console.Tests` | CLI argument parsing, help output | 117 |
 | `Obfy.UI.Tests` | ViewModel logic and commands | 120 |
+| `Obfy.ScenarioTests` | SDK fixtures (examples, WPF app, WPF+library) | 4 |
 | `Obfy.UI.AutomationTests` | Locator unit tests + FlaUI live window (`Category=UI`, local) | 24 |
 
 ```bash
@@ -129,6 +131,7 @@ dotnet test
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
+dotnet test Tests/Obfy.ScenarioTests
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
 
 # Run with coverage

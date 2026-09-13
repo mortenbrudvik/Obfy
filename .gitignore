@@ -69,6 +69,9 @@ package/*.cer
 # Isolated feature worktrees (always branch out here, not in the main checkout)
 .worktrees/
 
+# Visual brainstorming companion (mockups and session state)
+.superpowers/
+
 # Per-project obfuscation configs (generated)
 **/obfy.json
 !Tests/Obfy.ScenarioTests/**/obfy.json

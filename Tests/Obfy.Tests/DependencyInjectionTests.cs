@@ -81,4 +81,17 @@ public class DependencyInjectionTests
         byName["Watermark"].ShouldBeLessThan(byName["AntiTamper"]);
         byName["SymbolRenaming"].ShouldBeLessThan(byName["MetadataRemoval"]);
     }
+
+    [Fact]
+    public void Module_NameGenerator_IsInstancePerLifetimeScope()
+    {
+        using var container = BuildContainer();
+        using var first = container.BeginLifetimeScope();
+        using var second = container.BeginLifetimeScope();
+
+        first.Resolve<Obfy.Core.Utilities.INameGenerator>()
+            .ShouldNotBeSameAs(second.Resolve<Obfy.Core.Utilities.INameGenerator>());
+        first.Resolve<IObfuscationPipeline>()
+            .ShouldNotBeSameAs(second.Resolve<IObfuscationPipeline>());
+    }
 }

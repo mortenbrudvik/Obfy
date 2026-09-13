@@ -85,7 +85,13 @@ public static class BuildEvents
             await VS.StatusBar.ShowProgressAsync("Post-build obfuscation...", 1, 2);
 
             var cts = new CancellationTokenSource();
-            var result = await obfuscator.ObfuscateAsync(assemblyPath!, assemblyPath, settings, cts.Token);
+            var projectDir = Path.GetDirectoryName(await project.GetAttributeAsync("FullPath"));
+            var configPath = !string.IsNullOrEmpty(projectDir) && settingsService is not null
+                ? settingsService.GetSettingsFilePath(projectDir)
+                : null;
+            if (configPath is not null && !File.Exists(configPath))
+                configPath = null;
+            var result = await obfuscator.ObfuscateAsync(assemblyPath!, assemblyPath, settings, cts.Token, configPath);
 
             await VS.StatusBar.ClearAsync();
 

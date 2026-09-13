@@ -79,7 +79,7 @@ public class SourceStringEncryptor : IObfuscator
 
             return ObfuscationResult.Successful(stats);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Source string encryption failed");
             return ObfuscationResult.Failed($"Source string encryption failed: {ex.Message}", ex);

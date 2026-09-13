@@ -38,6 +38,8 @@ public partial class SymbolTreeNode : ObservableObject
     /// </summary>
     public ObservableCollection<SymbolTreeNode> Children { get; } = new();
 
+    public override string ToString() => $"{OriginalName} -> {ObfuscatedName}";
+
     /// <summary>
     /// Gets whether this node has children.
     /// </summary>

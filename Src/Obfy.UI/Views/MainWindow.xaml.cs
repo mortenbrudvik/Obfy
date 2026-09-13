@@ -13,6 +13,7 @@ public partial class MainWindow : FluentWindow
     {
         InitializeComponent();
         SystemThemeWatcher.Watch(this);
+        Closed += (_, _) => SystemThemeWatcher.UnWatch(this);
     }
 
     public MainWindow(ISnackbarService snackbarService, IContentDialogService contentDialogService)

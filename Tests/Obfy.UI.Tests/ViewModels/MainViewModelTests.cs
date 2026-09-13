@@ -18,7 +18,7 @@ public class MainViewModelTests : IDisposable
     private readonly Mock<ISettingsService> _settingsService = new();
     private readonly Mock<IReportService> _reportService = new();
     private readonly Mock<IContentDialogService> _contentDialogService = new();
-    private readonly Mock<ISnackbarService> _snackbarService = new();
+    private readonly Mock<IUserNotificationService> _notifications = new();
     private readonly Mock<IClipboardService> _clipboard = new();
     private readonly SettingsViewModel _settings = new();
     private readonly FilesViewModel _files;
@@ -42,7 +42,7 @@ public class MainViewModelTests : IDisposable
             _fileDialogService.Object,
             _reportService.Object,
             _clipboard.Object,
-            _snackbarService.Object);
+            _notifications.Object);
 
         _viewModel = new MainViewModel(
             _obfuscationService.Object,
@@ -50,7 +50,7 @@ public class MainViewModelTests : IDisposable
             _settingsService.Object,
             _reportService.Object,
             _contentDialogService.Object,
-            _snackbarService.Object,
+            _notifications.Object,
             _settings,
             _files,
             _output,
@@ -425,13 +425,16 @@ public class MainViewModelTests : IDisposable
 
     private void VerifySnackbar(ControlAppearance appearance, string messagePart)
     {
-        _snackbarService.Verify(
+        var severity = appearance == ControlAppearance.Danger
+            ? NotificationSeverity.Error
+            : appearance == ControlAppearance.Caution
+                ? NotificationSeverity.Warning
+                : NotificationSeverity.Success;
+        _notifications.Verify(
             s => s.Show(
                 It.IsAny<string>(),
                 It.Is<string>(m => m.Contains(messagePart, StringComparison.OrdinalIgnoreCase)),
-                appearance,
-                It.IsAny<IconElement?>(),
-                It.IsAny<TimeSpan>()),
+                severity),
             Times.AtLeastOnce);
     }
 

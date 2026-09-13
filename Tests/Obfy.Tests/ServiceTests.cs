@@ -399,6 +399,40 @@ namespace Test
     }
 
     [Fact]
+    public async Task SourceProcessor_Save_PreservesRelativeSubdirectories()
+    {
+        var sourceDir = Path.Combine(_tempDirectory, "srcroot");
+        var nested = Path.Combine(sourceDir, "Nested");
+        Directory.CreateDirectory(nested);
+        await File.WriteAllTextAsync(Path.Combine(sourceDir, "Root.cs"), "class Root { }");
+        await File.WriteAllTextAsync(Path.Combine(nested, "Child.cs"), "class Child { }");
+
+        var processor = new SourceProcessor(new Mock<ILogger<SourceProcessor>>().Object);
+        var context = await processor.LoadAsync(sourceDir, new ObfySettings());
+        var outputDir = Path.Combine(_tempDirectory, "outroot");
+        await processor.SaveAsync(context, outputDir);
+
+        File.Exists(Path.Combine(outputDir, "Root.cs")).ShouldBeTrue();
+        File.Exists(Path.Combine(outputDir, "Nested", "Child.cs")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SourceProcessor_Load_IncludesTrustedPlatformAssemblies()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "Http.cs");
+        await File.WriteAllTextAsync(sourcePath, """
+            using System.Net.Http;
+            class C { HttpClient? Client; }
+            """);
+        var processor = new SourceProcessor(new Mock<ILogger<SourceProcessor>>().Object);
+        var context = await processor.LoadAsync(sourcePath, new ObfySettings());
+        context.Compilation.ShouldNotBeNull();
+        context.Compilation!.GetDiagnostics()
+            .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+            .ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task SourceProcessor_Save_ThrowsOnNullCompilation()
     {
         // Arrange

@@ -15,5 +15,6 @@ public interface IObfuscationServiceWrapper
         string assemblyPath,
         string? outputPath,
         ObfySettings settings,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? configPath = null);
 }

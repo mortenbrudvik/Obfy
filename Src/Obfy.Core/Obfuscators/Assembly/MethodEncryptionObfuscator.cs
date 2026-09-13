@@ -97,7 +97,7 @@ public class MethodEncryptionObfuscator : IObfuscator
             var decrypt = decryptor.FindMethod("DecryptBodies")
                 ?? throw new InvalidOperationException("Method-encryption decryptor was not injected.");
 
-            var initializer = FindOrCreateModuleInitializer(module);
+            var initializer = ObfuscatorHelpers.FindOrCreateModuleInitializer(module);
             initializer.Body!.Instructions.Insert(0, Instruction.Create(OpCodes.Call, decrypt));
             initializer.Body.UpdateInstructionOffsets();
 
@@ -421,31 +421,4 @@ public class MethodEncryptionObfuscator : IObfuscator
         return method;
     }
 
-    private static MethodDef FindOrCreateModuleInitializer(ModuleDef module)
-    {
-        var globalType = module.GlobalType;
-        if (globalType == null)
-        {
-            globalType = new TypeDefUser("", "<Module>", null)
-            {
-                Attributes = TypeAttributes.NotPublic
-            };
-            module.Types.Insert(0, globalType);
-        }
-
-        var cctor = globalType.Methods.FirstOrDefault(m => m.IsStaticConstructor || m.Name == ".cctor");
-        if (cctor != null)
-            return cctor;
-
-        cctor = new MethodDefUser(
-            ".cctor",
-            MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Private | MethodAttributes.Static |
-            MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
-        var body = new CilBody();
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-        cctor.Body = body;
-        globalType.Methods.Add(cctor);
-        return cctor;
-    }
 }

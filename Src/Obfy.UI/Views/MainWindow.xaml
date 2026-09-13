@@ -55,7 +55,7 @@
                     <ui:Button Icon="{ui:SymbolIcon Play24}" Content="Obfuscate"
                               AutomationProperties.AutomationId="ObfuscateButton"
                               AutomationProperties.Name="Obfuscate"
-                              IsDefault="True"
+                              AutomationProperties.HelpText="Add at least one input file. Watermark id is required when watermark is enabled. Shortcut: Ctrl+Enter."
                               Appearance="Primary" Command="{Binding ObfuscateCommand}"/>
                     <ui:Button Icon="{ui:SymbolIcon Stop24}" Content="Cancel"
                               AutomationProperties.AutomationId="CancelButton"

@@ -54,6 +54,24 @@ public class IncrementalCacheTests : IDisposable
         IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
     }
 
+    [Fact]
+    public void TryHit_CacheWrittenWithoutProductVersion_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.Write(input, output, settings);
+        File.ReadAllText(IncrementalCache.CachePath(output)).Trim().Length.ShouldBe(64);
+        File.WriteAllText(IncrementalCache.CachePath(output), "deadbeef");
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryHit_CorruptCacheFile_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        File.WriteAllText(IncrementalCache.CachePath(output), "");
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_dir, recursive: true); } catch { /* ignore */ }

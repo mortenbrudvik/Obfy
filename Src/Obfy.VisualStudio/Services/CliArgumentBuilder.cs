@@ -12,7 +12,8 @@ public static class CliArgumentBuilder
     public static string Build(
         string assemblyPath,
         string? outputPath,
-        ObfySettings settings,
+        string? configPath,
+        ObfuscationLevel? level = null,
         bool generateSymbolMap = false)
     {
         var sb = new StringBuilder();
@@ -25,22 +26,10 @@ public static class CliArgumentBuilder
                 sb.Append($" -o \"{outputDir}\"");
         }
 
-        sb.Append($" -l {settings.Level.ToString().ToLowerInvariant()}");
-
-        if (settings.Level == ObfuscationLevel.Custom)
-        {
-            if (!settings.StringEncryption) sb.Append(" --no-string-encryption");
-            if (!settings.SymbolRenaming) sb.Append(" --no-symbol-renaming");
-            if (settings.ControlFlow) sb.Append(" --control-flow");
-            else sb.Append(" --no-control-flow");
-            if (settings.AntiDebug) sb.Append(" --anti-debug");
-            if (settings.AntiDump) sb.Append(" --anti-dump");
-            if (settings.ReferenceProxy) sb.Append(" --reference-proxy");
-            if (settings.AntiTamper) sb.Append(" --anti-tamper");
-            if (settings.AntiDecompiler) sb.Append(" --anti-decompiler");
-            if (settings.ConstantEncryption) sb.Append(" --encrypt-constants");
-            if (settings.ResourceEncryption) sb.Append(" --encrypt-resources");
-        }
+        if (!string.IsNullOrEmpty(configPath))
+            sb.Append($" -c \"{configPath}\"");
+        else if (level is not null)
+            sb.Append($" -l {level.Value.ToString().ToLowerInvariant()}");
 
         if (generateSymbolMap)
         {

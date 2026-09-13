@@ -41,6 +41,8 @@ obfy <input>... [options]
 | `--anti-decompiler` | | Enable anti-decompiler protection | Off |
 | `--anti-dump` | | Enable anti-dump (PE wipe + in-process MiniDump hook, Windows) | Off |
 | `--watermark-id <id>` | | Enable watermarking and set `watermark.id` (trimmed; whitespace-only is an error) | Off |
+| `--virtualize` | | Enable limited IL virtualization for simple static int methods | Off |
+| `--incremental` | | Skip re-obfuscation when input and settings are unchanged | Off |
 | `--reference-proxy` | | Enable reference proxy | Off |
 | `--proxy-external` | | Also proxy selected out-of-module calls (enables `--reference-proxy`; skips compiler/interop/pointer signatures) | Off |
 | `--encrypt-methods` | | Encrypt method IL in the PE image (Windows) | Off |
@@ -61,7 +63,7 @@ obfy <input>... [options]
 | `--version` | | Show version information | |
 | `--help` | `-h`, `-?` | Show help | |
 
-**Config-only (no CLI flags):** `packing.enabled`, `incremental.enabled`, `virtualization.enabled`, `signing`, `runtimeProfile`, `dependencyEmbedding`, `symbolRenaming.preserveXaml`, `inclusions`, `watermark` (except `--watermark-id`), and nested anti-decompiler junk counts. Set these in `obfy.json`.
+**Config-only (no CLI flags):** `packing.enabled`, `signing`, `runtimeProfile`, `dependencyEmbedding`, `symbolRenaming.preserveXaml`, `inclusions`, `watermark` (except `--watermark-id`), and nested anti-decompiler junk counts. Set these in `obfy.json`. `--virtualize` and `--incremental` turn those features on; full nested knobs still live in the config file.
 
 ### config generate
 

@@ -63,8 +63,13 @@
                          AutomationProperties.Name="Input files"
                          ItemsSource="{Binding Files}"
                          Visibility="{Binding HasFiles, Converter={StaticResource BooleanToVisibilityConverter}}"
-                         Background="Transparent" BorderThickness="0"
+                         Background="{DynamicResource SubtleFillColorTransparentBrush}" BorderThickness="0"
                          HorizontalContentAlignment="Stretch">
+                    <ui:ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="AutomationProperties.Name" Value="{Binding FileName}"/>
+                        </Style>
+                    </ui:ListView.ItemContainerStyle>
                     <ui:ListView.ItemTemplate>
                         <DataTemplate>
                             <Grid Margin="8,4">
@@ -126,7 +131,8 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Label Grid.Row="0" Grid.ColumnSpan="2" Content="Output Directory" Target="{Binding ElementName=OutputDirectoryTextBox}" Margin="0,0,0,4"/>
+            <ui:TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Output Directory" Margin="0,0,0,4"
+                          Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
             <ui:TextBox x:Name="OutputDirectoryTextBox"
                        AutomationProperties.AutomationId="OutputDirectoryTextBox"
                        AutomationProperties.Name="Output directory"

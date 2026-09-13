@@ -32,6 +32,8 @@ public class LogEntry
     /// </summary>
     public string Message { get; init; } = string.Empty;
 
+    public override string ToString() => $"{Level}: {Message}";
+
     /// <summary>
     /// Creates a new log entry with the specified message and level.
     /// </summary>

@@ -75,11 +75,13 @@ class ObfuscateAction : AnAction() {
                 indicator.fraction = 0.3
                 indicator.text = "Running obfuscation..."
 
+                val configFile = projectDir?.let { java.io.File(it.path, "obfy.json") }
                 val result = obfuscationService.obfuscate(
                     assemblyPath,
                     assemblyPath,
                     settings,
-                    outputService
+                    outputService,
+                    configFile?.takeIf { it.exists() }?.absolutePath
                 )
 
                 indicator.fraction = 1.0

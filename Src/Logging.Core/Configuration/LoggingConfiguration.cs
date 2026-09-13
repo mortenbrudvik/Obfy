@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using NLog;
 using NLog.Extensions.Logging;
+using NLog.Targets.Wrappers;
 
 namespace Logging.Core.Configuration;
 
@@ -56,13 +57,19 @@ public static class LoggingConfiguration
             Layout = "${time} [${level:uppercase=true}] ${message}"
         };
 
-        config.AddTarget(fileTarget);
+        var asyncFileTarget = new AsyncTargetWrapper(fileTarget)
+        {
+            Name = "asyncFile",
+            OverflowAction = AsyncTargetWrapperOverflowAction.Grow
+        };
+
+        config.AddTarget(asyncFileTarget);
         config.AddTarget(debugTarget);
 
         // Debug and above to debugger
         config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, debugTarget);
-        // Debug and above to file
-        config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, fileTarget);
+        // Debug and above to file (async so obfuscation/UI threads are not blocked)
+        config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, asyncFileTarget);
 
         // Console output only if enabled
         if (enableConsoleOutput)

@@ -7,14 +7,5 @@ namespace Obfy.UI.Services;
 /// </summary>
 public sealed class WpfClipboardService : IClipboardService
 {
-    public void SetText(string text)
-    {
-        try
-        {
-            Clipboard.SetText(text);
-        }
-        catch (System.Runtime.InteropServices.ExternalException)
-        {
-        }
-    }
+    public void SetText(string text) => Clipboard.SetText(text);
 }

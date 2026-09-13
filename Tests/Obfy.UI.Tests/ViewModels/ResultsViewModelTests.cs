@@ -16,7 +16,7 @@ public class ResultsViewModelTests : IDisposable
     private readonly Mock<IFileDialogService> _dialogs = new();
     private readonly Mock<IReportService> _reports = new();
     private readonly Mock<IClipboardService> _clipboard = new();
-    private readonly Mock<ISnackbarService> _snackbar = new();
+    private readonly Mock<IUserNotificationService> _notifications = new();
     private readonly ResultsViewModel _viewModel;
     private readonly string _tempDirectory;
 
@@ -26,7 +26,7 @@ public class ResultsViewModelTests : IDisposable
             _dialogs.Object,
             _reports.Object,
             _clipboard.Object,
-            _snackbar.Object);
+            _notifications.Object);
 
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"ResultsVMTests_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
@@ -263,13 +263,14 @@ public class ResultsViewModelTests : IDisposable
 
     private void VerifySnackbar(ControlAppearance appearance, string messagePart)
     {
-        _snackbar.Verify(
+        var severity = appearance == ControlAppearance.Danger
+            ? NotificationSeverity.Error
+            : NotificationSeverity.Success;
+        _notifications.Verify(
             s => s.Show(
                 It.IsAny<string>(),
                 It.Is<string>(m => m.Contains(messagePart, StringComparison.OrdinalIgnoreCase)),
-                appearance,
-                It.IsAny<IconElement?>(),
-                It.IsAny<TimeSpan>()),
+                severity),
             Times.Once);
     }
 }

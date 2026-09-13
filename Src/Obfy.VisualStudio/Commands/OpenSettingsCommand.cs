@@ -65,11 +65,6 @@ internal sealed class OpenSettingsCommand : BaseCommand<OpenSettingsCommand>
 
     protected override void BeforeQueryStatus(EventArgs e)
     {
-        ThreadHelper.JoinableTaskFactory.Run(async () =>
-        {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-            var project = await VS.Solutions.GetActiveProjectAsync();
-            Command.Visible = project != null;
-        });
+        Command.Visible = true;
     }
 }

@@ -26,7 +26,8 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         string assemblyPath,
         string? outputPath,
         ObfySettings settings,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? configPath = null)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -41,7 +42,23 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
             }
 
             var generateMap = ObfyPackage.Options?.GenerateSymbolMap == true;
-            var args = CliArgumentBuilder.Build(assemblyPath, outputPath, settings, generateMap);
+            var inPlace = !string.IsNullOrEmpty(outputPath) &&
+                          string.Equals(Path.GetFullPath(outputPath), Path.GetFullPath(assemblyPath), StringComparison.OrdinalIgnoreCase);
+            var cliOutput = outputPath;
+            string? tempDir = null;
+            if (inPlace)
+            {
+                tempDir = Path.Combine(Path.GetTempPath(), "obfy_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tempDir);
+                cliOutput = Path.Combine(tempDir, Path.GetFileName(assemblyPath));
+            }
+
+            var args = CliArgumentBuilder.Build(
+                assemblyPath,
+                cliOutput,
+                configPath,
+                configPath is null ? settings.Level : null,
+                generateMap);
 
             _outputService.Info($"Executing: obfy {args}");
 
@@ -53,7 +70,16 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
 
             if (result.Success)
             {
+                if (inPlace && cliOutput is not null && File.Exists(cliOutput))
+                {
+                    File.Copy(cliOutput, assemblyPath, overwrite: true);
+                    TryDeleteDirectory(tempDir);
+                }
                 result.OutputPath = outputPath ?? assemblyPath;
+            }
+            else
+            {
+                TryDeleteDirectory(tempDir);
             }
 
             return result;
@@ -196,5 +222,18 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         }
 
         return result;
+    }
+
+    private static void TryDeleteDirectory(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+            return;
+        try
+        {
+            Directory.Delete(path, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 }

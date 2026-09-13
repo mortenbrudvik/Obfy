@@ -58,7 +58,7 @@ public class AntiTamperObfuscator : IObfuscator
             // Add check to module initializer if configured
             if (settings.CheckModuleInitializer)
             {
-                var moduleInitializer = FindOrCreateModuleInitializer(module);
+                var moduleInitializer = ObfuscatorHelpers.FindOrCreateModuleInitializer(module);
                 if (moduleInitializer != null && InjectVerificationCall(moduleInitializer, antiTamperType))
                 {
                     stats.ProtectionsApplied++;
@@ -79,7 +79,7 @@ public class AntiTamperObfuscator : IObfuscator
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Anti-tamper injection failed");
             return Task.FromResult(ObfuscationResult.Failed($"Anti-tamper injection failed: {ex.Message}", ex));
@@ -257,6 +257,8 @@ public class AntiTamperObfuscator : IObfuscator
 
         var getExecutingAssembly = new MemberRefUser(module, "GetExecutingAssembly",
             MethodSig.CreateStatic(new ClassSig(assemblyType)), assemblyType);
+        var getEntryAssembly = new MemberRefUser(module, "GetEntryAssembly",
+            MethodSig.CreateStatic(new ClassSig(assemblyType)), assemblyType);
         var getLocation = new MemberRefUser(module, "get_Location",
             MethodSig.CreateInstance(module.CorLibTypes.String), assemblyType);
         var getProcessPath = new MemberRefUser(module, "get_ProcessPath",
@@ -304,11 +306,24 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, havePath));
 
+        // Location empty: only fall back to ProcessPath when this assembly is the process
+        // entry (single-file). ALC / LoadFromStream loads are a different assembly than
+        // the host and must skip — hashing the launcher would false-fail.
+        var skipPop = Instruction.Create(OpCodes.Pop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getEntryAssembly));
+        body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, skipPop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getExecutingAssembly));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, skipLabel));
+
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getProcessPath));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
         body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, skipLabel));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, havePath));
+        body.Instructions.Add(skipPop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, skipLabel));
 
         body.Instructions.Add(havePath);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readAllBytes));
@@ -449,40 +464,5 @@ public class AntiTamperObfuscator : IObfuscator
 
         body.UpdateInstructionOffsets();
         return true;
-    }
-
-    private MethodDef? FindOrCreateModuleInitializer(ModuleDef module)
-    {
-        var globalType = module.GlobalType;
-        if (globalType == null)
-        {
-            // Create global type if it doesn't exist
-            globalType = new TypeDefUser("", "<Module>", null);
-            globalType.Attributes = TypeAttributes.NotPublic;
-            module.Types.Insert(0, globalType);
-        }
-
-        // Find existing .cctor
-        var cctor = globalType.Methods.FirstOrDefault(m =>
-            m.IsStaticConstructor || m.Name == ".cctor");
-
-        if (cctor != null)
-            return cctor;
-
-        // Create new .cctor
-        cctor = new MethodDefUser(
-            ".cctor",
-            MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Private | MethodAttributes.Static |
-            MethodAttributes.HideBySig | MethodAttributes.SpecialName |
-            MethodAttributes.RTSpecialName);
-
-        var body = new CilBody();
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-        cctor.Body = body;
-
-        globalType.Methods.Add(cctor);
-
-        return cctor;
     }
 }

@@ -108,4 +108,26 @@ public class ObfuscationPipelineTests
         pipeline.Obfuscators[1].Name.ShouldBe("Medium");
         pipeline.Obfuscators[2].Name.ShouldBe("High");
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelled_ThrowsOperationCanceledException()
+    {
+        var logger = new Mock<ILogger<ObfuscationPipeline>>();
+        var obfuscator = new Mock<IObfuscator>();
+        obfuscator.Setup(o => o.Name).Returns("Slow");
+        obfuscator.Setup(o => o.Priority).Returns(10);
+        obfuscator.Setup(o => o.SupportsTargetType(TargetType.Assembly)).Returns(true);
+        obfuscator.Setup(o => o.IsEnabled(It.IsAny<ObfySettings>())).Returns(true);
+        obfuscator.Setup(o => o.ObfuscateAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
+
+        var pipeline = new ObfuscationPipeline([obfuscator.Object], logger.Object);
+        var context = new PipelineContext
+        {
+            TargetType = TargetType.Assembly,
+            Settings = new ObfySettings()
+        };
+
+        await Should.ThrowAsync<OperationCanceledException>(() => pipeline.ExecuteAsync(context));
+    }
 }

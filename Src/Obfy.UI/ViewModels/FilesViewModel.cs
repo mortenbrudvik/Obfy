@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
 
@@ -14,6 +15,7 @@ public partial class FilesViewModel : ObservableObject
 {
     private readonly IFileDialogService _fileDialogService;
     private readonly ISettingsService _settingsService;
+    private readonly ILogger<FilesViewModel>? _logger;
     private bool _suppressPreferenceSave;
 
     /// <summary>
@@ -40,10 +42,14 @@ public partial class FilesViewModel : ObservableObject
     /// </summary>
     public bool HasNoFiles => Files.Count == 0;
 
-    public FilesViewModel(IFileDialogService fileDialogService, ISettingsService settingsService)
+    public FilesViewModel(
+        IFileDialogService fileDialogService,
+        ISettingsService settingsService,
+        ILogger<FilesViewModel>? logger = null)
     {
         _fileDialogService = fileDialogService;
         _settingsService = settingsService;
+        _logger = logger;
 
         _suppressPreferenceSave = true;
         try
@@ -135,11 +141,9 @@ public partial class FilesViewModel : ObservableObject
             {
                 await _settingsService.SavePreferencesAsync();
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-            }
-            catch (UnauthorizedAccessException)
-            {
+                _logger?.LogWarning(ex, "Failed to save UI preferences");
             }
         }
     }
@@ -188,11 +192,9 @@ public partial class FilesViewModel : ObservableObject
                 if (!Files.Any(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
                     Files.Add(AssemblyFile.FromPath(path));
             }
-            catch (ArgumentException)
+            catch (Exception ex) when (ex is ArgumentException or IOException)
             {
-            }
-            catch (IOException)
-            {
+                _logger?.LogWarning(ex, "Skipped adding file {Path}", path);
             }
         }
     }

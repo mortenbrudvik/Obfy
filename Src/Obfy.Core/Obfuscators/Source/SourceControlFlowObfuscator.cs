@@ -67,7 +67,7 @@ public class SourceControlFlowObfuscator : IObfuscator
 
             return ObfuscationResult.Successful(stats);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Source control flow obfuscation failed");
             return ObfuscationResult.Failed($"Source control flow obfuscation failed: {ex.Message}", ex);

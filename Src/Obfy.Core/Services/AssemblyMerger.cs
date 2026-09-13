@@ -138,7 +138,7 @@ public class AssemblyMerger : IAssemblyMerger
 
             return Task.FromResult(result);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             stopwatch.Stop();
             _logger.LogError(ex, "Failed to merge assemblies");

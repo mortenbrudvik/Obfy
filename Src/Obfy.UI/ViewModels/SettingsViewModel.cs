@@ -78,6 +78,12 @@ public partial class SettingsViewModel : ObservableObject
     private bool _packingEnabled = false;
 
     [ObservableProperty]
+    private bool _virtualizationEnabled = false;
+
+    [ObservableProperty]
+    private bool _incrementalEnabled = false;
+
+    [ObservableProperty]
     private string _signingKeyFile = string.Empty;
 
     [ObservableProperty]
@@ -278,6 +284,7 @@ public partial class SettingsViewModel : ObservableObject
                 case ObfuscationLevel.Minimal:
                     StringEncryptionEnabled = false;
                     ControlFlowEnabled = false;
+                    ControlFlowMode = ControlFlowMode.Switch;
                     ControlFlowIntensity = 50;
                     SymbolRenamingEnabled = true;
                     AntiDebugEnabled = false;
@@ -292,11 +299,15 @@ public partial class SettingsViewModel : ObservableObject
                     ResourceEncryptionEnabled = false;
                     ConstantEncryptionEnabled = false;
                     ConstantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
+                    VirtualizationEnabled = false;
+                    IncrementalEnabled = false;
+                    PackingEnabled = false;
                     break;
 
                 case ObfuscationLevel.Standard:
                     StringEncryptionEnabled = true;
                     ControlFlowEnabled = false;
+                    ControlFlowMode = ControlFlowMode.Switch;
                     ControlFlowIntensity = 50;
                     SymbolRenamingEnabled = true;
                     AntiDebugEnabled = false;
@@ -311,11 +322,15 @@ public partial class SettingsViewModel : ObservableObject
                     ResourceEncryptionEnabled = false;
                     ConstantEncryptionEnabled = false;
                     ConstantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
+                    VirtualizationEnabled = false;
+                    IncrementalEnabled = false;
+                    PackingEnabled = false;
                     break;
 
                 case ObfuscationLevel.Aggressive:
                     StringEncryptionEnabled = true;
                     ControlFlowEnabled = true;
+                    ControlFlowMode = ControlFlowMode.Switch;
                     ControlFlowIntensity = 80;
                     SymbolRenamingEnabled = true;
                     AntiDebugEnabled = true;
@@ -329,6 +344,9 @@ public partial class SettingsViewModel : ObservableObject
                     ResourceEncryptionEnabled = true;
                     ConstantEncryptionEnabled = true;
                     ConstantEncryptionAlgorithm = EncryptionAlgorithm.Xor;
+                    VirtualizationEnabled = false;
+                    IncrementalEnabled = false;
+                    PackingEnabled = false;
                     break;
             }
         }
@@ -483,7 +501,9 @@ public partial class SettingsViewModel : ObservableObject
                     ? null
                     : SigningPasswordEnvironmentVariable
             },
-            Packing = new PackingSettings { Enabled = PackingEnabled }
+            Packing = new PackingSettings { Enabled = PackingEnabled },
+            Virtualization = new VirtualizationSettings { Enabled = VirtualizationEnabled },
+            Incremental = new IncrementalSettings { Enabled = IncrementalEnabled }
         };
     }
 
@@ -600,6 +620,8 @@ public partial class SettingsViewModel : ObservableObject
         SigningKeyFile = settings.Signing.KeyFile ?? string.Empty;
         SigningPasswordEnvironmentVariable = settings.Signing.PasswordEnvironmentVariable ?? string.Empty;
         PackingEnabled = settings.Packing.Enabled;
+        VirtualizationEnabled = settings.Virtualization.Enabled;
+        IncrementalEnabled = settings.Incremental.Enabled;
         }
         finally
         {

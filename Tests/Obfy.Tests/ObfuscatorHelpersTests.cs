@@ -41,6 +41,15 @@ public class ObfuscatorHelpersTests
     }
 
     [Fact]
+    public void IsExcluded_DoesNotSkipObfyCoreModelsNamespace()
+    {
+        var module = new ModuleDefUser("t");
+        var type = new TypeDefUser("Obfy.Core.Models", "UserType", module.CorLibTypes.Object.TypeDefOrRef);
+        ObfuscatorHelpers.IsExcluded(type, new Obfy.Core.Models.ExclusionRules()).ShouldBeFalse();
+        ObfuscatorHelpers.IsRuntimeOrExcluded(type, new Obfy.Core.Models.ExclusionRules()).ShouldBeFalse();
+    }
+
+    [Fact]
     public void LooksLikeXamlBindable_ViewModelSuffix_IsTrue()
     {
         var type = NewType("MainViewModel");

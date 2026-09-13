@@ -7,8 +7,6 @@ using Obfy.Core.Models;
 using Obfy.Core.Services.Reporting;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
-using Wpf.Ui;
-using Wpf.Ui.Controls;
 
 namespace Obfy.UI.ViewModels;
 
@@ -21,7 +19,7 @@ public partial class ResultsViewModel : ObservableObject
     private readonly IFileDialogService _fileDialogService;
     private readonly IReportService _reportService;
     private readonly IClipboardService _clipboard;
-    private readonly ISnackbarService _snackbarService;
+    private readonly IUserNotificationService _notifications;
     private Dictionary<string, string> _symbolMap = new();
     private ObfuscationReport? _currentReport;
 
@@ -69,12 +67,12 @@ public partial class ResultsViewModel : ObservableObject
         IFileDialogService fileDialogService,
         IReportService reportService,
         IClipboardService clipboard,
-        ISnackbarService snackbarService)
+        IUserNotificationService notifications)
     {
         _fileDialogService = fileDialogService;
         _reportService = reportService;
         _clipboard = clipboard;
-        _snackbarService = snackbarService;
+        _notifications = notifications;
     }
 
     /// <summary>
@@ -265,11 +263,11 @@ public partial class ResultsViewModel : ObservableObject
         {
             var json = JsonSerializer.Serialize(_symbolMap, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(filePath, json);
-            ShowSnackbar("Symbol map exported", Path.GetFileName(filePath), ControlAppearance.Success);
+            _notifications.Show("Symbol map exported", Path.GetFileName(filePath), NotificationSeverity.Success);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ShowSnackbar("Export failed", ex.Message, ControlAppearance.Danger);
+            _notifications.Show("Export failed", ex.Message, NotificationSeverity.Error);
         }
     }
 
@@ -290,11 +288,11 @@ public partial class ResultsViewModel : ObservableObject
         try
         {
             await _reportService.GenerateReportAsync(_currentReport, filePath, format);
-            ShowSnackbar("Report exported", Path.GetFileName(filePath), ControlAppearance.Success);
+            _notifications.Show("Report exported", Path.GetFileName(filePath), NotificationSeverity.Success);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ShowSnackbar("Export failed", ex.Message, ControlAppearance.Danger);
+            _notifications.Show("Export failed", ex.Message, NotificationSeverity.Error);
         }
     }
 
@@ -311,7 +309,7 @@ public partial class ResultsViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
         {
-            ShowSnackbar("Copy failed", ex.Message, ControlAppearance.Danger);
+            _notifications.Show("Copy failed", ex.Message, NotificationSeverity.Error);
         }
     }
 
@@ -323,14 +321,4 @@ public partial class ResultsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoSearchMatches));
     }
 
-    private void ShowSnackbar(string title, string message, ControlAppearance appearance)
-    {
-        var symbol = appearance == ControlAppearance.Danger ? SymbolRegular.ErrorCircle24 : SymbolRegular.Checkmark24;
-        _snackbarService.Show(
-            title,
-            message,
-            appearance,
-            MainViewModel.CreateSnackbarIcon(symbol),
-            TimeSpan.FromSeconds(4));
-    }
 }

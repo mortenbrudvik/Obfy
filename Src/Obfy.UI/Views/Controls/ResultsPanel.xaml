@@ -92,7 +92,7 @@
                    Grid.Row="2" Margin="12,8,12,0" PlaceholderText="Search symbols..."
                    Icon="{ui:SymbolIcon Search24}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
 
-        <TabControl Grid.Row="3" Margin="12,8,12,12" Background="Transparent">
+        <TabControl Grid.Row="3" Margin="12,8,12,12" Background="{DynamicResource SubtleFillColorTransparentBrush}">
             <TabItem Header="Symbols">
         <Grid>
             <ui:TextBlock Text="No symbols were renamed."
@@ -107,9 +107,14 @@
             <TreeView AutomationProperties.AutomationId="SymbolTree"
                       AutomationProperties.Name="Symbol mappings"
                       ItemsSource="{Binding RootNodes}" Margin="12,8,12,12"
-                      Background="Transparent" BorderThickness="0"
+                      Background="{DynamicResource SubtleFillColorTransparentBrush}" BorderThickness="0"
                       VirtualizingPanel.IsVirtualizing="True"
                       SelectedItemChanged="OnSelectedItemChanged">
+                <TreeView.ItemContainerStyle>
+                    <Style TargetType="TreeViewItem">
+                        <Setter Property="AutomationProperties.Name" Value="{Binding}"/>
+                    </Style>
+                </TreeView.ItemContainerStyle>
                 <TreeView.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="Copy mapping"
@@ -151,6 +156,7 @@
                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                  Visibility="{Binding HasPreviewError, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                     <TextBox Text="{Binding PreviewText, Mode=OneWay}"
+                             AutomationProperties.Name="Decompiled assembly preview"
                              IsReadOnly="True"
                              FontFamily="Cascadia Mono, Consolas"
                              FontSize="12"
@@ -159,7 +165,7 @@
                              VerticalScrollBarVisibility="Auto"
                              AcceptsReturn="True"
                              BorderThickness="0"
-                             Background="Transparent"
+                             Background="{DynamicResource SubtleFillColorTransparentBrush}"
                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                              CaretBrush="{DynamicResource TextFillColorPrimaryBrush}"
                              Visibility="{Binding HasPreview, Converter={StaticResource BooleanToVisibilityConverter}}"/>

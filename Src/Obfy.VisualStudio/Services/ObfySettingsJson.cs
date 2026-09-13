@@ -37,6 +37,8 @@ public static class ObfySettingsJson
             settings.ReferenceProxy = ReadBool(protection, "referenceProxy", settings.ReferenceProxy);
             settings.AntiTamper = ReadEnabled(protection, "antiTamper", settings.AntiTamper);
             settings.AntiDecompiler = ReadEnabled(protection, "antiDecompiler", settings.AntiDecompiler);
+            settings.MethodEncryption = ReadBool(protection, "methodEncryption", settings.MethodEncryption);
+            settings.ProxyExternalCalls = ReadBool(protection, "proxyExternalCalls", settings.ProxyExternalCalls);
         }
         else
         {
@@ -45,6 +47,8 @@ public static class ObfySettingsJson
             settings.ReferenceProxy = ReadBool(root, "referenceProxy", settings.ReferenceProxy);
             settings.AntiTamper = ReadEnabled(root, "antiTamper", settings.AntiTamper);
             settings.AntiDecompiler = ReadEnabled(root, "antiDecompiler", settings.AntiDecompiler);
+            settings.MethodEncryption = ReadBool(root, "methodEncryption", settings.MethodEncryption);
+            settings.ProxyExternalCalls = ReadBool(root, "proxyExternalCalls", settings.ProxyExternalCalls);
         }
 
         return settings;
@@ -71,6 +75,8 @@ public static class ObfySettingsJson
         protection["referenceProxy"] = settings.ReferenceProxy;
         SetEnabled(protection, "antiTamper", settings.AntiTamper);
         SetEnabled(protection, "antiDecompiler", settings.AntiDecompiler);
+        protection["methodEncryption"] = settings.MethodEncryption;
+        protection["proxyExternalCalls"] = settings.ProxyExternalCalls;
         node["protection"] = protection;
 
         return node.ToJsonString(WriteOptions);

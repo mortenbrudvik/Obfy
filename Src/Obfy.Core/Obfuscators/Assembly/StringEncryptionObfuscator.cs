@@ -52,6 +52,7 @@ public class StringEncryptionObfuscator : IObfuscator
             // Inject decryptor type with several entry points so a single Decrypt(int) is not a
             // decompiler signature for every string.
             var decryptorType = InjectDecryptorType(module, key, settings.Algorithm, indexXor);
+            RuntimeInjection.Register(context, decryptorType);
             var decryptMethods = decryptorType.Methods
                 .Where(m => m.MethodSig?.RetType.ElementType == ElementType.String
                     && m.MethodSig.Params.Count == 1

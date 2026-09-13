@@ -21,6 +21,8 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
     private bool _symbolRenaming;
     private bool _constantEncryption;
     private bool _resourceEncryption;
+    private bool _methodEncryption;
+    private bool _proxyExternalCalls;
     private string _projectName;
 
     public SettingsDialogViewModel(ObfySettings settings, string projectName)
@@ -40,6 +42,8 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
         _symbolRenaming = settings.SymbolRenaming;
         _constantEncryption = settings.ConstantEncryption;
         _resourceEncryption = settings.ResourceEncryption;
+        _methodEncryption = settings.MethodEncryption;
+        _proxyExternalCalls = settings.ProxyExternalCalls;
     }
 
     public string ProjectName
@@ -216,7 +220,9 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
             ControlFlow = _controlFlow,
             SymbolRenaming = _symbolRenaming,
             ConstantEncryption = _constantEncryption,
-            ResourceEncryption = _resourceEncryption
+            ResourceEncryption = _resourceEncryption,
+            MethodEncryption = _methodEncryption,
+            ProxyExternalCalls = _proxyExternalCalls
         };
     }
 
@@ -235,6 +241,8 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
         _symbolRenaming = levelSettings.SymbolRenaming;
         _constantEncryption = levelSettings.ConstantEncryption;
         _resourceEncryption = levelSettings.ResourceEncryption;
+        _methodEncryption = levelSettings.MethodEncryption;
+        _proxyExternalCalls = levelSettings.ProxyExternalCalls;
 
         // Notify all properties changed
         OnPropertyChanged(nameof(AntiDebug));

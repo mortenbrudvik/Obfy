@@ -102,7 +102,7 @@ public class DependencyEmbeddingObfuscator : IObfuscator
             }
 
             if (embedded > 0)
-                InjectResolver(module);
+                InjectResolver(module, context);
             else
             {
                 const string unused =
@@ -143,7 +143,7 @@ public class DependencyEmbeddingObfuscator : IObfuscator
         simpleName.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase) ||
         simpleName.StartsWith("Windows.", StringComparison.OrdinalIgnoreCase);
 
-    private static void InjectResolver(ModuleDef module)
+    private static void InjectResolver(ModuleDef module, PipelineContext context)
     {
         var typeDef = new TypeDefUser(
             "Obfy.Runtime",
@@ -152,12 +152,12 @@ public class DependencyEmbeddingObfuscator : IObfuscator
         {
             Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract
         };
-        module.Types.Add(typeDef);
+        RuntimeInjection.AddType(context, typeDef);
 
         var resolve = CreateResolveMethod(module);
         typeDef.Methods.Add(resolve);
 
-        var cctor = ObfuscatorHelpers.FindOrCreateModuleInitializer(module);
+        var cctor = ObfuscatorHelpers.FindOrCreateModuleInitializer(module, requireBody: true);
 
         var domain = new TypeRefUser(module, "System", "AppDomain", module.CorLibTypes.AssemblyRef);
         var handler = new TypeRefUser(module, "System", "ResolveEventHandler", module.CorLibTypes.AssemblyRef);

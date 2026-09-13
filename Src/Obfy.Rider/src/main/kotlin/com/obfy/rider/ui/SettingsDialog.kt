@@ -20,19 +20,7 @@ class SettingsDialog(
     initialSettings: ObfySettings
 ) : DialogWrapper(project, true) {
 
-    // Mutable state for the dialog
-    private var level = initialSettings.level
-    private var postBuildEnabled = initialSettings.postBuildEnabled
-    private var stringEncryption = initialSettings.stringEncryption
-    private var symbolRenaming = initialSettings.symbolRenaming
-    private var controlFlow = initialSettings.controlFlow
-    private var antiDebug = initialSettings.antiDebug
-    private var antiDump = initialSettings.antiDump
-    private var referenceProxy = initialSettings.referenceProxy
-    private var antiTamper = initialSettings.antiTamper
-    private var antiDecompiler = initialSettings.antiDecompiler
-    private var constantEncryption = initialSettings.constantEncryption
-    private var resourceEncryption = initialSettings.resourceEncryption
+    private val state = SettingsDialogState(initialSettings)
 
     init {
         title = "Obfy Settings"
@@ -48,9 +36,9 @@ class SettingsDialog(
         group("Obfuscation Level") {
             row("Level:") {
                 comboBox(ObfuscationLevel.entries)
-                    .bindItem(::level.toNullableProperty())
+                    .bindItem(state::level.toNullableProperty())
                     .onChanged { combo ->
-                        combo.item?.let { applyLevelPreset(it) }
+                        combo.item?.let { state.applyLevelPreset(it) }
                     }
                     .comment("Choose a preset or use Custom for fine-grained control")
             }
@@ -59,109 +47,71 @@ class SettingsDialog(
         group("Protection Options") {
             row {
                 checkBox("String Encryption")
-                    .bindSelected(::stringEncryption)
+                    .bindSelected(state::stringEncryption)
                     .comment("Encrypt string literals in the assembly (AES-256)")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
             row {
                 checkBox("Symbol Renaming")
-                    .bindSelected(::symbolRenaming)
+                    .bindSelected(state::symbolRenaming)
                     .comment("Rename types, methods, fields, and properties")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
             row {
                 checkBox("Control Flow Obfuscation")
-                    .bindSelected(::controlFlow)
+                    .bindSelected(state::controlFlow)
                     .comment("Transform code flow to make analysis harder")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
             row {
                 checkBox("Anti-Debug")
-                    .bindSelected(::antiDebug)
+                    .bindSelected(state::antiDebug)
                     .comment("Detect and prevent debugging attempts")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
             row {
                 checkBox("Anti-Dump")
-                    .bindSelected(::antiDump)
+                    .bindSelected(state::antiDump)
                     .comment("Wipe PE headers in memory to hinder dumping")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
             row {
                 checkBox("Reference Proxy")
-                    .bindSelected(::referenceProxy)
+                    .bindSelected(state::referenceProxy)
                     .comment("Hide in-module call targets behind proxy methods")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
             row {
                 checkBox("Anti-Tamper")
-                    .bindSelected(::antiTamper)
+                    .bindSelected(state::antiTamper)
                     .comment("Verify assembly integrity at runtime")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
             row {
                 checkBox("Anti-Decompiler")
-                    .bindSelected(::antiDecompiler)
+                    .bindSelected(state::antiDecompiler)
                     .comment("Add junk code to confuse decompilers")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
             row {
                 checkBox("Constant Encryption")
-                    .bindSelected(::constantEncryption)
+                    .bindSelected(state::constantEncryption)
                     .comment("Encrypt numeric constants in the assembly")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
             row {
                 checkBox("Resource Encryption")
-                    .bindSelected(::resourceEncryption)
+                    .bindSelected(state::resourceEncryption)
                     .comment("Encrypt embedded resources")
-                    .onChanged { updateLevelIfChanged() }
+                    .onChanged { state.considerCustomLevel() }
             }
         }
 
         group("Build Integration") {
             row {
                 checkBox("Enable Post-Build Obfuscation")
-                    .bindSelected(::postBuildEnabled)
+                    .bindSelected(state::postBuildEnabled)
                     .comment("Automatically obfuscate after each successful build")
-            }
-        }
-    }
-
-    /**
-     * Apply level preset to individual toggles
-     */
-    private fun applyLevelPreset(selectedLevel: ObfuscationLevel) {
-        val preset = ObfySettings.forLevel(selectedLevel)
-        stringEncryption = preset.stringEncryption
-        symbolRenaming = preset.symbolRenaming
-        controlFlow = preset.controlFlow
-        antiDebug = preset.antiDebug
-        antiDump = preset.antiDump
-        referenceProxy = preset.referenceProxy
-        antiTamper = preset.antiTamper
-        antiDecompiler = preset.antiDecompiler
-        constantEncryption = preset.constantEncryption
-        resourceEncryption = preset.resourceEncryption
-    }
-
-    /**
-     * Switch to Custom level if individual toggles are changed
-     */
-    private fun updateLevelIfChanged() {
-        if (level != ObfuscationLevel.Custom) {
-            val preset = ObfySettings.forLevel(level)
-            if (stringEncryption != preset.stringEncryption ||
-                symbolRenaming != preset.symbolRenaming ||
-                controlFlow != preset.controlFlow ||
-                antiDebug != preset.antiDebug ||
-                antiDump != preset.antiDump ||
-                referenceProxy != preset.referenceProxy ||
-                antiTamper != preset.antiTamper ||
-                antiDecompiler != preset.antiDecompiler ||
-                constantEncryption != preset.constantEncryption ||
-                resourceEncryption != preset.resourceEncryption) {
-                level = ObfuscationLevel.Custom
             }
         }
     }
@@ -169,18 +119,5 @@ class SettingsDialog(
     /**
      * Get the configured settings
      */
-    fun getSettings(): ObfySettings = ObfySettings(
-        level = level,
-        postBuildEnabled = postBuildEnabled,
-        stringEncryption = stringEncryption,
-        symbolRenaming = symbolRenaming,
-        controlFlow = controlFlow,
-        antiDebug = antiDebug,
-        antiDump = antiDump,
-        referenceProxy = referenceProxy,
-        antiTamper = antiTamper,
-        antiDecompiler = antiDecompiler,
-        constantEncryption = constantEncryption,
-        resourceEncryption = resourceEncryption
-    )
+    fun getSettings(): ObfySettings = state.toSettings()
 }

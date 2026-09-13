@@ -63,15 +63,9 @@ public static class ObfuscatorHelpers
 
     public static bool IsRuntimeHelper(TypeDef type)
     {
-        var ns = type.Namespace.String;
+        var ns = type.Namespace?.String ?? "";
         return ns == "Obfy.Runtime" || ns.StartsWith("Obfy.Runtime.", StringComparison.Ordinal);
     }
-
-    /// <summary>
-    /// Skip CFG flatten on the injected <c>&lt;Vm&gt;</c> interpreter so its body stays linear.
-    /// </summary>
-    public static bool SkipControlFlowFlattening(TypeDef type) =>
-        type.Name == "<Vm>";
 
     /// <summary>
     /// Detector/lookup attribute names that must survive symbol renaming.
@@ -94,8 +88,8 @@ public static class ObfuscatorHelpers
     /// </summary>
     public static bool IsPinnedAttributeType(TypeDef type)
     {
-        var name = type.Name.String;
-        var ns = type.Namespace.String;
+        var name = type.Name?.String ?? "";
+        var ns = type.Namespace?.String ?? "";
         if (name is PinnedAttributeNames.ConfusedBy or PinnedAttributeNames.Dotfuscator)
             return ns.Length == 0;
 

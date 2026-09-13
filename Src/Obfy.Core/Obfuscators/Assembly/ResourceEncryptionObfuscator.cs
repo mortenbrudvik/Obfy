@@ -193,7 +193,7 @@ public class ResourceEncryptionObfuscator : IObfuscator
         cctorBody.UpdateInstructionOffsets();
         typeDef.Methods.Add(cctor);
 
-        module.Types.Add(typeDef);
+        RuntimeInjection.AddType(context, typeDef);
 
         if (RewriteResourceLoads(module, loadResource, loadTyped, loadModule, context) == 0)
         {

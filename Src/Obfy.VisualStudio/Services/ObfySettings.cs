@@ -64,6 +64,8 @@ public class ObfySettings
     public bool SymbolRenaming { get; set; } = true;
     public bool ConstantEncryption { get; set; }
     public bool ResourceEncryption { get; set; }
+    public bool MethodEncryption { get; set; }
+    public bool ProxyExternalCalls { get; set; }
 
     public static ObfySettings ForLevel(ObfuscationLevel level)
     {
@@ -78,10 +80,12 @@ public class ObfySettings
                 settings.AntiDebug = false;
                 settings.AntiDump = false;
                 settings.ReferenceProxy = false;
+                settings.ProxyExternalCalls = false;
                 settings.AntiTamper = false;
                 settings.AntiDecompiler = false;
                 settings.ConstantEncryption = false;
                 settings.ResourceEncryption = false;
+                settings.MethodEncryption = false;
                 break;
             case ObfuscationLevel.Standard:
                 settings.StringEncryption = true;
@@ -90,10 +94,12 @@ public class ObfySettings
                 settings.AntiDebug = false;
                 settings.AntiDump = false;
                 settings.ReferenceProxy = false;
+                settings.ProxyExternalCalls = false;
                 settings.AntiTamper = false;
                 settings.AntiDecompiler = false;
                 settings.ConstantEncryption = false;
                 settings.ResourceEncryption = false;
+                settings.MethodEncryption = false;
                 break;
             case ObfuscationLevel.Aggressive:
                 settings.StringEncryption = true;
@@ -102,10 +108,12 @@ public class ObfySettings
                 settings.AntiDebug = true;
                 settings.AntiDump = true;
                 settings.ReferenceProxy = true;
+                settings.ProxyExternalCalls = false;
                 settings.AntiTamper = true;
                 settings.AntiDecompiler = true;
                 settings.ConstantEncryption = true;
                 settings.ResourceEncryption = true;
+                settings.MethodEncryption = true;
                 break;
         }
 

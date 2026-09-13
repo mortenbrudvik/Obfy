@@ -62,7 +62,7 @@ public class SymbolRenamingObfuscator : IObfuscator
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (ShouldSkipType(type, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
+                if (ShouldSkipType(type, context, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                     continue;
 
                 if (settings.PreserveXaml && ObfuscatorHelpers.LooksLikeXamlBindable(type))
@@ -140,7 +140,6 @@ public class SymbolRenamingObfuscator : IObfuscator
 
                 if (settings.RenameNamespaces &&
                     !string.IsNullOrEmpty(type.Namespace) &&
-                    type.Namespace != "Obfy.Core.Models" &&
                     !(settings.PreservePublicApi && type.IsPublic))
                 {
                     var originalNs = type.Namespace.String;
@@ -213,9 +212,9 @@ public class SymbolRenamingObfuscator : IObfuscator
             {
                 foreach (var type in module.GetTypes())
                 {
-                    // Respect the same type-level exclusions used for members above (runtime-injected
-                    // types, Obfy models, excluded namespaces/types).
-                    if (ShouldSkipType(type, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
+                    // Respect the same type-level skip as members (pinned attributes, helpers with
+                    // Rename = false, exclusions/inclusions).
+                    if (ShouldSkipType(type, context, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                         continue;
 
                     foreach (var method in type.Methods)
@@ -263,14 +262,12 @@ public class SymbolRenamingObfuscator : IObfuscator
 
     private static bool ShouldSkipType(
         TypeDef type,
+        PipelineContext context,
         ExclusionRules exclusions,
         InclusionRules inclusions,
         ICollection<string> warnings)
     {
-        if (type.Namespace == "Obfy.Core.Models")
-            return true;
-
-        if (ObfuscatorHelpers.IsPinnedAttributeType(type))
+        if (!RuntimeInjection.ShouldRename(context, type))
             return true;
 
         if (type.IsGlobalModuleType)

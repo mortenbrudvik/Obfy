@@ -46,6 +46,7 @@ public class ObfuscationModule : Module
             .InstancePerLifetimeScope();
 
         builder.RegisterType<SymbolRenamingObfuscator>()
+            .AsSelf()
             .As<IObfuscator>()
             .InstancePerLifetimeScope();
 

@@ -260,6 +260,334 @@ public class SymbolRenamingObfuscator : IObfuscator
         }
     }
 
+    /// <summary>
+    /// Renames symbols across a closed set of assemblies with a single name-generator reset,
+    /// then rewrites <see cref="TypeRef"/>, <see cref="MemberRef"/>, and <see cref="ExportedType"/>
+    /// rows that resolve to defs in the set.
+    /// </summary>
+    public void RenameClosedSet(
+        IReadOnlyList<(ModuleDef Module, ObfySettings Settings)> modules,
+        PipelineContext sharedContext,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Starting closed-set symbol renaming for {Count} modules", modules.Count);
+
+        _nameGenerator.Reset();
+
+        var namespaceRenames = new Dictionary<string, string>(StringComparer.Ordinal);
+        var plans = new List<(ModuleDef Module, ObfySettings Settings, ClosedSetRenamePlan Plan)>(modules.Count);
+        var stats = new ObfuscationStatistics();
+
+        foreach (var (module, settings) in modules)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ObfuscationAttributeRules.WarnIfInclusionsMatchedNothing(
+                module, settings, sharedContext.Warnings);
+
+            var plan = new ClosedSetRenamePlan();
+            CollectClosedSetRenames(module, settings, sharedContext, plan, namespaceRenames, cancellationToken);
+            plans.Add((module, settings, plan));
+        }
+
+        // Resolve while original names still match; apply mutates defs that the resolver keys on.
+        var typeRefUpdates = new List<(TypeRef Ref, TypeDef Def)>();
+        var memberRefUpdates = new List<(MemberRef Ref, IMemberDef Def)>();
+        var exportedUpdates = new List<(ExportedType Ref, TypeDef Def)>();
+        foreach (var (module, _, _) in plans)
+            SnapshotClosedSetReferences(module, typeRefUpdates, memberRefUpdates, exportedUpdates);
+
+        foreach (var (module, settings, plan) in plans)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ApplyClosedSetRenames(module, settings.SymbolRenaming, plan, namespaceRenames, stats);
+
+            if (settings.SymbolRenaming.RenameParameters)
+                RenameClosedSetParameters(module, settings, sharedContext, stats, cancellationToken);
+
+            if (settings.SymbolRenaming.PreserveXaml && plan.XamlBindableSeen == 0)
+            {
+                sharedContext.Warnings.Add(
+                    "preserveXaml is enabled but no ViewModel/View/DependencyObject types were detected. " +
+                    "Public properties on XAML types may have been renamed. Name view-models *ViewModel / *View, " +
+                    "or ensure WPF/WinUI assemblies are resolvable.");
+            }
+        }
+
+        ApplyClosedSetReferenceUpdates(typeRefUpdates, memberRefUpdates, exportedUpdates);
+        sharedContext.Statistics.Merge(stats);
+
+        _logger.LogInformation(
+            "Closed-set renamed {Types} types, {Methods} methods, {Fields} fields, {Properties} properties, {Parameters} parameters, {Events} events, {Namespaces} namespaces",
+            stats.TypesRenamed, stats.MethodsRenamed, stats.FieldsRenamed,
+            stats.PropertiesRenamed, stats.ParametersRenamed, stats.EventsRenamed, stats.NamespacesRenamed);
+    }
+
+    private void CollectClosedSetRenames(
+        ModuleDef module,
+        ObfySettings moduleSettings,
+        PipelineContext sharedContext,
+        ClosedSetRenamePlan plan,
+        Dictionary<string, string> namespaceRenames,
+        CancellationToken cancellationToken)
+    {
+        var settings = moduleSettings.SymbolRenaming;
+
+        foreach (var type in module.GetTypes())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (ShouldSkipType(type, sharedContext, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
+                continue;
+
+            if (settings.PreserveXaml && ObfuscatorHelpers.LooksLikeXamlBindable(type))
+                plan.XamlBindableSeen++;
+
+            if (settings.RenameTypes && CanRenameType(type, settings, moduleSettings.Inclusions))
+            {
+                var newName = _nameGenerator.Generate(type.Name, settings.Mode);
+                plan.TypeRenames[type] = newName;
+                sharedContext.SymbolMap[$"Type:{type.FullName}"] = newName;
+            }
+
+            if (settings.RenameMethods)
+            {
+                foreach (var method in type.Methods)
+                {
+                    if (CanRenameMethod(method, settings, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
+                    {
+                        var newName = _nameGenerator.Generate(method.Name, settings.Mode);
+                        plan.MethodRenames[method] = newName;
+                        sharedContext.SymbolMap[$"Method:{type.FullName}.{method.Name}"] = newName;
+                    }
+                }
+            }
+
+            if (settings.RenameFields)
+            {
+                foreach (var field in type.Fields)
+                {
+                    if (CanRenameField(field, settings, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
+                    {
+                        var newName = _nameGenerator.Generate(field.Name, settings.Mode);
+                        plan.FieldRenames[field] = newName;
+                        sharedContext.SymbolMap[$"Field:{type.FullName}.{field.Name}"] = newName;
+                    }
+                }
+            }
+
+            if (settings.RenameProperties)
+            {
+                foreach (var property in type.Properties)
+                {
+                    if (CanRenameProperty(property, settings, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
+                    {
+                        var newName = _nameGenerator.Generate(property.Name, settings.Mode);
+                        plan.PropertyRenames[property] = newName;
+                        sharedContext.SymbolMap[$"Property:{type.FullName}.{property.Name}"] = newName;
+                        if (property.GetMethod != null)
+                            plan.MethodRenames[property.GetMethod] = "get_" + newName;
+                        if (property.SetMethod != null)
+                            plan.MethodRenames[property.SetMethod] = "set_" + newName;
+                    }
+                }
+            }
+
+            if (settings.RenameEvents)
+            {
+                foreach (var evt in type.Events)
+                {
+                    if (CanRenameEvent(evt, settings, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
+                    {
+                        var newName = _nameGenerator.Generate(evt.Name, settings.Mode);
+                        plan.EventRenames[evt] = newName;
+                        sharedContext.SymbolMap[$"Event:{type.FullName}.{evt.Name}"] = newName;
+                        if (evt.AddMethod != null)
+                            plan.MethodRenames[evt.AddMethod] = "add_" + newName;
+                        if (evt.RemoveMethod != null)
+                            plan.MethodRenames[evt.RemoveMethod] = "remove_" + newName;
+                    }
+                }
+            }
+
+            if (settings.RenameNamespaces &&
+                !string.IsNullOrEmpty(type.Namespace) &&
+                !(settings.PreservePublicApi && type.IsPublic))
+            {
+                var originalNs = type.Namespace.String;
+                if (!namespaceRenames.ContainsKey(originalNs))
+                {
+                    var newNs = _nameGenerator.Generate(originalNs, settings.Mode);
+                    namespaceRenames[originalNs] = newNs;
+                    sharedContext.SymbolMap[$"Namespace:{originalNs}"] = newNs;
+                }
+
+                plan.NamespacesToApply.Add(originalNs);
+            }
+        }
+    }
+
+    private static void ApplyClosedSetRenames(
+        ModuleDef module,
+        SymbolRenamingSettings settings,
+        ClosedSetRenamePlan plan,
+        Dictionary<string, string> namespaceRenames,
+        ObfuscationStatistics stats)
+    {
+        foreach (var (type, newName) in plan.TypeRenames)
+        {
+            type.Name = newName;
+            stats.TypesRenamed++;
+        }
+
+        foreach (var (method, newName) in plan.MethodRenames)
+        {
+            method.Name = newName;
+            stats.MethodsRenamed++;
+        }
+
+        foreach (var (field, newName) in plan.FieldRenames)
+        {
+            field.Name = newName;
+            stats.FieldsRenamed++;
+        }
+
+        foreach (var (property, newName) in plan.PropertyRenames)
+        {
+            property.Name = newName;
+            stats.PropertiesRenamed++;
+        }
+
+        foreach (var (evt, newName) in plan.EventRenames)
+        {
+            evt.Name = newName;
+            stats.EventsRenamed++;
+        }
+
+        var preservedNamespaces = new HashSet<string>(StringComparer.Ordinal);
+        if (settings.PreservePublicApi)
+        {
+            foreach (var type in module.GetTypes())
+            {
+                if (type.IsPublic && !string.IsNullOrEmpty(type.Namespace))
+                    preservedNamespaces.Add(type.Namespace.String);
+            }
+        }
+
+        foreach (var originalNs in plan.NamespacesToApply)
+        {
+            if (preservedNamespaces.Contains(originalNs))
+                continue;
+
+            var newNs = namespaceRenames[originalNs];
+            foreach (var type in module.GetTypes())
+            {
+                if (type.Namespace == originalNs && !ObfuscatorHelpers.IsPinnedAttributeType(type))
+                    type.Namespace = newNs;
+            }
+
+            stats.NamespacesRenamed++;
+        }
+    }
+
+    private void RenameClosedSetParameters(
+        ModuleDef module,
+        ObfySettings moduleSettings,
+        PipelineContext sharedContext,
+        ObfuscationStatistics stats,
+        CancellationToken cancellationToken)
+    {
+        var settings = moduleSettings.SymbolRenaming;
+
+        foreach (var type in module.GetTypes())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (ShouldSkipType(type, sharedContext, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
+                continue;
+
+            foreach (var method in type.Methods)
+            {
+                if (!CanRenameMethod(method, settings, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
+                    continue;
+
+                foreach (var param in method.Parameters)
+                {
+                    if (!string.IsNullOrEmpty(param.Name) && !param.IsHiddenThisParameter)
+                    {
+                        param.Name = _nameGenerator.Generate(param.Name, settings.Mode);
+                        stats.ParametersRenamed++;
+                    }
+                }
+            }
+        }
+    }
+
+    private static void SnapshotClosedSetReferences(
+        ModuleDef module,
+        List<(TypeRef Ref, TypeDef Def)> typeRefUpdates,
+        List<(MemberRef Ref, IMemberDef Def)> memberRefUpdates,
+        List<(ExportedType Ref, TypeDef Def)> exportedUpdates)
+    {
+        foreach (var typeRef in module.GetTypeRefs())
+        {
+            var def = typeRef.ResolveTypeDef();
+            if (def != null)
+                typeRefUpdates.Add((typeRef, def));
+        }
+
+        foreach (var memberRef in module.GetMemberRefs())
+        {
+            if (memberRef.Resolve() is IMemberDef def)
+                memberRefUpdates.Add((memberRef, def));
+        }
+
+        foreach (var exported in module.ExportedTypes)
+        {
+            var def = exported.Resolve();
+            if (def != null)
+                exportedUpdates.Add((exported, def));
+        }
+    }
+
+    private static void ApplyClosedSetReferenceUpdates(
+        List<(TypeRef Ref, TypeDef Def)> typeRefUpdates,
+        List<(MemberRef Ref, IMemberDef Def)> memberRefUpdates,
+        List<(ExportedType Ref, TypeDef Def)> exportedUpdates)
+    {
+        foreach (var (typeRef, def) in typeRefUpdates)
+        {
+            if (typeRef.Name != def.Name)
+                typeRef.Name = def.Name;
+            if (typeRef.Namespace != def.Namespace)
+                typeRef.Namespace = def.Namespace;
+        }
+
+        foreach (var (memberRef, def) in memberRefUpdates)
+        {
+            if (memberRef.Name != def.Name)
+                memberRef.Name = def.Name;
+        }
+
+        foreach (var (exported, def) in exportedUpdates)
+        {
+            if (exported.TypeName != def.Name)
+                exported.TypeName = def.Name;
+            if (exported.TypeNamespace != def.Namespace)
+                exported.TypeNamespace = def.Namespace;
+        }
+    }
+
+    private sealed class ClosedSetRenamePlan
+    {
+        public Dictionary<TypeDef, string> TypeRenames { get; } = new();
+        public Dictionary<MethodDef, string> MethodRenames { get; } = new();
+        public Dictionary<FieldDef, string> FieldRenames { get; } = new();
+        public Dictionary<PropertyDef, string> PropertyRenames { get; } = new();
+        public Dictionary<EventDef, string> EventRenames { get; } = new();
+        public HashSet<string> NamespacesToApply { get; } = new(StringComparer.Ordinal);
+        public int XamlBindableSeen { get; set; }
+    }
+
     private static bool ShouldSkipType(
         TypeDef type,
         PipelineContext context,

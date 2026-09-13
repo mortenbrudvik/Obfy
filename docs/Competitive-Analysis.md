@@ -1,634 +1,695 @@
 # Competitive Analysis: Obfy vs Professional .NET Obfuscators
 
-A comprehensive comparison of Obfy against leading commercial and open-source .NET obfuscation tools.
+A sourced comparison of Obfy against commercial and open-source .NET obfuscators, as of September 2026.
+
+## How to read this document
+
+Obfuscation is a deterrent, not confidentiality. String, constant, resource, and method-IL “encryption” embed the key in the output. Virtualization embeds an interpreter. Anyone who runs or inspects the assembly can recover plaintext. Do not ship real secrets (keys, tokens, credentials) inside an assembly and rely on any tool on this page to keep them secret.
+
+**Legend**
+
+| Cell | Meaning |
+|------|---------|
+| **Yes** | Documented as a first-class product feature |
+| **Partial** | Exists, but with a material limit (called out under the table) |
+| **Recipe** | Example config / runtime gating, not a vendor plugin or SKU |
+| **—** | Not documented, not offered, or not applicable |
+
+Feature cells for commercial tools are **vendor-documented claims**, not independent lab results. NDepend’s 2026 evaluation is the only recent third-party write-up that tested several tools on a real commercial codebase. Vendor roundups (PreEmptive, Softanics/ArmDot) are useful for prices and positioning; treat their “best of” conclusions as marketing.
+
+GitHub stars, last-push dates, and prices were checked on 13 September 2026.
+
+---
 
 ## Executive Summary
 
-Obfy is a modern, open-source .NET obfuscation tool that provides essential protection features comparable to commercial alternatives. While professional tools offer advanced features like code virtualization and native code generation, Obfy delivers solid protection at no cost with a focus on simplicity and modern .NET support.
+Obfy is a new (first public commit 31 December 2025), MIT-licensed .NET obfuscator with a CLI, Fluent WPF UI, Visual Studio 2022 extension, Rider plugin, and a dual pipeline: **dnlib assembly obfuscation** plus **Roslyn source obfuscation**. Among free tools it is the broadest *conventional* protection stack (rename, strings, constants, resources, control flow, anti-debug/dump/tamper/decompiler, method-IL XOR, merge, embed, watermark, reports). It is not a general IL virtualizer, not a native packer, and not a licensing/RASP product.
 
-**Key Finding**: Obfy covers ~90% of typical obfuscation needs. The remaining gap consists primarily of advanced anti-reverse-engineering features (virtualization, native code) that most applications don't require.
+**Positioning that still holds**
+
+- **Vs free tools:** Broader technique set than Obfuscar (rename-first) and LoGiC.NET (archived). Different trade than BitMono (anti-decompiler / Unity / plugins vs Obfy’s control-flow + constants + resources + source mode + desktop/IDE UX).
+- **Vs budget commercial ($249–$499):** Matches the *everyday* layer (rename, strings, CF, anti-debug/tamper). Does **not** match .NET Reactor, ArmDot, Babel Ultimate, or Eazfuscator on general code virtualization, native packing, or built-in licensing.
+- **Vs enterprise (Dotfuscator, SmartAssembly):** Covers static obfuscation needs; lacks RASP, crash analytics, quote-based support SLAs, and (for Dotfuscator) Overload Induction / configurable runtime response.
+
+**What changed since the previous revision of this file**
+
+- .NET 10 is no longer an Obfy differentiator. Reactor, Babel, Eazfuscator, SmartAssembly, ArmDot, Obfuscar, and BitMono all document .NET 10. Dotfuscator 7.5.0 (22 Dec 2025) added it; 7.8.0 (27 Jul 2026) added Blazor. Eazfuscator 2026.2 has preliminary .NET 11; SmartAssembly 8.4.9 has .NET 11 preview.
+- ArmDot, DNGuard HVM, Agile.NET, and Spices.Net belong in the commercial set. LoGiC.NET is archived. JIEJIE.NET is GPL-2.0 with 887 stars, not MIT/~100. ConfuserEx upstream is 3.8k stars (archived); mkaring/ConfuserEx is the large Framework-era fork.
+- The previous “~90% of typical needs” line overstated virtualization and native packing. Those remain real commercial gaps.
 
 ---
 
 ## Tools Compared
 
-### Commercial Tools
+### Commercial (actively sold)
 
-| Tool | Vendor | Type | Price | First Released |
-|------|--------|------|-------|----------------|
-| **Dotfuscator** | PreEmptive | Commercial | ~$2,000+/year | 2003 |
-| **SmartAssembly** | Red Gate | Commercial | ~$800+/year | 2004 |
-| **.NET Reactor** | Eziriz | Commercial | $249 one-time | 2004 |
-| **Babel Obfuscator** | babelfor.net | Commercial | €350 one-time | 2006 |
-| **Eazfuscator.NET** | Oleksiі Glib | Commercial | ~$400 | 2007 |
+| Tool | Vendor | License model | Public price (single seat) | First released | Latest noted release |
+|------|--------|---------------|----------------------------|----------------|----------------------|
+| **Dotfuscator Professional** | PreEmptive (Idera) | Subscription, quote | Not public. Historical reports $2,000+/yr; one 2026 roundup cited ~$4,250+/yr. Community Edition is free for personal use inside Visual Studio. | 2003 | 7.8.0 (27 Jul 2026) |
+| **SmartAssembly** | Redgate | Annual subscription | List price is JS-loaded on red-gate.com (no static USD on the pricing HTML). ComponentSource lists Standard ~CAD $1,116/user/year (~USD $800). Third-party roundups cite ~$710/user/year; one Redgate product-page scrape in this research pass showed **$777 / $1,188** per license-year for Standard/Pro. Budget **~$700–$1,200/user/year** until you get a quote. | 2004 | 8.4.11 (31 Aug 2026) |
+| **.NET Reactor** | Eziriz | Perpetual + 1 yr updates | **$249** single (no build server). **$549** company (CI included). Renewal $99 / $179. | 2004 | 7.5.0.0 (12 Nov 2025) |
+| **Babel Obfuscator** | babelfor.net | Perpetual + 1 yr maintenance | **€350** Enterprise (Windows CLI + UI). **€1,250** Ultimate (NuGet / Linux / macOS). Maintenance €150 / €550. | 2006 | 11.7.0 (9 May 2026) |
+| **Eazfuscator.NET** | Gapotchenko | Perpetual + 1 yr updates | **$399** single (16-core cap). **$1,699** site. Renewal $99 / $419. | 2007 | 2026.2 (11 Aug 2026) |
+| **ArmDot** | Softanics | Perpetual + 1 yr updates | **$499** single. **$1,799** site. Renewal 50% of list (~$250 / ~$900). | ~2018 | 2026.6 (27 Apr 2026) |
+| **Agile.NET** | SecureTeam | Perpetual + maintenance, or subscription | **$795** + $195/yr developer. Enterprise **$150/month** billed annually. | ~2000s (CodeVeil lineage) | 6.6.x (2026) |
+| **DNGuard HVM** | V.I.P. Protection / dnguard.net | Perpetual + 1 yr maintenance | **$899** Professional (no HVM). **$1,299** Enterprise (HVM). | 2000s | 4.9.6 (13 Apr 2026) |
+| **Spices.Net Obfuscator** | 9Rays.Net | Commercial | Quote / SKU-based (not used as a primary comparator below) | 2000s | 5.26.2.17 (17 Feb 2026), claims .NET 10 + VS 2026 |
 
-### Open-Source Tools
+**Not primary comparators (stale, niche, or Framework-only)**
 
-| Tool | GitHub Stars | License | Status | First Released |
-|------|-------------|---------|--------|----------------|
-| **Obfy** | New | MIT | Active | 2025 |
-| **Obfuscar** | 3,000+ | MIT | Active | 2010 |
-| **BitMono** | 490+ | MIT | Active | 2022 |
-| **LoGic.NET** | ~200 | MIT | Active | 2021 |
-| **JIEJIE.NET** | ~100 | MIT | Active | 2020 |
-| **ConfuserEx** | 800+ | MIT | Discontinued | 2014 |
+| Tool | Why it is sidelined |
+|------|---------------------|
+| **Crypto Obfuscator** (ssware.com) | Last public build 2020 / 17 Mar 2021. Site still sells v2020 ($149–$399). Do not treat as a modern-.NET option. |
+| **ILProtector** (vgrsoft.net) | **$149** / **$499** site. Documents .NET Framework 2.0–4.8 Windows desktop only. Unpackers exist. Not a .NET 5+ tool. yck1509 pointed ConfuserEx users here in 2016; that is historical, not a current recommendation. |
+| **Skater .NET** (Rustemsoft) | Still sold ($80–$300). Low independent visibility; vendor is migrating users to “Opaquer”. |
+| **Dotfuscator Community** | Bundled with Visual Studio. Personal/non-commercial. Rename + limited control flow. No string encryption, no MSBuild, library mode on by default. |
+
+### Open source
+
+| Tool | GitHub | Stars (13 Sep 2026) | License | Last push | Status |
+|------|--------|---------------------|---------|-----------|--------|
+| **Obfy** | [mortenbrudvik/Obfy](https://github.com/mortenbrudvik/Obfy) | 0 | MIT | 13 Sep 2026 | Active. Created 31 Dec 2025. |
+| **Obfuscar** | [obfuscar/obfuscar](https://github.com/obfuscar/obfuscar) | 3,188 | MIT | 11 Sep 2026 | Active. v3.0 beta (SRM, no Mono.Cecil). |
+| **BitMono** | [bitmono-project/BitMono](https://github.com/bitmono-project/BitMono) | 559 | MIT | 13 Sep 2026 | Active. Latest tag **0.45.0** the same day. Unity UPM, GitHub Action, MSBuild, bitmono.dev. |
+| **JIEJIE.NET** | [dcsoft-yyf/JIEJIE.NET](https://github.com/dcsoft-yyf/JIEJIE.NET) | 887 | **GPL-2.0** | 9 Apr 2026 | Chinese-first docs. Last GitHub *tag* is 2022-11-07; the 2026 push is a README/resource-encryption note, not a tagged release. |
+| **ConfuserEx** | [yck1509/ConfuserEx](https://github.com/yck1509/ConfuserEx) | 3,765 | MIT | May 2019 | **Archived** (Jan 2019). Framework 2.0–4.5. |
+| **mkaring/ConfuserEx** | [mkaring/ConfuserEx](https://github.com/mkaring/ConfuserEx) | 2,904 | MIT | API `pushed_at` 7 Jun 2024 | Largest fork by stars. Default-branch HEAD is 15 Apr 2022; latest tag v1.6.0 (17 Jan 2022). The 2024 push may not be `master`. Still Framework-era. |
+| **neo-ConfuserEx** | [XenocodeRCE/neo-ConfuserEx](https://github.com/XenocodeRCE/neo-ConfuserEx) | 861 | MIT | 28 Jul 2026 | Revived in 2026 (`v1.0.0-rc2`: signed integrity + selective KoiVM). README still lists Framework 2.0–4.7.2 only. |
+| **LoGiC.NET** | [AnErrupTion/LoGiC.NET](https://github.com/AnErrupTion/LoGiC.NET) | 516 | MIT | 23 Aug 2023 | **Archived.** Do not recommend. |
 
 ---
 
 ## Feature Comparison Matrix
 
-### Core Obfuscation Features
+### Core obfuscation
 
-| Feature | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel | Eazfuscator |
-|---------|:----:|:-----------:|:-------------:|:------------:|:-----:|:-----------:|
-| **Symbol Renaming** | Yes | Yes | Yes | Yes | Yes | Yes |
-| **String Encryption** | Yes | Yes | Yes | Yes | Yes | Yes |
-| **Control Flow Obfuscation** | Yes | Yes | Yes | Yes | Yes | Yes |
-| **Metadata Removal** | Yes | Yes | Yes | Yes | Yes | Yes |
-| **Resource Encryption** | Yes | Yes | Yes | Yes | Yes | Yes |
-| **Constant Encryption** | Yes | Yes | - | Yes | Yes | Yes |
+| Feature | Obfy | Dotfuscator Pro | SmartAssembly | .NET Reactor | Babel | Eazfuscator | ArmDot |
+|---------|:----:|:---------------:|:-------------:|:------------:|:-----:|:-----------:|:------:|
+| **Symbol renaming** | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **String encryption** | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Control flow** | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Metadata removal / pruning** | Yes | Yes | Yes | Yes | Yes | Yes | — |
+| **Resource encryption** | Yes | — | Yes | Yes | Yes | Yes | Yes |
+| **Constant / value encryption** | Yes | — | — | Yes | Yes | via VM / data virt. | — |
 
-### Advanced Protection Features
+Obfuscar’s “string hiding” is reversible XOR; its own docs warn against using it for sensitive strings. BitMono encrypts strings (including UnmanagedString) but does not flatten control flow.
 
-| Feature | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel | Eazfuscator |
-|---------|:----:|:-----------:|:-------------:|:------------:|:-----:|:-----------:|
-| **Code Virtualization** | Partial | - | - | Yes | Yes | Yes |
-| **Native Code Generation** | Partial | - | - | Yes | - | - |
-| **MSIL Encryption** | Yes | - | - | Yes | Yes | - |
-| **Anti-Debug** | Yes | Yes | - | Yes | Yes | Yes |
-| **Anti-Tamper** | Yes | Yes | Yes | Yes | Yes | - |
-| **Anti-Dump** | Yes | - | - | Yes | Yes | - |
-| **Watermarking** | Yes | Yes | - | Yes | - | - |
+### Advanced protection
 
-Obfy virtualization is a bytecode interpreter for simple static `int` methods only, not a general IL VM. Native “generation” is a managed framework-dependent launcher (`{name}.launcher.exe`), not an unmanaged packer. MSIL encryption is per-method XOR of method bodies in the PE (Windows).
+| Feature | Obfy | Dotfuscator Pro | SmartAssembly | .NET Reactor | Babel | Eazfuscator | ArmDot |
+|---------|:----:|:---------------:|:-------------:|:------------:|:-----:|:-----------:|:------:|
+| **Code virtualization** | Partial | — | — | Yes | Ultimate | Yes | Yes |
+| **Native packing / native EXE** | Partial | — | — | Yes | — | — | App virt. (Windows, BoxedApp) |
+| **MSIL / method encryption** | Yes | — | — | NecroBit | Ultimate | via VM | via VM |
+| **Anti-debug** | Yes | Yes (RASP) | — | Yes | Yes | — | Implicit via VM |
+| **Anti-tamper** | Yes | Yes (RASP) | Pro | Yes | Yes | — | Experimental |
+| **Anti-dump** | Yes | — | — | — | — | — | — |
+| **Watermark** | Yes | Yes | — | Yes | — | — | — |
+| **Built-in licensing / DRM** | — | Shelf Life expiry | — | Yes | Separate product | — | Yes |
+| **RASP / runtime response** | — | Yes | Tamper (Pro) | — | — | — | — |
+| **Crash / error reporting** | — | — | Yes | — | — | — | — |
 
-### Naming Modes
+**Obfy limits (do not collapse these to “Yes” in marketing copy)**
+
+- **Virtualization:** bytecode interpreter for selected **static `int` methods** only (`ldc.i4`, `ldarg`, `ldloc`/`stloc`, add/sub/mul, `ceq`/`cgt`/`clt`, signed branches; ≤8 params / ≤16 locals; no EH/generics; unsigned compares skipped). Not a general IL VM.
+- **Native “generation”:** managed framework-dependent `{name}.launcher.exe`. Not an unmanaged packer, not Reactor’s native x86 stub + Pre-JIT.
+- **Method IL encryption:** per-method XOR in the PE, Windows, skips generics.
+- **Anti-dump:** PE-header wipe plus in-process `0xC3` patch of `dbghelp!MiniDumpWriteDump` on Windows x86/x64. ARM64 skipped. Gated off NativeAOT / IL2CPP / Blazor WASM. External dumpers are unaffected.
+- **Anti-de4dot:** decoy ConfusedBy/Dotfuscator attributes (name-based detector bait), not a de4dot block.
+
+Reactor’s NecroBit is IL replacement/encryption with a cross-platform claim (Windows/Linux/macOS). Babel’s code encryption is a managed VM and is **not supported on MAUI or Blazor**. Eazfuscator generates a new VM per run and markets “homomorphic encryption” on suitable circuits — treat that as a vendor claim. ArmDot generates a unique VM per build.
+
+### Naming modes
 
 | Mode | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel |
 |------|:----:|:-----------:|:-------------:|:------------:|:-----:|
-| **Unreadable/Unicode** | Yes | Yes | Yes | Yes | Yes |
+| **Unreadable / Unicode** | Yes | Yes | Yes | Yes | Yes |
 | **Sequential (a, b, c)** | Yes | Yes | Yes | Yes | Yes |
-| **Hash-based** | Yes | - | - | - | - |
+| **Hash-based** | Yes | — | — | — | — |
 | **Random** | Yes | Yes | Yes | Yes | Yes |
+| **Overload induction** | — | Yes (patented) | — | — | overloaded renaming |
 
-### String Encryption Algorithms
+Eazfuscator does **not** emit a mapping file. It encrypts symbols with a private key. NDepend rejected it for that reason: encrypted names still encode original length, and a 2019 write-up showed the scheme can be attacked. Mapping files remain the production-debug standard (Obfy, Reactor, Dotfuscator, SmartAssembly, Babel, Obfuscar).
 
-| Algorithm | Obfy | Dotfuscator | .NET Reactor | Babel |
-|-----------|:----:|:-----------:|:------------:|:-----:|
-| **AES-256** | Yes | Yes | Yes | Yes |
-| **XOR** | Yes | - | Yes | - |
-| **Custom/Proprietary** | - | Yes | Yes | Yes |
+### String algorithms (where documented)
 
-### Control Flow Modes
+| Algorithm | Obfy | Dotfuscator | .NET Reactor | Babel | Obfuscar |
+|-----------|:----:|:-----------:|:------------:|:-----:|:--------:|
+| **Named AES-256** | Yes | — | — | Code encryption (not strings) | — |
+| **XOR** | Yes | — | undocumented | Documented (random integer key) + HASH table | Yes (hide only) |
+| **Vendor-named / unspecified** | — | Yes (7.8 “AI-resistant”) | Yes (algorithm not named) | Plugins | — |
+
+Most commercial pages say “string encryption” without naming a cipher. Do not treat the old AES-256 checkmarks for Dotfuscator / Reactor / Babel *strings* as vendor-documented. Babel *does* cite AES for **code** encryption (the managed VM), and documents XOR + HASH for strings. Dotfuscator 7.8.0 (Jul 2026) added “AI-Resistant String Encryption” — a vendor name, not an evaluated property.
+
+### Control flow
 
 | Mode | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel |
 |------|:----:|:-----------:|:-------------:|:------------:|:-----:|
-| **Switch Flattening** | Yes | Yes | Yes | Yes | Yes |
-| **Opaque Predicates** | Yes | Yes | Yes | Yes | Yes |
-| **Combined Mode** | Yes | Yes | Yes | Yes | Yes |
-| **Intensity Control** | Yes | Yes | - | Yes | Yes |
+| **Switch flattening / state machine** | Yes | Yes | Yes | Yes | Yes |
+| **Opaque predicates** | Yes | Yes | Yes | Yes | Yes |
+| **Combined** | Yes | Yes | Yes | Yes | Yes |
+| **Intensity / iterations** | Yes | Yes | — | Yes | Yes (per-algorithm iterations) |
+
+Babel documents extra algorithms (`goto`, `if`, `switch`, `case`, `call`, `value`, `token`, `underflow`). `token` / `underflow` are not verifiable and are auto-disabled on modern .NET.
 
 ---
 
-## Platform & Framework Support
+## Platform and framework support
 
-| Platform | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel |
-|----------|:----:|:-----------:|:-------------:|:------------:|:-----:|
-| **.NET 10** | Yes | - | - | - | - |
-| **.NET 9** | Yes | Yes | Yes | Yes | Yes |
-| **.NET 8** | Yes | Yes | Yes | Yes | Yes |
-| **.NET 6/7** | Yes | Yes | Yes | Yes | Yes |
-| **.NET Core 3.x** | Yes | Yes | Yes | Yes | Yes |
-| **.NET Framework 4.x** | Yes | Yes | Yes | Yes | Yes |
-| **.NET Standard** | Yes | Yes | Yes | Yes | Yes |
-| **MAUI** | Recipe | Yes | - | Yes | Yes |
-| **Blazor** | Recipe | - | - | Yes | Yes |
-| **Unity** | Recipe | - | - | Yes | Yes |
-| **Xamarin** | - | Yes | - | Yes | Yes |
+| Platform | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel | Eazfuscator | ArmDot |
+|----------|:----:|:-----------:|:-------------:|:------------:|:-----:|:-----------:|:------:|
+| **.NET 11 (preview)** | — | — | Yes (8.4.9) | — | — | Preliminary (2026.2) | — |
+| **.NET 10** | Yes | Yes (7.5.0) | Yes (8.4.0) | Yes | Yes (11.5+) | Yes | Yes (2025.9) |
+| **.NET 8 / 9** | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **.NET 6 / 7** | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **.NET Core 3.x** | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **.NET Framework 4.x** | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **.NET Standard** | Yes | Yes | Yes | Yes | Yes | Yes | — |
+| **MAUI** | Recipe | Yes (Android, iOS, WinUI 3, Mac, Tizen) | — | Timing note only | Yes (no code encryption) | Yes | — |
+| **Blazor** | Recipe | Yes (7.8.0) | — | Yes | Yes (no code encryption) | Improved | — |
+| **Unity** | Recipe | — | — | Yes | — | Yes | Yes (name preservation 2026.6) |
+| **Xamarin** | — | Yes | — | Yes | Yes | Yes | Yes |
+| **NativeAOT** | Recipe + gating | Preview notes (7.6.0) | — | — | — | — | debug-info fix for AOT/trim |
+| **Tool runs on Linux / macOS** | CLI theoretically (`dotnet`); GUI/VS are Windows | CLI yes, GUI Windows | Windows only | Windows only | Ultimate yes | Yes (Linux 2026.1, macOS 2026.2) | Yes |
 
-Obfy Unity / Blazor / MAUI support is `runtimeProfile` gating plus example `obfy.json` files, not an Editor plugin or first-class product SKU.
+Obfy Unity / Blazor / MAUI / NativeAOT support is `runtimeProfile` gating plus example `obfy.json` files and scenario tests — **not** an Editor plugin, NuGet SDK, or first-class SKU. Do not claim first-class Unity/MAUI/Blazor until a Unity Development Player job and MAUI iOS/Android jobs exist (see [Roadmap.md](Roadmap.md) and [Testing-Roadmap.md](Testing-Roadmap.md)).
 
----
-
-## Integration & Tooling
-
-| Feature | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel |
-|---------|:----:|:-----------:|:-------------:|:------------:|:-----:|
-| **CLI** | Yes | Yes | Yes | Yes | Yes |
-| **GUI** | Yes | Yes | Yes | Yes | Yes |
-| **MSBuild Integration** | Yes | Yes | Yes | Yes | Yes |
-| **Visual Studio Plugin** | Yes | Yes | Yes | Yes | Yes |
-| **VS Code / Rider** | Rider + VS Code stub | - | - | Yes | - |
-| **NuGet Package** | - | - | - | - | Yes |
-| **Azure DevOps** | Yes | Yes | Yes | Yes | Yes |
-| **GitHub Actions** | Yes | Yes | - | Yes | Yes |
-| **Symbol Mapping** | Yes | Yes | Yes | Yes | Encrypted |
+SmartAssembly does not support UWP. Its “What Can I Obfuscate?” index still listed .NET 5–9 after 8.4.0’s release notes added .NET 10. .NET 8 support arrived a full year after .NET 8 shipped (Nov 2024); .NET 9 and 10 followed much faster.
 
 ---
 
-## Enterprise Features
+## Integration and tooling
 
-| Feature | Obfy | Dotfuscator | SmartAssembly | .NET Reactor |
-|---------|:----:|:-----------:|:-------------:|:------------:|
-| **Error Reporting** | - | - | Yes | - |
-| **Crash Analytics** | - | - | Yes | - |
-| **License Management** | - | - | - | Yes |
-| **DLL Merging** | Yes | - | Yes | Yes |
-| **Assembly Embedding** | Yes | - | Yes | Yes |
-| **RASP** | - | Yes | - | - |
+| Feature | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel | Eazfuscator | ArmDot | Obfuscar | BitMono |
+|---------|:----:|:-----------:|:-------------:|:------------:|:-----:|:-----------:|:------:|:--------:|:-------:|
+| **CLI** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **GUI** | Yes (WPF) | Yes | Yes | Yes | Windows | Yes | Yes | — | Web (bitmono.dev) |
+| **MSBuild** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Visual Studio** | Yes (2022) | Yes | Yes | Yes | Yes | Yes (2005–2022) | — | — | — |
+| **Rider** | Yes | — | — | Yes | — | Yes (2019.1+) | — | — | — |
+| **VS Code** | Stub (schema + matcher) | — | — | — | — | — | — | — | — |
+| **NuGet / `dotnet tool`** | — | Private pkg | Yes | Some pkgs | Ultimate | Yes (smoothest) | Yes | Yes | Yes |
+| **GitHub Actions** | Yes (dotnet) | Yes | — | Official action | Yes | Yes | Yes | Yes | Official action |
+| **Azure DevOps** | Yes | Yes | Yes | Official task | Yes | Yes | Yes | Yes | Yes |
+| **Mapping file** | Yes | Yes | Yes | Yes | Yes | Encrypted symbols | — | Partial | — |
+| **Source-level (Roslyn)** | Yes | — | — | — | — | — | — | — | — |
+| **Config wizard** | Yes | — | — | — | — | Attribute-first | Attributes | XML | JSON |
+
+Obfy has **no NuGet package and no `dotnet tool`**. That is the largest distribution gap versus Obfuscar, BitMono, Eazfuscator, ArmDot, and Babel Ultimate. Teams that want “add a PackageReference, Release builds are protected” currently pick Eazfuscator or ArmDot, not Obfy.
+
+Reactor’s **$249 single-developer license excludes build servers**. CI needs the $549 company license.
 
 ---
 
-## Detailed Tool Analysis
+## Enterprise and ISV extras
+
+| Feature | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel | ArmDot | DNGuard |
+|---------|:----:|:-----------:|:-------------:|:------------:|:-----:|:------:|:-------:|
+| **Error reporting / crash analytics** | — | — | Yes (differentiator) | — | — | — | — |
+| **License / trial / HWID** | — | Shelf Life | — | Yes | Separate SKU | Yes | Yes (Enterprise) |
+| **DLL merging** | Yes | Linking | Yes | Yes | Enterprise+ | — | — |
+| **Assembly embedding** | Yes | — | Yes | Yes | Yes | Yes (managed + unmanaged) | — |
+| **RASP** | — | Yes | Tamper (Pro) | — | — | — | HVM runtime |
+| **Incremental obfuscation** | Yes (`{output}.obfycache`) | Yes | — | Yes | — | — | — |
+| **Strong-name re-sign** | Yes | Yes | Yes | Yes | Yes | — | — |
+
+---
+
+## Detailed tool analysis
 
 ### Obfy
 
-**Strengths:**
-- Free and open-source (MIT license)
-- Modern .NET 10 support (ahead of competitors)
-- Clean, simple CLI interface
-- WPF desktop application with Fluent Design
-- Visual Studio 2022 Extension (right-click obfuscation, post-build automation)
-- Simple installer-based distribution
-- Dual-mode: Assembly (dnlib) + Source (Roslyn) obfuscation
-- Resource, constant, and string encryption
-- Method IL XOR encryption (Windows) and in-module `calli` reference proxies
-- Anti-tamper detection with SHA-256 hash verification
-- Anti-decompiler protection (junk types, SuppressIldasm, decoy attributes)
-- Watermark (`WatermarkAttribute`) and dependency embedding
-- Assembly merging to combine multiple DLLs into one
-- Obfuscation reports (HTML/JSON)
-- NativeAOT / Unity IL2CPP / Blazor WASM runtime-profile gating
-- Excellent documentation
-- Active development
+**GitHub:** [mortenbrudvik/Obfy](https://github.com/mortenbrudvik/Obfy) (0 stars, MIT, created 31 Dec 2025)
 
-**Weaknesses:**
-- No general code virtualization (simple static `int` methods only)
-- No native/unmanaged packer (managed FDD launcher only)
-- No licensing/DRM features
-- Unity / MAUI / Blazor are recipes, not first-class plugins
-- Smaller community (new project)
+**Strengths**
 
-**Best For:** Developers who need solid protection without cost, modern .NET projects, CI/CD pipelines
+- Free, MIT, actively developed
+- Dual pipeline: assembly (dnlib) and source (Roslyn) — unique in this set
+- Full conventional stack: rename, AES-256/XOR strings, constants, resources, control flow, reference proxies, metadata removal
+- Anti-debug (scattered, kernel32 gated off NativeAOT/IL2CPP/Blazor WASM), anti-dump (Windows x86/x64), anti-tamper (SHA-256), anti-decompiler (junk + `SuppressIldasm` + decoy attributes)
+- Method IL XOR (Windows), limited static-int virtualization, dependency embedding, assembly merge, watermark, HTML/JSON reports
+- `runtimeProfile` gating so NativeAOT / Unity IL2CPP / Blazor WASM do not get `VirtualProtect` / AssemblyResolve helpers they cannot run
+- Incremental cache (SHA-256 of Obfy version + input bytes + settings)
+- Fluent WPF UI, VS 2022 extension, Rider plugin, CLI wizard, installer + MSIX
+- Honest docs: encryption is obfuscation, not confidentiality
+
+**Weaknesses**
+
+- No general IL VM; no unmanaged packer; no licensing/DRM/RASP
+- Unity / MAUI / Blazor / NativeAOT are recipes, not first-class plugins
+- No NuGet / global tool — harder CI story than Obfuscar, BitMono, Eazfuscator, ArmDot
+- GUI, VS extension, and method-IL encryption are Windows-centric
+- Zero public community (0 stars, 0 forks). Unproven on third-party commercial codebases
+- Source mode is a subset: strings, renaming, control flow only
+
+**Best for:** Modern .NET teams that want a free, documented, IDE-friendly obfuscator with more than renaming, and that accept “raise the cost of casual ILSpy/dnSpy” rather than “defeat a motivated reverse engineer.”
 
 ---
 
 ### Dotfuscator (PreEmptive)
 
-**Strengths:**
-- Industry leader with 20+ years history
-- Trusted by Fortune 500 companies
-- RASP (Runtime Application Self-Protection)
-- Excellent Visual Studio integration
-- Comprehensive documentation and support
-- Community edition available free
+**Strengths**
 
-**Weaknesses:**
-- Very expensive ($2,000+/year for Professional)
-- Annual subscription model with escalating costs
-- Community edition is limited
-- Slower to support newest .NET versions
+- Longest commercial history; Community Edition ships with Visual Studio
+- Overload Induction renaming
+- RASP: configurable anti-debug, anti-tamper, Shelf Life, Android root check, custom/probabilistic responses
+- CLI runs on Windows / Mac / Linux; .NET 10 (7.5.0), AOT notes (7.6.0), Blazor (7.8.0)
+- Mapping files, incremental obfuscation, watermarking, XAML renaming (WPF/UWP/Xamarin)
 
-**Best For:** Enterprise applications, regulated industries, companies with security compliance requirements
+**Weaknesses**
+
+- Quote-only Professional pricing; NDepend left after repeated ~80% yearly hikes
+- **No code virtualization** despite being the expensive enterprise option
+- Community Edition is personal-use, rename-centric, no string encryption, no MSBuild
+- No built-in licensing beyond Shelf Life expiry
+
+**Best for:** Regulated enterprise, existing PreEmptive contracts, teams that need runtime detection/response more than a VM.
 
 ---
 
-### SmartAssembly (Red Gate)
+### SmartAssembly (Redgate)
 
-**Strengths:**
-- Integrated error reporting and crash analytics
-- DLL merging and embedding
-- Good Visual Studio integration
-- Tamper detection
-- Well-established vendor
+**Strengths**
 
-**Weaknesses:**
-- No code virtualization
-- No anti-debug protection
-- Subscription pricing
-- Slower .NET version support
-- Limited cross-platform support
+- Automated error reporting and feature-usage reporting (the real differentiator)
+- Rename, control flow, strings, reference proxies, prune, merge, embed, resource compression/encryption, tamper (Pro)
+- Mapping files; MSBuild / Azure DevOps
+- .NET 10 (Nov 2025) and .NET 11 preview (Aug 2026); SQL Server 2025 for the reporting backend
 
-**Best For:** Applications needing crash reporting, desktop applications, .NET Framework projects
+**Weaknesses**
+
+- No virtualization, no anti-debug, no licensing API
+- Windows-only tool
+- Subscription TCO over 5 years dwarfs Reactor / Eazfuscator / ArmDot
+- .NET 8 was a year late; MAUI/Blazor/Unity are not a documented strength
+- No UWP
+
+**Best for:** Desktop/.NET teams that already live in Redgate tooling and want crash reporting plus solid (not extreme) obfuscation.
 
 ---
 
 ### .NET Reactor (Eziriz)
 
-**Strengths:**
-- Best value for money ($249 one-time)
-- Most comprehensive feature set
-- Code virtualization (NecroBit)
-- Native code generation
-- Cross-platform encryption (Windows/Linux/macOS)
-- Active development since 2004
-- Excellent documentation with tooltips
+NDepend’s 2026 pick after testing Dotfuscator, Eazfuscator, Babel, and Obfuscar.
 
-**Weaknesses:**
-- Windows-only GUI
-- Steeper learning curve
+**Strengths**
+
+- Broadest protection-per-dollar: NecroBit, VM, native EXE stub, Pre-JIT of small methods to x86, anti-debug/tamper/decompiler, hide calls, merge/embed, compression, licensing SDK
+- Documents .NET 5–10, Xamarin, Unity, Blazor. MAUI appears as a trimming / “Protection Timing = After Compile” note, not as a first-class row on the main frameworks list
+- VS + Rider add-ins, Azure DevOps task, GitHub Action
+- Mapping files, declarative `[Obfuscation]`, strong-name + Authenticode
+- $249 perpetual (single) / $549 company; 20+ years of releases
+
+**Weaknesses**
+
+- Tool itself is **Windows-only** (CLI and GUI)
+- Single-developer license **cannot** run on build servers
 - No source-level obfuscation
+- “No tool can decompile protected code” is marketing; de4dot-class tools and dedicated unpackers exist for many Reactor versions
 
-**Best For:** Maximum protection needs, licensing/DRM, cost-conscious teams needing advanced features
+**Best for:** Windows-centric ISVs who want virtualization + licensing without enterprise quotes. The default commercial recommendation in independent write-ups.
 
 ---
 
 ### Babel Obfuscator
 
-**Strengths:**
-- Pure managed virtualization (no native stubs)
-- Cross-platform (Windows/macOS/Linux)
-- MSIL encryption
-- One-time pricing (€350)
-- Broad .NET support
+**Strengths**
 
-**Weaknesses:**
-- Smaller community
-- Less documentation
-- No native code generation
+- Managed virtualization and AES code encryption without a native stub (Ultimate)
+- Cross-platform **tool** on Ultimate (Windows/macOS/Linux NuGet)
+- Broad target list: MAUI, Blazor, Xamarin, UWP, nanoFramework, Mono (Unity is **not** on Babel’s own general-features page)
+- Mapping files, merge, anti-tamper, dynamic proxy, value encryption, plugin encryptors
+- 11.7.0 (May 2026): AI-friendly CLI (`--format=json|ndjson`), .NET 10 SDK, `--strict-exit`
+- One-time €350 Enterprise is cheap if you do not need the VM/NuGet tier
 
-**Best For:** Cross-platform .NET applications, projects needing virtualization without native dependencies
+**Weaknesses**
 
----
+- Code encryption **unsupported on MAUI and Blazor**
+- NDepend never got a bug-free run on their assemblies
+- Enterprise vs Ultimate split: the cheap SKU is Windows-only and weaker
+- Smaller Western mindshare than Reactor / Eazfuscator
 
-### Eazfuscator.NET
-
-**Strengths:**
-- Good reputation and community
-- Unity/Xamarin support
-- Code/data virtualization
-- Automatic optimization
-- Affordable pricing
-
-**Weaknesses:**
-- No traditional mapping files (uses encrypted symbols)
-- Symbol size reveals original name length
-- Less transparent deobfuscation process
-
-**Best For:** Unity games, Xamarin mobile apps, projects needing automatic optimization
+**Best for:** Cross-platform CI that must run obfuscation on Linux runners, and teams that want a managed VM without native dependencies.
 
 ---
 
-### ConfuserEx (Open Source)
+### Eazfuscator.NET (Gapotchenko)
 
-**Strengths:**
-- Free and open-source
-- Feature-rich for open source
-- Highly configurable
+**Strengths**
 
-**Weaknesses:**
-- **Discontinued and unmaintained**
-- Known deobfuscators available (NoFuserEx, de4dot)
-- Compatibility issues with newer .NET
-- No support available
+- NuGet-first: add the package, Release builds are protected
+- Code/data virtualization with a new VM per run; resource encryption; merge/embed; XAML renaming
+- .NET 5–11 (11 is preliminary), Unity / MonoGame / XNA, MAUI, Blazor, Linux (2026.1) and macOS (2026.2) hosts. Assembly *embedding* is documented as incompatible with Native AOT; “.NET Native” on the feature page is the old UWP toolchain, not `PublishAot`
+- Rider 2026.2, VS 2026, SLNX, deterministic obfuscation (Site License)
+- $399 perpetual is the “install and forget” commercial default
 
-**Best For:** Legacy projects only, learning purposes (NOT recommended for new projects)
+**Weaknesses**
+
+- **No mapping files** — encrypted symbols instead. NDepend ruled it out. Symbol size leaks original name length; a 2019 break of the scheme exists
+- No dedicated anti-debug / anti-tamper / licensing
+- Single-developer license caps at 16 CPU cores
+- “Homomorphic encryption” is a vendor claim, not an independently reviewed primitive
+
+**Best for:** Small teams that want virtualization with almost no build-graph work, and that can live without mapping files (or that use Eazfuscator’s own stack-trace decoder).
 
 ---
 
-## Open-Source Alternatives Deep Dive
+### ArmDot (Softanics)
 
-A detailed comparison of free, open-source .NET obfuscators.
+**Strengths**
 
-### Open-Source Tools Overview
+- Tool runs on Windows, Linux, and macOS; NuGet + MSBuild attributes
+- Per-build unique VM; string/resource encryption; control flow
+- Built-in licensing (HWID, RSA serials, trials) virtualized with the same VM
+- Windows application virtualization (BoxedApp) can embed unmanaged DLLs
+- Public $499 price; .NET 10 since 2025.9; Unity name-preservation fixes in 2026.6
+- Ships source-code license as a third SKU
 
-| Tool | GitHub Stars | Last Update | License | Status |
-|------|-------------|-------------|---------|--------|
-| **Obfy** | New | Sep 2026 | MIT | Active |
-| **Obfuscar** | 3,000+ | Dec 2025 | MIT | Active |
-| **BitMono** | 490+ | Dec 2025 | MIT | Active |
-| **LoGic.NET** | ~200 | 2024 | MIT | Active |
-| **JIEJIE.NET** | ~100 | Dec 2025 | MIT | Active |
-| **ConfuserEx** | 800+ | 2018 | MIT | Discontinued |
-| **neo-ConfuserEx** | ~100 | 2020 | MIT | Unmaintained |
+**Weaknesses**
 
-### Open-Source Feature Comparison
+- Vendor also writes the most-cited 2026 “honest comparison” — discount that roundup’s ranking
+- Anti-tamper experimental; no dedicated anti-debug
+- Smaller public track record than Reactor / Dotfuscator
+- VM cost is real (Softanics cites ~10–20% on virtualized methods — typical for the category)
 
-| Feature | Obfy | Obfuscar | BitMono | LoGic.NET | JIEJIE.NET | ConfuserEx |
-|---------|:----:|:--------:|:-------:|:---------:|:----------:|:----------:|
-| **Symbol Renaming** | Yes | Yes | Yes | Yes | Yes | Yes |
-| **String Encryption** | Yes | - | Yes | Yes | Yes | Yes |
-| **Control Flow** | Yes | - | - | Yes | Yes | Yes |
-| **Anti-Debug** | Yes | - | Yes | - | - | Yes |
-| **Anti-Decompiler** | Yes | - | Yes | - | - | Yes |
-| **Anti-Tamper** | Yes | - | - | - | - | Yes |
-| **Anti-de4dot** | Partial | - | Yes | - | - | - |
-| **Constant Encryption** | Yes | - | - | Yes | - | Yes |
-| **Resource Encryption** | Yes | - | - | - | - | Yes |
-| **Assembly Merging** | Yes | - | - | - | - | - |
-| **Metadata Removal** | Yes | - | Yes | - | - | - |
-| **Watermarking** | Yes | - | - | - | - | - |
-| **Method IL encryption** | Yes | - | - | - | - | - |
+**Best for:** ISVs who need Linux CI + virtualization + licensing in one purchase, and who do not want Eziriz’s Windows-only tool constraint.
 
-Obfy “anti-de4dot” is decoy ConfusedBy/Dotfuscator attributes (name-based detector bait), not a de4dot block.
+---
 
-### .NET Version Support (Open Source)
+### Agile.NET (SecureTeam)
 
-| Platform | Obfy | Obfuscar | BitMono | LoGic.NET | JIEJIE.NET | ConfuserEx |
-|----------|:----:|:--------:|:-------:|:---------:|:----------:|:----------:|
-| **.NET 10** | Yes | Yes | Yes | - | - | - |
-| **.NET 8/9** | Yes | Yes | Yes | Yes | Yes | - |
-| **.NET 6/7** | Yes | Yes | Yes | Yes | Yes | - |
-| **.NET Core 3.x** | Yes | Yes | Yes | Yes | Yes | - |
-| **.NET Framework** | Yes | Yes | Yes | Yes | Yes | Yes |
+**Strengths**
+
+- Method virtualization (custom VM opcodes) and per-method IL encryption
+- Rename, CF, strings, resources, call obfuscation
+- Historical niche: NinjaTrader / algo-trading shops
+
+**Weaknesses**
+
+- Windows-focused; $795 + $195/yr or $150/month enterprise is poor value next to Reactor $249
+- A 2026 generic **devirtualizer** exists ([dawwinci/agile-net-devirtualizer](https://github.com/dawwinci/agile-net-devirtualizer)) that reconstructs CIL from the shipped `AgileDotNet.VMRuntime.dll`
+- Thin independent review footprint (PreEmptive notes no G2/Capterra presence)
+
+**Best for:** Existing SecureTeam customers. Not a first pick for new projects.
+
+---
+
+### DNGuard HVM
+
+**Strengths**
+
+- HVM: IL → encrypted pseudocode handed to the JIT one method at a time; claims dump resistance
+- .NET 10 (4.9.4, Nov 2025); licensing SDK on Enterprise
+- Positions itself as “not an obfuscator” so reflection-heavy apps break less
+
+**Weaknesses**
+
+- $1,299 Enterprise is 5× Reactor for a narrower ecosystem
+- Windows-centric; little public .NET 5+ war stories compared with Reactor/Eazfuscator
+- Professional SKU ($899) omits HVM — the feature you would be paying for
+
+**Best for:** Teams that specifically want JIT-hook IL hiding and can pay enterprise prices.
+
+---
+
+### ConfuserEx and forks (open source, Framework-era)
+
+**Upstream** [yck1509/ConfuserEx](https://github.com/yck1509/ConfuserEx): archived January 2019, 3,765 stars. Last meaningful code 2018. Supports Framework 2.0–4.5. Dedicated unpackers (NoFuserEx, de4dot-cex, KoiVM lifters) exist.
+
+**mkaring/ConfuserEx**: 2,904 stars. Default-branch HEAD is 15 April 2022; latest tag v1.6.0 (17 January 2022). GitHub `pushed_at` is 7 June 2024 (may be a non-`master` branch). Best-known “still builds” fork. Still not a .NET 8/10 obfuscator.
+
+**neo-ConfuserEx**: 861 stars, `v1.0.0-rc2` on 28 July 2026 (signed integrity + selective KoiVM). README still Framework 2.0–4.7.2. A 2026 revival of the ConfuserEx/KoiVM line, not a modern-.NET successor. yck1509’s 1 July 2016 discontinue post pointed users at Eazfuscator, ILProtector, .NETGuard, and SmartAssembly — there is **no official ConfuserEx commercial successor**.
+
+**Do not use any ConfuserEx lineage on new .NET 8/10 projects.** Fine as a historical reference or for locked Framework 4.x binaries with a modest threat model.
+
+---
+
+## Open-source deep dive
+
+### Open-source feature comparison
+
+| Feature | Obfy | Obfuscar | BitMono | JIEJIE.NET | ConfuserEx (hist.) | LoGiC.NET |
+|---------|:----:|:--------:|:-------:|:----------:|:------------------:|:---------:|
+| **Symbol renaming** | Yes | Yes | Yes | Yes | Yes | Yes |
+| **String encryption** | Yes | XOR hide | Yes | Yes | Yes | Yes |
+| **Control flow** | Yes | — | — | Yes | Yes | Yes |
+| **Anti-debug** | Yes | — | Yes | — | Yes | — |
+| **Anti-decompiler** | Yes | SuppressIldasm | Yes (PE tricks) | — | Yes | — |
+| **Anti-tamper** | Yes | — | — | — | Yes | — |
+| **Anti-dump** | Yes | — | — | — | Yes | — |
+| **Constant encryption** | Yes | — | — | — | Yes | Yes |
+| **Resource encryption** | Yes | — | — | Yes | Yes | — |
+| **Assembly merging** | Yes | — | — | — | Embed | — |
+| **Metadata removal** | Yes | — | Yes | — | — | — |
+| **Watermark** | Yes | — | Optional | — | — | — |
+| **Method IL encryption** | Yes | — | — | — | Tamper/encrypt | — |
+| **Unity plugin** | Recipe | Community configs | UPM / unitypackage | — | — | — |
+| **Source (Roslyn) mode** | Yes | — | — | — | — | — |
+| **dotnet tool / NuGet** | — | Yes | Yes | — | — | — |
+
+### .NET version support (open source)
+
+| Platform | Obfy | Obfuscar | BitMono | JIEJIE.NET | ConfuserEx / forks | LoGiC.NET |
+|----------|:----:|:--------:|:-------:|:----------:|:------------------:|:---------:|
+| **.NET 10** | Yes | Yes (2.2.49+) | Yes | — | — | — |
+| **.NET 8 / 9** | Yes | Yes | Yes | Yes | — | Claimed historically |
+| **.NET 6 / 7** | Yes | Yes | Yes | Yes | — | Claimed historically |
+| **.NET Framework** | Yes | Yes | Yes (some protections) | Yes | Yes (this is the target) | Yes |
 
 ---
 
 ### Obfuscar
 
-**GitHub:** [obfuscar/obfuscar](https://github.com/obfuscar/obfuscar) (3,000+ stars)
+**GitHub:** [obfuscar/obfuscar](https://github.com/obfuscar/obfuscar) — 3,188 stars, 469 forks, last push 11 Sep 2026
 
-**Overview:** The most popular open-source .NET obfuscator by stars. Focused on symbol renaming with a minimalist approach.
+The default open-source *name*. Maintained by Lex Li / LeXtudio. Combined NuGet downloads are in the millions (NDepend cited 760k on the main package in 2026; Softanics cited 2.6M+ across packages).
 
-**Strengths:**
-- Largest community (3,000+ stars, 57 releases)
-- Very stable and mature (many years of development)
-- Simple XML configuration
-- NuGet and global tool installation
-- Excellent for basic protection needs
-- Well-documented
+**What it actually does:** massive overload renaming, optional XOR string hiding, `SuppressIldasm`, skip/keep rules, mapping log, strong-name re-sign, global tool + NuGet. v3.0 beta (latest `3.0.0-beta.20`, 29 Aug 2026) replaces Mono.Cecil with `System.Reflection.Metadata`.
 
-**Weaknesses:**
-- Limited to symbol renaming (no string encryption)
-- No control flow obfuscation
-- No anti-debug protection
-- Minimalist feature set
+**What it does not do:** control flow, virtualization, anti-debug, anti-tamper, useful string cryptography.
 
-**Installation:**
+NDepend could not get bug-free output (TypeLoadException, enum-value holes). Lex Li has publicly called out design flaws. v3 is the attempt to fix the pipeline; it does not add protection techniques.
+
 ```bash
 dotnet tool install --global Obfuscar.GlobalTool
+# v3:
+dotnet tool install --global Obfuscar.GlobalTool --prerelease
 ```
 
-**Best For:** Projects needing only symbol renaming, maximum stability
+**Best for:** Open-source projects and libraries that only need public-API-preserving renaming, and that want a `dotnet tool` on Linux CI.
 
 ---
 
 ### BitMono
 
-**GitHub:** [sunnamed434/BitMono](https://github.com/sunnamed434/BitMono) (490+ stars)
+**GitHub:** [bitmono-project/BitMono](https://github.com/bitmono-project/BitMono) — 559 stars, last push 13 Sep 2026
 
-**Overview:** A modern obfuscator originally designed for Mono, now supporting all .NET. Features a unique approach that makes output "look like C++ but is actually C#."
+The most *aggressive* maintained OSS protector. AsmResolver (not dnlib). Started for Mono; now documents .NET 6–10 plus Framework, with per-protection platform caveats.
 
-**Protection Techniques (16+):**
-- String Encryption (UnmanagedString)
-- Anti-Debug (AntiDebugBreakpoints)
-- Anti-Decompiler (breaks dnSpy, ILSpy)
-- Anti-de4dot (resists popular deobfuscator)
-- Full Renamer
-- Call-to-Calli transformation
-- Object Return Type manipulation
-- Namespace removal
-- Timestamp manipulation
-- Billion NOPs (noise injection)
+**Protections:** StringsEncryption, UnmanagedString, BitDotNet / BitDecompiler / BitMethodDotnet (break dnSpy/ILSpy/dnlib/AsmResolver loaders), CallToCalli, FullRenamer, NoNamespaces, AntiDebugBreakpoints, AntiDecompiler, AntiDe4dot, AntiILdasm, BillionNops, DotNetHook, ObjectReturnType, LocalVariableEncoding, BitTimeDateStamp, plus a plugins folder.
 
-**Strengths:**
-- Most feature-rich open-source option
-- Active development (.NET 10 support)
-- Uses AsmResolver (alternative to dnlib)
-- Breaks popular decompilers
-- Extensible architecture (DI-based)
-- Good documentation
+**Distribution that Obfy lacks:** `dotnet tool`, `BitMono.Integration` MSBuild package, official GitHub Action, Unity `.unitypackage` (2018–19) and UPM `.tgz` (2020+), in-browser obfuscator at [bitmono.dev](https://bitmono.dev).
 
-**Weaknesses:**
-- Younger project (less battle-tested)
-- Smaller community than Obfuscar
-- No control flow obfuscation
-- Some features experimental
+**Gaps vs Obfy:** no control-flow flattening, no constant/resource encryption as first-class peers, no Roslyn source mode, no WPF/VS/Rider product UX. Some protections are Mono/Unity-specific and will no-op or warn elsewhere.
 
-**Best For:** Maximum open-source protection, Mono projects, breaking decompilers
-
----
-
-### LoGic.NET
-
-**GitHub:** [AnErrupTion/LoGiC.NET](https://github.com/AnErrupTion/LoGiC.NET)
-
-**Overview:** A more advanced open-source obfuscator using dnlib. Focuses on providing stronger protection than basic tools.
-
-**Features:**
-- Symbol renaming
-- String encryption
-- Control flow obfuscation
-- Constant encryption
-- Integer confusion
-
-**Strengths:**
-- More features than Obfuscar
-- Uses proven dnlib library
-- Active development
-
-**Weaknesses:**
-- Smaller community
-- Less documentation
-- May have compatibility issues
-
-**Best For:** Developers wanting more than basic renaming without commercial tools
+**Best for:** Unity/Mono, people who want decompilers to *crash*, and teams that want a plugin engine. Pair with Obfy’s CF/constants only if you are willing to run two tools — they are not designed as a pipeline.
 
 ---
 
 ### JIEJIE.NET
 
-**GitHub:** [dcsoft-yyf/JIEJIE.NET](https://github.com/dcsoft-yyf/JIEJIE.NET)
+**GitHub:** [dcsoft-yyf/JIEJIE.NET](https://github.com/dcsoft-yyf/JIEJIE.NET) — 887 stars, **GPL-2.0**, last meaningful update 1 Jan 2026 (resource-encryption fix)
 
-**Overview:** Chinese-origin obfuscator described as "small, fast, and powerful." Analyzes IL code for intelligent obfuscation.
+IL-analysing obfuscator (rename, strings, control flow, `StringsSelector`). Fast, small. Docs and community are Chinese-first. GPL-2.0 is a problem if you want to vendor the engine; MIT Obfy/Obfuscar/BitMono are not.
 
-**Features:**
-- IL code analysis
-- Control flow obfuscation
-- String encryption
-- Symbol renaming
-- StringsSelector argument (v2025)
-
-**Strengths:**
-- Active development (Dec 2025 updates)
-- IL-level analysis for smart obfuscation
-- Fast processing
-- Small footprint
-
-**Weaknesses:**
-- Documentation primarily in Chinese
-- Smaller Western community
-- Less mature than alternatives
-
-**Best For:** Users comfortable with Chinese documentation, fast processing needs
+**Best for:** Users who read Chinese docs and can accept GPL. Not a default Western OSS pick.
 
 ---
 
-### ConfuserEx / neo-ConfuserEx
+### LoGiC.NET — archived
 
-**GitHub:** [yck1509/ConfuserEx](https://github.com/yck1509/ConfuserEx) (discontinued)
-
-**Overview:** Once the most popular open-source .NET obfuscator. Now discontinued but still referenced. neo-ConfuserEx attempted to continue development but is also unmaintained.
-
-**Features (when active):**
-- Symbol renaming
-- String encryption
-- Control flow obfuscation
-- Constant encryption
-- Resource encryption
-- Anti-debug
-- Anti-tamper
-- Anti-dump
-
-**Why NOT Recommended:**
-- **Discontinued** - No updates since 2018
-- **Known vulnerabilities** - Multiple deobfuscators exist (NoFuserEx, de4dot)
-- **Compatibility issues** - Doesn't work with modern .NET
-- **No support** - Issues go unanswered
-
-**Historical Significance:** Was the gold standard for open-source .NET obfuscation. Its architecture influenced many successors.
+Last push 23 August 2023, repository archived, 516 stars. Rename, strings, CF, integer confusion. **Do not recommend for new work.** Historical “more than Obfuscar, less than ConfuserEx” option only.
 
 ---
 
-### Open-Source Comparison Summary
+### Open-source comparison summary
 
 | Criteria | Winner | Notes |
 |----------|--------|-------|
-| **Most Features** | BitMono | 16+ protection techniques |
-| **Most Stable** | Obfuscar | 3,000+ stars, 57 releases |
-| **Best .NET 10 Support** | Obfy, BitMono | Both actively support latest |
-| **Most Active Development** | Obfy, BitMono | Updated Dec 2025/Jan 2026 |
-| **Best Documentation** | Obfuscar | Years of community docs |
-| **Best for Beginners** | Obfy | Simple CLI, clear docs |
-| **Best Anti-Decompiler** | BitMono | Breaks dnSpy, ILSpy |
+| **Most conventional techniques** | Obfy | Rename + strings + constants + resources + CF + anti-* + merge + method-IL |
+| **Most decompiler-breaking tricks** | BitMono | PE/loader attacks, UnmanagedString, Unity packs |
+| **Most used / most stable rename** | Obfuscar | 3.2k stars, millions of NuGet installs, v3 rewrite |
+| **Best Unity story (OSS)** | BitMono | UPM + unitypackage. Obfy is a recipe. |
+| **Best IDE / desktop UX (OSS)** | Obfy | WPF + VS 2022 + Rider. BitMono is CLI/web. |
+| **Best `dotnet tool` / NuGet** | Obfuscar / BitMono | Obfy has neither |
+| **Best docs for beginners** | Obfuscar (community) and Obfy (product docs) | ConfuserEx wiki is stale |
+| **Do not use on new .NET 10** | ConfuserEx lineage, LoGiC.NET | Framework-era or archived |
 
----
-
-### When to Choose Which Open-Source Tool
+### When to choose which open-source tool
 
 | Scenario | Recommended | Why |
 |----------|-------------|-----|
-| **Modern .NET, simple needs** | Obfy | Best .NET 10 support, clean CLI |
-| **Symbol renaming only** | Obfuscar | Most stable, largest community |
-| **Maximum free protection** | BitMono | Most features, anti-decompiler |
-| **Control flow + strings** | Obfy or LoGic.NET | Both support these core features |
-| **Mono/Unity projects** | BitMono | Originally designed for Mono |
-| **Legacy .NET Framework** | Obfuscar | Longest track record |
+| **Modern .NET, more than renaming, free** | Obfy | Broadest conventional stack + UI/IDE |
+| **Rename only, Linux CI, maximum installs** | Obfuscar | Global tool, v3, huge community |
+| **Unity / break dnSpy** | BitMono | UPM + anti-decompiler protections |
+| **Source files, not assemblies** | Obfy | Only Roslyn source mode in this set |
+| **Vendor the engine in a proprietary product** | Obfy or Obfuscar (MIT) | JIEJIE is GPL-2.0 |
+| **Legacy Framework 4.x, already ConfuserEx** | mkaring/ConfuserEx | Still builds; not for new .NET |
 
 ---
 
-## Pricing Comparison
+## Pricing comparison (5-year TCO, single developer)
 
-| Tool | Model | Initial Cost | Annual Cost | 5-Year TCO |
-|------|-------|--------------|-------------|------------|
-| **Obfy** | Free | $0 | $0 | **$0** |
-| **ConfuserEx** | Free | $0 | $0 | $0 (discontinued) |
-| **.NET Reactor** | One-time | $249 | $0* | **~$250** |
-| **Babel** | One-time | €350 (~$380) | $0* | **~$380** |
-| **Eazfuscator** | One-time | ~$400 | $0* | **~$400** |
-| **SmartAssembly** | Subscription | ~$800 | ~$800 | **~$4,000** |
-| **Dotfuscator Pro** | Subscription | ~$2,000 | ~$2,000+ | **~$10,000+** |
+| Tool | Model | Year 1 | Years 2–5 (stay current) | 5-year TCO |
+|------|-------|--------|--------------------------|------------|
+| **Obfy** | MIT | $0 | $0 | **$0** |
+| **Obfuscar / BitMono** | MIT | $0 | $0 | **$0** |
+| **.NET Reactor** | Perpetual | $249 | $99/yr optional | **~$249–$645** |
+| **Eazfuscator.NET** | Perpetual | $399 | $99/yr optional | **~$399–$795** |
+| **Babel Enterprise** | Perpetual | €350 (~$380) | €150/yr optional | **~$380–$1,000** |
+| **ArmDot** | Perpetual | $499 | ~$250/yr optional | **~$499–$1,500** |
+| **Agile.NET** | Perpetual + maint. | $795 | $195/yr | **~$1,575** |
+| **Babel Ultimate** | Perpetual | €1,250 (~$1,350) | €550/yr optional | **~$1,350–$3,500** |
+| **DNGuard Enterprise** | Perpetual | $1,299 | maintenance extra | **~$1,299+** |
+| **SmartAssembly** | Subscription | ~$700–$1,200 | same each year | **~$3,500–$6,000** |
+| **Dotfuscator Pro** | Subscription, quote | unknown | unknown | **historically $10k+**; get a quote |
+| **ConfuserEx** | MIT | $0 | $0 | $0 — **do not use on modern .NET** |
 
-*One-time licenses may require upgrade purchases for major new .NET versions
+Reactor company license is $549 (needed for CI). Eazfuscator site license is $1,699. ArmDot site is $1,799. Perpetual tools keep working forever on the last version you downloaded; you pay renewals only for new .NET years and support.
 
 ---
 
-## Gap Analysis: What Obfy Is Missing
+## Gap analysis: what Obfy is missing
 
-### Critical Gaps (High Value Features)
+### High value, high cost
+
+| Feature | Difficulty | Value | Who has it | Notes |
+|---------|------------|-------|------------|-------|
+| **General code virtualization** | Very high | High | Reactor, Babel Ultimate, Eazfuscator, ArmDot, Agile, DNGuard | Current interpreter is static `int` methods only. This is the protection-ceiling gap. |
+| **NuGet / `dotnet tool`** | Medium | High | Obfuscar, BitMono, Eazfuscator, ArmDot, Babel Ultimate | Largest *distribution* gap. Blocks “one PackageReference” adoption. |
+
+### Medium value
+
+| Feature | Difficulty | Value | Who has it | Notes |
+|---------|------------|-------|------------|-------|
+| **Native / unmanaged packer** | Very high | Medium | Reactor (native EXE + Pre-JIT), ArmDot (BoxedApp), DNGuard | Managed `{name}.launcher.exe` is not this. |
+| **First-class Unity Editor / UPM** | Medium | Medium | BitMono (UPM), Eazfuscator, Reactor, ArmDot | Recipe + `UnityIl2Cpp` profile exist. |
+| **Linux/macOS as a supported host** | Medium | Medium | Obfuscar, BitMono, ArmDot, Babel Ultimate, Eazfuscator 2026, Dotfuscator CLI | GUI/VS/method-IL are Windows. CLI via `dotnet` is unadvertised. |
+| **XAML-aware renaming (WPF/MAUI)** | Medium | Medium | Dotfuscator, Eazfuscator | Obfy has `preserveXaml` defaults, not a XAML rewriter. |
+
+### Low priority / out of scope
 
 | Feature | Difficulty | Value | Notes |
 |---------|------------|-------|-------|
-| **General code virtualization** | Very High | High | Current interpreter covers simple static `int` methods only |
-
-### Moderate Gaps (Nice to Have)
-
-| Feature | Difficulty | Value | Notes |
-|---------|------------|-------|-------|
-| **Native packer** | Very High | Medium | Managed FDD launcher exists; unmanaged host does not |
-
-### Minor Gaps (Low Priority)
-
-| Feature | Difficulty | Value | Notes |
-|---------|------------|-------|-------|
-| **License Management** | High | Low | Out of scope for obfuscator |
-| **Error Reporting** | High | Low | Separate concern |
-| **Unity Editor plugin** | Medium | Medium | Recipe + `runtimeProfile` exist; no Editor integration |
+| **License management / HWID** | High | Low for an OSS obfuscator | Reactor, ArmDot, Babel Licensing, DNGuard. Separate product. |
+| **Error reporting** | High | Low | SmartAssembly’s reason to exist. Use Sentry/AppCenter. |
+| **RASP** | High | Medium for mobile/games | Dotfuscator’s enterprise wedge. |
 
 ---
 
-## Recommendations for Obfy Development
+## Recommendations for Obfy development
 
-### Short-Term (High Impact, Lower Effort)
+Aligned with [Roadmap.md](Roadmap.md). Competitive pressure, not a commitment.
 
-*All short-term items completed - see Recently Completed section*
+### Near term (adoption, not protection ceiling)
 
-### Medium-Term (Strategic Features)
+1. **NuGet package + `dotnet tool`** — this is how Obfuscar, BitMono, Eazfuscator, and ArmDot get into CI. Without it Obfy loses “free and easy” to Obfuscar even when Obfy has more techniques.
+2. **Document Linux CI** if the CLI already runs under `dotnet` — or make it a supported host.
+3. **VS Code beyond the stub** (TaskProvider + marketplace), already on the roadmap as DX-03.
 
-*v1.4–v1.5 hardening is on main (Unreleased): helper control-flow, scattered anti-debug, per-method XOR keys, `[Obfuscation]`, JSON/XAML defaults, `runtimeProfile` gating, signing, dependency embedding, watermark, limited virtualization, managed launcher.*
+### Medium term (platform)
 
-### Long-Term (Advanced Protection)
+4. Unity Editor / UPM, or at least a tested Development Player job, before claiming Unity.
+5. MAUI iOS/Android tests before claiming MAUI.
+6. Stronger XAML renaming if WPF/MAUI users hit binding breaks.
 
-5. **General code virtualization** - Custom VM beyond the current static-int interpreter
-6. **Native packer** - Unmanaged host (managed `{name}.launcher.exe` already ships)
+### Long term (protection ceiling)
 
-### Recently Completed
+7. **General IL virtualization** — only if demand is clear; Eazfuscator/Reactor/ArmDot already own this commercially, and Agile’s VM has a public devirtualizer. A weak VM is worse than none.
+8. **Native packer** — same caveat. The managed launcher is enough to document as packing; an unmanaged host is a different product.
 
-- **Protection hardening (Unreleased)** ✅ - Helper control-flow, three string decrypt entry points, scattered anti-debug, per-method method-IL keys, random dispatcher states
-- **Compatibility (Unreleased)** ✅ - `[Obfuscation]` + inclusions, JSON/XML/COM/XAML defaults, `runtimeProfile`, signing
-- **Watermark + decoy attributes (Unreleased)** ✅
-- **Dependency embedding, incremental cache, managed launcher, limited virtualization (Unreleased)** ✅
-- **Configuration Wizard** ✅ - Interactive CLI wizard with Quick/Advanced modes (v1.3.0)
-- **Visual Studio Extension** ✅ - VS 2022 plugin with right-click obfuscation and post-build automation (v1.3.0)
-- **Assembly Merging** ✅ - Merge multiple assemblies into one (v1.2.0)
-- **Anti-Decompiler** ✅ - Junk types/methods injection, SuppressIldasm (v1.2.0)
-- **Anti-Tamper Detection** ✅ - SHA-256 hash verification at runtime (v1.1.0)
-- **Resource Encryption** ✅ - Encrypt embedded resources (v1.1.0)
-- **Constant Encryption** ✅ - Encrypt numeric literals (v1.1.0)
-- **Obfuscation Reports** ✅ - HTML/JSON report generation (v1.1.0)
-- **WPF Desktop Application** ✅ - Fluent Design UI (v1.1.0)
+Do not chase licensing, crash reporting, or RASP. Those are adjacent products (Reactor/ArmDot, SmartAssembly, Dotfuscator).
 
 ---
 
-## When to Choose Each Tool
+## When to choose each tool
 
-| Scenario | Recommended Tool |
-|----------|------------------|
-| **Free, modern .NET** | Obfy |
-| **Merge + obfuscate (free)** | Obfy |
-| **Maximum protection, budget available** | .NET Reactor |
-| **Enterprise, compliance requirements** | Dotfuscator |
-| **Need crash reporting** | SmartAssembly |
-| **Cross-platform virtualization** | Babel |
-| **Unity/Xamarin games** | Eazfuscator.NET |
-| **Learning/experimentation** | Obfy or ConfuserEx |
+| Scenario | Recommended |
+|----------|-------------|
+| **Free, modern .NET, more than renaming** | Obfy |
+| **Free rename-only, Linux CI, huge community** | Obfuscar |
+| **Free, Unity, break decompilers** | BitMono |
+| **Free, merge + obfuscate + UI** | Obfy |
+| **Maximum protection per dollar** | .NET Reactor ($249 / $549 company) |
+| **Linux CI + VM + licensing, public price** | ArmDot ($499) |
+| **NuGet-first + VM, no mapping-file need** | Eazfuscator.NET ($399) |
+| **Linux CI + managed VM, no native stub** | Babel Ultimate (€1,250) |
+| **Crash reporting + obfuscation** | SmartAssembly |
+| **Enterprise RASP / compliance / VS-blessed** | Dotfuscator Professional (quote) |
+| **Unity commercially supported** | Eazfuscator, Reactor, ArmDot; BitMono (OSS) |
+| **Do not use** | ConfuserEx on .NET 5+; LoGiC.NET; Crypto Obfuscator v2020; ILProtector for new work |
 
 ---
 
 ## Conclusion
 
-Obfy provides a compelling open-source alternative to commercial .NET obfuscators. While it lacks advanced features like code virtualization and native code generation, it covers the core obfuscation needs that protect against casual reverse engineering.
+The 2026 .NET obfuscator market has three honest tiers:
 
-**Obfy's Competitive Position:**
-- **vs Free alternatives**: Superior to discontinued ConfuserEx with modern .NET support and active development
-- **vs Budget commercial**: Matches .NET Reactor's core features at zero cost, including anti-tamper
-- **vs Enterprise commercial**: Covers most protection needs but lacks enterprise features (RASP, licensing)
+1. **Rename-grade (free):** Obfuscar. Fine for libraries and OSS. Not protection against a person with ILSpy and an afternoon.
+2. **Conventional protection (free or cheap):** Obfy (free), BitMono (free, decompiler-hostile), Eazfuscator ($399), Babel Enterprise (€350). Rename + strings + CF + some anti-*. This is what most applications actually need.
+3. **Virtualization / packing / licensing (paid):** .NET Reactor is the independent-review default. ArmDot if the tool must run on Linux. Babel Ultimate for a managed VM on Linux CI. Dotfuscator if you buy RASP and a vendor that Microsoft already ships. SmartAssembly if you buy crash reporting.
 
-For most applications, Obfy's combination of string/constant/resource encryption, method IL XOR, control flow, symbol renaming, anti-debug/dump/tamper/decompiler, reference proxies, assembly merging, and metadata removal provides comprehensive protection against casual reverse engineering. Teams requiring a general IL VM or a native packer should consider .NET Reactor ($249) or Dotfuscator (enterprise).
+Obfy sits in tier 2, at tier-1 price, with better IDE/desktop UX than any other OSS tool and a broader conventional technique list than Obfuscar or BitMono. It does not sit in tier 3. Saying it “covers 90% of commercial features” hid that fact.
+
+**Use Obfy** when you want MIT-licensed, documented, modern-.NET obfuscation with a UI and IDE plugins, and your threat model is casual reverse engineering.
+
+**Do not use Obfy (alone)** when you need a general VM, a native packer, ISV licensing, RASP, or a Unity Editor workflow — buy Reactor/ArmDot/Eazfuscator or add BitMono for Unity.
 
 ---
 
 ## Sources
 
-### Commercial Tools
-- [NDepend Blog: In the Jungle of .NET Obfuscator Tools](https://blog.ndepend.com/in-the-jungle-of-net-obfuscator-tools/)
-- [PreEmptive Dotfuscator](https://www.preemptive.com/products/dotfuscator/)
-- [Red Gate SmartAssembly](https://www.red-gate.com/products/smartassembly/)
-- [Eziriz .NET Reactor](https://www.eziriz.com/dotnet_reactor.htm)
-- [Babel Obfuscator](https://www.babelfor.net/products/babel-obfuscator/)
+Checked 13 September 2026 unless a page carries its own date.
 
-### Open-Source Tools
-- [GitHub: Obfuscar](https://github.com/obfuscar/obfuscar)
-- [GitHub: BitMono](https://github.com/sunnamed434/BitMono)
-- [GitHub: LoGic.NET](https://github.com/AnErrupTion/LoGiC.NET)
-- [GitHub: JIEJIE.NET](https://github.com/dcsoft-yyf/JIEJIE.NET)
-- [GitHub: ConfuserEx](https://github.com/yck1509/ConfuserEx)
-- [GitHub: .NET Obfuscator List](https://github.com/NotPrab/.NET-Obfuscator)
+### Independent / mixed
 
-### General Resources
-- [Slant: Best .NET Obfuscators 2025](https://www.slant.co/topics/17310/~obfuscators-for-net-code)
-- [GitHub Topics: dotnet-obfuscator](https://github.com/topics/dotnet-obfuscator)
+- [NDepend: In the Jungle of .NET Obfuscator Tools](https://blog.ndepend.com/in-the-jungle-of-net-obfuscator-tools/) (25 May 2026) — only recent third-party hands-on of Dotfuscator, Eazfuscator, Babel, Obfuscar, Reactor
+- [Softanics: Best Free and Paid .NET Obfuscators Compared in 2026](https://www.softanics.com/net-obfuscation/tools) — useful table; **written by ArmDot’s vendor**
+- [PreEmptive: 8 .NET Obfuscators Compared for 2026](https://www.preemptive.com/blog/net-obfuscator-2/) (6 Aug 2026) — useful roundup; **written by Dotfuscator’s vendor**
+- [Silent Signal: Decrypting Eazfuscator.NET encrypted symbol names](https://blog.silentsignal.eu/2019/05/10/decrypting-eazfuscator-net-encrypted-symbol-names/) (2019)
+
+### Commercial vendors
+
+- [Dotfuscator](https://www.preemptive.com/products/dotfuscator/) · [Compare editions](https://www.preemptive.com/products/dotfuscator/compare-dotfuscator-editions/) · [Changelog (7.5–7.8)](https://support.preemptive.com/hc/en-us/articles/31784634997137-Changelog) · [.NET 10 post](https://www.preemptive.com/blog/dotfuscator-net-10-support-protecting-your-modern-applications-with-speed/)
+- [SmartAssembly](https://www.red-gate.com/products/smartassembly/) · [Requirements (.NET 10)](https://documentation.red-gate.com/sa8/getting-started/requirements) · [8.4 release notes](https://documentation.red-gate.com/sa/release-notes-and-other-versions/smartassembly-8-4-release-notes) · [ComponentSource prices](https://www.componentsource.com/product/smartassembly/prices)
+- [.NET Reactor](https://www.eziriz.com/dotnet_reactor.htm) · [Features](https://www.eziriz.com/reactor_features.htm) · [Store](https://eziriz.com/order.htm) · [Renewals](https://www.eziriz.com/renewal.htm) · [Downloads](https://www.eziriz.com/downloads.htm)
+- [Babel Obfuscator](https://babelfor.net/products/babel-obfuscator/) · [Shop](https://babelfor.net/shop/) · [11.7.0 notes](https://babelfor.net/releasenotes/babel-1170/) · [Code encryption limits](https://docs.babelfor.net/obfuscator/code-encryption) · [General features](https://docs.babelfor.net/obfuscator/introduction/general-features)
+- [Eazfuscator.NET features](https://www.gapotchenko.com/eazfuscator.net/features) · [Purchase](https://www.gapotchenko.com/eazfuscator.net/purchase) · [What’s new (2026.1/2026.2)](https://www.gapotchenko.com/eazfuscator.net/changes)
+- [ArmDot](https://www.softanics.com/armdot) · [Buy](https://www.softanics.com/armdot/buy) · [Changelog](https://www.softanics.com/armdot/changelog)
+- [Agile.NET pricing](https://secureteam.net/acode-pricing)
+- [DNGuard purchase](https://dnguard.net/purchase.php) · [Changelog](https://dnguard.net/changelog.php)
+- [ILProtector](https://www.vgrsoft.net/Products/ILProtector) — Framework-only
+- [Crypto Obfuscator order page](https://www.ssware.com/cryptoobfuscator/order.htm) — last product line 2020
+- [Spices.Net 5.26.2.17](https://www.softpedia.com/progChangelog/Spices-Obfuscator-Changelog-45113.html) (17 Feb 2026)
+
+### Open source
+
+- [Obfuscar](https://github.com/obfuscar/obfuscar) · [Docs](https://docs.lextudio.com/obfuscar/) · [NuGet 3.0.0-beta.20](https://www.nuget.org/packages/Obfuscar)
+- [BitMono](https://github.com/bitmono-project/BitMono) · [docs.bitmono.dev](https://docs.bitmono.dev/en/latest/)
+- [JIEJIE.NET](https://github.com/dcsoft-yyf/JIEJIE.NET)
+- [ConfuserEx (archived)](https://github.com/yck1509/ConfuserEx)
+- [mkaring/ConfuserEx](https://github.com/mkaring/ConfuserEx)
+- [neo-ConfuserEx](https://github.com/XenocodeRCE/neo-ConfuserEx)
+- [LoGiC.NET (archived)](https://github.com/AnErrupTion/LoGiC.NET)
+- [Obfy](https://github.com/mortenbrudvik/Obfy)
+- [NotPrab/.NET-Obfuscator list](https://github.com/NotPrab/.NET-Obfuscator)
+
+### Obfy product docs (this repo)
+
+- [Techniques.md](Techniques.md) — what each Obfy pass actually does
+- [Roadmap.md](Roadmap.md) — shipped vs remaining VM / native packer / platform tests
+- [Platforms.md](Platforms.md) — runtime profiles
 
 ---
 
-*Last updated: September 2026*
+*Last updated: 13 September 2026. GitHub statistics and shop prices sampled the same day.*

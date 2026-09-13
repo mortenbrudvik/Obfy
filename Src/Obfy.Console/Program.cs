@@ -582,7 +582,7 @@ public class Program
         if (inputs.Any(static i => IsSolutionOrProject(i.FullName)))
         {
             return await RunClosedSetSessionAsync(
-                inputs, output, settings, mapFile, reportFile, dryRun, preservePublic,
+                inputs, output, settings, mapFile, reportFile, dryRun, preservePublic, merge,
                 service, reportService, analyzer, cancellationToken).ConfigureAwait(false);
         }
 
@@ -634,6 +634,9 @@ public class Program
         return 0;
     }
 
+    internal static string FormatLibraryMode(bool included, bool hintPreservePublic, bool forcePreservePublic)
+        => included && (forcePreservePublic || hintPreservePublic) ? "Yes" : "No";
+
     private static async Task<int> RunClosedSetSessionAsync(
         FileInfo[] inputs,
         DirectoryInfo? output,
@@ -642,6 +645,7 @@ public class Program
         FileInfo? reportFile,
         bool dryRun,
         bool preservePublic,
+        bool merge,
         IObfuscationService service,
         IReportService reportService,
         ISolutionAnalyzer analyzer,
@@ -688,7 +692,12 @@ public class Program
                 "[yellow]Source files are not part of a solution session and were skipped.[/]");
         }
 
-        PrintSessionPlan(session, extraAssemblies);
+        var presentExtras = extraAssemblies.Where(static e => File.Exists(e.FullName)).ToList();
+        var missingExtras = extraAssemblies.Where(static e => !File.Exists(e.FullName)).ToList();
+        foreach (var missing in missingExtras)
+            AnsiConsole.MarkupLine($"[red]File not found: {Markup.Escape(missing.FullName)}[/]");
+
+        PrintSessionPlan(session, presentExtras, missingExtras, preservePublic);
 
         var closedSetInputs = new List<ClosedSetInput>();
         foreach (var entry in session.Included)
@@ -700,7 +709,7 @@ public class Program
             });
         }
 
-        foreach (var extra in extraAssemblies)
+        foreach (var extra in presentExtras)
         {
             closedSetInputs.Add(new ClosedSetInput
             {
@@ -715,6 +724,10 @@ public class Program
             return 2;
         }
 
+        var useMerge = merge && closedSetInputs.Count >= 2;
+        if (useMerge)
+            AnsiConsole.MarkupLine("[cyan]Merging included assemblies into one before obfuscating.[/]");
+
         if (dryRun)
             return 0;
 
@@ -725,6 +738,29 @@ public class Program
                 ?? Directory.GetCurrentDirectory();
             outputDir = Path.Combine(solutionDir, "obfy-out");
             AnsiConsole.MarkupLine($"[cyan]Output directory:[/] {Markup.Escape(outputDir)}");
+        }
+
+        if (useMerge)
+        {
+            var outputPath = Path.Combine(outputDir, Path.GetFileName(closedSetInputs[0].AssemblyPath));
+            var mergeResult = await service.MergeAndObfuscateAsync(
+                closedSetInputs.Select(static i => i.AssemblyPath).ToArray(),
+                outputPath,
+                settings,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!mergeResult.Success)
+            {
+                DisplayError("Merge", mergeResult);
+                return 1;
+            }
+
+            DisplaySuccess($"Merged ({closedSetInputs.Count} assemblies)", mergeResult);
+            await WriteMapAndReportAsync(mapFile, reportFile, mergeResult.SymbolMap, mergeResult, settings, service, reportService)
+                .ConfigureAwait(false);
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
+            return 0;
         }
 
         var result = await service.ObfuscateClosedSetAsync(
@@ -748,28 +784,46 @@ public class Program
             DisplaySuccess(name, module);
         }
 
-        if (mapFile != null && result.SymbolMap.Count > 0)
-        {
-            await service.WriteSymbolMapAsync(result.SymbolMap, mapFile.FullName).ConfigureAwait(false);
-            AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
-        }
-
-        if (reportFile != null && result.ModuleResults.Count > 0)
-        {
-            var format = Path.GetExtension(reportFile.FullName).ToLowerInvariant() == ".json"
-                ? ReportFormat.Json
-                : ReportFormat.Html;
-            var report = reportService.BuildReport(result.ModuleResults[0], settings);
-            await reportService.GenerateReportAsync(report, reportFile.FullName, format).ConfigureAwait(false);
-            AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
-        }
+        var reportSource = result.ModuleResults.Count > 0 ? result.ModuleResults[0] : null;
+        await WriteMapAndReportAsync(mapFile, reportFile, result.SymbolMap, reportSource, settings, service, reportService)
+            .ConfigureAwait(false);
 
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
         return 0;
     }
 
-    private static void PrintSessionPlan(ProtectionSession session, IReadOnlyList<FileInfo> extraAssemblies)
+    private static async Task WriteMapAndReportAsync(
+        FileInfo? mapFile,
+        FileInfo? reportFile,
+        Dictionary<string, string> symbolMap,
+        ObfuscationResult? reportSource,
+        ObfySettings settings,
+        IObfuscationService service,
+        IReportService reportService)
+    {
+        if (mapFile != null && symbolMap.Count > 0)
+        {
+            await service.WriteSymbolMapAsync(symbolMap, mapFile.FullName).ConfigureAwait(false);
+            AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
+        }
+
+        if (reportFile != null && reportSource != null)
+        {
+            var format = Path.GetExtension(reportFile.FullName).ToLowerInvariant() == ".json"
+                ? ReportFormat.Json
+                : ReportFormat.Html;
+            var report = reportService.BuildReport(reportSource, settings);
+            await reportService.GenerateReportAsync(report, reportFile.FullName, format).ConfigureAwait(false);
+            AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
+        }
+    }
+
+    private static void PrintSessionPlan(
+        ProtectionSession session,
+        IReadOnlyList<FileInfo> presentExtras,
+        IReadOnlyList<FileInfo> missingExtras,
+        bool forcePreservePublic)
     {
         var table = new Table()
             .Border(TableBorder.Rounded)
@@ -788,17 +842,27 @@ public class Program
                 Markup.Escape(entry.ProjectName),
                 Markup.Escape(status),
                 Markup.Escape(entry.OutputPath ?? ""),
-                entry.Hints.PreservePublicApi ? "Yes" : "No",
+                FormatLibraryMode(entry.IsIncluded, entry.Hints.PreservePublicApi, forcePreservePublic),
                 entry.Hints.RuntimeProfile.ToString());
         }
 
-        foreach (var extra in extraAssemblies)
+        foreach (var extra in presentExtras)
         {
             table.AddRow(
                 Markup.Escape(Path.GetFileNameWithoutExtension(extra.Name)),
                 "Included",
                 Markup.Escape(extra.FullName),
-                "No",
+                FormatLibraryMode(included: true, hintPreservePublic: false, forcePreservePublic),
+                RuntimeProfile.Default.ToString());
+        }
+
+        foreach (var extra in missingExtras)
+        {
+            table.AddRow(
+                Markup.Escape(Path.GetFileNameWithoutExtension(extra.Name)),
+                "Missing",
+                Markup.Escape(extra.FullName),
+                FormatLibraryMode(included: false, hintPreservePublic: false, forcePreservePublic),
                 RuntimeProfile.Default.ToString());
         }
 

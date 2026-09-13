@@ -119,6 +119,63 @@ public class SolutionInputTests : IDisposable
         output.ShouldContain("project files");
     }
 
+    [Fact]
+    public void Invoke_MissingExtraDll_TestsOnlySolution_DryRun_ReturnsExitCode2()
+    {
+        var sln = WriteTestsOnlySolution();
+        var missing = Path.Combine(_tempDirectory, "NoSuch.dll");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{sln}\" \"{missing}\" --dry-run --no-logo", out _);
+
+        exitCode.ShouldBe(2);
+    }
+
+    [Fact]
+    public void FormatLibraryMode_ForcePreservePublic_YesOnlyWhenIncluded()
+    {
+        Program.FormatLibraryMode(included: true, hintPreservePublic: false, forcePreservePublic: true)
+            .ShouldBe("Yes");
+        Program.FormatLibraryMode(included: true, hintPreservePublic: false, forcePreservePublic: false)
+            .ShouldBe("No");
+        Program.FormatLibraryMode(included: true, hintPreservePublic: true, forcePreservePublic: false)
+            .ShouldBe("Yes");
+        Program.FormatLibraryMode(included: false, hintPreservePublic: false, forcePreservePublic: true)
+            .ShouldBe("No");
+    }
+
+    [Fact]
+    public void Invoke_SingleIncluded_WithMerge_UsesClosedSet()
+    {
+        var sln = WriteLibrarySolutionWithBuiltOutput();
+        var outputDir = Path.Combine(_tempDirectory, "single-merge-out");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{sln}\" --merge --no-logo -l minimal -o \"{outputDir}\"", out _);
+
+        exitCode.ShouldBe(0);
+        File.Exists(Path.Combine(outputDir, "Lib.dll")).ShouldBeTrue();
+        Directory.GetFiles(outputDir, "*.merged*").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Invoke_TwoIncluded_WithMerge_WritesSingleMergedOutput()
+    {
+        var sln = WriteLibrarySolutionWithBuiltOutput();
+        var extra = ConsoleTestAssembly.Create(_tempDirectory, "Extra.dll", "ExtraType");
+        var outputDir = Path.Combine(_tempDirectory, "merge-out");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{sln}\" \"{extra}\" --merge --no-logo -l minimal -o \"{outputDir}\"", out _);
+
+        exitCode.ShouldBe(0);
+        File.Exists(Path.Combine(outputDir, "Lib.dll")).ShouldBeTrue();
+        File.Exists(Path.Combine(outputDir, "Extra.dll")).ShouldBeFalse();
+    }
+
     private string WriteTestsOnlySolution()
     {
         var projectDir = Path.Combine(_tempDirectory, "Foo.Tests");

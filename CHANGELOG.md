@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Dark-theme UI text uses theme foreground brushes so file names, settings, and logs stay readable
 - Packing writes the incremental cache only after a successful launcher emit; cache hits require the launcher files
 - Preview failures no longer fail a successful obfuscation run
 - Packed host awaits async Main, resolves sibling assemblies, and extracts the payload to disk so anti-tamper can hash it

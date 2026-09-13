@@ -74,7 +74,8 @@
                                Width="200" Height="8" Value="{Binding OverallProgress}" Maximum="100"/>
                     <ui:TextBlock AutomationProperties.AutomationId="ProgressText"
                               Text="{Binding OverallProgress, StringFormat={}{0:F0}%}" Margin="8,0,0,0"
-                              VerticalAlignment="Center"/>
+                              VerticalAlignment="Center"
+                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 </StackPanel>
 
                 <!-- Right: Settings Menu -->
@@ -122,7 +123,8 @@
                     </Grid.RowDefinitions>
 
                     <ui:TextBlock Grid.Row="0" Text="Settings" FontTypography="BodyStrong" FontSize="16"
-                              Margin="12,12,12,8"/>
+                              Margin="12,12,12,8"
+                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
 
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                         <controls:SettingsPanel DataContext="{Binding Settings}"/>
@@ -188,10 +190,12 @@
                 <ui:TextBlock Grid.Column="0" AutomationProperties.AutomationId="StatusMessage"
                           AutomationProperties.Name="Status"
                           AutomationProperties.LiveSetting="Polite"
-                          Text="{Binding StatusMessage}" VerticalAlignment="Center"/>
+                          Text="{Binding StatusMessage}" VerticalAlignment="Center"
+                          Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 <ui:TextBlock Grid.Column="1" AutomationProperties.AutomationId="FileCount"
                           Text="{Binding Files.Files.Count, StringFormat='{}{0} file(s)'}"
-                          VerticalAlignment="Center"/>
+                          VerticalAlignment="Center"
+                          Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
             </Grid>
         </Border>
         </Grid>

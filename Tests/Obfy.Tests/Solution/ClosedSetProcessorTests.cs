@@ -148,6 +148,8 @@ public class ClosedSetProcessorTests
         var (libPath, appPath) = fixture.CompileClosedSet();
         var outputDir = Path.Combine(fixture.Root, "all-or-nothing");
         Directory.CreateDirectory(outputDir);
+        var existingLib = Path.Combine(outputDir, "Lib.dll");
+        await File.WriteAllTextAsync(existingLib, "keep-me");
 
         var failingPipeline = new Mock<IObfuscationPipeline>();
         failingPipeline.SetupSequence(p => p.ExecuteAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
@@ -165,8 +167,93 @@ public class ClosedSetProcessorTests
 
         result.Success.ShouldBeFalse();
         result.ErrorMessage.ShouldBe("boom");
-        Directory.GetFiles(outputDir, "*.dll", SearchOption.AllDirectories).ShouldBeEmpty();
-        Directory.GetFiles(outputDir, "*.exe", SearchOption.AllDirectories).ShouldBeEmpty();
+        (await File.ReadAllTextAsync(existingLib)).ShouldBe("keep-me");
+        File.Exists(Path.Combine(outputDir, "App.exe")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CommitFailure_RestoresPreExistingOutputFiles()
+    {
+        using var fixture = new ClosedSetEmit();
+        var libPath = fixture.CompileLib();
+        var net8 = Path.Combine(fixture.Root, "net8.0");
+        var net9 = Path.Combine(fixture.Root, "net9.0");
+        Directory.CreateDirectory(net8);
+        Directory.CreateDirectory(net9);
+        var lib8 = Path.Combine(net8, "Lib.dll");
+        var lib9 = Path.Combine(net9, "Lib.dll");
+        File.Copy(libPath, lib8);
+        File.Copy(libPath, lib9);
+
+        var outputDir = Path.Combine(fixture.Root, "commit-fail");
+        var net8Out = Path.Combine(outputDir, "net8.0");
+        Directory.CreateDirectory(net8Out);
+        var existing = Path.Combine(net8Out, "Lib.dll");
+        await File.WriteAllTextAsync(existing, "original-lib");
+        await File.WriteAllTextAsync(Path.Combine(outputDir, "net9.0"), "not-a-directory");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = lib8, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = lib9, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: true));
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        (await File.ReadAllTextAsync(existing)).ShouldBe("original-lib");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SymbolRenamingDisabled_KeepsGreeter()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        var outputDir = Path.Combine(fixture.Root, "rename-off");
+        var settings = ClosedSetRenameSettings(preservePublicApi: false);
+        settings.SymbolRenaming.Enabled = false;
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints { PreservePublicApi = true } },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            settings);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        using var libModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(Path.Combine(outputDir, "Lib.dll")));
+        libModule.GetTypes().ShouldContain(t => t.Name == "Greeter");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_GatingWarnings_ArePerModule_AndCopiedToModuleResults()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        var outputDir = Path.Combine(fixture.Root, "gating-warn");
+        var settings = ClosedSetRenameSettings(preservePublicApi: false);
+        settings.Protection.ProxyExternalCalls = true;
+        settings.Protection.ReferenceProxy = false;
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            settings);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.ModuleResults.Count.ShouldBe(2);
+        foreach (var module in result.ModuleResults)
+        {
+            module.Warnings.Count(w => w.Contains("proxyExternalCalls", StringComparison.Ordinal)).ShouldBe(1);
+        }
     }
 
     private static ClosedSetProcessor CreateProcessor(IObfuscationPipeline? pipeline = null)

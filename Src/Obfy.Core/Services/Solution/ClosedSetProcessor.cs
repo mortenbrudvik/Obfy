@@ -68,7 +68,8 @@ public class ClosedSetProcessor : IClosedSetProcessor
             var renamePairs = new List<(ModuleDef Module, ObfySettings Settings)>(loaded.Count);
             var jobs = new List<ModuleJob>(loaded.Count);
             var relativeOutputs = AssignRelativeOutputPaths(loaded);
-            PipelineContext? shared = null;
+            var sessionContext = PipelineContext.ForAssembly(loaded[0].Module, baseSettings.Clone());
+            sessionContext.InputPath = loaded[0].Input.AssemblyPath;
 
             for (var i = 0; i < loaded.Count; i++)
             {
@@ -82,37 +83,38 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 foreach (var warning in gatingContext.Warnings)
                     _logger.LogWarning("{Warning}", warning);
 
-                if (shared is null)
-                    shared = gatingContext;
-                else
-                {
-                    foreach (var warning in gatingContext.Warnings)
-                        shared.Warnings.Add(warning);
-                }
-
                 renamePairs.Add((item.Module, settings));
 
                 var pipelineSettings = settings.Clone();
                 pipelineSettings.SymbolRenaming.Enabled = false;
-                jobs.Add(new ModuleJob(item, pipelineSettings, relativeOutputs[i], gatingContext.Warnings));
+                jobs.Add(new ModuleJob(item, pipelineSettings, relativeOutputs[i], [.. gatingContext.Warnings]));
             }
 
-            _renamer.RenameClosedSet(renamePairs, shared!, cancellationToken);
+            if (baseSettings.SymbolRenaming.Enabled)
+                _renamer.RenameClosedSet(renamePairs, sessionContext, cancellationToken);
 
-            var symbolMap = new Dictionary<string, string>(shared!.SymbolMap);
+            var symbolMap = new Dictionary<string, string>(sessionContext.SymbolMap);
             var moduleResults = new List<ObfuscationResult>(jobs.Count);
 
-            foreach (var job in jobs)
+            for (var i = 0; i < jobs.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var job = jobs[i];
 
                 var context = PipelineContext.ForAssembly(job.Loaded.Module, job.PipelineSettings);
                 context.InputPath = job.Loaded.Input.AssemblyPath;
                 context.OutputPath = job.RelativeOutput;
                 foreach (var warning in job.GatingWarnings)
                     context.Warnings.Add(warning);
-                foreach (var pair in shared.SymbolMap)
+                foreach (var warning in sessionContext.Warnings)
+                    context.Warnings.Add(warning);
+                foreach (var pair in sessionContext.SymbolMap)
                     context.SymbolMap[pair.Key] = pair.Value;
+                if (i == 0)
+                {
+                    context.Statistics.Merge(sessionContext.Statistics);
+                    context.SkippedItems.AddRange(sessionContext.SkippedItems);
+                }
 
                 var result = await _pipeline.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
                 if (!result.Success)
@@ -129,7 +131,8 @@ public class ClosedSetProcessor : IClosedSetProcessor
                     symbolMap[pair.Key] = pair.Value;
 
                 job.Context = context;
-                moduleResults.Add(result);
+                job.Elapsed = result.ElapsedTime;
+                moduleResults.Add(ToSuccessfulModuleResult(job, outputPath: null));
             }
 
             tempDir = Path.Combine(Path.GetTempPath(), $"obfy-closed-{Guid.NewGuid():N}");
@@ -267,7 +270,8 @@ public class ClosedSetProcessor : IClosedSetProcessor
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(outputDirectory);
-        var committed = new List<string>(jobs.Count);
+        var stashes = new List<(string Dest, string Backup)>(jobs.Count);
+        var placed = new List<string>(jobs.Count);
 
         try
         {
@@ -279,37 +283,41 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 var destDir = Path.GetDirectoryName(dest);
                 if (!string.IsNullOrEmpty(destDir))
                     Directory.CreateDirectory(destDir);
-                File.Move(source, dest, overwrite: true);
-                committed.Add(dest);
+
+                if (File.Exists(dest))
+                {
+                    var backup = Path.Combine(
+                        destDir ?? outputDirectory,
+                        $".{Path.GetFileName(dest)}.{Guid.NewGuid():N}.obfyprev");
+                    File.Move(dest, backup);
+                    stashes.Add((dest, backup));
+                }
+
+                File.Move(source, dest);
+                placed.Add(dest);
             }
         }
         catch (OperationCanceledException)
         {
-            foreach (var path in committed)
-                DeleteFile(path);
+            RestoreCommit(placed, stashes);
             throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to commit closed-set output to {Path}", outputDirectory);
-            foreach (var path in committed)
-                DeleteFile(path);
+            RestoreCommit(placed, stashes);
             return Fail($"Failed to save output: {ex.Message}", loadFailures, moduleResults, symbolMap);
         }
 
+        foreach (var (_, backup) in stashes)
+            DeleteFile(backup);
+
         var finalResults = new List<ObfuscationResult>(jobs.Count);
-        for (var i = 0; i < jobs.Count; i++)
+        foreach (var job in jobs)
         {
-            var previous = moduleResults[i];
-            finalResults.Add(ObfuscationResult.Successful(
-                previous.Statistics,
-                inputPath: jobs[i].Loaded.Input.AssemblyPath,
-                outputPath: Path.Combine(outputDirectory, jobs[i].RelativeOutput),
-                elapsedTime: previous.ElapsedTime,
-                processingTimes: previous.ProcessingTimes,
-                skippedItems: previous.SkippedItems,
-                symbolMap: previous.SymbolMap.Count > 0 ? previous.SymbolMap : symbolMap,
-                warnings: previous.Warnings));
+            finalResults.Add(ToSuccessfulModuleResult(
+                job,
+                Path.Combine(outputDirectory, job.RelativeOutput)));
         }
 
         return new ClosedSetResult
@@ -319,6 +327,41 @@ public class ClosedSetProcessor : IClosedSetProcessor
             LoadFailures = loadFailures,
             SymbolMap = symbolMap
         };
+    }
+
+    private void RestoreCommit(List<string> placed, List<(string Dest, string Backup)> stashes)
+    {
+        foreach (var path in placed)
+            DeleteFile(path);
+
+        foreach (var (dest, backup) in stashes)
+        {
+            try
+            {
+                if (File.Exists(dest))
+                    File.Delete(dest);
+                if (File.Exists(backup))
+                    File.Move(backup, dest);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to restore {Path}", dest);
+            }
+        }
+    }
+
+    private static ObfuscationResult ToSuccessfulModuleResult(ModuleJob job, string? outputPath)
+    {
+        var context = job.Context!;
+        return ObfuscationResult.Successful(
+            context.Statistics,
+            inputPath: job.Loaded.Input.AssemblyPath,
+            outputPath: outputPath,
+            elapsedTime: job.Elapsed,
+            processingTimes: [.. context.ProcessingTimes],
+            skippedItems: [.. context.SkippedItems],
+            symbolMap: new Dictionary<string, string>(context.SymbolMap),
+            warnings: [.. context.Warnings]);
     }
 
     private static IReadOnlyList<string> AssignRelativeOutputPaths(List<LoadedModule> loaded)
@@ -448,5 +491,6 @@ public class ClosedSetProcessor : IClosedSetProcessor
         public string RelativeOutput { get; } = relativeOutput;
         public List<string> GatingWarnings { get; } = gatingWarnings;
         public PipelineContext? Context { get; set; }
+        public TimeSpan Elapsed { get; set; }
     }
 }

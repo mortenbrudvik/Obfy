@@ -59,6 +59,10 @@ public class AppModule : Module
             .AsSelf()
             .SingleInstance();
 
+        builder.RegisterType<HelpViewModel>()
+            .AsSelf()
+            .SingleInstance();
+
         // Register main ViewModel
         builder.RegisterType<MainViewModel>()
             .AsSelf()

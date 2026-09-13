@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Windows.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Obfy.Core.Models;
@@ -10,6 +11,7 @@ using Obfy.Core.Services;
 using Obfy.Core.Services.Reporting;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
+using Obfy.UI.Views;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
 using Wpf.Ui.Extensions;
@@ -27,9 +29,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IReportService _reportService;
     private readonly IContentDialogService _contentDialogService;
     private readonly IUserNotificationService _notifications;
+    private readonly HelpViewModel _help;
     private readonly NotifyCollectionChangedEventHandler _filesChanged;
     private readonly PropertyChangedEventHandler _settingsChanged;
     private CancellationTokenSource? _cancellationTokenSource;
+    private bool _helpOpen;
 
     /// <summary>
     /// Gets the settings ViewModel.
@@ -75,7 +79,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SettingsViewModel settings,
         FilesViewModel files,
         OutputViewModel output,
-        ResultsViewModel results)
+        ResultsViewModel results,
+        HelpViewModel help)
     {
         _obfuscationService = obfuscationService;
         _fileDialogService = fileDialogService;
@@ -83,6 +88,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _reportService = reportService;
         _contentDialogService = contentDialogService;
         _notifications = notifications;
+        _help = help;
         Settings = settings;
         Files = files;
         Output = output;
@@ -428,7 +434,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private bool CanCancel() => IsObfuscating;
+    internal bool HelpOpen
+    {
+        get => _helpOpen;
+        set
+        {
+            if (!SetProperty(ref _helpOpen, value))
+                return;
+            ShowHelpCommand.NotifyCanExecuteChanged();
+            ShowAboutCommand.NotifyCanExecuteChanged();
+            CancelCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool CanShowHelp() => !HelpOpen;
+
+    private bool CanShowAbout() => !HelpOpen;
+
+    private bool CanCancel() => IsObfuscating && !HelpOpen;
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
@@ -487,9 +510,46 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanShowHelp))]
+    private async Task ShowHelpAsync()
+    {
+        if (HelpOpen)
+            return;
+        if (_contentDialogService.GetDialogHostEx()?.Content is ContentDialog)
+            return;
+
+        HelpOpen = true;
+        try
+        {
+            var content = new HelpDialogContent { DataContext = _help };
+            var dialog = new ContentDialog
+            {
+                Title = "Help",
+                Content = content,
+                CloseButtonText = "Close",
+                DialogMaxWidth = 920,
+                DialogMaxHeight = 640,
+                DialogWidth = 920,
+                DialogHeight = 640,
+            };
+            dialog.SetValue(
+                ScrollViewer.VerticalScrollBarVisibilityProperty,
+                ScrollBarVisibility.Disabled);
+
+            await _contentDialogService.ShowAsync(dialog, CancellationToken.None);
+        }
+        finally
+        {
+            HelpOpen = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanShowAbout))]
     private async Task ShowAboutAsync()
     {
+        if (HelpOpen)
+            return;
+
         var versionText = GetInformationalVersion();
 
         await _contentDialogService.ShowSimpleDialogAsync(new SimpleContentDialogCreateOptions

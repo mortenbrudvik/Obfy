@@ -31,4 +31,8 @@
     <ProjectReference Include="..\Logging.Core\Logging.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Obfy.UI.Tests" />
+  </ItemGroup>
+
 </Project>

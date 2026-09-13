@@ -54,7 +54,8 @@ public class MainViewModelTests : IDisposable
             _settings,
             _files,
             _output,
-            _results);
+            _results,
+            new HelpViewModel());
 
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"MainVMTests_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
@@ -421,6 +422,45 @@ public class MainViewModelTests : IDisposable
         var version = MainViewModel.GetInformationalVersion();
         version.ShouldNotBeNullOrWhiteSpace();
         version.ShouldNotBe("1.2.0");
+    }
+
+    [Fact]
+    public void HelpAndAbout_CanExecute_WhenIdle()
+    {
+        _viewModel.ShowHelpCommand.CanExecute(null).ShouldBeTrue();
+        _viewModel.ShowAboutCommand.CanExecute(null).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ShowHelp_CanExecute_WhileObfuscating()
+    {
+        _viewModel.IsObfuscating = true;
+        _viewModel.HelpOpen = false;
+        _viewModel.ShowHelpCommand.CanExecute(null).ShouldBeTrue();
+        _viewModel.CancelCommand.CanExecute(null).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void HelpOpen_WhileObfuscating_BlocksCancelAboutAndSecondHelp()
+    {
+        _viewModel.IsObfuscating = true;
+        _viewModel.HelpOpen = true;
+
+        _viewModel.CancelCommand.CanExecute(null).ShouldBeFalse();
+        _viewModel.ShowHelpCommand.CanExecute(null).ShouldBeFalse();
+        _viewModel.ShowAboutCommand.CanExecute(null).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ClearingHelpOpen_RestoresAboutAndHelp()
+    {
+        _viewModel.IsObfuscating = true;
+        _viewModel.HelpOpen = true;
+        _viewModel.HelpOpen = false;
+
+        _viewModel.ShowHelpCommand.CanExecute(null).ShouldBeTrue();
+        _viewModel.ShowAboutCommand.CanExecute(null).ShouldBeTrue();
+        _viewModel.CancelCommand.CanExecute(null).ShouldBeTrue();
     }
 
     private void VerifySnackbar(ControlAppearance appearance, string messagePart)

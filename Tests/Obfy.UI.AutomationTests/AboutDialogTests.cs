@@ -6,6 +6,7 @@ namespace Obfy.UI.AutomationTests;
 /// <summary>
 /// About is a WPF-UI ContentDialog overlay, not a separate window.
 /// </summary>
+[Trait("Category", "UI")]
 public class AboutDialogTests : TestBase
 {
     [Fact]

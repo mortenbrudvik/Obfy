@@ -64,7 +64,7 @@ Obfy/
 │   ├── Obfy.Tests/              # Core unit tests (382 tests)
 │   ├── Obfy.Console.Tests/      # CLI parsing tests (117 tests)
 │   ├── Obfy.UI.Tests/           # ViewModel unit tests (120 tests)
-│   └── Obfy.UI.AutomationTests/ # FlaUI live-window tests (18 tests)
+│   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
 ├── docs/                   # Documentation
 └── examples/               # Example projects
 ```
@@ -119,17 +119,17 @@ We have four test projects:
 | `Obfy.Tests` | Core obfuscation logic | 382 |
 | `Obfy.Console.Tests` | CLI argument parsing, help output | 117 |
 | `Obfy.UI.Tests` | ViewModel logic and commands | 120 |
-| `Obfy.UI.AutomationTests` | FlaUI live window (local desktop) | 18 |
+| `Obfy.UI.AutomationTests` | Locator unit tests + FlaUI live window (`Category=UI`, local) | 24 |
 
 ```bash
-# Run all tests
+# Default suite (skips Category=UI and Category=Platform)
 dotnet test
 
 # Run specific test project
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
-dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
 
 # Run with coverage
 dotnet test --collect:"XPlat Code Coverage"

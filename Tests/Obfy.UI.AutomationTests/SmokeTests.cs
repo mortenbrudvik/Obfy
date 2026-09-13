@@ -11,6 +11,7 @@ namespace Obfy.UI.AutomationTests;
 /// Native OpenFileDialog confirmation is not driven here — Win11's picker is not reliably
 /// automatable from this session's desktop.
 /// </summary>
+[Trait("Category", "UI")]
 public class SmokeTests : TestBase
 {
     [Fact]

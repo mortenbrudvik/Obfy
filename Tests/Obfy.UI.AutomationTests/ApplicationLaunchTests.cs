@@ -6,6 +6,7 @@ namespace Obfy.UI.AutomationTests;
 /// <summary>
 /// Tests for application launch and basic control presence.
 /// </summary>
+[Trait("Category", "UI")]
 public class ApplicationLaunchTests : TestBase
 {
     [Fact]

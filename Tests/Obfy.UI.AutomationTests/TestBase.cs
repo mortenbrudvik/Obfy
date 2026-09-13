@@ -1,4 +1,3 @@
-using System.IO;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
@@ -7,37 +6,23 @@ namespace Obfy.UI.AutomationTests;
 
 /// <summary>
 /// Base class for UI automation tests providing app launch and window access.
+/// FlaUI tests are Category=UI: skipped by default <c>dotnet test</c> / CI.
 /// </summary>
+[Trait("Category", "UI")]
 public abstract class TestBase : IDisposable
 {
     protected Application App { get; private set; } = null!;
     protected UIA3Automation Automation { get; private set; } = null!;
     protected Window MainWindow { get; private set; } = null!;
 
-    private static readonly string AppPath = GetAppPath();
+    private static readonly string AppPath = UiExecutableLocator.ResolveFromTestContext(AppContext.BaseDirectory);
 
     protected TestBase()
     {
         Automation = new UIA3Automation();
         App = Application.Launch(AppPath);
-        MainWindow = App.GetMainWindow(Automation, TimeSpan.FromSeconds(10));
-    }
-
-    private static string GetAppPath()
-    {
-        // Path to built UI executable relative to test assembly
-        var solutionDir = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var appPath = Path.Combine(solutionDir,
-            "Src", "Obfy.UI", "bin", "Debug", "net10.0-windows10.0.26100", "ObfyUI.exe");
-
-        if (!File.Exists(appPath))
-        {
-            throw new FileNotFoundException(
-                $"Obfy.UI.exe not found. Please build the UI project first.\nExpected path: {appPath}");
-        }
-
-        return appPath;
+        MainWindow = App.GetMainWindow(Automation, TimeSpan.FromSeconds(10))
+            ?? throw new InvalidOperationException("Obfy main window did not appear.");
     }
 
     /// <summary>

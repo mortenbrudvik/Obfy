@@ -44,6 +44,7 @@ public class AntiTamperObfuscator : IObfuscator
         try
         {
             var antiTamperType = InjectAntiTamperType(module);
+            RuntimeInjection.Register(context, antiTamperType);
 
             context.AntiTamperMetadata = AntiTamperMetadata.Injected;
 

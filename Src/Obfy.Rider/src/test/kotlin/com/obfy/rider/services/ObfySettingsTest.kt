@@ -24,6 +24,14 @@ class ObfySettingsTest {
         assertTrue(loaded.antiDebug)
         assertTrue(loaded.controlFlow)
         assertTrue(loaded.antiTamper)
+        assertTrue(loaded.methodEncryption)
+        assertFalse(loaded.proxyExternalCalls)
+    }
+
+    @Test
+    fun toJson_aggressive_writesMethodEncryption() {
+        val json = ObfySettings.forLevel(ObfuscationLevel.Aggressive).toJson()
+        assertTrue(json.contains("\"methodEncryption\": true"))
     }
 
     @Test

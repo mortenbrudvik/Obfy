@@ -69,6 +69,7 @@ public class AntiDebugObfuscator : IObfuscator
                 }
 
                 var antiDebugType = InjectAntiDebugType(module, emitKernel32Checks);
+                RuntimeInjection.Register(context, antiDebugType);
 
                 var moduleInitializer = FindModuleInitializer(module) ?? CreateModuleInitializer(module);
                 if (InjectDebuggerCheck(moduleInitializer, antiDebugType))

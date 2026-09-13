@@ -106,7 +106,7 @@ public class VirtualizationObfuscator : IObfuscator
                 return Task.FromResult(ObfuscationResult.Successful(stats));
             }
 
-            var execute = InjectVm(module, encoded);
+            var execute = InjectVm(module, encoded, context);
             for (var i = 0; i < encoded.Count; i++)
                 ReplaceWithStub(encoded[i].Method, execute, i);
 
@@ -350,13 +350,13 @@ public class VirtualizationObfuscator : IObfuscator
         return false;
     }
 
-    private static MethodDef InjectVm(ModuleDef module, List<(MethodDef Method, byte[] Code)> encoded)
+    private static MethodDef InjectVm(ModuleDef module, List<(MethodDef Method, byte[] Code)> encoded, PipelineContext context)
     {
         var typeDef = new TypeDefUser("Obfy.Runtime", "<Vm>", module.CorLibTypes.Object.TypeDefOrRef)
         {
             Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract
         };
-        module.Types.Add(typeDef);
+        RuntimeInjection.AddType(context, typeDef, RuntimeHelperOptions.Interpreter);
 
         var blobField = new FieldDefUser("b", new FieldSig(new SZArraySig(module.CorLibTypes.Byte)),
             FieldAttributes.Private | FieldAttributes.Static);

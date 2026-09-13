@@ -60,6 +60,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
 
             // Inject decryptor type with methods for each constant type
             var decryptorType = InjectDecryptorType(module, key, settings.Algorithm);
+            RuntimeInjection.Register(context, decryptorType);
             var decryptInt32 = decryptorType.FindMethod("DecryptInt32");
             var decryptInt64 = decryptorType.FindMethod("DecryptInt64");
             var decryptSingle = decryptorType.FindMethod("DecryptSingle");

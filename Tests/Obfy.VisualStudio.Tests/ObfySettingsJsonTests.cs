@@ -72,6 +72,17 @@ public class ObfySettingsJsonTests
         loaded.PostBuildEnabled.ShouldBeTrue();
         loaded.StringEncryption.ShouldBeFalse();
         loaded.SymbolRenaming.ShouldBeTrue();
+        loaded.MethodEncryption.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Serialize_Aggressive_WritesMethodEncryptionTrue()
+    {
+        var json = ObfySettingsJson.Serialize(ObfySettings.ForLevel(ObfuscationLevel.Aggressive));
+        json.ShouldContain("\"methodEncryption\": true");
+        var loaded = ObfySettingsJson.Parse(json);
+        loaded.MethodEncryption.ShouldBeTrue();
+        loaded.ProxyExternalCalls.ShouldBeFalse();
     }
 
     [Fact]

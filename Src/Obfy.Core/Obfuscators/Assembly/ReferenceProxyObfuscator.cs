@@ -45,7 +45,7 @@ public class ReferenceProxyObfuscator : IObfuscator
             {
                 Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract
             };
-            module.Types.Add(proxyType);
+            RuntimeInjection.AddType(context, proxyType);
 
             var proxies = new Dictionary<string, MethodDef>(StringComparer.Ordinal);
             var created = 0;

@@ -44,18 +44,11 @@ public class AntiDumpObfuscator : IObfuscator
         try
         {
             var antiDumpType = InjectAntiDumpType(module);
+            RuntimeInjection.Register(context, antiDumpType);
             var wipe = antiDumpType.FindMethod("Wipe")
                 ?? throw new InvalidOperationException("Anti-dump wipe method was not injected.");
 
-            var initializer = ObfuscatorHelpers.FindOrCreateModuleInitializer(module, requireBody: true);
-            if (initializer.Body is null)
-            {
-                throw new InvalidOperationException(
-                    "Cannot inject anti-dump: module initializer has no IL body (native or abstract .cctor).");
-            }
-
-            initializer.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Call, wipe));
-            initializer.Body.UpdateInstructionOffsets();
+            RuntimeInjection.PrependModuleInitializerCall(module, wipe, requireBody: true);
             stats.ProtectionsApplied++;
 
             const string windowsWarning =

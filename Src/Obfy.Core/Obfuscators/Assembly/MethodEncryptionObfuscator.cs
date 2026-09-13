@@ -42,7 +42,7 @@ public class MethodEncryptionObfuscator : IObfuscator
             var considered = 0;
             foreach (var type in module.GetTypes())
             {
-                if (ObfuscatorHelpers.IsRuntimeHelper(type))
+                if (!RuntimeInjection.ShouldEncryptIl(context, type))
                     continue;
                 if (type.IsGlobalModuleType)
                     continue;
@@ -94,12 +94,11 @@ public class MethodEncryptionObfuscator : IObfuscator
 
             var keys = CreateDistinctKeys(targets.Count);
             var decryptor = InjectDecryptor(module, targets.Count);
+            RuntimeInjection.Register(context, decryptor);
             var decrypt = decryptor.FindMethod("DecryptBodies")
                 ?? throw new InvalidOperationException("Method-encryption decryptor was not injected.");
 
-            var initializer = ObfuscatorHelpers.FindOrCreateModuleInitializer(module);
-            initializer.Body!.Instructions.Insert(0, Instruction.Create(OpCodes.Call, decrypt));
-            initializer.Body.UpdateInstructionOffsets();
+            RuntimeInjection.PrependModuleInitializerCall(module, decrypt);
 
             var entries = new EncryptedMethodBody[targets.Count];
             for (var i = 0; i < targets.Count; i++)

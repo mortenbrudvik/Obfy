@@ -29,7 +29,9 @@ data class ObfySettings(
     var antiTamper: Boolean = false,
     var antiDecompiler: Boolean = false,
     var constantEncryption: Boolean = false,
-    var resourceEncryption: Boolean = false
+    var resourceEncryption: Boolean = false,
+    var methodEncryption: Boolean = false,
+    var proxyExternalCalls: Boolean = false
 ) {
     /**
      * Serialize to Core nested obfy.json so the CLI can deserialize Obfy.Core.Models.ObfySettings.
@@ -49,6 +51,8 @@ data class ObfySettings(
         protection.addProperty("antiDebug", antiDebug)
         protection.addProperty("antiDump", antiDump)
         protection.addProperty("referenceProxy", referenceProxy)
+        protection.addProperty("methodEncryption", methodEncryption)
+        protection.addProperty("proxyExternalCalls", proxyExternalCalls)
         setEnabled(protection, "antiTamper", antiTamper)
         setEnabled(protection, "antiDecompiler", antiDecompiler)
         root.add("protection", protection)
@@ -77,7 +81,9 @@ data class ObfySettings(
                 antiTamper = false,
                 antiDecompiler = false,
                 constantEncryption = false,
-                resourceEncryption = false
+                resourceEncryption = false,
+                methodEncryption = false,
+                proxyExternalCalls = false
             )
             ObfuscationLevel.Standard -> ObfySettings(
                 level = level,
@@ -90,7 +96,9 @@ data class ObfySettings(
                 antiTamper = false,
                 antiDecompiler = false,
                 constantEncryption = false,
-                resourceEncryption = false
+                resourceEncryption = false,
+                methodEncryption = false,
+                proxyExternalCalls = false
             )
             ObfuscationLevel.Aggressive -> ObfySettings(
                 level = level,
@@ -103,7 +111,9 @@ data class ObfySettings(
                 antiTamper = true,
                 antiDecompiler = true,
                 constantEncryption = true,
-                resourceEncryption = true
+                resourceEncryption = true,
+                methodEncryption = true,
+                proxyExternalCalls = false
             )
             ObfuscationLevel.Custom -> ObfySettings(level = level)
         }
@@ -131,12 +141,16 @@ data class ObfySettings(
                 settings.referenceProxy = p.bool("referenceProxy", settings.referenceProxy)
                 settings.antiTamper = p.enabled("antiTamper", settings.antiTamper)
                 settings.antiDecompiler = p.enabled("antiDecompiler", settings.antiDecompiler)
+                settings.methodEncryption = p.bool("methodEncryption", settings.methodEncryption)
+                settings.proxyExternalCalls = p.bool("proxyExternalCalls", settings.proxyExternalCalls)
             } else {
                 settings.antiDebug = root.bool("antiDebug", settings.antiDebug)
                 settings.antiDump = root.bool("antiDump", settings.antiDump)
                 settings.referenceProxy = root.bool("referenceProxy", settings.referenceProxy)
                 settings.antiTamper = root.enabled("antiTamper", settings.antiTamper)
                 settings.antiDecompiler = root.enabled("antiDecompiler", settings.antiDecompiler)
+                settings.methodEncryption = root.bool("methodEncryption", settings.methodEncryption)
+                settings.proxyExternalCalls = root.bool("proxyExternalCalls", settings.proxyExternalCalls)
             }
 
             return settings

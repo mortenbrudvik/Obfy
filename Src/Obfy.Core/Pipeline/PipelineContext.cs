@@ -70,6 +70,11 @@ public class PipelineContext
     public MethodEncryptionMetadata? MethodEncryptionMetadata { get; set; }
 
     /// <summary>
+    /// Injected <c>Obfy.Runtime</c> helper types and their flatten/rename/encrypt policy.
+    /// </summary>
+    public Dictionary<TypeDef, RuntimeHelperOptions> InjectedHelpers { get; } = new();
+
+    /// <summary>
     /// Gets or sets the input file path.
     /// </summary>
     public string? InputPath { get; set; }

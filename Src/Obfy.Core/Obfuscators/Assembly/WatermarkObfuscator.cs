@@ -122,7 +122,7 @@ public class WatermarkObfuscator : IObfuscator
                 ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Stfld, idField));
                 ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
                 attrType.Methods.Add(ctor);
-                module.Types.Add(attrType);
+                RuntimeInjection.AddType(context, attrType, new RuntimeHelperOptions { Rename = false, FlattenControlFlow = false });
             }
 
             var attr = new CustomAttribute(ctor);

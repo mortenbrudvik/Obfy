@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-13
+
 ### Added
+- In-app Help dialog (toolbar Help and F1) with a Getting started catalog
 - CLI ships as a .NET tool again (`dotnet tool install --global Obfy`); CI packs the nupkg and GitHub Releases push it to nuget.org
 - Drop or pass a Visual Studio solution/project to obfuscate included assemblies as one closed set (in-solution public APIs can be renamed together; test projects and missing `bin` outputs are skipped)
 - `obfy App.dll Lib.dll` (two or more existing assemblies, no `.sln`/`.csproj`) uses the same closed-set path as a solution drop; `--merge` still merges. Without `-o`, output is `{first-assembly-dir}/obfy-out/` instead of sibling `*.obfuscated.dll` files

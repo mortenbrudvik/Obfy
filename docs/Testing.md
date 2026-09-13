@@ -23,10 +23,12 @@ Technique-level coverage is strong (~637 tests). Integration against real app/pr
 
 ## Running Tests
 
-### All Tests
+### Default (CI)
+
+FlaUI live-window tests are `Category=UI` and are **not** in the default run:
 
 ```bash
-dotnet test
+dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 ```
 
 ### Specific Projects
@@ -35,8 +37,18 @@ dotnet test
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
-dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 ```
+
+### FlaUI (local desktop only)
+
+Build the UI in the same configuration as the tests, then:
+
+```bash
+dotnet build Src/Obfy.UI/Obfy.UI.csproj -c Debug
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
+```
+
+`GetAppPath()` looks for `ObfyUI.exe` under `Src/Obfy.UI/bin/{Debug|Release}/net10.0-windows10.0.26100/` matching the test configuration.
 
 ### With Coverage
 
@@ -106,7 +118,7 @@ Launches `ObfyUI.exe` and drives the live window:
 - Settings toggles, Protection and Assembly Merge expanders
 - Add Files opens the native picker (Escape cancels)
 
-Run: `dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj`
+Run: `dotnet build Src/Obfy.UI/Obfy.UI.csproj && dotnet test Tests/Obfy.UI.AutomationTests --filter Category=UI`
 
 Location: `Tests/Obfy.UI.AutomationTests/`
 

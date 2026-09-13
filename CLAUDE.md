@@ -57,7 +57,7 @@ dotnet build Obfy.sln -c Release
 dotnet test Tests/Obfy.Tests/Obfy.Tests.csproj
 dotnet test Tests/Obfy.Console.Tests/Obfy.Console.Tests.csproj
 dotnet test Tests/Obfy.UI.Tests/Obfy.UI.Tests.csproj
-dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
 
 # Run CLI
 dotnet run --project Src/Obfy.Console/Obfy.Console.csproj -- --help
@@ -178,7 +178,7 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 
 1. Create the worktree and branch (command above)
 2. Implement with tests in that worktree
-3. Run all tests: `dotnet test`
+3. Run all tests: `dotnet test Obfy.sln --filter "Category!=UI&Category!=Platform"`
 4. Build release: `dotnet build -c Release`
 5. Commit using `/commit`
 6. After merge: `git worktree remove .worktrees/<branch-name>`

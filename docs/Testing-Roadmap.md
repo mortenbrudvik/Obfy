@@ -57,9 +57,9 @@ Until this lands, new tests cannot be trusted in CI and coverage is not measured
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
-| TR-01 | Trait-filter FlaUI out of default `dotnet test` / CI (`Category=UI` or equivalent). Document local-only run in [Testing.md](Testing.md). | S | High | Open |
-| TR-02 | Resolve `ObfyUI.exe` from the current build configuration and TFM, not a hardcoded Debug path in `TestBase.GetAppPath()`. | S | High | Open |
-| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | Open |
+| TR-01 | Trait-filter FlaUI out of default `dotnet test` / CI (`Category=UI` or equivalent). Document local-only run in [Testing.md](Testing.md). | S | High | Done |
+| TR-02 | Resolve `ObfyUI.exe` from the current build configuration and TFM, not a hardcoded Debug path in `TestBase.GetAppPath()`. | S | High | Done |
+| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | Open — workflow now filters UI; confirm on the next `main` run |
 
 **Done when:** a Release `dotnet test` of the solution on GitHub Actions passes; coverage summary is posted; FlaUI still runs locally with one documented command.
 

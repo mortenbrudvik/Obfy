@@ -29,7 +29,7 @@ Thank you for your interest in contributing to Obfy! This document provides guid
 3. **Run the tests**
 
    ```bash
-   dotnet test
+   dotnet test Obfy.sln --filter "Category!=UI&Category!=Platform"
    ```
 
 4. **Run the CLI locally**
@@ -122,17 +122,19 @@ We have four test projects:
 | `Obfy.UI.AutomationTests` | FlaUI live window (local desktop) | 18 |
 
 ```bash
-# Run all tests
-dotnet test
+# Default (same as CI; excludes FlaUI)
+dotnet test Obfy.sln --filter "Category!=UI&Category!=Platform"
 
 # Run specific test project
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
-dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
+
+# FlaUI (local desktop): build UI first, same configuration
+dotnet build Src/Obfy.UI/Obfy.UI.csproj && dotnet test Tests/Obfy.UI.AutomationTests --filter Category=UI
 
 # Run with coverage
-dotnet test --collect:"XPlat Code Coverage"
+dotnet test Obfy.sln --filter "Category!=UI&Category!=Platform" --collect:"XPlat Code Coverage"
 ```
 
 When adding new features:

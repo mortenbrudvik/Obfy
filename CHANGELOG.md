@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- CI `dotnet test` excludes FlaUI (`Category=UI`) so Release coverage can run; automation tests resolve `ObfyUI.exe` for Debug or Release
 - Packing writes the incremental cache only after a successful launcher emit; cache hits require the launcher files
 - Preview failures no longer fail a successful obfuscation run
 - Packed host awaits async Main, resolves sibling assemblies, and extracts the payload to disk so anti-tamper can hash it

@@ -7,7 +7,9 @@ namespace Obfy.UI.AutomationTests;
 
 /// <summary>
 /// Base class for UI automation tests providing app launch and window access.
+/// Trait Category=UI so default/CI <c>dotnet test</c> can exclude this suite.
 /// </summary>
+[Trait("Category", "UI")]
 public abstract class TestBase : IDisposable
 {
     protected Application App { get; private set; } = null!;
@@ -23,21 +25,31 @@ public abstract class TestBase : IDisposable
         MainWindow = App.GetMainWindow(Automation, TimeSpan.FromSeconds(10));
     }
 
-    private static string GetAppPath()
+    internal static string GetAppPath()
     {
-        // Path to built UI executable relative to test assembly
         var solutionDir = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var appPath = Path.Combine(solutionDir,
-            "Src", "Obfy.UI", "bin", "Debug", "net10.0-windows10.0.26100", "ObfyUI.exe");
+        var tfm = "net10.0-windows10.0.26100";
+        var config = AppContext.BaseDirectory.Contains(
+            $"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}",
+            StringComparison.OrdinalIgnoreCase)
+            ? "Release"
+            : "Debug";
 
-        if (!File.Exists(appPath))
+        foreach (var candidate in new[]
+                 {
+                     Path.Combine(solutionDir, "Src", "Obfy.UI", "bin", config, tfm, "ObfyUI.exe"),
+                     Path.Combine(solutionDir, "Src", "Obfy.UI", "bin", "Release", tfm, "ObfyUI.exe"),
+                     Path.Combine(solutionDir, "Src", "Obfy.UI", "bin", "Debug", tfm, "ObfyUI.exe"),
+                 })
         {
-            throw new FileNotFoundException(
-                $"Obfy.UI.exe not found. Please build the UI project first.\nExpected path: {appPath}");
+            if (File.Exists(candidate))
+                return candidate;
         }
 
-        return appPath;
+        throw new FileNotFoundException(
+            "ObfyUI.exe not found. Build Obfy.UI in the same configuration as the tests " +
+            $"(expected under Src/Obfy.UI/bin/{config}/{tfm}/).");
     }
 
     /// <summary>

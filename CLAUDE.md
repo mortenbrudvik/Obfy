@@ -32,7 +32,7 @@ Obfy/
 │   ├── Obfy.Tests/            # Core unit tests (382 tests)
 │   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (117 tests)
 │   ├── Obfy.UI.Tests/         # ViewModel unit tests (120 tests)
-│   └── Obfy.UI.AutomationTests/ # FlaUI live-window tests (18 tests)
+│   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
 ├── docs/                      # Documentation
 ├── package/                   # MSIX manifest and Store assets
 ├── build/                     # Build scripts and installer
@@ -57,7 +57,7 @@ dotnet build Obfy.sln -c Release
 dotnet test Tests/Obfy.Tests/Obfy.Tests.csproj
 dotnet test Tests/Obfy.Console.Tests/Obfy.Console.Tests.csproj
 dotnet test Tests/Obfy.UI.Tests/Obfy.UI.Tests.csproj
-dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
 
 # Run CLI
 dotnet run --project Src/Obfy.Console/Obfy.Console.csproj -- --help

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Dark-theme UI text uses theme foreground brushes so file names, settings, and logs stay readable
 - Disabled toolbar buttons (Obfuscate with no files) keep readable label and border contrast
+- CI `dotnet test` no longer fails 18 FlaUI tests that looked for Debug `ObfyUI.exe` after a Release build; live-window tests are `Category=UI` (opt-in) and the locator prefers the current configuration
 - Packing writes the incremental cache only after a successful launcher emit; cache hits require the launcher files
 - Preview failures no longer fail a successful obfuscation run
 - Packed host awaits async Main, resolves sibling assemblies, and extracts the payload to disk so anti-tamper can hash it

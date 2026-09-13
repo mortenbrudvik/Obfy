@@ -11,8 +11,8 @@ Technique-level coverage is strong (~637 tests). Integration against real app/pr
 | Obfy.Tests | 382 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
 | Obfy.Console.Tests | 117 | CLI parsing & integration |
 | Obfy.UI.Tests | 120 | ViewModel unit tests |
-| Obfy.UI.AutomationTests | 18 | FlaUI live-window tests (local, interactive desktop) |
-| **Total** | **637** | |
+| Obfy.UI.AutomationTests | 24 | 6 locator unit tests (CI) + 18 FlaUI live-window tests (`Category=UI`, local) |
+| **Total** | **643** | |
 
 ## Test Stack
 
@@ -23,10 +23,13 @@ Technique-level coverage is strong (~637 tests). Integration against real app/pr
 
 ## Running Tests
 
-### All Tests
+Default `dotnet test` (and CI) skip `Category=UI` and `Category=Platform`. FlaUI needs an interactive desktop and a built `ObfyUI.exe`; it is opt-in.
+
+### Default (CI / every PR)
 
 ```bash
 dotnet test
+# equivalent: --filter "Category!=UI&Category!=Platform"
 ```
 
 ### Specific Projects
@@ -37,6 +40,19 @@ dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 ```
+
+The AutomationTests project still runs locator unit tests under the default filter. FlaUI cases stay skipped.
+
+### FlaUI (local, interactive desktop)
+
+Build the UI for the same configuration you test, then:
+
+```bash
+dotnet build Src/Obfy.UI/Obfy.UI.csproj -c Release
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj -c Release --filter Category=UI
+```
+
+`UiExecutableLocator` prefers the test configuration (Release vs Debug) and falls back to the other if that `ObfyUI.exe` is missing.
 
 ### With Coverage
 
@@ -99,14 +115,16 @@ Location: `Tests/Obfy.UI.Tests/`
 
 ### Obfy.UI.AutomationTests (FlaUI)
 
-Launches `ObfyUI.exe` and drives the live window:
+Launches `ObfyUI.exe` and drives the live window (`Category=UI`, not in default CI):
 
 - Launch and chrome (toolbar, files, settings, output, status)
 - About ContentDialog (in-window overlay, not a separate window)
 - Settings toggles, Protection and Assembly Merge expanders
 - Add Files opens the native picker (Escape cancels)
 
-Run: `dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj`
+Locator unit tests in the same project (no trait) resolve Debug vs Release `ObfyUI.exe` and run in CI.
+
+Run FlaUI: `dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI`
 
 Location: `Tests/Obfy.UI.AutomationTests/`
 

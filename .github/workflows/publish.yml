@@ -3,10 +3,14 @@ name: Publish to NuGet
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
     - uses: actions/checkout@v4
@@ -16,17 +20,31 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
+    - name: Restore
+      run: dotnet restore Obfy.sln
+
+    - name: Build
+      run: dotnet build Obfy.sln --no-restore -c Release
+
     - name: Test
       run: >
-        dotnet test
-        Tests/Obfy.Tests/Obfy.Tests.csproj
-        Tests/Obfy.Console.Tests/Obfy.Console.Tests.csproj
-        -c Release
+        dotnet test Obfy.sln --no-build -c Release
         --filter "Category!=UI&Category!=Platform"
         --verbosity normal
 
     - name: Pack
-      run: dotnet pack Src/Obfy.Console/Obfy.Console.csproj -c Release -o ./artifacts
+      run: dotnet pack Src/Obfy.Console/Obfy.Console.csproj --no-build -c Release -o ./artifacts
+
+    - name: NuGet login (OIDC)
+      uses: NuGet/login@v1
+      id: login
+      with:
+        user: mortenbrudvik
 
     - name: Push to NuGet
-      run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      shell: pwsh
+      run: >
+        dotnet nuget push ./artifacts/*.nupkg
+        --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+        --source https://api.nuget.org/v3/index.json
+        --skip-duplicate

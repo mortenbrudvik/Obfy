@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- GitHub Release NuGet publish uses Trusted Publishing (OIDC) instead of a long-lived API key
+
 ## [1.3.0] - 2026-09-13
 
 ### Added

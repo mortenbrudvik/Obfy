@@ -60,7 +60,8 @@ dotnet test Obfy.sln -c Release
 .\build\build-msix.ps1
 ```
 
-8. Pack and push the .NET tool (or rely on `.github/workflows/publish.yml` when the GitHub Release is published; needs `NUGET_API_KEY`):
+8. Pack and push the .NET tool (or rely on `.github/workflows/publish.yml` when the GitHub Release is published).
+   nuget.org Trusted Publishing (OIDC) — no API key secret. Policy: owner `mortenbrudvik`, repo `Obfy`, workflow `publish.yml`, environment empty.
 ```bash
 dotnet pack Src/Obfy.Console/Obfy.Console.csproj -c Release -o ./artifacts
 dotnet nuget push ./artifacts/*.nupkg --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json --skip-duplicate

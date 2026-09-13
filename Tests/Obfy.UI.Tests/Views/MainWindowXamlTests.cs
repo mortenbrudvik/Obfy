@@ -21,6 +21,47 @@ public class MainWindowXamlTests
             (string?)e.Attribute("Modifiers") != "Control");
     }
 
+    [Fact]
+    public void HelpShortcut_IsF1()
+    {
+        var xaml = XDocument.Load(FindMainWindowXaml());
+        var bindings = xaml.Descendants().Where(e => e.Name.LocalName == "KeyBinding").ToList();
+        bindings.ShouldContain(e =>
+            (string?)e.Attribute("Key") == "F1" &&
+            (string?)e.Attribute("Command") == "{Binding ShowHelpCommand}");
+    }
+
+    [Fact]
+    public void HelpButton_IsLeftOfAbout_AndAboutRemains()
+    {
+        var xaml = XDocument.Load(FindMainWindowXaml());
+        var buttons = xaml.Descendants()
+            .Where(e => e.Name.LocalName == "Button")
+            .ToList();
+
+        var help = buttons.Single(e =>
+            (string?)e.Attribute("AutomationProperties.AutomationId") == "HelpButton");
+        var about = buttons.Single(e =>
+            (string?)e.Attribute("AutomationProperties.AutomationId") == "AboutButton");
+
+        help.Attribute("Command")!.Value.ShouldBe("{Binding ShowHelpCommand}");
+        about.Attribute("Command")!.Value.ShouldBe("{Binding ShowAboutCommand}");
+
+        var helpIndex = buttons.IndexOf(help);
+        var aboutIndex = buttons.IndexOf(about);
+        helpIndex.ShouldBeLessThan(aboutIndex);
+    }
+
+    [Fact]
+    public void EscapeBinding_RemainsOnCancel()
+    {
+        var xaml = XDocument.Load(FindMainWindowXaml());
+        xaml.Descendants().ShouldContain(e =>
+            e.Name.LocalName == "KeyBinding" &&
+            (string?)e.Attribute("Key") == "Escape" &&
+            (string?)e.Attribute("Command") == "{Binding CancelCommand}");
+    }
+
     private static string FindMainWindowXaml()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

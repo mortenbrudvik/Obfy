@@ -22,6 +22,7 @@
         <KeyBinding Key="L" Modifiers="Control" Command="{Binding LoadConfigurationCommand}"/>
         <KeyBinding Key="Enter" Modifiers="Control" Command="{Binding ObfuscateCommand}"/>
         <KeyBinding Key="Escape" Command="{Binding CancelCommand}"/>
+        <KeyBinding Key="F1" Command="{Binding ShowHelpCommand}"/>
     </ui:FluentWindow.InputBindings>
 
     <Grid>
@@ -94,6 +95,12 @@
                               AutomationProperties.AutomationId="LoadConfigButton"
                               MinWidth="40" MinHeight="40"
                               Command="{Binding LoadConfigurationCommand}" Margin="0,0,4,0"/>
+                    <ui:Button Icon="{ui:SymbolIcon QuestionCircle24}" ToolTip="Help (F1)"
+                              AutomationProperties.Name="Help"
+                              AutomationProperties.AutomationId="HelpButton"
+                              AutomationProperties.HelpText="Open Help. Shortcut: F1."
+                              MinWidth="40" MinHeight="40"
+                              Command="{Binding ShowHelpCommand}" Margin="0,0,4,0"/>
                     <ui:Button Icon="{ui:SymbolIcon Info24}" ToolTip="About"
                               AutomationProperties.Name="About"
                               AutomationProperties.AutomationId="AboutButton"

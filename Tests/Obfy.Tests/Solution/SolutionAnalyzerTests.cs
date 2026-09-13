@@ -158,6 +158,42 @@ public class SolutionAnalyzerTests
         Should.Throw<ArgumentException>(() => new SolutionAnalyzer().Analyze(path));
     }
 
+    [Fact]
+    public void Analyze_SolutionFolderAndVcxproj_AreSkipUnsupported_MissingCsprojIsSkipMissingProject()
+    {
+        using var fixture = new TempDir();
+        var sln = WriteSln(fixture, "App.sln",
+            ("src", "src"),
+            ("Native", @"Native\Native.vcxproj"),
+            ("Ghost", @"Ghost\Ghost.csproj"),
+            ("Lib", @"Lib\Lib.csproj"));
+
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "src"));
+        fixture.Write(@"Native\Native.vcxproj", "<Project></Project>");
+        WriteLibrary(fixture, @"Lib\Lib.csproj");
+        fixture.WriteEmpty(@"Lib\bin\Release\net8.0\Lib.dll");
+
+        var session = new SolutionAnalyzer().Analyze(sln);
+
+        session.Entries.Count.ShouldBe(4);
+
+        var folder = session.Entries.Single(e => e.ProjectName == "src");
+        folder.IsIncluded.ShouldBeFalse();
+        folder.SkipReason.ShouldBe(Obfy.Core.Models.Solution.SkipReason.SkipUnsupported);
+
+        var native = session.Entries.Single(e => e.ProjectName == "Native");
+        native.IsIncluded.ShouldBeFalse();
+        native.SkipReason.ShouldBe(Obfy.Core.Models.Solution.SkipReason.SkipUnsupported);
+
+        var ghost = session.Entries.Single(e => e.ProjectName == "Ghost");
+        ghost.IsIncluded.ShouldBeFalse();
+        ghost.SkipReason.ShouldBe(Obfy.Core.Models.Solution.SkipReason.SkipMissingProject);
+
+        var lib = session.Entries.Single(e => e.ProjectName == "Lib");
+        lib.IsIncluded.ShouldBeTrue();
+        lib.SkipReason.ShouldBe(Obfy.Core.Models.Solution.SkipReason.None);
+    }
+
     private static string WriteSln(TempDir fixture, string fileName, params (string Name, string RelativePath)[] projects)
     {
         var lines = new List<string>

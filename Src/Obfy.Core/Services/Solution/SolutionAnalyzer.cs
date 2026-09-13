@@ -94,6 +94,17 @@ public class SolutionAnalyzer : ISolutionAnalyzer
     private static AnalyzedProject AnalyzeRef(SolutionProjectRef projectRef, string baseDirectory)
     {
         var resolved = Path.GetFullPath(projectRef.RelativePath, baseDirectory);
+        var extension = Path.GetExtension(resolved);
+
+        if (!SupportedProjectExtensions.Contains(extension))
+        {
+            return new AnalyzedProject
+            {
+                ProjectPath = resolved,
+                ProjectName = projectRef.Name,
+                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipUnsupported
+            };
+        }
 
         if (!File.Exists(resolved))
         {
@@ -102,17 +113,6 @@ public class SolutionAnalyzer : ISolutionAnalyzer
                 ProjectPath = resolved,
                 ProjectName = projectRef.Name,
                 SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipMissingProject
-            };
-        }
-
-        var extension = Path.GetExtension(resolved);
-        if (!SupportedProjectExtensions.Contains(extension))
-        {
-            return new AnalyzedProject
-            {
-                ProjectPath = resolved,
-                ProjectName = projectRef.Name,
-                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipUnsupported
             };
         }
 

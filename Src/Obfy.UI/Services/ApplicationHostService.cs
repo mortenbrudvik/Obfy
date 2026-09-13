@@ -40,8 +40,8 @@ public sealed class ApplicationHostService : IHostedService
     }
 
     /// <summary>
-    /// Opens assemblies/source files passed on the command line, e.g.
-    /// <c>ObfyUI.exe MyApp.dll -o output</c>. Unknown flags are ignored.
+    /// Opens assemblies, source files, or a solution/project passed on the command line, e.g.
+    /// <c>ObfyUI.exe MyApp.dll -o output</c> or <c>ObfyUI.exe MyApp.sln</c>. Unknown flags are ignored.
     /// </summary>
     private void ApplyCommandLineInputs()
     {

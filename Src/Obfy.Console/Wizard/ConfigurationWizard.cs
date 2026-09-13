@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Obfy.Console.Wizard.Steps;
 using Obfy.Core.Models;
+using Obfy.Core.Utilities;
 using Spectre.Console;
 
 namespace Obfy.Console.Wizard;
@@ -212,20 +213,14 @@ public class ConfigurationWizard
                 break;
 
             case "Game (Unity)":
-                context.Settings.Exclusions.Namespaces.Add("UnityEngine");
-                context.Settings.Exclusions.Namespaces.Add("UnityEngine.*");
-                context.Settings.Exclusions.Namespaces.Add("Unity");
-                context.Settings.Exclusions.Namespaces.Add("Unity.*");
+                foreach (var ns in PlatformExclusions.UnityNamespaces)
+                    context.Settings.Exclusions.Namespaces.Add(ns);
                 context.Settings.RuntimeProfile = RuntimeProfile.UnityIl2Cpp;
                 break;
 
             case "Web Application (ASP.NET)":
-                context.Settings.Exclusions.Attributes.Add("Microsoft.AspNetCore.Mvc.RouteAttribute");
-                context.Settings.Exclusions.Attributes.Add("Microsoft.AspNetCore.Mvc.ApiControllerAttribute");
-                context.Settings.Exclusions.Attributes.Add("Microsoft.AspNetCore.Mvc.HttpGetAttribute");
-                context.Settings.Exclusions.Attributes.Add("Microsoft.AspNetCore.Mvc.HttpPostAttribute");
-                context.Settings.Exclusions.Attributes.Add("Microsoft.AspNetCore.Mvc.HttpPutAttribute");
-                context.Settings.Exclusions.Attributes.Add("Microsoft.AspNetCore.Mvc.HttpDeleteAttribute");
+                foreach (var attribute in PlatformExclusions.AspNetMvcAttributes)
+                    context.Settings.Exclusions.Attributes.Add(attribute);
                 break;
         }
 

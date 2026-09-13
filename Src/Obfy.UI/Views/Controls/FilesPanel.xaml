@@ -43,9 +43,9 @@
                 <Border x:Name="DropOverlay" Background="{DynamicResource ApplicationBackgroundBrush}" Opacity="0.85" Visibility="Collapsed" Panel.ZIndex="100" CornerRadius="8">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                         <ui:SymbolIcon Symbol="ArrowUpload24" FontSize="48"/>
-                        <ui:TextBlock Text="Drop assemblies here" FontSize="18" Margin="0,12,0,0" HorizontalAlignment="Center"
+                        <ui:TextBlock Text="Drag and drop assemblies or a solution" FontSize="18" Margin="0,12,0,0" HorizontalAlignment="Center"
                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                        <ui:TextBlock Text=".dll, .exe, .cs files" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
+                        <ui:TextBlock Text=".dll, .exe, .cs, .sln, .slnx, .csproj, .vbproj, .fsproj" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
@@ -53,9 +53,9 @@
                 <StackPanel Visibility="{Binding HasNoFiles, Converter={StaticResource BooleanToVisibilityConverter}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center">
                     <ui:SymbolIcon Symbol="DocumentMultiple24" FontSize="48" Opacity="0.5"/>
-                    <ui:TextBlock Text="Drag and drop assemblies here" Margin="0,12,0,4" HorizontalAlignment="Center"
+                    <ui:TextBlock Text="Drag and drop assemblies or a solution" Margin="0,12,0,4" HorizontalAlignment="Center"
                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                    <ui:TextBlock Text="or click Add Files (.dll, .exe, .cs)" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
+                    <ui:TextBlock Text=".dll, .exe, .cs, .sln, .slnx, .csproj, .vbproj, .fsproj" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- File List -->
@@ -96,6 +96,10 @@
                                     <ui:TextBlock Text="{Binding FilePath}" FontSize="11"
                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                               TextTrimming="CharacterEllipsis"/>
+                                    <ui:TextBlock Text="{Binding SkipReason}" FontSize="11"
+                                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                              TextWrapping="Wrap"
+                                              Visibility="{Binding IsSkipped, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                     <ui:TextBlock Text="{Binding FormattedSize}" FontSize="11"
                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                     <ui:TextBlock Text="{Binding ErrorMessage}" FontSize="11"

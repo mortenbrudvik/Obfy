@@ -5,7 +5,7 @@ namespace Obfy.Console.Tests;
 
 internal static class ConsoleTestAssembly
 {
-    public static string Create(string directory, string name)
+    public static string Create(string directory, string name, string typeName = "TestClass")
     {
         var path = Path.Combine(directory, name);
 
@@ -13,7 +13,7 @@ internal static class ConsoleTestAssembly
         var assembly = new AssemblyDefUser(Path.GetFileNameWithoutExtension(name), new Version(1, 0, 0, 0));
         assembly.Modules.Add(module);
 
-        var typeDef = new TypeDefUser("TestNamespace", "TestClass", module.CorLibTypes.Object.TypeDefOrRef)
+        var typeDef = new TypeDefUser("TestNamespace", typeName, module.CorLibTypes.Object.TypeDefOrRef)
         {
             Attributes = TypeAttributes.Public | TypeAttributes.Class
         };

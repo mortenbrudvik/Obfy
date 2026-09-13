@@ -84,6 +84,9 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
 # Basic obfuscation
 obfy input.dll -o output/
 
+# Solution (closed set)
+obfy MyApp.sln -o out/
+
 # With specific level
 obfy input.dll -l aggressive
 
@@ -108,7 +111,8 @@ obfy App.dll Lib.dll --merge -o output/
 The WPF desktop application provides a visual interface for obfuscation:
 
 - **Three-panel layout**: Settings (left), Files (center), Output (bottom)
-- **Drag-and-drop**: Drop .dll/.exe/.cs files directly onto the window
+- **Drag-and-drop**: Drop .dll/.exe/.cs files or a .sln/.csproj; solutions expand into included outputs and skipped rows
+- **Closed-set**: Obfuscate runs a closed set when two or more included assemblies are listed, or when files came from a session (Merge still wins)
 - **Level presets**: Minimal, Standard, Aggressive, or Custom
 - **Real-time progress**: Color-coded output logs
 - **Results view**: Statistics and symbol map export

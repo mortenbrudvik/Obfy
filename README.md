@@ -62,6 +62,9 @@ See `package/README.md` for sideload, certificate trust, and Partner Center iden
 # Basic obfuscation with standard protection
 obfy MyApp.dll -o output/
 
+# Obfuscate a solution as a closed set
+obfy MyApp.sln -o out/
+
 # Aggressive protection for maximum security
 obfy MyApp.dll -l aggressive -o output/
 
@@ -94,7 +97,8 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -- MyApp.dll -o output/
 
 **Features:**
 - Three-panel layout (Settings, Files, Output)
-- Drag-and-drop file support
+- Drag-and-drop assemblies, source files, or a solution/project (expands into included outputs and skipped rows)
+- Closed-set protection when two or more assemblies are listed, or when files came from a solution session (the Merge checkbox still wins)
 - Level presets with expandable advanced settings
 - Real-time progress and color-coded output
 - Results visualization with symbol map export

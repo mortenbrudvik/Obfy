@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Text.Json;
+using System.Xml;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Autofac;
@@ -8,8 +9,10 @@ using Logging.Core.DependencyInjection;
 using Obfy.Console.Wizard;
 using Obfy.Core.DependencyInjection;
 using Obfy.Core.Models;
+using Obfy.Core.Models.Solution;
 using Obfy.Core.Services;
 using Obfy.Core.Services.Reporting;
+using Obfy.Core.Services.Solution;
 using Spectre.Console;
 
 namespace Obfy.Console;
@@ -58,7 +61,7 @@ public class Program
         // Input argument
         InputArgument = new Argument<FileInfo[]>("input")
         {
-            Description = "Input files to obfuscate (DLL, EXE, or .cs files)",
+            Description = "Input files to obfuscate (DLL, EXE, .cs, .sln, .slnx, or project files)",
             Arity = ArgumentArity.OneOrMore
         };
 
@@ -305,9 +308,7 @@ public class Program
 
         rootCommand.Subcommands.Add(configCommand);
 
-        // Set a default action for the root command
-        // This enables parsing to recognize the root command as valid
-        rootCommand.SetAction(_ => { });
+        rootCommand.SetAction(HandleRootCommandAsync);
 
         return rootCommand;
     }
@@ -329,72 +330,111 @@ public class Program
         };
 
         var rootCommand = CreateRootCommand();
-
-        // Main handler
-        rootCommand.SetAction(async (parseResult, cancellationToken) =>
-        {
-            var input = parseResult.GetValue(InputArgument);
-            var output = parseResult.GetValue(OutputOption);
-            var config = parseResult.GetValue(ConfigOption);
-            var level = parseResult.GetValue(LevelOption);
-            var stringEncrypt = parseResult.GetValue(StringEncryptOption);
-            var controlFlow = parseResult.GetValue(ControlFlowOption);
-            var rename = parseResult.GetValue(RenameOption);
-            var antiDebug = parseResult.GetValue(AntiDebugOption);
-            var antiTamper = parseResult.GetValue(AntiTamperOption);
-            var antiDecompiler = parseResult.GetValue(AntiDecompilerOption);
-            var antiDump = parseResult.GetValue(AntiDumpOption);
-            var referenceProxy = parseResult.GetValue(ReferenceProxyOption);
-            var proxyExternal = parseResult.GetValue(ProxyExternalOption);
-            var encryptMethods = parseResult.GetValue(EncryptMethodsOption);
-            var noStringEncrypt = parseResult.GetValue(NoStringEncryptOption);
-            var noRename = parseResult.GetValue(NoRenameOption);
-            var noControlFlow = parseResult.GetValue(NoControlFlowOption);
-            var stripMetadata = parseResult.GetValue(StripMetadataOption);
-            var encryptResources = parseResult.GetValue(EncryptResourcesOption);
-            var encryptConstants = parseResult.GetValue(EncryptConstantsOption);
-            var preservePublic = parseResult.GetValue(PreservePublicOption);
-            var map = parseResult.GetValue(MapOption);
-            var report = parseResult.GetValue(ReportOption);
-            var dryRun = parseResult.GetValue(DryRunOption);
-            var verbose = parseResult.GetValue(VerboseOption);
-            var noLogo = parseResult.GetValue(NoLogoOption);
-            var merge = parseResult.GetValue(MergeOption);
-            var internalize = parseResult.GetValue(InternalizeOption);
-            var watermarkId = parseResult.GetValue(WatermarkIdOption);
-            var virtualize = parseResult.GetValue(VirtualizeOption);
-            var incremental = parseResult.GetValue(IncrementalOption);
-
-            if (!noLogo)
-            {
-                PrintBanner();
-            }
-
-            try
-            {
-                var settings = await BuildSettingsAsync(
-                    config, level ?? "standard", stringEncrypt, controlFlow, rename,
-                    antiDebug, stripMetadata, encryptResources, preservePublic,
-                    antiTamper, antiDecompiler, noStringEncrypt, noRename,
-                    antiDump, referenceProxy, encryptConstants, noControlFlow, encryptMethods, proxyExternal,
-                    watermarkId, virtualize, incremental).ConfigureAwait(false);
-
-                if (merge)
-                {
-                    settings.AssemblyMerge.Enabled = true;
-                    settings.AssemblyMerge.Internalize = internalize;
-                }
-
-                return await RunObfuscationAsync(input ?? [], output, settings, map, report, dryRun, verbose, merge).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or IOException or UnauthorizedAccessException)
-            {
-                AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
-                return 1;
-            }
-        });
-
         return await rootCommand.Parse(args).InvokeAsync().ConfigureAwait(false);
+    }
+
+    internal static bool IsSolutionOrProject(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".sln", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".vbproj", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".fsproj", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSolutionFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".sln", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAssemblyFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".dll", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".exe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSourceFile(string path)
+    {
+        return !string.IsNullOrWhiteSpace(path)
+            && Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<int> HandleRootCommandAsync(ParseResult parseResult, CancellationToken cancellationToken)
+    {
+        var input = parseResult.GetValue(InputArgument);
+        var output = parseResult.GetValue(OutputOption);
+        var config = parseResult.GetValue(ConfigOption);
+        var level = parseResult.GetValue(LevelOption);
+        var stringEncrypt = parseResult.GetValue(StringEncryptOption);
+        var controlFlow = parseResult.GetValue(ControlFlowOption);
+        var rename = parseResult.GetValue(RenameOption);
+        var antiDebug = parseResult.GetValue(AntiDebugOption);
+        var antiTamper = parseResult.GetValue(AntiTamperOption);
+        var antiDecompiler = parseResult.GetValue(AntiDecompilerOption);
+        var antiDump = parseResult.GetValue(AntiDumpOption);
+        var referenceProxy = parseResult.GetValue(ReferenceProxyOption);
+        var proxyExternal = parseResult.GetValue(ProxyExternalOption);
+        var encryptMethods = parseResult.GetValue(EncryptMethodsOption);
+        var noStringEncrypt = parseResult.GetValue(NoStringEncryptOption);
+        var noRename = parseResult.GetValue(NoRenameOption);
+        var noControlFlow = parseResult.GetValue(NoControlFlowOption);
+        var stripMetadata = parseResult.GetValue(StripMetadataOption);
+        var encryptResources = parseResult.GetValue(EncryptResourcesOption);
+        var encryptConstants = parseResult.GetValue(EncryptConstantsOption);
+        var preservePublic = parseResult.GetValue(PreservePublicOption);
+        var map = parseResult.GetValue(MapOption);
+        var report = parseResult.GetValue(ReportOption);
+        var dryRun = parseResult.GetValue(DryRunOption);
+        var verbose = parseResult.GetValue(VerboseOption);
+        var noLogo = parseResult.GetValue(NoLogoOption);
+        var merge = parseResult.GetValue(MergeOption);
+        var internalize = parseResult.GetValue(InternalizeOption);
+        var watermarkId = parseResult.GetValue(WatermarkIdOption);
+        var virtualize = parseResult.GetValue(VirtualizeOption);
+        var incremental = parseResult.GetValue(IncrementalOption);
+
+        if (!noLogo)
+        {
+            PrintBanner();
+        }
+
+        try
+        {
+            var settings = await BuildSettingsAsync(
+                config, level ?? "standard", stringEncrypt, controlFlow, rename,
+                antiDebug, stripMetadata, encryptResources, preservePublic,
+                antiTamper, antiDecompiler, noStringEncrypt, noRename,
+                antiDump, referenceProxy, encryptConstants, noControlFlow, encryptMethods, proxyExternal,
+                watermarkId, virtualize, incremental).ConfigureAwait(false);
+
+            if (merge)
+            {
+                settings.AssemblyMerge.Enabled = true;
+                settings.AssemblyMerge.Internalize = internalize;
+            }
+
+            return await RunObfuscationAsync(
+                input ?? [], output, settings, map, report, dryRun, verbose, merge, preservePublic, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or XmlException or IOException or UnauthorizedAccessException)
+        {
+            AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
+            return 1;
+        }
     }
 
     private static void PrintBanner()
@@ -516,8 +556,17 @@ public class Program
         FileInfo? reportFile,
         bool dryRun,
         bool verbose,
-        bool merge = false)
+        bool merge = false,
+        bool preservePublic = false,
+        CancellationToken cancellationToken = default)
     {
+        var solutionCount = inputs.Count(static i => IsSolutionFile(i.FullName));
+        if (solutionCount > 1)
+        {
+            AnsiConsole.MarkupLine("[red]Only one solution file can be obfuscated per run.[/]");
+            return 1;
+        }
+
         var builder = new ContainerBuilder();
         builder.RegisterModule(new LoggingModule("Obfy.Console", enableConsoleOutput: verbose));
         builder.RegisterModule<ObfuscationModule>();
@@ -525,10 +574,18 @@ public class Program
 
         var service = container.Resolve<IObfuscationService>();
         var reportService = container.Resolve<IReportService>();
+        var analyzer = container.Resolve<ISolutionAnalyzer>();
 
         var allSymbols = new Dictionary<string, string>();
         var successfulResults = new List<(ObfuscationResult Result, ObfySettings Settings)>();
         var anyFailed = false;
+
+        if (inputs.Any(static i => IsSolutionOrProject(i.FullName)))
+        {
+            return await RunClosedSetSessionAsync(
+                inputs, output, settings, mapFile, reportFile, dryRun, preservePublic, merge,
+                service, reportService, analyzer, cancellationToken).ConfigureAwait(false);
+        }
 
         if (merge && inputs.Length < 2)
         {
@@ -576,6 +633,272 @@ public class Program
 
         AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
         return 0;
+    }
+
+    internal static string FormatLibraryMode(
+        bool included,
+        bool hintPreservePublic,
+        bool forcePreservePublic,
+        bool extraUnknownUntilLoad = false)
+    {
+        if (!included)
+            return "No";
+        if (forcePreservePublic || hintPreservePublic)
+            return "Yes";
+        if (extraUnknownUntilLoad)
+            return "After load";
+        return "No";
+    }
+
+    private static async Task<int> RunClosedSetSessionAsync(
+        FileInfo[] inputs,
+        DirectoryInfo? output,
+        ObfySettings settings,
+        FileInfo? mapFile,
+        FileInfo? reportFile,
+        bool dryRun,
+        bool preservePublic,
+        bool merge,
+        IObfuscationService service,
+        IReportService reportService,
+        ISolutionAnalyzer analyzer,
+        CancellationToken cancellationToken)
+    {
+        var sessionPaths = new List<FileInfo>();
+        var extraAssemblies = new List<FileInfo>();
+        var skippedSource = false;
+
+        foreach (var input in inputs)
+        {
+            if (IsSolutionOrProject(input.FullName))
+            {
+                sessionPaths.Add(input);
+                continue;
+            }
+
+            if (IsAssemblyFile(input.FullName))
+            {
+                extraAssemblies.Add(input);
+                continue;
+            }
+
+            if (IsSourceFile(input.FullName))
+                skippedSource = true;
+        }
+
+        var entries = new List<ProjectProtectionEntry>();
+        foreach (var path in sessionPaths)
+        {
+            var analyzed = analyzer.Analyze(path.FullName);
+            entries.AddRange(analyzed.Entries);
+        }
+
+        var session = new ProtectionSession
+        {
+            SourcePath = sessionPaths[0].FullName,
+            Entries = entries
+        };
+
+        if (skippedSource)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]Source files are not part of a solution session and were skipped.[/]");
+        }
+
+        var presentExtras = extraAssemblies.Where(static e => File.Exists(e.FullName)).ToList();
+        var missingExtras = extraAssemblies.Where(static e => !File.Exists(e.FullName)).ToList();
+        foreach (var missing in missingExtras)
+            AnsiConsole.MarkupLine($"[red]File not found: {Markup.Escape(missing.FullName)}[/]");
+
+        PrintSessionPlan(session, presentExtras, missingExtras, preservePublic);
+
+        if (missingExtras.Count > 0)
+            return 1;
+
+        var closedSetInputs = new List<ClosedSetInput>();
+        foreach (var entry in session.Included)
+        {
+            closedSetInputs.Add(new ClosedSetInput
+            {
+                AssemblyPath = entry.OutputPath!,
+                Hints = entry.Hints
+            });
+        }
+
+        foreach (var extra in presentExtras)
+        {
+            closedSetInputs.Add(new ClosedSetInput
+            {
+                AssemblyPath = extra.FullName,
+                Hints = new ProjectSettingsHints()
+            });
+        }
+
+        if (closedSetInputs.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red]No built outputs found. Build the ship set (Release) and retry.[/]");
+            return 2;
+        }
+
+        var useMerge = merge && closedSetInputs.Count >= 2;
+        if (merge && !useMerge)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]Merge requires at least two included assemblies; continuing as a closed set.[/]");
+        }
+
+        if (useMerge)
+            AnsiConsole.MarkupLine("[cyan]Merging included assemblies into one before obfuscating.[/]");
+
+        if (dryRun)
+            return 0;
+
+        var outputDir = output?.FullName;
+        if (string.IsNullOrEmpty(outputDir))
+        {
+            var solutionDir = Path.GetDirectoryName(Path.GetFullPath(session.SourcePath))
+                ?? Directory.GetCurrentDirectory();
+            outputDir = Path.Combine(solutionDir, "obfy-out");
+            AnsiConsole.MarkupLine($"[cyan]Output directory:[/] {Markup.Escape(outputDir)}");
+        }
+
+        if (useMerge)
+        {
+            var outputPath = Path.Combine(outputDir, Path.GetFileName(closedSetInputs[0].AssemblyPath));
+            var mergeResult = await service.MergeAndObfuscateAsync(
+                closedSetInputs.Select(static i => i.AssemblyPath).ToArray(),
+                outputPath,
+                settings,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!mergeResult.Success)
+            {
+                DisplayError("Merge", mergeResult);
+                return 1;
+            }
+
+            DisplaySuccess($"Merged ({closedSetInputs.Count} assemblies)", mergeResult);
+            await WriteMapAndReportAsync(mapFile, reportFile, mergeResult.SymbolMap, mergeResult, settings, service, reportService)
+                .ConfigureAwait(false);
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
+            return 0;
+        }
+
+        var result = await service.ObfuscateClosedSetAsync(
+            closedSetInputs, outputDir, settings, forcePreservePublic: preservePublic, cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var failure in result.LoadFailures)
+        {
+            AnsiConsole.MarkupLine(
+                $"[red]Failed to load {Markup.Escape(failure.Path)}: {Markup.Escape(failure.Message)}[/]");
+        }
+
+        if (!result.Success)
+        {
+            AnsiConsole.MarkupLine(
+                $"[red]{Markup.Escape(result.ErrorMessage ?? "Closed-set obfuscation failed.")}[/]");
+            foreach (var module in result.ModuleResults.Where(static m => !m.Success))
+                DisplayError(Path.GetFileName(module.InputPath) ?? "module", module);
+            return 1;
+        }
+
+        foreach (var module in result.ModuleResults)
+        {
+            var name = Path.GetFileName(module.OutputPath ?? module.InputPath) ?? "module";
+            DisplaySuccess(name, module);
+        }
+
+        var reportSource = result.ModuleResults.Count > 0 ? result.ModuleResults[0] : null;
+        await WriteMapAndReportAsync(mapFile, reportFile, result.SymbolMap, reportSource, settings, service, reportService)
+            .ConfigureAwait(false);
+
+        AnsiConsole.WriteLine();
+        if (result.LoadFailures.Count > 0)
+        {
+            AnsiConsole.MarkupLine("[red]Closed-set finished with load failures. Remaining modules were written.[/]");
+            return 1;
+        }
+
+        AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
+        return 0;
+    }
+
+    private static async Task WriteMapAndReportAsync(
+        FileInfo? mapFile,
+        FileInfo? reportFile,
+        Dictionary<string, string> symbolMap,
+        ObfuscationResult? reportSource,
+        ObfySettings settings,
+        IObfuscationService service,
+        IReportService reportService)
+    {
+        if (mapFile != null && symbolMap.Count > 0)
+        {
+            await service.WriteSymbolMapAsync(symbolMap, mapFile.FullName).ConfigureAwait(false);
+            AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
+        }
+
+        if (reportFile != null && reportSource != null)
+        {
+            var format = Path.GetExtension(reportFile.FullName).ToLowerInvariant() == ".json"
+                ? ReportFormat.Json
+                : ReportFormat.Html;
+            var report = reportService.BuildReport(reportSource, settings);
+            await reportService.GenerateReportAsync(report, reportFile.FullName, format).ConfigureAwait(false);
+            AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
+        }
+    }
+
+    private static void PrintSessionPlan(
+        ProtectionSession session,
+        IReadOnlyList<FileInfo> presentExtras,
+        IReadOnlyList<FileInfo> missingExtras,
+        bool forcePreservePublic)
+    {
+        var table = new Table()
+            .Border(TableBorder.Rounded)
+            .AddColumn("Project")
+            .AddColumn("Status")
+            .AddColumn("Output")
+            .AddColumn("Library-mode")
+            .AddColumn("RuntimeProfile");
+
+        foreach (var entry in session.Entries)
+        {
+            var status = entry.IsIncluded
+                ? "Included"
+                : entry.SkipMessage ?? entry.SkipReason.ToString();
+            table.AddRow(
+                Markup.Escape(entry.ProjectName),
+                Markup.Escape(status),
+                Markup.Escape(entry.OutputPath ?? ""),
+                FormatLibraryMode(entry.IsIncluded, entry.Hints.PreservePublicApi, forcePreservePublic),
+                entry.Hints.RuntimeProfile.ToString());
+        }
+
+        foreach (var extra in presentExtras)
+        {
+            table.AddRow(
+                Markup.Escape(Path.GetFileNameWithoutExtension(extra.Name)),
+                "Included",
+                Markup.Escape(extra.FullName),
+                FormatLibraryMode(included: true, hintPreservePublic: false, forcePreservePublic, extraUnknownUntilLoad: true),
+                RuntimeProfile.Default.ToString());
+        }
+
+        foreach (var extra in missingExtras)
+        {
+            table.AddRow(
+                Markup.Escape(Path.GetFileNameWithoutExtension(extra.Name)),
+                "Missing",
+                Markup.Escape(extra.FullName),
+                FormatLibraryMode(included: false, hintPreservePublic: false, forcePreservePublic),
+                RuntimeProfile.Default.ToString());
+        }
+
+        AnsiConsole.Write(table);
     }
 
     private static async Task<bool> RunMergeObfuscationAsync(

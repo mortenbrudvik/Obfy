@@ -18,6 +18,7 @@ public class FileStatusToIconConverter : IValueConverter
                 FileStatus.Success => SymbolRegular.CheckmarkCircle24,
                 FileStatus.Error => SymbolRegular.ErrorCircle24,
                 FileStatus.Processing => SymbolRegular.ArrowSync24,
+                FileStatus.Skipped => SymbolRegular.Warning24,
                 _ => SymbolRegular.Document24
             }
             : SymbolRegular.Document24;

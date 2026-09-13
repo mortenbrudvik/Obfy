@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Xml;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Obfy.Core.Services.Solution;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
 
@@ -15,11 +17,13 @@ public partial class FilesViewModel : ObservableObject
 {
     private readonly IFileDialogService _fileDialogService;
     private readonly ISettingsService _settingsService;
+    private readonly ISolutionAnalyzer? _solutionAnalyzer;
     private readonly ILogger<FilesViewModel>? _logger;
+    private readonly IUserNotificationService? _notifications;
     private bool _suppressPreferenceSave;
 
     /// <summary>
-    /// Gets the collection of files to obfuscate.
+    /// Input rows (included outputs and skipped session projects).
     /// </summary>
     public ObservableCollection<AssemblyFile> Files { get; } = new();
 
@@ -42,14 +46,24 @@ public partial class FilesViewModel : ObservableObject
     /// </summary>
     public bool HasNoFiles => Files.Count == 0;
 
+    /// <summary>
+    /// Gets whether any listed file is included for obfuscation.
+    /// </summary>
+    public bool HasIncludedFiles =>
+        Files.Any(f => f.IsIncluded && (f.IsAssembly || f.IsSourceFile));
+
     public FilesViewModel(
         IFileDialogService fileDialogService,
         ISettingsService settingsService,
-        ILogger<FilesViewModel>? logger = null)
+        ISolutionAnalyzer? solutionAnalyzer = null,
+        ILogger<FilesViewModel>? logger = null,
+        IUserNotificationService? notifications = null)
     {
         _fileDialogService = fileDialogService;
         _settingsService = settingsService;
+        _solutionAnalyzer = solutionAnalyzer;
         _logger = logger;
+        _notifications = notifications;
 
         _suppressPreferenceSave = true;
         try
@@ -66,6 +80,7 @@ public partial class FilesViewModel : ObservableObject
         {
             OnPropertyChanged(nameof(HasFiles));
             OnPropertyChanged(nameof(HasNoFiles));
+            OnPropertyChanged(nameof(HasIncludedFiles));
         };
     }
 
@@ -180,7 +195,8 @@ public partial class FilesViewModel : ObservableObject
             var ext = Path.GetExtension(path);
             return ext.Equals(".dll", StringComparison.OrdinalIgnoreCase)
                 || ext.Equals(".exe", StringComparison.OrdinalIgnoreCase)
-                || ext.Equals(".cs", StringComparison.OrdinalIgnoreCase);
+                || ext.Equals(".cs", StringComparison.OrdinalIgnoreCase)
+                || IsSolutionOrProjectExtension(ext);
         }
         catch (ArgumentException)
         {
@@ -201,23 +217,84 @@ public partial class FilesViewModel : ObservableObject
                 if (!IsSupportedInputPath(path))
                     continue;
 
+                if (IsSolutionOrProjectExtension(Path.GetExtension(path)))
+                {
+                    AddSessionEntries(path);
+                    continue;
+                }
+
                 if (!Files.Any(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
                     Files.Add(AssemblyFile.FromPath(path));
             }
-            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or XmlException or InvalidOperationException)
             {
                 _logger?.LogWarning(ex, "Skipped adding file {Path}", path);
+                _notifications?.Show(
+                    "Could not open file",
+                    $"{Path.GetFileName(path)}: {ex.Message}",
+                    NotificationSeverity.Error);
             }
         }
     }
 
+    private void AddSessionEntries(string path)
+    {
+        if (_solutionAnalyzer is null)
+        {
+            _logger?.LogError("Solution analyzer is not configured");
+            _notifications?.Show(
+                "Could not open solution",
+                "Solution analyzer is not configured.",
+                NotificationSeverity.Error);
+            return;
+        }
+
+        try
+        {
+            var session = _solutionAnalyzer.Analyze(path);
+            foreach (var entry in session.Entries)
+            {
+                var file = AssemblyFile.FromSessionEntry(entry);
+                if (!Files.Any(f => f.FilePath.Equals(file.FilePath, StringComparison.OrdinalIgnoreCase)))
+                    Files.Add(file);
+            }
+
+            if (!session.Entries.Any(static e => e.IsIncluded))
+            {
+                _notifications?.Show(
+                    "Nothing to protect",
+                    "No built outputs found. Build Release and drop the solution again.",
+                    NotificationSeverity.Warning);
+            }
+        }
+        catch (Exception ex) when (ex is XmlException or InvalidOperationException or ArgumentException
+            or IOException or UnauthorizedAccessException)
+        {
+            _logger?.LogWarning(ex, "Failed to expand {Path}", path);
+            _notifications?.Show(
+                "Could not open solution",
+                $"{Path.GetFileName(path)}: {ex.Message}",
+                NotificationSeverity.Error);
+        }
+    }
+
+    private static bool IsSolutionOrProjectExtension(string ext)
+        => ext.Equals(".sln", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".slnx", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".vbproj", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".fsproj", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
-    /// Resets the status of all files to pending.
+    /// Resets non-skipped files to pending (skipped session rows are left unchanged).
     /// </summary>
     public void ResetFileStatus()
     {
         foreach (var file in Files)
         {
+            if (file.Status == FileStatus.Skipped)
+                continue;
+
             file.Status = FileStatus.Pending;
             file.Progress = 0;
             file.ErrorMessage = null;

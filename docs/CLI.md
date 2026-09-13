@@ -16,7 +16,7 @@ obfy config wizard [options]
 
 ### Root Command
 
-Obfuscate one or more .NET assemblies or C# source files.
+Obfuscate one or more .NET assemblies, C# source files, solutions, or projects.
 
 ```bash
 obfy <input>... [options]
@@ -26,13 +26,13 @@ obfy <input>... [options]
 
 | Argument | Description |
 |----------|-------------|
-| `<input>` | One or more input files to obfuscate (DLL, EXE, or .cs files) |
+| `<input>` | One or more input files to obfuscate (DLL, EXE, .cs, .sln, .slnx, or project files) |
 
 **Options:**
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
-| `--output <dir>` | `-o` | Output directory for obfuscated files | Same as input |
+| `--output <dir>` | `-o` | Output directory for obfuscated files | Same as input for assemblies/source; `{solutionDir}/obfy-out` when a solution/project is used and `-o` is omitted |
 | `--config <file>` | `-c` | Path to JSON configuration file | None |
 | `--level <level>` | `-l` | Obfuscation level: `minimal`, `standard`, `aggressive`, `custom` | `standard` |
 | `--string-encrypt` | | Enable string encryption | Off |
@@ -54,7 +54,7 @@ obfy <input>... [options]
 | `--strip-metadata` | | Remove debug metadata | Off |
 | `--encrypt-resources` | | Enable resource encryption | Off |
 | `--encrypt-constants` | | Enable constant encryption | Off |
-| `--preserve-public` | | Preserve public API names | Off |
+| `--preserve-public` | | Preserve public API names (also forces library-mode on a closed set) | Off |
 | `--merge` | | Merge all input assemblies into one before obfuscating | Off |
 | `--internalize` | | Make merged types internal (improves obfuscation) | On |
 | `--map <file>` | | Output symbol mapping to file | None |
@@ -121,6 +121,11 @@ The wizard applies sensible defaults based on your application type:
 ### Basic Usage
 
 ```bash
+# Obfuscate a solution as a closed set
+obfy MyApp.sln -o out/
+obfy MyApp.sln --dry-run
+obfy MyApp.sln Extra.dll -o out/
+
 # Obfuscate a single DLL with standard protection
 obfy MyApp.dll -o output/
 
@@ -239,12 +244,26 @@ obfy MyApp.dll --dry-run -v
 obfy MyApp.dll -v -o output/
 ```
 
+## Solution / project input
+
+`obfy MyApp.sln` (or `.slnx` / `.csproj` / `.vbproj` / `.fsproj`) analyzes the ship set on disk and obfuscates included assemblies as one closed application.
+
+- Extra `.dll` / `.exe` arguments join the closed set. Their library-mode is decided after load (`AssemblyRef`); `--dry-run` prints `After load` for extras unless `--preserve-public`.
+- Source `.cs` files in a session are skipped with a warning.
+- Two `.sln` / `.slnx` arguments in one invocation is an error (exit 1).
+- A named extra that does not exist fails the run (exit 1), including `--dry-run`.
+- `--merge` on a session with fewer than two included assemblies warns and continues as a closed set.
+- Load failures omit that module, print the path and cause, write the remaining set, and exit 1.
+
+`obfy App.dll Lib.dll` without a solution still uses the per-file path.
+
 ## Exit Codes
 
 | Code | Description |
 |------|-------------|
-| 0 | Success |
-| 1 | Error (file not found, obfuscation failed, etc.) |
+| 0 | Success (including dry-run when there is at least one included assembly and no missing extras) |
+| 1 | Error (file not found, obfuscation failed, two solution files, load failures, invalid XML, etc.) |
+| 2 | Solution/project session had no included assemblies (all skipped) |
 
 ## Environment
 

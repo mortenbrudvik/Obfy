@@ -9,6 +9,7 @@ using Moq;
 using Obfy.Core.Models;
 using Obfy.Core.Pipeline;
 using Obfy.Core.Services;
+using Obfy.Core.Services.Solution;
 using Shouldly;
 
 namespace Obfy.Tests;
@@ -492,7 +493,8 @@ namespace Test
             sourceProcessor.Object,
             pipeline.Object,
             assemblyMerger.Object,
-            logger.Object);
+            logger.Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var settings = new ObfySettings();
 
@@ -540,7 +542,8 @@ namespace Test
             sourceProcessor.Object,
             pipeline.Object,
             assemblyMerger.Object,
-            logger.Object);
+            logger.Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var settings = new ObfySettings();
 
@@ -588,7 +591,8 @@ namespace Test
             sourceProcessor.Object,
             pipeline.Object,
             assemblyMerger.Object,
-            logger.Object);
+            logger.Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var settings = new ObfySettings();
 
@@ -636,7 +640,8 @@ namespace Test
             sourceProcessor.Object,
             pipeline.Object,
             assemblyMerger.Object,
-            logger.Object);
+            logger.Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var settings = new ObfySettings();
 
@@ -673,7 +678,8 @@ namespace Test
             sourceProcessor.Object,
             pipeline.Object,
             assemblyMerger.Object,
-            logger.Object);
+            logger.Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         // Act
         await service.WriteSymbolMapAsync(symbolMap, outputPath);
@@ -706,7 +712,8 @@ namespace Test
             sourceProcessor.Object,
             pipeline.Object,
             assemblyMerger.Object,
-            logger.Object);
+            logger.Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var settings = new ObfySettings();
 
@@ -747,7 +754,8 @@ namespace Test
             sourceProcessor.Object,
             pipeline.Object,
             assemblyMerger.Object,
-            logger.Object);
+            logger.Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var settings = new ObfySettings();
 
@@ -791,7 +799,8 @@ namespace Test
             new Mock<ISourceProcessor>().Object,
             pipeline.Object,
             new Mock<IAssemblyMerger>().Object,
-            new Mock<ILogger<ObfuscationService>>().Object);
+            new Mock<ILogger<ObfuscationService>>().Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var result = await service.ObfuscateAsync(assemblyPath, outputPath, new ObfySettings { Level = ObfuscationLevel.Custom });
 
@@ -809,7 +818,8 @@ namespace Test
             new Mock<ISourceProcessor>().Object,
             new Mock<IObfuscationPipeline>().Object,
             new Mock<IAssemblyMerger>().Object,
-            new Mock<ILogger<ObfuscationService>>().Object);
+            new Mock<ILogger<ObfuscationService>>().Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var settings = new ObfySettings
         {
@@ -851,7 +861,8 @@ namespace Test
             new Mock<ISourceProcessor>().Object,
             pipeline.Object,
             new Mock<IAssemblyMerger>().Object,
-            new Mock<ILogger<ObfuscationService>>().Object);
+            new Mock<ILogger<ObfuscationService>>().Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var settings = new ObfySettings
         {
@@ -893,7 +904,8 @@ namespace Test
             new Mock<ISourceProcessor>().Object,
             pipeline.Object,
             new Mock<IAssemblyMerger>().Object,
-            new Mock<ILogger<ObfuscationService>>().Object);
+            new Mock<ILogger<ObfuscationService>>().Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var settings = new ObfySettings
         {
@@ -1000,7 +1012,8 @@ namespace Test
             new Mock<ISourceProcessor>().Object,
             pipeline.Object,
             merger.Object,
-            new Mock<ILogger<ObfuscationService>>().Object);
+            new Mock<ILogger<ObfuscationService>>().Object,
+            new Mock<IClosedSetProcessor>().Object);
 
         var result = await service.MergeAndObfuscateAsync(
             [CreateTestAssembly("MergeA.dll"), CreateTestAssembly("MergeB.dll")],

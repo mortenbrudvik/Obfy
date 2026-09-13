@@ -1,4 +1,5 @@
 using Obfy.Core.Models;
+using Obfy.Core.Models.Solution;
 
 namespace Obfy.Core.Services;
 
@@ -54,5 +55,23 @@ public interface IObfuscationService
         IEnumerable<string> inputPaths,
         string outputPath,
         ObfySettings settings,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Protects <paramref name="inputs"/> as one closed application.
+    /// </summary>
+    /// <param name="inputs">Assemblies to load. Load failures are recorded and omitted.</param>
+    /// <param name="outputDirectory">Directory that receives committed output on success.</param>
+    /// <param name="settings">Session settings cloned per module before hint overlay.</param>
+    /// <param name="forcePreservePublic">When true, keep public names on every module (escape hatch).
+    /// When false, in-set libraries referenced by a remaining entry point are renamed; libraries-only
+    /// and unreferenced extras stay library-mode.</param>
+    /// <param name="cancellationToken">Cancels the run and discards temp output.</param>
+    /// <returns>The result of the closed-set protection run.</returns>
+    Task<ClosedSetResult> ObfuscateClosedSetAsync(
+        IReadOnlyList<ClosedSetInput> inputs,
+        string outputDirectory,
+        ObfySettings settings,
+        bool forcePreservePublic = false,
         CancellationToken cancellationToken = default);
 }

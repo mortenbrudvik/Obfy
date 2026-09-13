@@ -56,11 +56,10 @@ public class ErrorHandlingTests
     [Fact]
     public void Invoke_WithUnknownOption_TreatsAsFileArgument()
     {
-        // CreateRootCommand uses a no-op action so parse-only invoke is 0.
-        // Product process behavior is covered by Program.Main tests in IntegrationProcessTests.
+        // Unknown tokens are additional FileInfo arguments; the real handler then fails to find them.
         var exitCode = CommandLineTestHelpers.Invoke(_rootCommand, "input.dll --fake-option", out _);
 
-        exitCode.ShouldBe(0);
+        exitCode.ShouldNotBe(0);
     }
 
     [Fact]

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - CLI ships as a .NET tool again (`dotnet tool install --global Obfy`); CI packs the nupkg and GitHub Releases push it to nuget.org
+- Drop or pass a Visual Studio solution/project to obfuscate included assemblies as one closed set (in-solution public APIs can be renamed together; test projects and missing `bin` outputs are skipped)
 
 ### Changed
 - Competitive analysis rewritten against 2026 vendor pages and GitHub stats (ArmDot/DNGuard/Agile.NET added; LoGiC.NET archived; Obfy positioned as conventional protection, not a general VM)
@@ -16,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VS 2022 extension SDK/BuildTools stay on 17.14 (not VSSDK 18)
 
 ### Fixed
+- Closed-set UI no longer overwrites input assemblies when the output directory is empty (writes `{inputDir}/obfy-out` instead)
+- Closed-set rename matches TypeRefs by assembly name and TFM so multi-TFM copies of the same assembly do not steal each other's names
+- Closed-set commit copies then replaces dest files; restore failures include `*.obfyprev` backup paths in the error
+- CLI session: missing extras and load failures exit 1; extras print `After load` for library-mode until AssemblyRef is known
+- Solution/project XML parse failures skip that project instead of aborting the session
 - VS/Rider Aggressive `obfy.json` now writes `protection.methodEncryption: true` and `proxyExternalCalls: false` (Core/CLI already did; plugins omitted them because config files skip `ApplyLevel`). Rider's settings dialog round-trips those flags on save.
 - Symbol renaming no longer special-cases the `Obfy.Core.Models` namespace in target assemblies (types, members, and the namespace string)
 - VS and Rider save/post-build toggle merge into existing `obfy.json` instead of rewriting a subset (Core-only keys such as virtualization, packing, and exclusions are kept)

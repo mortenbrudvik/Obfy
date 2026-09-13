@@ -5,6 +5,7 @@ using Obfy.Core.Obfuscators.Source;
 using Obfy.Core.Pipeline;
 using Obfy.Core.Services;
 using Obfy.Core.Services.Reporting;
+using Obfy.Core.Services.Solution;
 using Obfy.Core.Utilities;
 
 namespace Obfy.Core.DependencyInjection;
@@ -45,6 +46,7 @@ public class ObfuscationModule : Module
             .InstancePerLifetimeScope();
 
         builder.RegisterType<SymbolRenamingObfuscator>()
+            .AsSelf()
             .As<IObfuscator>()
             .InstancePerLifetimeScope();
 
@@ -118,6 +120,14 @@ public class ObfuscationModule : Module
         // Register main service
         builder.RegisterType<ObfuscationService>()
             .As<IObfuscationService>()
+            .SingleInstance();
+
+        builder.RegisterType<SolutionAnalyzer>()
+            .As<ISolutionAnalyzer>()
+            .SingleInstance();
+
+        builder.RegisterType<ClosedSetProcessor>()
+            .As<IClosedSetProcessor>()
             .SingleInstance();
 
         builder.RegisterType<MethodEncryptionPePostProcessor>()

@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Obfy.Core.Models;
+using Obfy.Core.Models.Solution;
 using Obfy.Core.Services;
 using Obfy.Core.Services.Reporting;
 using Obfy.UI.Models;
@@ -116,7 +117,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     private bool CanObfuscate() =>
-        !IsObfuscating && Files.HasFiles &&
+        !IsObfuscating && Files.HasIncludedFiles &&
         (!Settings.WatermarkEnabled || !string.IsNullOrWhiteSpace(Settings.WatermarkId));
 
     [RelayCommand(CanExecute = nameof(CanObfuscate))]
@@ -133,6 +134,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var settings = Settings.ToObfySettings();
         var files = Files.Files.ToList();
+        var included = files.Where(static f => f.IsIncluded).ToList();
+        var skipped = files.Where(static f => f.IsSkipped).ToList();
         var outputDir = string.IsNullOrEmpty(Files.OutputDirectory) ? null : Files.OutputDirectory;
 
         var allSymbols = new Dictionary<string, string>();
@@ -143,17 +146,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Output.Clear();
         Output.Info("Starting obfuscation...");
         Output.Info($"Level: {settings.Level}");
-        Output.Info($"Files: {files.Count}");
+        Output.Info($"Files: {included.Count}");
+        foreach (var skippedFile in skipped)
+            LogSkip(skippedFile);
 
         try
         {
-            if (ShouldMerge(settings, files))
+            if (ShouldMerge(settings, included))
             {
-                await MergeAndObfuscateAsync(files, settings, allSymbols, totalStats, successfulResults, cancellationToken);
+                await MergeAndObfuscateAsync(included, settings, allSymbols, totalStats, successfulResults, cancellationToken);
+            }
+            else if (ShouldUseClosedSet(files))
+            {
+                await ObfuscateClosedSetAsync(
+                    included, settings, outputDir, allSymbols, totalStats, successfulResults, cancellationToken);
             }
             else
             {
-                await ObfuscateEachAsync(files, settings, outputDir, allSymbols, totalStats, successfulResults, cancellationToken);
+                await ObfuscateEachAsync(included, settings, outputDir, allSymbols, totalStats, successfulResults, cancellationToken);
             }
 
             stopwatch.Stop();
@@ -351,10 +361,207 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    internal static bool ShouldUseClosedSet(IReadOnlyList<AssemblyFile> files)
+    {
+        var included = files.Where(static f => f.IsIncluded);
+        return included.Count(static a => a.IsAssembly) >= 2
+               || included.Any(static a => a.FromSession);
+    }
+
     private static bool ShouldMerge(ObfySettings settings, List<AssemblyFile> files)
         => settings.AssemblyMerge.Enabled
            && files.Count >= 2
            && files.All(f => f.IsAssembly);
+
+    private void LogSkip(AssemblyFile skippedFile)
+    {
+        var name = Path.GetFileNameWithoutExtension(skippedFile.FileName);
+        Output.Info(string.IsNullOrWhiteSpace(skippedFile.SkipReason)
+            ? $"Skipping {name}"
+            : $"Skipping {name}: {skippedFile.SkipReason}");
+    }
+
+    private async Task ObfuscateClosedSetAsync(
+        List<AssemblyFile> included,
+        ObfySettings settings,
+        string? outputDir,
+        Dictionary<string, string> allSymbols,
+        ObfuscationStatistics totalStats,
+        List<ObfuscationResult> successfulResults,
+        CancellationToken cancellationToken)
+    {
+        var assemblies = included.Where(static a => a.IsAssembly).ToList();
+        if (assemblies.Count == 0)
+        {
+            await ObfuscateEachAsync(included, settings, outputDir, allSymbols, totalStats, successfulResults, cancellationToken);
+            return;
+        }
+
+        foreach (var leftover in included.Where(static f => !f.IsAssembly))
+        {
+            leftover.Status = FileStatus.Skipped;
+            leftover.SkipReason = "Source files are not part of a closed-set session";
+            Output.Warning($"Skipping {leftover.FileName}: {leftover.SkipReason}");
+        }
+
+        foreach (var file in assemblies)
+        {
+            file.Status = FileStatus.Processing;
+            file.Progress = 0;
+        }
+
+        StatusMessage = "Protecting closed set...";
+        Output.Info($"Protecting {assemblies.Count} assemblies as a closed set...");
+
+        var resolvedOutputDir = outputDir;
+        if (string.IsNullOrEmpty(resolvedOutputDir))
+        {
+            var inputDir = Path.GetDirectoryName(assemblies[0].FilePath);
+            resolvedOutputDir = Path.Combine(
+                string.IsNullOrEmpty(inputDir) ? "." : inputDir,
+                "obfy-out");
+            Output.Info($"Output directory: {resolvedOutputDir}");
+        }
+
+        var inputs = assemblies.Select(static a => new ClosedSetInput
+        {
+            AssemblyPath = a.FilePath,
+            Hints = a.Hints ?? new ProjectSettingsHints()
+        }).ToList();
+
+        var forcePreservePublic = settings.SymbolRenaming.PreservePublicApi;
+        var result = await Task.Run(
+            () => _obfuscationService.ObfuscateClosedSetAsync(
+                inputs,
+                resolvedOutputDir,
+                settings,
+                forcePreservePublic,
+                cancellationToken),
+            cancellationToken);
+
+        OverallProgress = 100;
+        ApplyClosedSetResult(included, result, allSymbols, totalStats, successfulResults);
+    }
+
+    private void ApplyClosedSetResult(
+        List<AssemblyFile> included,
+        ClosedSetResult result,
+        Dictionary<string, string> allSymbols,
+        ObfuscationStatistics totalStats,
+        List<ObfuscationResult> successfulResults)
+    {
+        if (result.Success)
+        {
+            var byInput = result.ModuleResults
+                .Where(static m => !string.IsNullOrEmpty(m.InputPath))
+                .GroupBy(static m => m.InputPath!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(static g => g.Key, static g => g.Last(), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var file in included)
+            {
+                var module = FindModuleResult(file, byInput, result.ModuleResults);
+                if (module != null)
+                {
+                    file.Progress = 100;
+                    if (module.Success)
+                    {
+                        file.Status = FileStatus.Success;
+                        file.OutputPath = module.OutputPath;
+                    }
+                    else
+                    {
+                        file.Status = FileStatus.Error;
+                        file.ErrorMessage = module.ErrorMessage;
+                    }
+
+                    continue;
+                }
+
+                if (FindLoadFailure(file, result.LoadFailures) is { } loadFailure)
+                {
+                    file.Progress = 100;
+                    file.Status = FileStatus.Error;
+                    file.ErrorMessage = $"Failed to load {file.FileName}: {loadFailure.Message}";
+                    continue;
+                }
+
+                if (file.Status == FileStatus.Processing)
+                    file.Status = FileStatus.Pending;
+            }
+
+            foreach (var module in result.ModuleResults.Where(static m => m.Success))
+            {
+                successfulResults.Add(module);
+                if (module.Statistics != null)
+                    totalStats.Merge(module.Statistics);
+
+                if (module.SkippedItems.Count > 0)
+                    Output.Warning($"{module.SkippedItems.Count} item(s) in {Path.GetFileName(module.InputPath)} were skipped and left unobfuscated.");
+
+                foreach (var warning in module.Warnings)
+                    Output.Warning(warning);
+            }
+
+            foreach (var (key, value) in result.SymbolMap)
+                allSymbols[key] = value;
+
+            foreach (var module in result.ModuleResults)
+            {
+                foreach (var (key, value) in module.SymbolMap)
+                    allSymbols.TryAdd(key, value);
+            }
+
+            Output.Success($"Closed-set obfuscation completed: {totalStats.TotalTransformations} transformations");
+            foreach (var failure in result.LoadFailures)
+                Output.Warning($"Failed to load {failure.Path}: {failure.Message}");
+        }
+        else
+        {
+            var message = result.ErrorMessage ?? "Closed-set obfuscation failed.";
+            foreach (var file in included)
+            {
+                file.Progress = 100;
+                file.Status = FileStatus.Error;
+                file.ErrorMessage = message;
+            }
+
+            Output.Error(message);
+            foreach (var failure in result.LoadFailures)
+                Output.Warning($"Failed to load {failure.Path}: {failure.Message}");
+            foreach (var module in result.ModuleResults.Where(static m => !m.Success))
+                Output.Error($"Failed {Path.GetFileName(module.InputPath)}: {module.ErrorMessage}");
+        }
+    }
+
+    private static ObfuscationResult? FindModuleResult(
+        AssemblyFile file,
+        Dictionary<string, ObfuscationResult> byInput,
+        IReadOnlyList<ObfuscationResult> modules)
+    {
+        if (byInput.TryGetValue(file.FilePath, out var module))
+            return module;
+
+        return modules.FirstOrDefault(m =>
+            (!string.IsNullOrEmpty(m.InputPath)
+                && string.Equals(Path.GetFileName(m.InputPath), file.FileName, StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrEmpty(m.OutputPath)
+                && string.Equals(Path.GetFileName(m.OutputPath), file.FileName, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static ClosedSetLoadFailure? FindLoadFailure(
+        AssemblyFile file,
+        IReadOnlyList<ClosedSetLoadFailure> loadFailures)
+    {
+        foreach (var failure in loadFailures)
+        {
+            if (string.Equals(failure.Path, file.FilePath, StringComparison.OrdinalIgnoreCase))
+                return failure;
+            if (string.Equals(Path.GetFileName(failure.Path), file.FileName, StringComparison.OrdinalIgnoreCase))
+                return failure;
+        }
+
+        return null;
+    }
 
     private static void ResetProcessingFiles(List<AssemblyFile> files, string? error)
     {

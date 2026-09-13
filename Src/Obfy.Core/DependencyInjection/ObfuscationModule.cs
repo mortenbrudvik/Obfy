@@ -126,6 +126,10 @@ public class ObfuscationModule : Module
             .As<ISolutionAnalyzer>()
             .SingleInstance();
 
+        builder.RegisterType<ClosedSetProcessor>()
+            .As<IClosedSetProcessor>()
+            .SingleInstance();
+
         builder.RegisterType<MethodEncryptionPePostProcessor>()
             .As<IPePostProcessor>()
             .SingleInstance();

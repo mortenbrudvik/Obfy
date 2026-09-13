@@ -6,8 +6,11 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Obfy.Core.Models;
+using Obfy.Core.Models.Solution;
 using Obfy.Core.Obfuscators.Assembly;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Services;
+using Obfy.Core.Services.Solution;
 using Obfy.Core.Utilities;
 using Shouldly;
 
@@ -79,6 +82,110 @@ public class ClosedSetProcessorTests
         InvokeProgramRun(appPath, libPath).ShouldBe("hi");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_AppAndLib_WritesBoth_RenamesLibPublicType_AndRunStillReturnsHi()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        var outputDir = Path.Combine(fixture.Root, "closed-out");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints { PreservePublicApi = true } },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: false));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.LoadFailures.ShouldBeEmpty();
+
+        var outLib = Path.Combine(outputDir, "Lib.dll");
+        var outApp = Path.Combine(outputDir, "App.exe");
+        File.Exists(outLib).ShouldBeTrue();
+        File.Exists(outApp).ShouldBeTrue();
+
+        using (var libModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(outLib)))
+            libModule.GetTypes().ShouldNotContain(t => t.Name == "Greeter");
+
+        InvokeProgramRun(outApp, outLib).ShouldBe("hi");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CorruptSecondInput_ListsLoadFailure_AndPreservesLibPublicApi()
+    {
+        using var fixture = new ClosedSetEmit();
+        var libPath = fixture.CompileLib();
+        var badPath = Path.Combine(fixture.Root, "Bad.dll");
+        await File.WriteAllTextAsync(badPath, "not a valid assembly");
+        var outputDir = Path.Combine(fixture.Root, "load-fail-out");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints { PreservePublicApi = false } },
+                new ClosedSetInput { AssemblyPath = badPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: false));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.LoadFailures.ShouldContain(badPath);
+
+        var outLib = Path.Combine(outputDir, "Lib.dll");
+        File.Exists(outLib).ShouldBeTrue();
+        File.Exists(Path.Combine(outputDir, "Bad.dll")).ShouldBeFalse();
+
+        using var libModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(outLib));
+        libModule.GetTypes().ShouldContain(t => t.Name == "Greeter");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PipelineFailure_WritesNothingToOutputDirectory()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        var outputDir = Path.Combine(fixture.Root, "all-or-nothing");
+        Directory.CreateDirectory(outputDir);
+
+        var failingPipeline = new Mock<IObfuscationPipeline>();
+        failingPipeline.SetupSequence(p => p.ExecuteAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ObfuscationResult.Successful(new ObfuscationStatistics()))
+            .ReturnsAsync(ObfuscationResult.Failed("boom"));
+
+        var processor = CreateProcessor(failingPipeline.Object);
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: false));
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldBe("boom");
+        Directory.GetFiles(outputDir, "*.dll", SearchOption.AllDirectories).ShouldBeEmpty();
+        Directory.GetFiles(outputDir, "*.exe", SearchOption.AllDirectories).ShouldBeEmpty();
+    }
+
+    private static ClosedSetProcessor CreateProcessor(IObfuscationPipeline? pipeline = null)
+    {
+        if (pipeline is null)
+        {
+            var pipelineMock = new Mock<IObfuscationPipeline>();
+            pipelineMock.Setup(p => p.ExecuteAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ObfuscationResult.Successful(new ObfuscationStatistics()));
+            pipeline = pipelineMock.Object;
+        }
+
+        return new ClosedSetProcessor(
+            new Mock<ILogger<ClosedSetProcessor>>().Object,
+            pipeline,
+            new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object),
+            CreateRenamer());
+    }
+
     private static SymbolRenamingObfuscator CreateRenamer() =>
         new(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
 
@@ -125,12 +232,22 @@ public class ClosedSetProcessorTests
         private ModuleDefMD? _lib;
         private ModuleDefMD? _app;
 
+        public string Root => _root;
+
         public ClosedSetEmit() => Directory.CreateDirectory(_root);
 
-        public (ModuleDefMD Lib, ModuleDefMD App) LoadClosedSet()
+        public (string LibPath, string AppPath) CompileClosedSet()
         {
             var libPath = Compile(LibSource, "Lib", OutputKind.DynamicallyLinkedLibrary);
             var appPath = Compile(AppSource, "App", OutputKind.ConsoleApplication, libPath);
+            return (libPath, appPath);
+        }
+
+        public string CompileLib() => Compile(LibSource, "Lib", OutputKind.DynamicallyLinkedLibrary);
+
+        public (ModuleDefMD Lib, ModuleDefMD App) LoadClosedSet()
+        {
+            var (libPath, appPath) = CompileClosedSet();
 
             var ctx = ModuleDef.CreateModuleContext();
             _lib = ModuleDefMD.Load(File.ReadAllBytes(libPath), ctx);

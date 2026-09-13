@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.CommandLine.Parsing;
 using Obfy.Console;
 using Obfy.Core.Models;
 using Shouldly;
@@ -50,7 +49,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var files = parseResult.GetValueForArgument(Program.InputArgument);
+        var files = parseResult.GetRequiredValue(Program.InputArgument);
         files.ShouldNotBeNull();
         files.Length.ShouldBe(1);
         files[0].Name.ShouldBe("input.dll");
@@ -70,7 +69,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var files = parseResult.GetValueForArgument(Program.InputArgument);
+        var files = parseResult.GetRequiredValue(Program.InputArgument);
         files.ShouldNotBeNull();
         files.Length.ShouldBe(3);
     }
@@ -93,7 +92,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var files = parseResult.GetValueForArgument(Program.InputArgument);
+        var files = parseResult.GetRequiredValue(Program.InputArgument);
         files.ShouldNotBeNull();
         files[0].Name.ShouldBe("Program.cs");
     }
@@ -112,7 +111,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var output = parseResult.GetValueForOption(Program.OutputOption);
+        var output = parseResult.GetValue(Program.OutputOption);
         output.ShouldNotBeNull();
         output.Name.ShouldBe("output");
     }
@@ -133,7 +132,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var parsedLevel = parseResult.GetValueForOption(Program.LevelOption);
+        var parsedLevel = parseResult.GetValue(Program.LevelOption);
         parsedLevel.ShouldBe(level);
     }
 
@@ -147,7 +146,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var parsedLevel = parseResult.GetValueForOption(Program.LevelOption);
+        var parsedLevel = parseResult.GetValue(Program.LevelOption);
         parsedLevel.ShouldBe(level);
     }
 
@@ -159,7 +158,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var level = parseResult.GetValueForOption(Program.LevelOption);
+        var level = parseResult.GetValue(Program.LevelOption);
         level.ShouldBe("standard");
     }
 
@@ -204,7 +203,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --string-encrypt");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.StringEncryptOption);
+        var value = parseResult.GetValue(Program.StringEncryptOption);
         value.ShouldBeTrue();
     }
 
@@ -215,7 +214,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --control-flow");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.ControlFlowOption);
+        var value = parseResult.GetValue(Program.ControlFlowOption);
         value.ShouldBeTrue();
     }
 
@@ -226,7 +225,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --rename");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.RenameOption);
+        var value = parseResult.GetValue(Program.RenameOption);
         value.ShouldBeTrue();
     }
 
@@ -234,28 +233,28 @@ public class CommandParsingTests : IDisposable
     public void Parse_AntiTamperOption_SetsTrue()
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --anti-tamper");
-        parseResult.GetValueForOption(Program.AntiTamperOption).ShouldBeTrue();
+        parseResult.GetValue(Program.AntiTamperOption).ShouldBeTrue();
     }
 
     [Fact]
     public void Parse_AntiDumpOption_SetsTrue()
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --anti-dump");
-        parseResult.GetValueForOption(Program.AntiDumpOption).ShouldBeTrue();
+        parseResult.GetValue(Program.AntiDumpOption).ShouldBeTrue();
     }
 
     [Fact]
     public void Parse_ReferenceProxyOption_SetsTrue()
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --reference-proxy");
-        parseResult.GetValueForOption(Program.ReferenceProxyOption).ShouldBeTrue();
+        parseResult.GetValue(Program.ReferenceProxyOption).ShouldBeTrue();
     }
 
     [Fact]
     public void Parse_ProxyExternalOption_SetsTrue()
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --proxy-external");
-        parseResult.GetValueForOption(Program.ProxyExternalOption).ShouldBeTrue();
+        parseResult.GetValue(Program.ProxyExternalOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -281,28 +280,28 @@ public class CommandParsingTests : IDisposable
     public void Parse_EncryptMethodsOption_SetsTrue()
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --encrypt-methods");
-        parseResult.GetValueForOption(Program.EncryptMethodsOption).ShouldBeTrue();
+        parseResult.GetValue(Program.EncryptMethodsOption).ShouldBeTrue();
     }
 
     [Fact]
     public void Parse_EncryptConstantsOption_SetsTrue()
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --encrypt-constants");
-        parseResult.GetValueForOption(Program.EncryptConstantsOption).ShouldBeTrue();
+        parseResult.GetValue(Program.EncryptConstantsOption).ShouldBeTrue();
     }
 
     [Fact]
     public void Parse_NoControlFlowOption_SetsTrue()
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --no-control-flow");
-        parseResult.GetValueForOption(Program.NoControlFlowOption).ShouldBeTrue();
+        parseResult.GetValue(Program.NoControlFlowOption).ShouldBeTrue();
     }
 
     [Fact]
     public void Parse_NoStringEncryptionOption_SetsTrue()
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --no-string-encryption");
-        parseResult.GetValueForOption(Program.NoStringEncryptOption).ShouldBeTrue();
+        parseResult.GetValue(Program.NoStringEncryptOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -312,7 +311,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --anti-debug");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.AntiDebugOption);
+        var value = parseResult.GetValue(Program.AntiDebugOption);
         value.ShouldBeTrue();
     }
 
@@ -323,7 +322,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --strip-metadata");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.StripMetadataOption);
+        var value = parseResult.GetValue(Program.StripMetadataOption);
         value.ShouldBeTrue();
     }
 
@@ -334,7 +333,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --encrypt-resources");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.EncryptResourcesOption);
+        var value = parseResult.GetValue(Program.EncryptResourcesOption);
         value.ShouldBeTrue();
     }
 
@@ -345,7 +344,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --preserve-public");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.PreservePublicOption);
+        var value = parseResult.GetValue(Program.PreservePublicOption);
         value.ShouldBeTrue();
     }
 
@@ -356,7 +355,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --dry-run");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.DryRunOption);
+        var value = parseResult.GetValue(Program.DryRunOption);
         value.ShouldBeTrue();
     }
 
@@ -367,7 +366,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --merge");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.MergeOption);
+        var value = parseResult.GetValue(Program.MergeOption);
         value.ShouldBeTrue();
     }
 
@@ -378,7 +377,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --verbose");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.VerboseOption);
+        var value = parseResult.GetValue(Program.VerboseOption);
         value.ShouldBeTrue();
     }
 
@@ -389,7 +388,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" -v");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.VerboseOption);
+        var value = parseResult.GetValue(Program.VerboseOption);
         value.ShouldBeTrue();
     }
 
@@ -400,7 +399,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --no-logo");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.NoLogoOption);
+        var value = parseResult.GetValue(Program.NoLogoOption);
         value.ShouldBeTrue();
     }
 
@@ -411,7 +410,7 @@ public class CommandParsingTests : IDisposable
         var parseResult = _rootCommand.Parse($"\"{_testDll}\"");
 
         // Assert
-        var value = parseResult.GetValueForOption(Program.InternalizeOption);
+        var value = parseResult.GetValue(Program.InternalizeOption);
         value.ShouldBeTrue();
     }
 
@@ -431,7 +430,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var config = parseResult.GetValueForOption(Program.ConfigOption);
+        var config = parseResult.GetValue(Program.ConfigOption);
         config.ShouldNotBeNull();
         config.Name.ShouldBe("obfy.json");
     }
@@ -450,7 +449,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var config = parseResult.GetValueForOption(Program.ConfigOption);
+        var config = parseResult.GetValue(Program.ConfigOption);
         config.ShouldNotBeNull();
     }
 
@@ -469,7 +468,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var map = parseResult.GetValueForOption(Program.MapOption);
+        var map = parseResult.GetValue(Program.MapOption);
         map.ShouldNotBeNull();
         map.Name.ShouldBe("symbols.json");
     }
@@ -491,7 +490,7 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var report = parseResult.GetValueForOption(Program.ReportOption);
+        var report = parseResult.GetValue(Program.ReportOption);
         report.ShouldNotBeNull();
         report.Name.ShouldBe(fileName);
     }
@@ -579,11 +578,11 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        parseResult.GetValueForOption(Program.LevelOption).ShouldBe("aggressive");
-        parseResult.GetValueForOption(Program.StringEncryptOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.ControlFlowOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.RenameOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.VerboseOption).ShouldBeTrue();
+        parseResult.GetValue(Program.LevelOption).ShouldBe("aggressive");
+        parseResult.GetValue(Program.StringEncryptOption).ShouldBeTrue();
+        parseResult.GetValue(Program.ControlFlowOption).ShouldBeTrue();
+        parseResult.GetValue(Program.RenameOption).ShouldBeTrue();
+        parseResult.GetValue(Program.VerboseOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -595,19 +594,19 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        parseResult.GetValueForOption(Program.StringEncryptOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.ControlFlowOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.RenameOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.AntiDebugOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.AntiDumpOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.ReferenceProxyOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.ProxyExternalOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.EncryptMethodsOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.EncryptConstantsOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.NoControlFlowOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.StripMetadataOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.EncryptResourcesOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.PreservePublicOption).ShouldBeTrue();
+        parseResult.GetValue(Program.StringEncryptOption).ShouldBeTrue();
+        parseResult.GetValue(Program.ControlFlowOption).ShouldBeTrue();
+        parseResult.GetValue(Program.RenameOption).ShouldBeTrue();
+        parseResult.GetValue(Program.AntiDebugOption).ShouldBeTrue();
+        parseResult.GetValue(Program.AntiDumpOption).ShouldBeTrue();
+        parseResult.GetValue(Program.ReferenceProxyOption).ShouldBeTrue();
+        parseResult.GetValue(Program.ProxyExternalOption).ShouldBeTrue();
+        parseResult.GetValue(Program.EncryptMethodsOption).ShouldBeTrue();
+        parseResult.GetValue(Program.EncryptConstantsOption).ShouldBeTrue();
+        parseResult.GetValue(Program.NoControlFlowOption).ShouldBeTrue();
+        parseResult.GetValue(Program.StripMetadataOption).ShouldBeTrue();
+        parseResult.GetValue(Program.EncryptResourcesOption).ShouldBeTrue();
+        parseResult.GetValue(Program.PreservePublicOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -615,7 +614,7 @@ public class CommandParsingTests : IDisposable
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --watermark-id customer-42");
         parseResult.Errors.ShouldBeEmpty();
-        parseResult.GetValueForOption(Program.WatermarkIdOption).ShouldBe("customer-42");
+        parseResult.GetValue(Program.WatermarkIdOption).ShouldBe("customer-42");
     }
 
     [Fact]
@@ -661,7 +660,7 @@ public class CommandParsingTests : IDisposable
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --virtualize");
         parseResult.Errors.ShouldBeEmpty();
-        parseResult.GetValueForOption(Program.VirtualizeOption).ShouldBeTrue();
+        parseResult.GetValue(Program.VirtualizeOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -669,7 +668,7 @@ public class CommandParsingTests : IDisposable
     {
         var parseResult = _rootCommand.Parse($"\"{_testDll}\" --incremental");
         parseResult.Errors.ShouldBeEmpty();
-        parseResult.GetValueForOption(Program.IncrementalOption).ShouldBeTrue();
+        parseResult.GetValue(Program.IncrementalOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -751,9 +750,9 @@ public class CommandParsingTests : IDisposable
 
         // Assert
         parseResult.Errors.ShouldBeEmpty();
-        var files = parseResult.GetValueForArgument(Program.InputArgument);
+        var files = parseResult.GetRequiredValue(Program.InputArgument);
         files.Length.ShouldBe(3);
-        parseResult.GetValueForOption(Program.MergeOption).ShouldBeTrue();
+        parseResult.GetValue(Program.MergeOption).ShouldBeTrue();
     }
 
     #endregion

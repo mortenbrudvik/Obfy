@@ -20,7 +20,7 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 
 - **Framework**: xUnit 2.9.3
 - **Mocking**: Moq 4.20.72
-- **Assertions**: Shouldly 4.2.1
+- **Assertions**: Shouldly 4.3.0
 - **Coverage**: Coverlet 6.0.4
 
 ## Running Tests

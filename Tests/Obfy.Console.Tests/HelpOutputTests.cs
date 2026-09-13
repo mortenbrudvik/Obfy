@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.CommandLine.IO;
 using Obfy.Console;
 using Shouldly;
 
@@ -14,17 +13,17 @@ public class HelpOutputTests
         _rootCommand = Program.CreateRootCommand();
     }
 
+    private string InvokeOutput(string args)
+    {
+        CommandLineTestHelpers.Invoke(_rootCommand, args, out var output);
+        return output;
+    }
+
     [Fact]
     public void Help_RootCommand_ShowsDescription()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldNotBeNullOrEmpty();
         output.ShouldContain("Obfy - C# Obfuscation Tool");
     }
@@ -32,14 +31,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_RootCommand_ShowsInputArgument()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("input");
         output.ShouldContain("Input files to obfuscate");
     }
@@ -47,14 +40,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_RootCommand_ShowsOutputOption()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("--output");
         output.ShouldContain("-o");
     }
@@ -62,14 +49,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_RootCommand_ShowsLevelOption()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("--level");
         output.ShouldContain("-l");
         output.ShouldContain("minimal, standard, aggressive, or custom");
@@ -78,14 +59,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_RootCommand_ShowsConfigOption()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("--config");
         output.ShouldContain("-c");
     }
@@ -93,14 +68,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_RootCommand_ShowsObfuscationOptions()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("--string-encrypt");
         output.ShouldContain("--control-flow");
         output.ShouldContain("--rename");
@@ -119,14 +88,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_RootCommand_ShowsProtectionOptions()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("--proxy-external");
         output.ShouldContain("--preserve-public");
         output.ShouldContain("--map");
@@ -137,14 +100,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_RootCommand_ShowsMergeOptions()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("--merge");
         output.ShouldContain("--internalize");
     }
@@ -152,14 +109,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_RootCommand_ShowsVerboseOptions()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("--verbose");
         output.ShouldContain("-v");
         output.ShouldContain("--no-logo");
@@ -168,42 +119,24 @@ public class HelpOutputTests
     [Fact]
     public void Help_RootCommand_ShowsConfigSubcommand()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--help");
 
-        // Act
-        _rootCommand.Invoke("--help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("config");
     }
 
     [Fact]
     public void Help_ConfigCommand_ShowsDescription()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("config --help");
 
-        // Act
-        _rootCommand.Invoke("config --help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("Configuration file operations");
     }
 
     [Fact]
     public void Help_ConfigCommand_ShowsSubcommands()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("config --help");
 
-        // Act
-        _rootCommand.Invoke("config --help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("generate");
         output.ShouldContain("wizard");
     }
@@ -211,14 +144,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_ConfigGenerate_ShowsOptions()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("config generate --help");
 
-        // Act
-        _rootCommand.Invoke("config generate --help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("Generate a default configuration file");
         output.ShouldContain("--output");
         output.ShouldContain("-o");
@@ -229,14 +156,8 @@ public class HelpOutputTests
     [Fact]
     public void Help_ConfigWizard_ShowsOptions()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("config wizard --help");
 
-        // Act
-        _rootCommand.Invoke("config wizard --help", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldContain("Interactive wizard");
         output.ShouldContain("--output");
         output.ShouldContain("-o");
@@ -247,14 +168,8 @@ public class HelpOutputTests
     [Fact]
     public void Version_ShowsVersionInfo()
     {
-        // Arrange
-        var console = new TestConsole();
+        var output = InvokeOutput("--version");
 
-        // Act
-        _rootCommand.Invoke("--version", console);
-        var output = console.Out.ToString();
-
-        // Assert
         output.ShouldNotBeNullOrEmpty();
         // Version format should contain digits and dots
         output.Trim().ShouldMatch(@"^\d+\.\d+\.\d+");

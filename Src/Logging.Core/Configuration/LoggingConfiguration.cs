@@ -60,6 +60,7 @@ public static class LoggingConfiguration
             FileName = Path.Combine(logDirectory, fileName),
             Layout = "${longdate} [${level:uppercase=true}] ${logger}: ${message}${onexception:inner=${newline}${exception:format=tostring}}",
             ArchiveEvery = NLog.Targets.FileArchivePeriod.Day,
+            ArchiveSuffixFormat = "_{1:yyyyMMdd}",
             MaxArchiveFiles = 30
         };
 

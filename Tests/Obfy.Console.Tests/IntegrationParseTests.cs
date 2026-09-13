@@ -35,17 +35,17 @@ public class IntegrationParseTests : IDisposable
             $"--verbose --no-logo");
 
         parseResult.Errors.ShouldBeEmpty();
-        var files = parseResult.GetValueForArgument(Program.InputArgument);
+        var files = parseResult.GetRequiredValue(Program.InputArgument);
         files.Length.ShouldBe(1);
         files[0].FullName.ShouldBe(assemblyPath);
-        parseResult.GetValueForOption(Program.LevelOption).ShouldBe("aggressive");
-        parseResult.GetValueForOption(Program.StringEncryptOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.ControlFlowOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.RenameOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.AntiDebugOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.PreservePublicOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.VerboseOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.NoLogoOption).ShouldBeTrue();
+        parseResult.GetValue(Program.LevelOption).ShouldBe("aggressive");
+        parseResult.GetValue(Program.StringEncryptOption).ShouldBeTrue();
+        parseResult.GetValue(Program.ControlFlowOption).ShouldBeTrue();
+        parseResult.GetValue(Program.RenameOption).ShouldBeTrue();
+        parseResult.GetValue(Program.AntiDebugOption).ShouldBeTrue();
+        parseResult.GetValue(Program.PreservePublicOption).ShouldBeTrue();
+        parseResult.GetValue(Program.VerboseOption).ShouldBeTrue();
+        parseResult.GetValue(Program.NoLogoOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -60,9 +60,9 @@ public class IntegrationParseTests : IDisposable
             $"\"{assembly1}\" \"{assembly2}\" -o \"{outputDir}\" --merge --internalize");
 
         parseResult.Errors.ShouldBeEmpty();
-        parseResult.GetValueForArgument(Program.InputArgument).Length.ShouldBe(2);
-        parseResult.GetValueForOption(Program.MergeOption).ShouldBeTrue();
-        parseResult.GetValueForOption(Program.InternalizeOption).ShouldBeTrue();
+        parseResult.GetRequiredValue(Program.InputArgument).Length.ShouldBe(2);
+        parseResult.GetValue(Program.MergeOption).ShouldBeTrue();
+        parseResult.GetValue(Program.InternalizeOption).ShouldBeTrue();
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class IntegrationParseTests : IDisposable
         var parseResult = rootCommand.Parse([assemblyPath, "-c", configPath]);
 
         parseResult.Errors.ShouldBeEmpty();
-        var config = parseResult.GetValueForOption(Program.ConfigOption);
+        var config = parseResult.GetValue(Program.ConfigOption);
         config.ShouldNotBeNull();
         config.Exists.ShouldBeTrue();
     }

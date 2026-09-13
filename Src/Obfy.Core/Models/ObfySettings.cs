@@ -729,7 +729,9 @@ public class IncrementalSettings
 }
 
 /// <summary>
-/// Selective IL virtualization for simple static int methods (no EH, no generics, arithmetic only).
+/// Selective IL virtualization for simple static int methods (no EH, no generics;
+/// ldc.i4, ldarg, ldloc/stloc, add/sub/mul, ceq/cgt/clt, ret, and signed branches;
+/// ≤8 int params, ≤16 int-sized locals). Unsigned compares are skipped.
 /// </summary>
 public class VirtualizationSettings
 {

@@ -28,7 +28,8 @@ namespace Obfy.Tests;
 /// </summary>
 public class EndToEndObfuscationTests
 {
-    private static string CompileToAssembly(string source, string dir, string assemblyName)
+    private static string CompileToAssembly(
+        string source, string dir, string assemblyName, OptimizationLevel optimization = OptimizationLevel.Debug)
     {
         var tree = CSharpSyntaxTree.ParseText(source);
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
@@ -40,7 +41,7 @@ public class EndToEndObfuscationTests
             assemblyName,
             new[] { tree },
             references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, optimizationLevel: optimization));
 
         var path = Path.Combine(dir, assemblyName + ".dll");
         var emit = compilation.Emit(path);
@@ -182,6 +183,24 @@ public class EndToEndObfuscationTests
         return path;
     }
 
+    private static bool CallsExecute(MethodDef method) =>
+        method.Body.Instructions.Any(i =>
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "Execute");
+
+    private static void AssertVmStub(ModuleDef module, string typeName, string methodName)
+    {
+        var method = module.Types.First(t => t.Name == typeName).FindMethod(methodName);
+        method.ShouldNotBeNull();
+        CallsExecute(method!).ShouldBeTrue($"{typeName}.{methodName} should call Execute");
+    }
+
+    private static void AssertNotVmStub(ModuleDef module, string typeName, string methodName)
+    {
+        var method = module.Types.First(t => t.Name == typeName).FindMethod(methodName);
+        method.ShouldNotBeNull();
+        CallsExecute(method!).ShouldBeFalse($"{typeName}.{methodName} should not call Execute");
+    }
+
     private static object? LoadAndInvoke(string assemblyPath, string typeName, string methodName, params object[] args)
     {
         var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
@@ -291,12 +310,41 @@ public class EndToEndObfuscationTests
                     return x * b;
                 }
 
+                public static int Mix(int a, int b)
+                {
+                    int x = a + 1;
+                    int y = b + 2;
+                    return x * y;
+                }
+
+                public static int Five(int a)
+                {
+                    int a0 = a, a1 = a0 + 1, a2 = a1 + 1, a3 = a2 + 1, a4 = a3 + 1;
+                    return a0 + a1 + a2 + a3 + a4;
+                }
+
                 public static int Pick(int a, int b)
                 {
                     if (a > 0)
                         return a + b;
                     return a - b;
                 }
+
+                public static int Eq(int a, int b) => a == b ? 1 : 0;
+                public static int Ne(int a, int b) => a != b ? 1 : 0;
+                public static int Lt(int a, int b) => a < b ? 1 : 0;
+                public static int Le(int a, int b) => a <= b ? 1 : 0;
+                public static int Gt(int a, int b) => a > b ? 1 : 0;
+                public static int Ge(int a, int b) => a >= b ? 1 : 0;
+
+                public static int IfNe(int a, int b)
+                {
+                    if (a != 0)
+                        return a + b;
+                    return b;
+                }
+
+                public static int Div(int a, int b) => a / b;
 
                 public static int Const() => 40 + 2;
             }
@@ -322,12 +370,100 @@ public class EndToEndObfuscationTests
 
             var result = await service.ObfuscateAsync(input, output, settings);
             result.Success.ShouldBeTrue(result.ErrorMessage);
-            result.Statistics.ProtectionsApplied.ShouldBeGreaterThanOrEqualTo(3);
+
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
+            {
+                loaded.Types.ShouldContain(t => t.Name == "<Vm>");
+                AssertVmStub(loaded, "Lib", "Scale");
+                AssertVmStub(loaded, "Lib", "Mix");
+                AssertVmStub(loaded, "Lib", "Five");
+                AssertVmStub(loaded, "Lib", "Pick");
+                AssertVmStub(loaded, "Lib", "Eq");
+                AssertVmStub(loaded, "Lib", "Lt");
+                AssertVmStub(loaded, "Lib", "Le");
+                AssertVmStub(loaded, "Lib", "Gt");
+                AssertVmStub(loaded, "Lib", "Ge");
+                AssertVmStub(loaded, "Lib", "Ne");
+                AssertVmStub(loaded, "Lib", "Const");
+                AssertNotVmStub(loaded, "Lib", "Div");
+            }
 
             LoadAndInvoke(output, "Lib", "Scale", 2, 3).ShouldBe(9);
+            LoadAndInvoke(output, "Lib", "Mix", 2, 3).ShouldBe(15);
+            LoadAndInvoke(output, "Lib", "Five", 1).ShouldBe(15);
             LoadAndInvoke(output, "Lib", "Pick", 4, 1).ShouldBe(5);
             LoadAndInvoke(output, "Lib", "Pick", -3, 1).ShouldBe(-4);
+            LoadAndInvoke(output, "Lib", "Pick", 0, 1).ShouldBe(-1);
+            LoadAndInvoke(output, "Lib", "Eq", 2, 2).ShouldBe(1);
+            LoadAndInvoke(output, "Lib", "Eq", 2, 3).ShouldBe(0);
+            LoadAndInvoke(output, "Lib", "Ne", 2, 3).ShouldBe(1);
+            LoadAndInvoke(output, "Lib", "Ne", 2, 2).ShouldBe(0);
+            LoadAndInvoke(output, "Lib", "Lt", 1, 2).ShouldBe(1);
+            LoadAndInvoke(output, "Lib", "Lt", 2, 2).ShouldBe(0);
+            LoadAndInvoke(output, "Lib", "Le", 2, 2).ShouldBe(1);
+            LoadAndInvoke(output, "Lib", "Le", 3, 2).ShouldBe(0);
+            LoadAndInvoke(output, "Lib", "Gt", 3, 2).ShouldBe(1);
+            LoadAndInvoke(output, "Lib", "Gt", 2, 2).ShouldBe(0);
+            LoadAndInvoke(output, "Lib", "Ge", 2, 2).ShouldBe(1);
+            LoadAndInvoke(output, "Lib", "Ge", 1, 2).ShouldBe(0);
+            LoadAndInvoke(output, "Lib", "IfNe", -3, 1).ShouldBe(-2);
+            LoadAndInvoke(output, "Lib", "IfNe", 0, 1).ShouldBe(1);
+            LoadAndInvoke(output, "Lib", "IfNe", 4, 1).ShouldBe(5);
+            LoadAndInvoke(output, "Lib", "Div", 8, 2).ShouldBe(4);
             LoadAndInvoke(output, "Lib", "Const").ShouldBe(42);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Virtualization_RunsReleaseBrtrueOnRealAssembly()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int IfZero(int a)
+                {
+                    if (a == 0)
+                        return 1;
+                    return 0;
+                }
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-vm3-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "Vm3Lib", OptimizationLevel.Release);
+            var output = Path.Combine(dir, "Vm3Lib.obf.dll");
+            var service = CreateService();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Virtualization = { Enabled = true }
+            };
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(input)))
+            {
+                var method = loaded.Types.First(t => t.Name == "Lib").FindMethod("IfZero");
+                method!.Body.Instructions.Any(i =>
+                    i.OpCode.Code is Code.Brtrue or Code.Brtrue_S)
+                    .ShouldBeTrue("Release if (a == 0) should emit brtrue");
+            }
+
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
+                AssertVmStub(loaded, "Lib", "IfZero");
+
+            LoadAndInvoke(output, "Lib", "IfZero", 0).ShouldBe(1);
+            LoadAndInvoke(output, "Lib", "IfZero", 4).ShouldBe(0);
+            LoadAndInvoke(output, "Lib", "IfZero", -1).ShouldBe(0);
         }
         finally
         {

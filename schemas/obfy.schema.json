@@ -252,7 +252,7 @@
     },
     "virtualization": {
       "type": "object",
-      "description": "Replace simple static int methods with a bytecode interpreter.",
+      "description": "Replace selected static int methods with a bytecode interpreter (ldc.i4, ldarg, ldloc/stloc, add/sub/mul, ceq/cgt/clt, signed branches; 0-8 int params, <=16 int locals; no EH/generics). Unsigned compares are skipped.",
       "additionalProperties": true,
       "properties": {
         "enabled": { "type": "boolean", "default": false },

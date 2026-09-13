@@ -9,7 +9,10 @@ namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
 /// Replaces simple static int methods with a bytecode interpreter stub.
-/// Supports ldc.i4, ldarg, ldloc/stloc, arithmetic, and conditional branches.
+/// Encodes ldc.i4, ldarg, ldloc/stloc, add/sub/mul, ceq/cgt/clt, ret,
+/// and br/brtrue/brfalse/blt/bgt/ble/bge/beq/bne (short forms included).
+/// Static int methods only; 0–8 int parameters, ≤16 int-sized locals; no EH or generics.
+/// Unsigned compare/branch opcodes are rejected so original IL is kept.
 /// </summary>
 public class VirtualizationObfuscator : IObfuscator
 {
@@ -49,6 +52,7 @@ public class VirtualizationObfuscator : IObfuscator
         var stats = new ObfuscationStatistics();
         var max = Math.Clamp(context.Settings.Virtualization.MaxMethods, 1, 256);
         var encoded = new List<(MethodDef Method, byte[] Code)>();
+        var truncated = false;
 
         try
         {
@@ -56,19 +60,46 @@ public class VirtualizationObfuscator : IObfuscator
             {
                 if (ObfuscatorHelpers.IsRuntimeHelper(type) || type.IsGlobalModuleType)
                     continue;
+                if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.All, context.Warnings))
+                    continue;
                 foreach (var method in type.Methods)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (encoded.Count >= max)
-                        break;
-                    if (!TryEncode(method, out var code))
+                    if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.All, context.Warnings))
                         continue;
+                    if (encoded.Count >= max)
+                    {
+                        if (IsCandidate(method))
+                            truncated = true;
+                        continue;
+                    }
+                    if (!TryEncode(method, out var code, out var skipReason))
+                    {
+                        if (skipReason is not null)
+                        {
+                            context.SkippedItems.Add(SkippedItem.UnsupportedMethod(method.FullName, skipReason));
+                            _logger.LogDebug("Virtualization skipped {Method}: {Reason}", method.FullName, skipReason);
+                        }
+                        continue;
+                    }
                     encoded.Add((method, code));
                 }
             }
 
+            if (truncated)
+            {
+                var warning = $"Virtualization: maxMethods={max} reached; further eligible methods were skipped.";
+                context.Warnings.Add(warning);
+                _logger.LogWarning("{Warning}", warning);
+            }
+
             if (encoded.Count == 0)
+            {
+                const string unused = "Virtualization was enabled but no eligible methods were encoded.";
+                context.Warnings.Add(unused);
+                _logger.LogWarning("{Warning}", unused);
                 return Task.FromResult(ObfuscationResult.Successful(stats));
+            }
 
             var execute = InjectVm(module, encoded);
             for (var i = 0; i < encoded.Count; i++)
@@ -78,16 +109,15 @@ public class VirtualizationObfuscator : IObfuscator
             _logger.LogInformation("Virtualized {Count} methods", encoded.Count);
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Virtualization failed");
             return Task.FromResult(ObfuscationResult.Failed($"Virtualization failed: {ex.Message}", ex));
         }
     }
 
-    private static bool TryEncode(MethodDef method, out byte[] code)
+    private static bool IsCandidate(MethodDef method)
     {
-        code = Array.Empty<byte>();
         if (!method.IsStatic || !method.HasBody || method.IsConstructor || method.HasGenericParameters)
             return false;
         if (method.Body.HasExceptionHandlers)
@@ -96,10 +126,37 @@ public class VirtualizationObfuscator : IObfuscator
             return false;
         if (method.MethodSig.Params.Any(p => p.ElementType != ElementType.I4))
             return false;
-        if (method.Parameters.Count > 8)
+        return method.Parameters.Count <= 8;
+    }
+
+    private static bool IsIntSized(TypeSig? type) =>
+        type?.ElementType is ElementType.I4 or ElementType.U4 or ElementType.Boolean
+            or ElementType.I1 or ElementType.U1 or ElementType.I2 or ElementType.U2
+            or ElementType.Char;
+
+    private static bool IsUnsignedCompare(Code codeName) =>
+        codeName is Code.Cgt_Un or Code.Clt_Un
+            or Code.Ble_Un or Code.Ble_Un_S
+            or Code.Bge_Un or Code.Bge_Un_S
+            or Code.Blt_Un or Code.Blt_Un_S
+            or Code.Bgt_Un or Code.Bgt_Un_S;
+
+    private static bool TryEncode(MethodDef method, out byte[] code, out string? skipReason)
+    {
+        code = Array.Empty<byte>();
+        skipReason = null;
+        if (!IsCandidate(method))
             return false;
         if (method.Body.Variables.Count > 16)
+        {
+            skipReason = "too many locals";
             return false;
+        }
+        if (method.Body.Variables.Any(v => !IsIntSized(v.Type)))
+        {
+            skipReason = "non-int local";
+            return false;
+        }
 
         var buffer = new List<byte>();
         var map = new Dictionary<Instruction, int>();
@@ -110,6 +167,11 @@ public class VirtualizationObfuscator : IObfuscator
             var codeName = instr.OpCode.Code;
             if (codeName is Code.Nop or Code.Conv_I4)
                 continue;
+            if (IsUnsignedCompare(codeName))
+            {
+                skipReason = "unsigned compare";
+                return false;
+            }
             if (TryReadLdcI4(instr, out var value))
             {
                 buffer.Add(OpLdcI4);
@@ -124,12 +186,22 @@ public class VirtualizationObfuscator : IObfuscator
             }
             if (TryReadLdloc(instr, out var loc))
             {
+                if (loc is < 0 or > 15)
+                {
+                    skipReason = "local index out of range";
+                    return false;
+                }
                 buffer.Add(OpLdloc);
                 buffer.Add((byte)loc);
                 continue;
             }
             if (TryReadStloc(instr, out loc))
             {
+                if (loc is < 0 or > 15)
+                {
+                    skipReason = "local index out of range";
+                    return false;
+                }
                 buffer.Add(OpStloc);
                 buffer.Add((byte)loc);
                 continue;
@@ -138,7 +210,10 @@ public class VirtualizationObfuscator : IObfuscator
             if (TryBranchOp(codeName, out var brOp))
             {
                 if (instr.Operand is not Instruction target)
+                {
+                    skipReason = "bad branch target";
                     return false;
+                }
                 buffer.Add(brOp);
                 branches.Add((buffer.Count, target));
                 buffer.Add(0);
@@ -153,25 +228,34 @@ public class VirtualizationObfuscator : IObfuscator
                 Code.Mul => OpMul,
                 Code.Ret => OpRet,
                 Code.Ceq => OpCeq,
-                Code.Cgt or Code.Cgt_Un => OpCgt,
-                Code.Clt or Code.Clt_Un => OpClt,
+                Code.Cgt => OpCgt,
+                Code.Clt => OpClt,
                 _ => (byte)0
             });
             if (buffer[^1] == 0)
+            {
+                skipReason = "unsupported opcode";
                 return false;
+            }
         }
 
         foreach (var (operandIndex, target) in branches)
         {
             if (!map.TryGetValue(target, out var dest))
+            {
+                skipReason = "bad branch target";
                 return false;
+            }
             var bytes = BitConverter.GetBytes((ushort)dest);
             buffer[operandIndex] = bytes[0];
             buffer[operandIndex + 1] = bytes[1];
         }
 
         if (buffer.Count == 0 || buffer[^1] != OpRet)
+        {
+            skipReason = "invalid bytecode";
             return false;
+        }
         code = buffer.ToArray();
         return true;
     }
@@ -183,10 +267,10 @@ public class VirtualizationObfuscator : IObfuscator
             Code.Br or Code.Br_S => OpBr,
             Code.Brtrue or Code.Brtrue_S => OpBrtrue,
             Code.Brfalse or Code.Brfalse_S => OpBrfalse,
-            Code.Ble or Code.Ble_S or Code.Ble_Un or Code.Ble_Un_S => OpBle,
-            Code.Bge or Code.Bge_S or Code.Bge_Un or Code.Bge_Un_S => OpBge,
-            Code.Blt or Code.Blt_S or Code.Blt_Un or Code.Blt_Un_S => OpBlt,
-            Code.Bgt or Code.Bgt_S or Code.Bgt_Un or Code.Bgt_Un_S => OpBgt,
+            Code.Ble or Code.Ble_S => OpBle,
+            Code.Bge or Code.Bge_S => OpBge,
+            Code.Blt or Code.Blt_S => OpBlt,
+            Code.Bgt or Code.Bgt_S => OpBgt,
             Code.Beq or Code.Beq_S => OpBeq,
             Code.Bne_Un or Code.Bne_Un_S => OpBne,
             _ => (byte)0
@@ -341,6 +425,7 @@ public class VirtualizationObfuscator : IObfuscator
         var sp = new Local(module.CorLibTypes.Int32);
         var op = new Local(module.CorLibTypes.Int32);
         var start = new Local(module.CorLibTypes.Int32);
+        var end = new Local(module.CorLibTypes.Int32);
         var vars = new Local(new SZArraySig(module.CorLibTypes.Int32));
         var tmp = new Local(module.CorLibTypes.Int32);
         body.Variables.Add(code);
@@ -349,8 +434,16 @@ public class VirtualizationObfuscator : IObfuscator
         body.Variables.Add(sp);
         body.Variables.Add(op);
         body.Variables.Add(start);
+        body.Variables.Add(end);
         body.Variables.Add(vars);
         body.Variables.Add(tmp);
+
+        var invalidOpCtor = new MemberRefUser(
+            module,
+            ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.String),
+            new TypeRefUser(module, "System", "InvalidOperationException", module.CorLibTypes.AssemblyRef));
+        var throwRange = Instruction.Create(OpCodes.Ldstr, "Obfy VM: branch out of range");
 
         var loop = Instruction.Create(OpCodes.Nop);
         var doLdc = Instruction.Create(OpCodes.Nop);
@@ -387,6 +480,27 @@ public class VirtualizationObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, sp));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, start));
+        var useCodeLen = Instruction.Create(OpCodes.Nop);
+        var haveEnd = Instruction.Create(OpCodes.Nop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, startsField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bge, useCodeLen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, startsField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, haveEnd));
+        body.Instructions.Add(useCodeLen);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, code));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(haveEnd);
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, end));
         body.Instructions.Add(Instruction.CreateLdcI4(16));
         body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Int32.ToTypeDefOrRef()));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, vars));
@@ -460,8 +574,9 @@ public class VirtualizationObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
         body.Instructions.Add(Instruction.CreateLdcI4(20));
         body.Instructions.Add(Instruction.Create(OpCodes.Beq, doClt));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "Obfy VM: invalid opcode"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newobj, invalidOpCtor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Throw));
 
         // ldc.i4
         body.Instructions.Add(doLdc);
@@ -583,6 +698,12 @@ public class VirtualizationObfuscator : IObfuscator
             body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, tmp));
             body.Instructions.Add(Instruction.Create(OpCodes.Add));
             body.Instructions.Add(Instruction.Create(OpCodes.Stloc, ip));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, start));
+            body.Instructions.Add(Instruction.Create(OpCodes.Blt, throwRange));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, end));
+            body.Instructions.Add(Instruction.Create(OpCodes.Bge, throwRange));
             body.Instructions.Add(Instruction.Create(OpCodes.Br, loop));
         }
 
@@ -679,13 +800,12 @@ public class VirtualizationObfuscator : IObfuscator
             body.Instructions.Add(skip);
         }
 
-        // skip VM-branch when the comparison is false
-        EmitCmp(doBlt, OpCodes.Clt, invert: false);
-        EmitCmp(doBgt, OpCodes.Cgt, invert: false);
-        EmitCmp(doBeq, OpCodes.Ceq, invert: false);
-        EmitCmp(doBge, OpCodes.Clt, invert: true);  // !(a < b)
-        EmitCmp(doBle, OpCodes.Cgt, invert: true);  // !(a > b)
-        EmitCmp(doBne, OpCodes.Ceq, invert: true);
+        EmitCmp(doBlt, OpCodes.Clt, invert: false); // a < b
+        EmitCmp(doBgt, OpCodes.Cgt, invert: false); // a > b
+        EmitCmp(doBeq, OpCodes.Ceq, invert: false); // a == b
+        EmitCmp(doBge, OpCodes.Clt, invert: true);  // a >= b via !(a < b)
+        EmitCmp(doBle, OpCodes.Cgt, invert: true);  // a <= b via !(a > b)
+        EmitCmp(doBne, OpCodes.Ceq, invert: true);  // a != b via !(a == b)
 
         body.Instructions.Add(doRet);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, stack));
@@ -695,8 +815,11 @@ public class VirtualizationObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_I4));
         body.Instructions.Add(Instruction.Create(OpCodes.Box, module.CorLibTypes.Int32.ToTypeDefOrRef()));
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.Instructions.Add(throwRange);
+        body.Instructions.Add(Instruction.Create(OpCodes.Newobj, invalidOpCtor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Throw));
         body.KeepOldMaxStack = true;
-        body.MaxStack = 8;
+        body.MaxStack = 16;
         body.UpdateInstructionOffsets();
         return method;
     }

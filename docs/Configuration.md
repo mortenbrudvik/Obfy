@@ -571,6 +571,14 @@ JSON/XML property attributes are excluded from renaming by default. Add extra se
 }
 ```
 
+## Virtualization (IL interpreter)
+
+`virtualization.enabled` is **off** in every preset. When true, Obfy replaces selected **static `int` methods** with a bytecode interpreter stub.
+
+Supported IL: `ldc.i4`, `ldarg`, `ldloc`/`stloc` (≤16 int-sized locals), `add`/`sub`/`mul`, `ceq`/`cgt`/`clt`, `ret`, and signed branches (`br`/`brtrue`/`brfalse`/`blt`/`bgt`/`ble`/`bge`/`beq`/`bne`). At most 8 `int` parameters; no exception handlers or generics.
+
+Unsigned compares (`cgt.un`, `blt.un`, …) are **skipped** so original IL is kept — encoding them as signed would miscompile `if (a != 0)` for negatives. Methods that cannot be encoded stay native and are reported as skipped. A warning is emitted when the feature is on but nothing was encoded, or when `maxMethods` truncates the set.
+
 ## Packing (managed launcher)
 
 `packing.enabled` is a delivery option, not a protection level. It is **off** in every preset.

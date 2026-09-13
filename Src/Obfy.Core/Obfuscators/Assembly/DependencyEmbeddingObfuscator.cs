@@ -157,7 +157,7 @@ public class DependencyEmbeddingObfuscator : IObfuscator
         var resolve = CreateResolveMethod(module);
         typeDef.Methods.Add(resolve);
 
-        var cctor = ObfuscatorHelpers.FindOrCreateModuleInitializer(module);
+        var cctor = ObfuscatorHelpers.FindOrCreateModuleInitializer(module, requireBody: true);
 
         var domain = new TypeRefUser(module, "System", "AppDomain", module.CorLibTypes.AssemblyRef);
         var handler = new TypeRefUser(module, "System", "ResolveEventHandler", module.CorLibTypes.AssemblyRef);

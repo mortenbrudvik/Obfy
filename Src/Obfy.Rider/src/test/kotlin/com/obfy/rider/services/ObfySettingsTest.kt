@@ -32,6 +32,7 @@ class ObfySettingsTest {
     fun toJson_aggressive_writesMethodEncryption() {
         val json = ObfySettings.forLevel(ObfuscationLevel.Aggressive).toJson()
         assertTrue(json.contains("\"methodEncryption\": true"))
+        assertTrue(json.contains("\"proxyExternalCalls\": false"))
     }
 
     @Test

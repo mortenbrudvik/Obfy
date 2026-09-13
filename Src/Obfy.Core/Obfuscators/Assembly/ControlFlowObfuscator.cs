@@ -48,7 +48,10 @@ public class ControlFlowObfuscator : IObfuscator
             {
                 var isHelper = ObfuscatorHelpers.IsRuntimeHelper(type);
                 if (!RuntimeInjection.ShouldFlattenControlFlow(context, type))
+                {
+                    _logger.LogDebug("Skipping control-flow flatten for {Type}", type.FullName);
                     continue;
+                }
                 if (!isHelper && !ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.ControlFlow, context.Warnings))
                     continue;
 

@@ -658,12 +658,13 @@ public class AssemblyObfuscatorTests
         var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
         var context = PipelineContext.ForAssembly(module, new ObfySettings
         {
-            SymbolRenaming = { Enabled = true, RenameTypes = true, Mode = NamingMode.Sequential }
+            SymbolRenaming = { Enabled = true, RenameTypes = true, RenameNamespaces = true, Mode = NamingMode.Sequential }
         });
 
         await obfuscator.ObfuscateAsync(context);
 
         typeDef.Name.String.ShouldNotBe("ObfySettings");
+        typeDef.Namespace.String.ShouldNotBe("Obfy.Core.Models");
     }
 
     #endregion

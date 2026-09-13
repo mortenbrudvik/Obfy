@@ -48,7 +48,7 @@ public class AntiDumpObfuscator : IObfuscator
             var wipe = antiDumpType.FindMethod("Wipe")
                 ?? throw new InvalidOperationException("Anti-dump wipe method was not injected.");
 
-            RuntimeInjection.PrependModuleInitializerCall(module, wipe, requireBody: true);
+            RuntimeInjection.PrependModuleInitializerCall(module, wipe);
             stats.ProtectionsApplied++;
 
             const string windowsWarning =

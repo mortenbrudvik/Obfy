@@ -140,7 +140,6 @@ public class SymbolRenamingObfuscator : IObfuscator
 
                 if (settings.RenameNamespaces &&
                     !string.IsNullOrEmpty(type.Namespace) &&
-                    type.Namespace != "Obfy.Core.Models" &&
                     !(settings.PreservePublicApi && type.IsPublic))
                 {
                     var originalNs = type.Namespace.String;
@@ -213,8 +212,8 @@ public class SymbolRenamingObfuscator : IObfuscator
             {
                 foreach (var type in module.GetTypes())
                 {
-                    // Respect the same type-level exclusions used for members above (runtime-injected
-                    // types, Obfy models, excluded namespaces/types).
+                    // Respect the same type-level skip as members (pinned attributes, helpers with
+                    // Rename = false, exclusions/inclusions).
                     if (ShouldSkipType(type, context, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
                         continue;
 
@@ -269,9 +268,6 @@ public class SymbolRenamingObfuscator : IObfuscator
         ICollection<string> warnings)
     {
         if (!RuntimeInjection.ShouldRename(context, type))
-            return true;
-
-        if (ObfuscatorHelpers.IsPinnedAttributeType(type))
             return true;
 
         if (type.IsGlobalModuleType)

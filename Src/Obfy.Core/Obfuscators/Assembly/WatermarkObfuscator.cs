@@ -54,6 +54,11 @@ public class WatermarkObfuscator : IObfuscator
             }
 
             var assembly = module.Assembly ?? throw new InvalidOperationException("Module has no assembly.");
+            var existingType = module.Find($"{AttributeNamespace}.{AttributeTypeName}", isReflectionName: false)
+                ?? module.Types.FirstOrDefault(t => t.Name == AttributeTypeName);
+            if (existingType != null)
+                RuntimeInjection.Register(context, existingType, RuntimeHelperOptions.Pinned);
+
             var existing = assembly.CustomAttributes
                 .FirstOrDefault(a => a.AttributeType.Name == AttributeTypeName);
             if (existing != null)
@@ -81,8 +86,6 @@ public class WatermarkObfuscator : IObfuscator
                 return Task.FromResult(ObfuscationResult.Successful(stats));
             }
 
-            var existingType = module.Find($"{AttributeNamespace}.{AttributeTypeName}", isReflectionName: false)
-                ?? module.Types.FirstOrDefault(t => t.Name == AttributeTypeName);
             MethodDef ctor;
             if (existingType != null)
             {
@@ -122,7 +125,7 @@ public class WatermarkObfuscator : IObfuscator
                 ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Stfld, idField));
                 ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
                 attrType.Methods.Add(ctor);
-                RuntimeInjection.AddType(context, attrType, new RuntimeHelperOptions { Rename = false, FlattenControlFlow = false });
+                RuntimeInjection.AddType(context, attrType, RuntimeHelperOptions.Pinned);
             }
 
             var attr = new CustomAttribute(ctor);

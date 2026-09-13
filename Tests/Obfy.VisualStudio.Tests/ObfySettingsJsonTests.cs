@@ -80,6 +80,7 @@ public class ObfySettingsJsonTests
     {
         var json = ObfySettingsJson.Serialize(ObfySettings.ForLevel(ObfuscationLevel.Aggressive));
         json.ShouldContain("\"methodEncryption\": true");
+        json.ShouldContain("\"proxyExternalCalls\": false");
         var loaded = ObfySettingsJson.Parse(json);
         loaded.MethodEncryption.ShouldBeTrue();
         loaded.ProxyExternalCalls.ShouldBeFalse();

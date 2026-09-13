@@ -71,8 +71,13 @@ public class PipelineContext
 
     /// <summary>
     /// Injected <c>Obfy.Runtime</c> helper types and their flatten/rename/encrypt policy.
+    /// Lookups walk <see cref="TypeDef.DeclaringType"/>. Unregistered <c>Obfy.Runtime</c> types
+    /// (including nested types of helpers) do not flatten or encrypt IL. Mutate only through
+    /// <see cref="RuntimeInjection.Register"/>.
     /// </summary>
-    public Dictionary<TypeDef, RuntimeHelperOptions> InjectedHelpers { get; } = new();
+    public IReadOnlyDictionary<TypeDef, RuntimeHelperOptions> InjectedHelpers => InjectedHelperMap;
+
+    internal Dictionary<TypeDef, RuntimeHelperOptions> InjectedHelperMap { get; } = new();
 
     /// <summary>
     /// Gets or sets the input file path.

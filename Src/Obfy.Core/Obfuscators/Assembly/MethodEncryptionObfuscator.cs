@@ -9,8 +9,9 @@ namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
 /// XOR-encrypts method IL in the PE image. A module initializer decrypts the IL in memory
-/// before JIT using VirtualProtect. Windows-only; generics, helpers, and NativeAOT are skipped
-/// or unsupported. Decrypt failures leave ciphertext — they do not restore plaintext IL.
+/// before JIT using VirtualProtect. Windows-only; generics and NativeAOT are skipped
+/// or unsupported. Helpers are skipped unless registered with <c>EncryptIl = true</c>.
+/// Decrypt failures leave ciphertext — they do not restore plaintext IL.
 /// </summary>
 public class MethodEncryptionObfuscator : IObfuscator
 {

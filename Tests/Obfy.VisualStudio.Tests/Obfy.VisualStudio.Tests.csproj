@@ -17,6 +17,7 @@
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ObfyCliLocator.cs" Link="Linked\ObfyCliLocator.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\InPlaceOutputCopy.cs" Link="Linked\InPlaceOutputCopy.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ProjectSupport.cs" Link="Linked\ProjectSupport.cs" />
+    <Compile Include="..\..\Src\Obfy.VisualStudio\UI\SettingsDialogViewModel.cs" Link="Linked\SettingsDialogViewModel.cs" />
   </ItemGroup>
 
   <ItemGroup>

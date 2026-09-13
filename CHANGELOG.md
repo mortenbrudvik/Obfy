@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VS 2022 extension SDK/BuildTools stay on 17.14 (not VSSDK 18)
 
 ### Fixed
-- VS/Rider Aggressive `obfy.json` now writes `protection.methodEncryption: true` (Core/CLI already did; plugins omitted it because config files skip `ApplyLevel`)
-- Symbol renaming no longer special-cases the `Obfy.Core.Models` namespace in target assemblies
+- VS/Rider Aggressive `obfy.json` now writes `protection.methodEncryption: true` and `proxyExternalCalls: false` (Core/CLI already did; plugins omitted them because config files skip `ApplyLevel`). Rider's settings dialog round-trips those flags on save.
+- Symbol renaming no longer special-cases the `Obfy.Core.Models` namespace in target assemblies (types, members, and the namespace string)
 - VS and Rider save/post-build toggle merge into existing `obfy.json` instead of rewriting a subset (Core-only keys such as virtualization, packing, and exclusions are kept)
 - In-place IDE overwrite copies packing sidecars and `.obfycache`, fails if temp output is missing, stages then replaces the live assembly, and deletes the temp dir in `finally`
 - Incremental cache write I/O errors are a warning, not a failed run; `Obfy.Core` is versioned `1.3.0` so upgrade keys actually change
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Virtualization.MaxMethods` out of range fails instead of clamping
 
 ### Added
-- `RuntimeInjection` / `RuntimeHelperOptions`: injected `Obfy.Runtime` helpers register flatten/rename/encrypt-IL policy instead of relying on the VM type name
+- `RuntimeInjection` / `RuntimeHelperOptions`: injected `Obfy.Runtime` helpers register flatten/rename/encrypt-IL policy. Unregistered `Obfy.Runtime` types (including nested types) do not flatten or encrypt IL; CFG no longer keys off the `<Vm>` type name
 - CLI `Program.Main` tests for dry-run, missing file, malformed JSON, and unknown `--level`
 - Anti-tamper child-process test that a tampered PE FailFasts (payload does not run)
 - Pipeline fail-closed tests (Failed result, throw, cancel, target-type filter)

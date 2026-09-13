@@ -41,6 +41,64 @@ public class ObfuscatorHelpersTests
     }
 
     [Fact]
+    public void LooksLikeXamlBindable_ViewModelSuffix_IsTrue()
+    {
+        var type = NewType("MainViewModel");
+        ObfuscatorHelpers.LooksLikeXamlBindable(type).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void LooksLikeXamlBindable_ViewSuffix_IsTrueIncludingOverview()
+    {
+        ObfuscatorHelpers.LooksLikeXamlBindable(NewType("DetailsView")).ShouldBeTrue();
+        ObfuscatorHelpers.LooksLikeXamlBindable(NewType("Overview")).ShouldBeTrue();
+        ObfuscatorHelpers.LooksLikeXamlBindable(NewType("Preview")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void LooksLikeXamlBindable_INotifyPropertyChanged_IsTrue()
+    {
+        var module = new ModuleDefUser("t");
+        var type = new TypeDefUser("App", "BoardState", module.CorLibTypes.Object.TypeDefOrRef);
+        type.Interfaces.Add(new InterfaceImplUser(
+            new TypeRefUser(module, "System.ComponentModel", "INotifyPropertyChanged")));
+        ObfuscatorHelpers.LooksLikeXamlBindable(type).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void LooksLikeXamlBindable_DependencyPropertyField_IsTrue()
+    {
+        var module = new ModuleDefUser("t");
+        var type = new TypeDefUser("App", "TitleBox", module.CorLibTypes.Object.TypeDefOrRef);
+        var dp = new TypeRefUser(module, "System.Windows", "DependencyProperty");
+        type.Fields.Add(new FieldDefUser("TitleProperty", new FieldSig(new ClassSig(dp))));
+        ObfuscatorHelpers.LooksLikeXamlBindable(type).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void LooksLikeXamlBindable_ResolvableDependencyObjectBase_IsTrue()
+    {
+        var module = new ModuleDefUser("t");
+        var depObj = new TypeDefUser("System.Windows", "DependencyObject", module.CorLibTypes.Object.TypeDefOrRef);
+        module.Types.Add(depObj);
+        var type = new TypeDefUser("App", "Shell", depObj);
+        ObfuscatorHelpers.LooksLikeXamlBindable(type).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void LooksLikeXamlBindable_PlainPublicDto_IsFalse()
+    {
+        ObfuscatorHelpers.LooksLikeXamlBindable(NewType("CustomerDto")).ShouldBeFalse();
+        ObfuscatorHelpers.LooksLikeXamlBindable(NewType("MainWindow")).ShouldBeFalse();
+    }
+
+    private static TypeDef NewType(string name)
+    {
+        var module = new ModuleDefUser("t");
+        return new TypeDefUser("App", name, module.CorLibTypes.Object.TypeDefOrRef);
+    }
+
+    [Fact]
     public void IsPinnedAttributeType_MatchesDecoysInGlobalNamespaceOnly()
     {
         var confused = new TypeDefUser(

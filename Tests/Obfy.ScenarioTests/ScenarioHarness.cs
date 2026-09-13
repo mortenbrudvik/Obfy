@@ -45,9 +45,12 @@ internal static class ScenarioHarness
         return dest;
     }
 
-    public static void DotnetBuild(string projectOrSln, string configuration = "Release")
+    public static void DotnetBuild(string projectOrSln, string configuration = "Release", string extraArgs = "")
     {
-        var result = RunProcess("dotnet", $"build \"{projectOrSln}\" -c {configuration} --nologo", Path.GetDirectoryName(projectOrSln)!, 120_000);
+        var args = $"build \"{projectOrSln}\" -c {configuration} --nologo";
+        if (!string.IsNullOrWhiteSpace(extraArgs))
+            args += " " + extraArgs;
+        var result = RunProcess("dotnet", args, Path.GetDirectoryName(projectOrSln)!, 60_000);
         result.ExitCode.ShouldBe(0, result.StdOut + Environment.NewLine + result.StdErr);
     }
 
@@ -101,9 +104,12 @@ internal static class ScenarioHarness
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        start.Environment["DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER"] = "1";
 
         using var process = Process.Start(start);
         process.ShouldNotBeNull();
@@ -131,10 +137,61 @@ internal static class ScenarioHarness
         foreach (var dir in Directory.GetDirectories(source))
         {
             var name = Path.GetFileName(dir);
-            if (name is "bin" or "obj" or ".vs")
+            if (name.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals(".vs", StringComparison.OrdinalIgnoreCase))
                 continue;
             CopyDirectory(dir, Path.Combine(dest, name));
         }
+    }
+
+    public static void CopySidecars(string fromDir, string toDir, string? skipAssembly = null)
+    {
+        var destFull = Path.GetFullPath(toDir);
+        var subdirs = Directory.GetDirectories(fromDir)
+            .Where(d => !Path.GetFullPath(d).Equals(destFull, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        Directory.CreateDirectory(toDir);
+        foreach (var file in Directory.GetFiles(fromDir))
+        {
+            if (skipAssembly != null &&
+                string.Equals(Path.GetFileName(file), skipAssembly, StringComparison.OrdinalIgnoreCase))
+                continue;
+            File.Copy(file, Path.Combine(toDir, Path.GetFileName(file)), overwrite: true);
+        }
+
+        foreach (var dir in subdirs)
+        {
+            var name = Path.GetFileName(dir);
+            if (name.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals(".vs", StringComparison.OrdinalIgnoreCase))
+                continue;
+            CopyDirectory(dir, Path.Combine(toDir, name));
+        }
+    }
+
+    public static void TryDelete(string dir)
+    {
+        try { Directory.Delete(dir, recursive: true); } catch { /* ignore */ }
+    }
+
+    public static string FindObfyCli()
+    {
+        var candidate = Path.Combine(AppContext.BaseDirectory, "obfy.dll");
+        if (File.Exists(candidate))
+            return candidate;
+
+        var repo = FindRepoRoot();
+        foreach (var configuration in new[] { "Release", "Debug" })
+        {
+            var path = Path.Combine(repo, "Src", "Obfy.Console", "bin", configuration, "net10.0", "obfy.dll");
+            if (File.Exists(path))
+                return path;
+        }
+
+        throw new FileNotFoundException("obfy.dll not found. Build Obfy.Console first.");
     }
 
     public readonly record struct ProcessResult(int ExitCode, string StdOut, string StdErr);

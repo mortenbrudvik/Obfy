@@ -155,8 +155,8 @@ public static class ObfuscatorHelpers
     public static bool LooksLikeXamlBindable(TypeDef type)
     {
         var name = type.Name.String;
-        if (name.EndsWith("ViewModel", StringComparison.Ordinal) ||
-            name.EndsWith("View", StringComparison.Ordinal))
+        if (name.EndsWith("ViewModel", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith("View", StringComparison.OrdinalIgnoreCase))
             return true;
 
         if (type.Interfaces.Any(i => i.Interface.Name.Contains("INotifyPropertyChanged")))

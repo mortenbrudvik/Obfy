@@ -1,0 +1,9 @@
+{
+  "level": "standard",
+  "stringEncryption": { "enabled": true },
+  "symbolRenaming": {
+    "enabled": true,
+    "mode": "sequential",
+    "preservePublicApi": true
+  }
+}

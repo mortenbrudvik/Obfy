@@ -94,7 +94,7 @@ Build fixtures with `dotnet build -c Release` in a temp copy (or `OutputPath` un
 | TR-12 | **Promote `examples/BasicConsoleApp` and `examples/LibraryWithPublicApi` to CI.** Build, obfuscate with their `obfy.json`, run / invoke. Fail if the example recipe bitrots. | S | High | ✅ Done (`ExampleScenarioTests`) |
 | TR-13 | **Merge happy path on real assemblies.** Two Roslyn- or SDK-built DLLs, `IAssemblyMerger.MergeAsync` **must** succeed, merged output loads and runs. Replace `AssemblyMerger_ReturnsCorrectAssemblyCount_OnSuccess` accepting failure. | S | Medium | Blocked — `MergeScenarioTests` exists; ILRepack.NETStandard 2.0.4 throws `NotSupportedException` on a net10 host |
 | TR-14 | **CLI dry-run is a real handler test.** Stop using `SetupMainHandler` no-op for tests that claim integration. Keep parse-only tests separate. | S | Medium | ✅ Done |
-| TR-23 | Unit tests for `LooksLikeXamlBindable`: `*ViewModel` suffix, `INotifyPropertyChanged`, `DependencyProperty` field, `DependencyObject` base, `*View` false-positive (`Overview`/`Preview`), negative case (plain public DTO). Does not need the SDK harness. | S | Medium | Open |
+| TR-23 | Unit tests for `LooksLikeXamlBindable`: `*ViewModel` suffix, `INotifyPropertyChanged`, `DependencyProperty` field, `DependencyObject` base, `*View` false-positive (`Overview`/`Preview`), negative case (plain public DTO). Does not need the SDK harness. | S | Medium | ✅ Done (`ObfuscatorHelpersTests`; suffix match is ordinal-ignore-case) |
 
 **Done when:** a WPF solution and the two examples are obfuscated and executed on CI; merge success is asserted; `docs/Testing.md` describes how to add a fixture.
 
@@ -115,11 +115,11 @@ Only after Phase 1 is green. Same harness, more fixtures.
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
-| TR-20 | Console app + class library solution (no WPF). Default rename on internals, public API preserved on the library. | S | Medium | Open |
-| TR-21 | WinForms exe smoke (one form, one event handler). | S | Low | Open |
-| TR-22 | `examples/MsBuildIntegration` AfterBuild in CI (`dotnet build -c Release` with `obfy` on PATH or `$(ObfyCli)`). | S | Medium | Open |
-| TR-24 | Satellite / `*.resources.dll` skip: one fixture or a built satellite; confirm default exclude leaves it unobfuscated and the parent still loads. | S | Low | Open |
-| TR-25 | Split CLI “integration” file: parse vs process. Rename tests that only parse so the file list stops over-claiming. | S | Low | Open |
+| TR-20 | Console app + class library solution (no WPF). Default rename on internals, public API preserved on the library. | S | Medium | ✅ Done (`ConsoleSolutionTests`) |
+| TR-21 | WinForms exe smoke (one form, one event handler). | S | Low | ✅ Done (`WinFormsAppTests`) |
+| TR-22 | `examples/MsBuildIntegration` AfterBuild in CI (`dotnet build -c Release` with `obfy` on PATH or `$(ObfyCli)`). | S | Medium | ✅ Done (`MsBuildIntegrationTests`; CLI now reads camelCase `level`) |
+| TR-24 | Satellite / `*.resources.dll` skip: one fixture or a built satellite; confirm default exclude leaves it unobfuscated and the parent still loads. | S | Low | ✅ Done (`SatelliteTests`) |
+| TR-25 | Split CLI “integration” file: parse vs process. Rename tests that only parse so the file list stops over-claiming. | S | Low | ✅ Done (`IntegrationParseTests` / `IntegrationProcessTests`) |
 
 **Out of Phase 2 on purpose:** ASP.NET, worker services, mixed-mode, netframework TFMs. Add those when a bug or a claimed platform requires them.
 

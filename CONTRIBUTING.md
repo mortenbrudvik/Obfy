@@ -117,10 +117,10 @@ We have five test projects:
 
 | Project | Purpose | Tests |
 |---------|---------|-------|
-| `Obfy.Tests` | Core obfuscation logic | 381 |
+| `Obfy.Tests` | Core obfuscation logic | 397 |
 | `Obfy.Console.Tests` | CLI argument parsing, help output | 117 |
 | `Obfy.UI.Tests` | ViewModel logic and commands | 132 |
-| `Obfy.ScenarioTests` | SDK fixtures (examples, WPF app, WPF+library) | 4 |
+| `Obfy.ScenarioTests` | SDK fixtures (examples, WPF, console, WinForms, MSBuild) | 9 |
 | `Obfy.UI.AutomationTests` | Locator unit tests + FlaUI live window (`Category=UI`, local) | 24 |
 
 ```bash

@@ -7,7 +7,7 @@ namespace Obfy.VisualStudio.Services;
 /// <summary>
 /// Adapter that saves Core nested obfy.json and loads both nested (Core) and flat (legacy VS) files.
 /// </summary>
-internal static class ObfySettingsJson
+public static class ObfySettingsJson
 {
     public static ObfySettings Parse(string json)
     {

@@ -129,39 +129,11 @@ public static class BuildEvents
             var projectPath = await project.GetAttributeAsync("FullPath");
             var projectDir = Path.GetDirectoryName(projectPath);
 
-            if (!string.IsNullOrEmpty(projectDir) && !string.IsNullOrEmpty(outputPath) && !string.IsNullOrEmpty(outputFileName))
-            {
-                var fullPath = Path.Combine(projectDir, outputPath, outputFileName);
-                if (File.Exists(fullPath))
-                {
-                    return fullPath;
-                }
-            }
-
-            // Fallback: common paths
-            if (!string.IsNullOrEmpty(projectDir))
-            {
-                var projectName = project.Name;
-                var possiblePaths = new[]
-                {
-                    Path.Combine(projectDir, "bin", "Release", "net10.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Release", "net9.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Release", "net8.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Debug", "net10.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Debug", "net9.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Debug", "net8.0", $"{projectName}.dll"),
-                };
-
-                foreach (var path in possiblePaths)
-                {
-                    if (File.Exists(path))
-                    {
-                        return path;
-                    }
-                }
-            }
-
-            return null;
+            return OutputAssemblyLocator.ResolveExisting(
+                projectDir,
+                outputPath,
+                outputFileName,
+                project.Name);
         }
         catch
         {

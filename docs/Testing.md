@@ -8,12 +8,13 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 400 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
+| Obfy.Tests | 405 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
 | Obfy.Console.Tests | 117 | CLI parsing (`IntegrationParseTests`) and process (`IntegrationProcessTests`) |
 | Obfy.UI.Tests | 132 | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
-| Obfy.UI.AutomationTests | 24 | 6 locator unit tests (CI) + 18 FlaUI live-window tests (`Category=UI`, local) |
+| Obfy.UI.AutomationTests | 25 | 6 locator unit tests (CI) + 19 FlaUI live-window tests (`Category=UI`, local) |
 | Obfy.ScenarioTests | 14 | 10 default SDK fixtures (Unity stub included) + 3 `Category=Platform` + 1 skipped merge |
-| **Total** | **665** | Default CI (`Category!=UI&Category!=Platform`) |
+| Obfy.VisualStudio.Tests | 9 | VS settings JSON, CLI args, output-assembly locator (no VS hive) |
+| **Total** | **679** | Default CI (`Category!=UI&Category!=Platform`) |
 
 ## Test Stack
 
@@ -139,7 +140,17 @@ Locator unit tests in the same project (no trait) resolve Debug vs Release `Obfy
 
 Run FlaUI: `dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI`
 
+`ObfuscateFlowTests` launches `ObfyUI.exe <dll> -o <dir>` and clicks Obfuscate (no native file picker).
+
 Location: `Tests/Obfy.UI.AutomationTests/`
+
+### Obfy.VisualStudio.Tests
+
+Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBuilder`, `OutputAssemblyLocator`). Linked from `Src/Obfy.VisualStudio/Services` so CI does not load the VSIX SDK.
+
+Location: `Tests/Obfy.VisualStudio.Tests/`
+
+Rider JVM tests live in `Src/Obfy.Rider/src/test/kotlin` (`./gradlew test`; JDK 21 + Rider SDK).
 
 ### Obfy.ScenarioTests (SDK fixtures)
 

@@ -1,0 +1,93 @@
+using System;
+using System.IO;
+using System.Text;
+
+namespace Obfy.VisualStudio.Services;
+
+/// <summary>
+/// Builds <c>obfy</c> CLI arguments and parses summary lines from CLI output.
+/// </summary>
+public static class CliArgumentBuilder
+{
+    public static string Build(
+        string assemblyPath,
+        string? outputPath,
+        ObfySettings settings,
+        bool generateSymbolMap = false)
+    {
+        var sb = new StringBuilder();
+        sb.Append($"\"{assemblyPath}\"");
+
+        if (!string.IsNullOrEmpty(outputPath))
+        {
+            var outputDir = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrEmpty(outputDir))
+                sb.Append($" -o \"{outputDir}\"");
+        }
+
+        sb.Append($" -l {settings.Level.ToString().ToLowerInvariant()}");
+
+        if (settings.Level == ObfuscationLevel.Custom)
+        {
+            if (!settings.StringEncryption) sb.Append(" --no-string-encryption");
+            if (!settings.SymbolRenaming) sb.Append(" --no-symbol-renaming");
+            if (settings.ControlFlow) sb.Append(" --control-flow");
+            else sb.Append(" --no-control-flow");
+            if (settings.AntiDebug) sb.Append(" --anti-debug");
+            if (settings.AntiDump) sb.Append(" --anti-dump");
+            if (settings.ReferenceProxy) sb.Append(" --reference-proxy");
+            if (settings.AntiTamper) sb.Append(" --anti-tamper");
+            if (settings.AntiDecompiler) sb.Append(" --anti-decompiler");
+            if (settings.ConstantEncryption) sb.Append(" --encrypt-constants");
+            if (settings.ResourceEncryption) sb.Append(" --encrypt-resources");
+        }
+
+        if (generateSymbolMap)
+        {
+            var assemblyDir = Path.GetDirectoryName(assemblyPath);
+            var assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
+            if (!string.IsNullOrEmpty(assemblyDir) && !string.IsNullOrEmpty(assemblyName))
+            {
+                var mapPath = Path.Combine(assemblyDir, assemblyName + ".map.json");
+                sb.Append($" --map \"{mapPath}\"");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    public static ObfuscationStatistics ParseStatistics(string output)
+    {
+        var stats = new ObfuscationStatistics();
+
+        foreach (var line in output.Split('\n'))
+        {
+            if (line.IndexOf("strings encrypted", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var parts = line.Split(':');
+                if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var count))
+                {
+                    stats.StringsEncrypted = count;
+                    stats.TotalTransformations += count;
+                }
+            }
+            else if (line.IndexOf("symbols renamed", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var parts = line.Split(':');
+                if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var count))
+                {
+                    stats.SymbolsRenamed = count;
+                    stats.TotalTransformations += count;
+                }
+            }
+            else if (line.IndexOf("transformations", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var parts = line.Split(':');
+                if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var count))
+                    stats.TotalTransformations = count;
+            }
+        }
+
+        return stats;
+    }
+}

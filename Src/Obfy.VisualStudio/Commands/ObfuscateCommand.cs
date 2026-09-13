@@ -134,41 +134,11 @@ internal sealed class ObfuscateCommand : BaseCommand<ObfuscateCommand>
             var outputFileName = await project.GetAttributeAsync("OutputFileName");
             var projectDir = Path.GetDirectoryName(await project.GetAttributeAsync("FullPath"));
 
-            if (!string.IsNullOrEmpty(projectDir) && !string.IsNullOrEmpty(outputPath) && !string.IsNullOrEmpty(outputFileName))
-            {
-                var fullOutputPath = Path.Combine(projectDir, outputPath, outputFileName);
-                if (File.Exists(fullOutputPath))
-                {
-                    return fullOutputPath;
-                }
-            }
-
-            // Fallback: look for common output paths
-            if (!string.IsNullOrEmpty(projectDir))
-            {
-                var projectName = project.Name;
-                var possiblePaths = new[]
-                {
-                    Path.Combine(projectDir, "bin", "Release", "net10.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Release", "net9.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Release", "net8.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Debug", "net10.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Debug", "net9.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Debug", "net8.0", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Release", $"{projectName}.dll"),
-                    Path.Combine(projectDir, "bin", "Debug", $"{projectName}.dll"),
-                };
-
-                foreach (var path in possiblePaths)
-                {
-                    if (File.Exists(path))
-                    {
-                        return path;
-                    }
-                }
-            }
-
-            return null;
+            return OutputAssemblyLocator.ResolveExisting(
+                projectDir,
+                outputPath,
+                outputFileName,
+                project.Name);
         }
         catch
         {

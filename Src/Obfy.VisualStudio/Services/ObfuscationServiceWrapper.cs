@@ -5,117 +5,9 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Obfy.VisualStudio;
 
 namespace Obfy.VisualStudio.Services;
-
-/// <summary>
-/// Result of an obfuscation operation
-/// </summary>
-public class ObfuscationResult
-{
-    public bool Success { get; set; }
-    public string? ErrorMessage { get; set; }
-    public string? OutputPath { get; set; }
-    public ObfuscationStatistics Statistics { get; set; } = new();
-    public TimeSpan ElapsedTime { get; set; }
-
-    public static ObfuscationResult Failure(string inputPath, string message, Exception? ex = null)
-    {
-        return new ObfuscationResult
-        {
-            Success = false,
-            ErrorMessage = message,
-            OutputPath = inputPath
-        };
-    }
-}
-
-/// <summary>
-/// Statistics from obfuscation
-/// </summary>
-public class ObfuscationStatistics
-{
-    public int TotalTransformations { get; set; }
-    public int StringsEncrypted { get; set; }
-    public int SymbolsRenamed { get; set; }
-}
-
-/// <summary>
-/// Settings for obfuscation level
-/// </summary>
-public enum ObfuscationLevel
-{
-    Minimal,
-    Standard,
-    Aggressive,
-    Custom
-}
-
-/// <summary>
-/// Obfuscation settings model (subset for VS extension)
-/// </summary>
-public class ObfySettings
-{
-    public ObfuscationLevel Level { get; set; } = ObfuscationLevel.Standard;
-    public bool PostBuildEnabled { get; set; }
-    public bool AntiDebug { get; set; }
-    public bool AntiDump { get; set; }
-    public bool ReferenceProxy { get; set; }
-    public bool AntiTamper { get; set; }
-    public bool AntiDecompiler { get; set; }
-    public bool StringEncryption { get; set; } = true;
-    public bool ControlFlow { get; set; }
-    public bool SymbolRenaming { get; set; } = true;
-    public bool ConstantEncryption { get; set; }
-    public bool ResourceEncryption { get; set; }
-
-    public static ObfySettings ForLevel(ObfuscationLevel level)
-    {
-        var settings = new ObfySettings { Level = level };
-
-        switch (level)
-        {
-            case ObfuscationLevel.Minimal:
-                settings.StringEncryption = false;
-                settings.SymbolRenaming = true;
-                settings.ControlFlow = false;
-                settings.AntiDebug = false;
-                settings.AntiDump = false;
-                settings.ReferenceProxy = false;
-                settings.AntiTamper = false;
-                settings.AntiDecompiler = false;
-                settings.ConstantEncryption = false;
-                settings.ResourceEncryption = false;
-                break;
-            case ObfuscationLevel.Standard:
-                settings.StringEncryption = true;
-                settings.SymbolRenaming = true;
-                settings.ControlFlow = false;
-                settings.AntiDebug = false;
-                settings.AntiDump = false;
-                settings.ReferenceProxy = false;
-                settings.AntiTamper = false;
-                settings.AntiDecompiler = false;
-                settings.ConstantEncryption = false;
-                settings.ResourceEncryption = false;
-                break;
-            case ObfuscationLevel.Aggressive:
-                settings.StringEncryption = true;
-                settings.SymbolRenaming = true;
-                settings.ControlFlow = true;
-                settings.AntiDebug = true;
-                settings.AntiDump = true;
-                settings.ReferenceProxy = true;
-                settings.AntiTamper = true;
-                settings.AntiDecompiler = true;
-                settings.ConstantEncryption = true;
-                settings.ResourceEncryption = true;
-                break;
-        }
-
-        return settings;
-    }
-}
 
 /// <summary>
 /// Wrapper that invokes the Obfy CLI to perform obfuscation
@@ -148,8 +40,8 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
                     "Obfy CLI not found. Please ensure Obfy is installed and in PATH.");
             }
 
-            // Build command line arguments
-            var args = BuildArguments(assemblyPath, outputPath, settings);
+            var generateMap = ObfyPackage.Options?.GenerateSymbolMap == true;
+            var args = CliArgumentBuilder.Build(assemblyPath, outputPath, settings, generateMap);
 
             _outputService.Info($"Executing: obfy {args}");
 
@@ -227,56 +119,6 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         return null;
     }
 
-    private static string BuildArguments(string assemblyPath, string? outputPath, ObfySettings settings)
-    {
-        var sb = new StringBuilder();
-
-        // Input file (quoted for spaces)
-        sb.Append($"\"{assemblyPath}\"");
-
-        // Output directory
-        if (!string.IsNullOrEmpty(outputPath))
-        {
-            var outputDir = Path.GetDirectoryName(outputPath);
-            if (!string.IsNullOrEmpty(outputDir))
-            {
-                sb.Append($" -o \"{outputDir}\"");
-            }
-        }
-
-        // Level
-        sb.Append($" -l {settings.Level.ToString().ToLowerInvariant()}");
-
-        // Individual toggles for custom level
-        if (settings.Level == ObfuscationLevel.Custom)
-        {
-            if (!settings.StringEncryption) sb.Append(" --no-string-encryption");
-            if (!settings.SymbolRenaming) sb.Append(" --no-symbol-renaming");
-            if (settings.ControlFlow) sb.Append(" --control-flow");
-            else sb.Append(" --no-control-flow");
-            if (settings.AntiDebug) sb.Append(" --anti-debug");
-            if (settings.AntiDump) sb.Append(" --anti-dump");
-            if (settings.ReferenceProxy) sb.Append(" --reference-proxy");
-            if (settings.AntiTamper) sb.Append(" --anti-tamper");
-            if (settings.AntiDecompiler) sb.Append(" --anti-decompiler");
-            if (settings.ConstantEncryption) sb.Append(" --encrypt-constants");
-            if (settings.ResourceEncryption) sb.Append(" --encrypt-resources");
-        }
-
-        if (ObfyPackage.Options?.GenerateSymbolMap == true)
-        {
-            var assemblyDir = Path.GetDirectoryName(assemblyPath);
-            var assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
-            if (!string.IsNullOrEmpty(assemblyDir) && !string.IsNullOrEmpty(assemblyName))
-            {
-                var mapPath = Path.Combine(assemblyDir, assemblyName + ".map.json");
-                sb.Append($" --map \"{mapPath}\"");
-            }
-        }
-
-        return sb.ToString();
-    }
-
     private async Task<ObfuscationResult> RunCliAsync(string cliPath, string args, CancellationToken cancellationToken)
     {
         var result = new ObfuscationResult();
@@ -350,48 +192,9 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         else
         {
             // Try to parse statistics from output
-            result.Statistics = ParseStatistics(outputBuilder.ToString());
+            result.Statistics = CliArgumentBuilder.ParseStatistics(outputBuilder.ToString());
         }
 
         return result;
-    }
-
-    private static ObfuscationStatistics ParseStatistics(string output)
-    {
-        var stats = new ObfuscationStatistics();
-
-        // Simple parsing of CLI output for statistics
-        // Example: "Strings encrypted: 42"
-        foreach (var line in output.Split('\n'))
-        {
-            if (line.Contains("strings encrypted", StringComparison.OrdinalIgnoreCase))
-            {
-                var parts = line.Split(':');
-                if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var count))
-                {
-                    stats.StringsEncrypted = count;
-                    stats.TotalTransformations += count;
-                }
-            }
-            else if (line.Contains("symbols renamed", StringComparison.OrdinalIgnoreCase))
-            {
-                var parts = line.Split(':');
-                if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var count))
-                {
-                    stats.SymbolsRenamed = count;
-                    stats.TotalTransformations += count;
-                }
-            }
-            else if (line.Contains("transformations", StringComparison.OrdinalIgnoreCase))
-            {
-                var parts = line.Split(':');
-                if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var count))
-                {
-                    stats.TotalTransformations = count;
-                }
-            }
-        }
-
-        return stats;
     }
 }

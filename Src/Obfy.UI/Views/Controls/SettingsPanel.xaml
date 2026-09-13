@@ -9,7 +9,8 @@
              d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}">
     <UserControl.Resources>
         <DataTemplate x:Key="EnumDescriptionTemplate">
-            <TextBlock Text="{Binding Converter={StaticResource EnumDescriptionConverter}}"/>
+            <ui:TextBlock Text="{Binding Converter={StaticResource EnumDescriptionConverter}}"
+                          Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
         </DataTemplate>
     </UserControl.Resources>
 
@@ -21,7 +22,8 @@
                   ItemTemplate="{StaticResource EnumDescriptionTemplate}"
                   Margin="0,0,0,16"/>
 
-        <TextBlock Text="Runtime profile" FontWeight="SemiBold" Margin="0,0,0,8"/>
+        <ui:TextBlock Text="Runtime profile" FontWeight="SemiBold" Margin="0,0,0,8"
+                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
         <ComboBox AutomationProperties.AutomationId="RuntimeProfileSelector"
                   AutomationProperties.Name="Runtime profile"
                   ItemsSource="{Binding AvailableRuntimeProfiles}"
@@ -35,12 +37,14 @@
                                Content="Enabled" IsChecked="{Binding StringEncryptionEnabled}"/>
                 <StackPanel Visibility="{Binding StringEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
-                    <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
+                    <ui:TextBlock Text="Algorithm" Margin="0,0,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ComboBox AutomationProperties.Name="String encryption algorithm"
                               ItemsSource="{Binding AvailableAlgorithms}"
                               SelectedItem="{Binding StringEncryptionAlgorithm}"
                               ItemTemplate="{StaticResource EnumDescriptionTemplate}"/>
-                    <TextBlock Text="Min string length" Margin="0,12,0,4"/>
+                    <ui:TextBlock Text="Min string length" Margin="0,12,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ui:NumberBox AutomationProperties.Name="Min string length"
                                   Value="{Binding MinStringLength}" Minimum="1" Maximum="100"
                                   SpinButtonPlacementMode="Compact"/>
@@ -54,23 +58,26 @@
                                Content="Enabled" IsChecked="{Binding ConstantEncryptionEnabled}"/>
                 <StackPanel Visibility="{Binding ConstantEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
-                    <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
+                    <ui:TextBlock Text="Algorithm" Margin="0,0,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ComboBox AutomationProperties.Name="Constant encryption algorithm"
                               ItemsSource="{Binding AvailableAlgorithms}"
                               SelectedItem="{Binding ConstantEncryptionAlgorithm}"
                               ItemTemplate="{StaticResource EnumDescriptionTemplate}"/>
 
-                    <TextBlock Text="Types to Encrypt" FontWeight="SemiBold" Margin="0,12,0,8"/>
+                    <ui:TextBlock Text="Types to Encrypt" FontWeight="SemiBold" Margin="0,12,0,8"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <CheckBox Content="Integers (int)" IsChecked="{Binding EncryptIntegers}"/>
                     <CheckBox Content="Longs (long)" IsChecked="{Binding EncryptLongs}"/>
                     <CheckBox Content="Floats (float)" IsChecked="{Binding EncryptFloats}"/>
                     <CheckBox Content="Doubles (double)" IsChecked="{Binding EncryptDoubles}"/>
 
-                    <TextBlock Text="Integer threshold" Margin="0,12,0,4"/>
+                    <ui:TextBlock Text="Integer threshold" Margin="0,12,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ui:NumberBox AutomationProperties.Name="Integer threshold"
                                   Value="{Binding IntegerThreshold}" Minimum="0" Maximum="1000"
                                   SpinButtonPlacementMode="Compact"/>
-                    <TextBlock Text="Skip integers with |value| &lt; threshold" FontSize="11"
+                    <ui:TextBlock Text="Skip integers with |value| &lt; threshold" FontSize="11"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,8"/>
 
                     <CheckBox Content="Skip common floats (0, 1, -1)" IsChecked="{Binding SkipCommonFloats}"/>
@@ -85,12 +92,14 @@
                                Content="Enabled" IsChecked="{Binding ControlFlowEnabled}"/>
                 <StackPanel Visibility="{Binding ControlFlowEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
-                    <TextBlock Text="Mode" Margin="0,0,0,4"/>
+                    <ui:TextBlock Text="Mode" Margin="0,0,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ComboBox AutomationProperties.Name="Control flow mode"
                               ItemsSource="{Binding AvailableModes}"
                               SelectedItem="{Binding ControlFlowMode}"
                               ItemTemplate="{StaticResource EnumDescriptionTemplate}"/>
-                    <TextBlock Text="{Binding ControlFlowIntensity, StringFormat='Intensity: {0}%'}" Margin="0,12,0,4"/>
+                    <ui:TextBlock Text="{Binding ControlFlowIntensity, StringFormat='Intensity: {0}%'}" Margin="0,12,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <Slider AutomationProperties.Name="Control flow intensity"
                             Value="{Binding ControlFlowIntensity}" Minimum="0" Maximum="100"/>
                 </StackPanel>
@@ -103,7 +112,8 @@
                                Content="Enabled" IsChecked="{Binding SymbolRenamingEnabled}"/>
                 <StackPanel Visibility="{Binding SymbolRenamingEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
-                    <TextBlock Text="Naming Mode" Margin="0,0,0,4"/>
+                    <ui:TextBlock Text="Naming Mode" Margin="0,0,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ComboBox AutomationProperties.Name="Naming mode"
                               ItemsSource="{Binding AvailableNamingModes}"
                               SelectedItem="{Binding NamingMode}"
@@ -143,11 +153,13 @@
                     <CheckBox AutomationProperties.AutomationId="AddDecoyAttributesCheck"
                               Content="Add decoy ConfusedBy/Dotfuscator attributes"
                               IsChecked="{Binding AddDecoyAttributes}"/>
-                    <TextBlock Text="Junk types" Margin="0,8,0,4"/>
+                    <ui:TextBlock Text="Junk types" Margin="0,8,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ui:NumberBox AutomationProperties.Name="Junk type count"
                                   Value="{Binding JunkTypeCount}" Minimum="0" Maximum="50"
                                   SpinButtonPlacementMode="Compact"/>
-                    <TextBlock Text="Junk methods per type" Margin="0,8,0,4"/>
+                    <ui:TextBlock Text="Junk methods per type" Margin="0,8,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ui:NumberBox AutomationProperties.Name="Junk methods per type"
                                   Value="{Binding JunkMethodsPerType}" Minimum="0" Maximum="20"
                                   SpinButtonPlacementMode="Compact"/>
@@ -178,7 +190,8 @@
                                Content="Enabled" IsChecked="{Binding WatermarkEnabled}"/>
                 <StackPanel Visibility="{Binding WatermarkEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
-                    <TextBlock Text="Customer / build id" Margin="0,0,0,4"/>
+                    <ui:TextBlock Text="Customer / build id" Margin="0,0,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ui:TextBox AutomationProperties.AutomationId="WatermarkIdBox"
                                 AutomationProperties.Name="Watermark id"
                                 Text="{Binding WatermarkId, UpdateSourceTrigger=PropertyChanged}"
@@ -202,15 +215,17 @@
                                Content="Enabled" IsChecked="{Binding SigningEnabled}"/>
                 <StackPanel Visibility="{Binding SigningEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
-                    <TextBlock Text="Key file (.snk / .pfx)" Margin="0,0,0,4"/>
+                    <ui:TextBlock Text="Key file (.snk / .pfx)" Margin="0,0,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ui:TextBox AutomationProperties.Name="Signing key file"
                                 Text="{Binding SigningKeyFile, UpdateSourceTrigger=PropertyChanged}"
                                 PlaceholderText="path to .snk or .pfx"/>
-                    <TextBlock Text="PFX password environment variable" Margin="0,12,0,4"/>
+                    <ui:TextBlock Text="PFX password environment variable" Margin="0,12,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ui:TextBox AutomationProperties.Name="Signing password environment variable"
                                 Text="{Binding SigningPasswordEnvironmentVariable, UpdateSourceTrigger=PropertyChanged}"
                                 PlaceholderText="e.g. OBFY_PFX_PASSWORD"/>
-                    <TextBlock Text="Required for .pfx/.p12. Unused for .snk."
+                    <ui:TextBlock Text="Required for .pfx/.p12. Unused for .snk."
                                FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,4,0,0"/>
                 </StackPanel>
             </StackPanel>
@@ -222,7 +237,8 @@
                                Content="Enabled" IsChecked="{Binding ResourceEncryptionEnabled}"/>
                 <StackPanel Visibility="{Binding ResourceEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
-                    <TextBlock Text="Algorithm" Margin="0,0,0,4"/>
+                    <ui:TextBlock Text="Algorithm" Margin="0,0,0,4"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ComboBox AutomationProperties.Name="Resource encryption algorithm"
                               ItemsSource="{Binding AvailableAlgorithms}"
                               SelectedItem="{Binding ResourceAlgorithm}"
@@ -247,7 +263,8 @@
 
         <ui:CardExpander Header="Exclusions" Icon="{ui:SymbolIcon DismissCircle24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
-                <TextBlock Text="Namespaces" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ui:TextBlock Text="Namespaces" FontWeight="SemiBold" Margin="0,0,0,4"
+                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -270,7 +287,8 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                                <ui:TextBlock Text="{Binding}" VerticalAlignment="Center"
+                                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                 <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Dismiss24}"
                                           AutomationProperties.Name="Remove excluded namespace"
                                           Command="{Binding DataContext.RemoveExcludedNamespaceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -280,7 +298,8 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <TextBlock Text="Types" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ui:TextBlock Text="Types" FontWeight="SemiBold" Margin="0,0,0,4"
+                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -303,7 +322,8 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                                <ui:TextBlock Text="{Binding}" VerticalAlignment="Center"
+                                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                 <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Dismiss24}"
                                           AutomationProperties.Name="Remove excluded type"
                                           Command="{Binding DataContext.RemoveExcludedTypeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -313,7 +333,8 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <TextBlock Text="Methods" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ui:TextBlock Text="Methods" FontWeight="SemiBold" Margin="0,0,0,4"
+                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -336,7 +357,8 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                                <ui:TextBlock Text="{Binding}" VerticalAlignment="Center"
+                                              Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                 <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Dismiss24}"
                                           AutomationProperties.Name="Remove excluded method"
                                           Command="{Binding DataContext.RemoveExcludedMethodCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"

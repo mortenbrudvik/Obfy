@@ -26,7 +26,8 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel>
-                    <ui:TextBlock Text="Obfuscation Results" FontTypography="BodyStrong" FontSize="14"/>
+                    <ui:TextBlock Text="Obfuscation Results" FontTypography="BodyStrong" FontSize="14"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <ui:TextBlock AutomationProperties.AutomationId="ElapsedTimeText"
                               Text="{Binding ElapsedTime, StringFormat='Completed in {0:mm\\:ss\\.fff}'}"
                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11"/>
@@ -53,23 +54,28 @@
             <WrapPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
                     <ui:TextBlock Text="Strings: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                    <ui:TextBlock Text="{Binding Statistics.StringsEncrypted}" FontWeight="SemiBold"/>
+                    <ui:TextBlock Text="{Binding Statistics.StringsEncrypted}" FontWeight="SemiBold"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
                     <ui:TextBlock Text="Types: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                    <ui:TextBlock Text="{Binding Statistics.TypesRenamed}" FontWeight="SemiBold"/>
+                    <ui:TextBlock Text="{Binding Statistics.TypesRenamed}" FontWeight="SemiBold"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
                     <ui:TextBlock Text="Methods: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                    <ui:TextBlock Text="{Binding Statistics.MethodsRenamed}" FontWeight="SemiBold"/>
+                    <ui:TextBlock Text="{Binding Statistics.MethodsRenamed}" FontWeight="SemiBold"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
                     <ui:TextBlock Text="Fields: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                    <ui:TextBlock Text="{Binding Statistics.FieldsRenamed}" FontWeight="SemiBold"/>
+                    <ui:TextBlock Text="{Binding Statistics.FieldsRenamed}" FontWeight="SemiBold"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
                     <ui:TextBlock Text="Control Flow: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                    <ui:TextBlock Text="{Binding Statistics.MethodsControlFlowObfuscated}" FontWeight="SemiBold"/>
+                    <ui:TextBlock Text="{Binding Statistics.MethodsControlFlowObfuscated}" FontWeight="SemiBold"
+                                  Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <ui:TextBlock Text="Total: " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
@@ -122,8 +128,10 @@
                             </Grid.ColumnDefinitions>
 
                             <ui:SymbolIcon Grid.Column="0" Symbol="{Binding SymbolType, Converter={StaticResource SymbolTypeToIconConverter}}"
-                                          Margin="0,0,8,0" FontSize="14"/>
-                            <ui:TextBlock Grid.Column="1" Text="{Binding OriginalName}" TextTrimming="CharacterEllipsis"/>
+                                          Margin="0,0,8,0" FontSize="14"
+                                          Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            <ui:TextBlock Grid.Column="1" Text="{Binding OriginalName}" TextTrimming="CharacterEllipsis"
+                                          Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                             <ui:TextBlock Grid.Column="2" Text=" -> " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                             <ui:TextBlock Grid.Column="3" Text="{Binding ObfuscatedName}"
                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
@@ -152,6 +160,8 @@
                              AcceptsReturn="True"
                              BorderThickness="0"
                              Background="Transparent"
+                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                             CaretBrush="{DynamicResource TextFillColorPrimaryBrush}"
                              Visibility="{Binding HasPreview, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                 </Grid>
             </TabItem>

@@ -346,6 +346,24 @@ public class Program
             || extension.Equals(".fsproj", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Two or more existing assemblies, with no solution/project/source inputs, are a closed set
+    /// (same as dropping a solution). <c>--merge</c> is handled separately.
+    /// </summary>
+    internal static bool ShouldUseLooseClosedSet(IReadOnlyList<FileInfo> inputs)
+    {
+        if (inputs.Count < 2)
+            return false;
+
+        foreach (var input in inputs)
+        {
+            if (IsSolutionOrProject(input.FullName) || IsSourceFile(input.FullName))
+                return false;
+        }
+
+        return inputs.Count(static i => IsAssemblyFile(i.FullName) && File.Exists(i.FullName)) >= 2;
+    }
+
     private static bool IsSolutionFile(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -597,6 +615,12 @@ public class Program
         {
             anyFailed = await RunMergeObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun).ConfigureAwait(false);
         }
+        else if (ShouldUseLooseClosedSet(inputs))
+        {
+            return await RunLooseClosedSetAsync(
+                inputs, output, settings, mapFile, reportFile, dryRun, preservePublic,
+                service, reportService, cancellationToken).ConfigureAwait(false);
+        }
         else
         {
             anyFailed = await RunStandardObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun).ConfigureAwait(false);
@@ -821,6 +845,88 @@ public class Program
             return 1;
         }
 
+        AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
+        return 0;
+    }
+
+    private static async Task<int> RunLooseClosedSetAsync(
+        FileInfo[] inputs,
+        DirectoryInfo? output,
+        ObfySettings settings,
+        FileInfo? mapFile,
+        FileInfo? reportFile,
+        bool dryRun,
+        bool preservePublic,
+        IObfuscationService service,
+        IReportService reportService,
+        CancellationToken cancellationToken)
+    {
+        var present = inputs.Where(static i => IsAssemblyFile(i.FullName) && File.Exists(i.FullName)).ToList();
+        var missing = inputs.Where(static i => IsAssemblyFile(i.FullName) && !File.Exists(i.FullName)).ToList();
+        foreach (var file in missing)
+            AnsiConsole.MarkupLine($"[red]File not found: {Markup.Escape(file.FullName)}[/]");
+
+        var entries = present.Select(f => new ProjectProtectionEntry
+        {
+            ProjectPath = f.FullName,
+            ProjectName = Path.GetFileNameWithoutExtension(f.Name),
+            OutputPath = f.FullName,
+            SkipReason = Obfy.Core.Models.Solution.SkipReason.None,
+            Hints = new ProjectSettingsHints()
+        }).ToList();
+
+        var session = new ProtectionSession
+        {
+            SourcePath = present[0].FullName,
+            Entries = entries
+        };
+
+        PrintSessionPlan(session, [], missing, preservePublic);
+
+        var closedSetInputs = present.Select(f => new ClosedSetInput
+        {
+            AssemblyPath = f.FullName,
+            Hints = new ProjectSettingsHints()
+        }).ToList();
+
+        if (dryRun)
+            return 0;
+
+        var outputDir = output?.FullName;
+        if (string.IsNullOrEmpty(outputDir))
+        {
+            var firstDir = Path.GetDirectoryName(Path.GetFullPath(present[0].FullName))
+                ?? Directory.GetCurrentDirectory();
+            outputDir = Path.Combine(firstDir, "obfy-out");
+            AnsiConsole.MarkupLine($"[cyan]Output directory:[/] {Markup.Escape(outputDir)}");
+        }
+
+        var result = await service.ObfuscateClosedSetAsync(
+            closedSetInputs, outputDir, settings, forcePreservePublic: preservePublic, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!result.Success)
+        {
+            AnsiConsole.MarkupLine(
+                $"[red]{Markup.Escape(result.ErrorMessage ?? "Closed-set obfuscation failed.")}[/]");
+            foreach (var failure in result.LoadFailures)
+                AnsiConsole.MarkupLine($"[yellow]Failed to load {Markup.Escape(failure)}[/]");
+            foreach (var module in result.ModuleResults.Where(static m => !m.Success))
+                DisplayError(Path.GetFileName(module.InputPath) ?? "module", module);
+            return 1;
+        }
+
+        foreach (var module in result.ModuleResults)
+        {
+            var name = Path.GetFileName(module.OutputPath ?? module.InputPath) ?? "module";
+            DisplaySuccess(name, module);
+        }
+
+        var reportSource = result.ModuleResults.Count > 0 ? result.ModuleResults[0] : null;
+        await WriteMapAndReportAsync(mapFile, reportFile, result.SymbolMap, reportSource, settings, service, reportService)
+            .ConfigureAwait(false);
+
+        AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
         return 0;
     }

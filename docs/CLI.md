@@ -139,7 +139,7 @@ obfy MyApp.dll -l minimal -o output/
 ### Multiple Files
 
 ```bash
-# Obfuscate multiple assemblies
+# Two or more assemblies are a closed set (in-solution public APIs can be renamed together)
 obfy MyApp.dll MyLibrary.dll -o output/
 
 # Obfuscate several assemblies (pass each path; Obfy does not expand globs)

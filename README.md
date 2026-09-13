@@ -8,6 +8,8 @@
 
 Obfy helps protect your .NET applications from reverse engineering by applying multiple obfuscation techniques including string encryption, control flow obfuscation, symbol renaming, anti-debugging, and metadata removal.
 
+![Obfy desktop application](docs/images/ui-overview.png)
+
 ## Why Obfy?
 
 - **Easy to Use** - Single command to obfuscate your assemblies
@@ -57,7 +59,12 @@ Obfy also includes a modern WPF desktop application with Fluent Design:
 ```bash
 # Run the UI
 dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
+
+# Open with files already loaded
+dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -- MyApp.dll -o output/
 ```
+
+![Obfy with assemblies loaded](docs/images/ui-ready.png)
 
 **Features:**
 - Three-panel layout (Settings, Files, Output)
@@ -65,6 +72,8 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
 - Level presets with expandable advanced settings
 - Real-time progress and color-coded output
 - Results visualization with symbol map export
+
+![Obfuscation results and symbol map](docs/images/ui-results.png)
 
 ### Visual Studio Extension
 

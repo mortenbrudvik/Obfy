@@ -117,7 +117,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 | QT-04 | UI automation tests | P3 | High | Low | ✅ Done (local FlaUI; `Category=UI`, skipped in CI) |
 | QT-05 | Aggressive pipeline e2e (compile → run) | P0 | Medium | High | ✅ Done (unreleased) |
 | QT-06 | Decompiler-resistance fixtures | P0 | Medium | High | ✅ Done |
-| QT-07 | Scenario / SDK project tests | P1 | Medium | High | ✅ Done (Phase 1 — [Testing-Roadmap.md](Testing-Roadmap.md)) |
+| QT-07 | Scenario / SDK project tests | P1 | Medium | High | ✅ Done (Phases 1–5 — [Testing-Roadmap.md](Testing-Roadmap.md)) |
 
 ---
 
@@ -131,17 +131,17 @@ Ship the work already on main: anti-dump, method encryption, reference proxy, he
 
 `Src/Obfy.VSCode` validates `obfy.json` and matches CLI `Error:` / `⚠` lines. Remaining: a TaskProvider, marketplace listing, and docs in the README install path.
 
-### Testing: scenario coverage
+### Testing: remaining coverage gaps
 
-Engine unit/e2e tests are in place (`QT-01`, `QT-02`, `QT-05`, `QT-06`). FlaUI is local-only (`QT-04`, `Category=UI`). Coverage CI is wired (`QT-03`) but not confirmed green on GitHub Actions (`TR-03`). Missing: real SDK projects (WPF app + class library solutions) and platform compile → obfuscate → run jobs. Plan: [Testing-Roadmap.md](Testing-Roadmap.md) (`TR-*`). Product tracker: `QT-07`.
+Engine + SDK fixtures (WPF, console, WinForms, examples, merge, Unity stub) run on default CI. FlaUI is local-only (`QT-04`, `Category=UI`). Coverage CI is wired (`QT-03`). Platform job is weekly (Blazor WASM, NativeAOT, MAUI Windows when the workload is present). Remaining: Unity Development Player, MAUI iOS/Android, VS hive / Rider UI. Plan: [Testing-Roadmap.md](Testing-Roadmap.md).
 
 ### PS-01 / PS-02 / PS-03: real platform tests
 
-Recipes exist (`examples/unity`, `blazor`, `maui`). Do not claim first-class Unity/MAUI/Blazor support until there are compile → obfuscate → run projects (Unity Development Player, MAUI iOS/Android without method encryption, published Blazor `_framework` DLLs). Those jobs are Phase 3 in the testing roadmap (`TR-30`–`TR-33`). `TR-32` is a CI-feasible MAUI Windows subset of `PS-02`; iOS/Android remain a later platform job.
+`TR-30`–`TR-33` landed: published Blazor `_framework` DLLs, NativeAOT obfuscate-then-publish, MAUI Windows (obfuscates the Windows TFM; does not launch the app), Unity stub in default CI. Do not claim first-class Unity/MAUI/Blazor support until a Unity Development Player and MAUI iOS/Android jobs exist.
 
 ### PS-04: NativeAOT beyond gating
 
-`runtimeProfile: NativeAot` already disables `VirtualProtect` / anti-dump / AssemblyResolve. Remaining: prove rename + strings + control flow + in-module proxies on a `PublishAot` app.
+`runtimeProfile: NativeAot` already disables `VirtualProtect` / anti-dump / AssemblyResolve. `NativeAotTests` obfuscates then `PublishAot`s and runs the exe (strings + run). Remaining: assert control-flow / in-module proxies on that native output.
 
 ### PF-09 remaining: native packer
 

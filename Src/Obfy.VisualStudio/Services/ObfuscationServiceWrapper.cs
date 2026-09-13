@@ -63,7 +63,7 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         }
         catch (Exception ex)
         {
-            _outputService.Error($"CLI execution failed: {ex.Message}");
+            _outputService.Error($"CLI execution failed: {ex}");
             return ObfuscationResult.Failure(assemblyPath, ex.Message, ex);
         }
     }
@@ -121,27 +121,26 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        // Wait for process to complete
-        await Task.Run(() =>
+        using (cancellationToken.Register(() =>
         {
-            while (!process.WaitForExit(100))
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    try
-                    {
-                        process.Kill();
-                    }
-                    catch (Win32Exception)
-                    {
-                    }
-                    catch (InvalidOperationException)
-                    {
-                    }
-                    throw new OperationCanceledException();
-                }
+                if (!process.HasExited)
+                    process.Kill();
             }
-        }, cancellationToken);
+            catch (Win32Exception ex)
+            {
+                _outputService.Warning($"Could not stop Obfy CLI: {ex.Message}");
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }))
+        {
+            await Task.Run(() => process.WaitForExit(), CancellationToken.None).ConfigureAwait(false);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         result.Success = process.ExitCode == 0;
 

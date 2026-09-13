@@ -631,7 +631,7 @@ Verifies assembly integrity at runtime by computing and comparing cryptographic 
    - Reads the assembly file from disk (`Assembly.Location`, then `Environment.ProcessPath`)
    - Recomputes the whole-file hash with the hash slot zeroed
    - Compares with the stored expected hash
-   - Exits if mismatch is detected. Memory-only / empty-path loads still skip the check.
+   - Calls `Environment.FailFast` if the hash is missing or mismatches (IO/crypto failures in `Verify` also FailFast). Memory-only / empty-path loads still skip the check.
 
 **Two-Pass Process:**
 

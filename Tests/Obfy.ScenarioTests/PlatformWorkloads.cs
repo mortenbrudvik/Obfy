@@ -1,12 +1,16 @@
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+
 namespace Obfy.ScenarioTests;
 
 internal static class PlatformWorkloads
 {
     private static readonly Lazy<string> WorkloadList = new(ReadWorkloadList);
     private static readonly string DotnetRoot = FindDotnetRoot();
+    private static readonly Regex MauiWorkloadId = new(@"\bmaui(-[a-z]+)?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static bool HasMaui() =>
-        WorkloadList.Value.Contains("maui", StringComparison.OrdinalIgnoreCase);
+        MauiWorkloadId.IsMatch(WorkloadList.Value);
 
     public static bool HasBlazorWasmSdk()
     {
@@ -18,7 +22,12 @@ internal static class PlatformWorkloads
     }
 
     public static string CurrentWindowsRid() =>
-        Environment.Is64BitProcess ? "win-x64" : "win-x86";
+        RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.Arm64 => "win-arm64",
+            Architecture.X86 => "win-x86",
+            _ => "win-x64"
+        };
 
     private static string ReadWorkloadList()
     {

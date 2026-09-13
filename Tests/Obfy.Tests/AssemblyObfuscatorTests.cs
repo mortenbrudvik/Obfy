@@ -3846,6 +3846,10 @@ public class AssemblyObfuscatorTests
             i.Operand is IMethod m && m.Name == "get_ProcessPath");
         usesProcessPath.ShouldBeTrue();
         verify.IsPublic.ShouldBeFalse();
+        verify.Body.Instructions.Any(i => i.Operand is IMethod m && m.Name == "FailFast")
+            .ShouldBeTrue("Verify must FailFast on hash mismatch");
+        verify.Body.HasExceptionHandlers.ShouldBeTrue(
+            "Verify must FailFast when ReadAllBytes/hash throws, not skip later checks");
     }
 
     [Fact]

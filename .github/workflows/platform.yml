@@ -31,4 +31,5 @@ jobs:
 
     - name: Platform tests
       run: dotnet test --no-build -c Release --filter "Category=Platform" --nologo
-      # Blazor WASM and NativeAOT run here. MAUI Windows runs when the workload install above succeeded.
+      # Blazor WASM skips at discovery if the BlazorWebAssembly SDK is missing.
+      # NativeAOT always runs. MAUI Windows runs when the workload install above succeeded.

@@ -147,8 +147,8 @@ public static class ObfuscatorHelpers
     }
 
     /// <summary>
-    /// Heuristic for XAML-bindable types: name ends with ViewModel or View (also matches
-    /// Overview/Preview), an interface name contains INotifyPropertyChanged, a field type is
+    /// Heuristic for XAML-bindable types: name ends with ViewModel or View (ordinal-ignore-case,
+    /// so Overview/Preview and mixed-case suffixes still match), an interface name contains INotifyPropertyChanged, a field type is
     /// DependencyProperty, or a resolvable base name contains DependencyObject. Framework WPF
     /// bases often fail <c>ResolveTypeDef()</c> and fall through to the suffix checks.
     /// </summary>

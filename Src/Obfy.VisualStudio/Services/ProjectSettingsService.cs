@@ -61,7 +61,8 @@ public class ProjectSettingsService : IProjectSettingsService
     public async Task SaveSettingsToDirectoryAsync(string projectDirectory, ObfySettings settings)
     {
         var filePath = GetSettingsFilePath(projectDirectory);
-        var json = ObfySettingsJson.Serialize(settings);
+        string? existing = File.Exists(filePath) ? await ReadFileAsync(filePath) : null;
+        var json = ObfySettingsJson.Serialize(settings, existing);
         await WriteFileAsync(filePath, json);
     }
 

@@ -50,7 +50,12 @@ public class VirtualizationObfuscator : IObfuscator
     {
         var module = context.RequireModule();
         var stats = new ObfuscationStatistics();
-        var max = Math.Clamp(context.Settings.Virtualization.MaxMethods, 1, 256);
+        var max = context.Settings.Virtualization.MaxMethods;
+        if (max is < 1 or > 256)
+        {
+            return Task.FromResult(ObfuscationResult.Failed(
+                $"Virtualization.MaxMethods must be 1-256 (got {max})."));
+        }
         var encoded = new List<(MethodDef Method, byte[] Code)>();
         var truncated = false;
 

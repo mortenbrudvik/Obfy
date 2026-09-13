@@ -9,9 +9,11 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.task.ProjectTaskListener
 import com.intellij.task.ProjectTaskManager
+import com.intellij.openapi.client.ClientProjectSession
+import com.jetbrains.rd.protocol.SolutionExtListener
 import com.jetbrains.rd.util.lifetime.Lifetime
-import com.jetbrains.rdclient.daemon.SolutionExtListener
-import com.jetbrains.rdclient.engine.ClientProjectSession
+import com.jetbrains.rd.util.reactive.advise
+import com.jetbrains.rd.util.reactive.viewNotNull
 import com.jetbrains.rider.model.BuildModel
 import com.jetbrains.rider.model.BuildResultKind
 import com.obfy.rider.services.AssemblyLocator

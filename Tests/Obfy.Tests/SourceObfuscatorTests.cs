@@ -74,6 +74,8 @@ public class SourceObfuscatorTests
         var newSource = context.Compilation!.SyntaxTrees.First().ToString();
         newSource.ShouldNotContain("Hello ");
         newSource.ShouldContain("__ObfyStringDecryptor");
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Test", "Greet", "Ada").ShouldBe("Hello Ada world");
     }
 
     [Fact]
@@ -317,6 +319,8 @@ public class SourceObfuscatorTests
 
         var newSource = context.Compilation!.SyntaxTrees.First().ToString();
         newSource.ShouldNotContain(@"@""C:\Users\Test\Documents""");
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Test", "GetPath").ShouldBe(@"C:\Users\Test\Documents");
     }
 
     [Fact]

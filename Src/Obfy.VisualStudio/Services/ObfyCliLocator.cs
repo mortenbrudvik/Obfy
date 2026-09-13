@@ -5,7 +5,9 @@ using System.IO;
 namespace Obfy.VisualStudio.Services;
 
 /// <summary>
-/// Resolves <c>obfy.exe</c> from install directories and PATH (no VS hive required).
+/// Resolves <c>obfy.exe</c>. <see cref="Find"/> walks the given directories;
+/// <see cref="DefaultSearchDirectories"/> is Program Files, the extension base,
+/// PATH (trimmed), then <c>~/.dotnet/tools</c> last.
 /// </summary>
 public static class ObfyCliLocator
 {
@@ -18,9 +20,18 @@ public static class ObfyCliLocator
             if (string.IsNullOrWhiteSpace(dir))
                 continue;
 
-            var exePath = Path.Combine(dir, ExeName);
-            if (File.Exists(exePath))
-                return exePath;
+            try
+            {
+                var exePath = Path.Combine(dir.Trim(), ExeName);
+                if (File.Exists(exePath))
+                    return exePath;
+            }
+            catch (ArgumentException)
+            {
+            }
+            catch (IOException)
+            {
+            }
         }
 
         return null;
@@ -34,7 +45,11 @@ public static class ObfyCliLocator
 
         var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
         foreach (var dir in pathEnv.Split(Path.PathSeparator))
-            yield return dir;
+        {
+            var trimmed = dir.Trim();
+            if (trimmed.Length > 0)
+                yield return trimmed;
+        }
 
         yield return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

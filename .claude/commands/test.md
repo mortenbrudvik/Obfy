@@ -29,7 +29,10 @@ dotnet test Tests/Obfy.Console.Tests/Obfy.Console.Tests.csproj
 dotnet test Tests/Obfy.UI.Tests/Obfy.UI.Tests.csproj
 dotnet test Tests/Obfy.ScenarioTests/Obfy.ScenarioTests.csproj
 dotnet test Tests/Obfy.VisualStudio.Tests/Obfy.VisualStudio.Tests.csproj
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
 ```
+
+   Rider JVM tests (JDK 21): `./gradlew.bat test` in `Src/Obfy.Rider`.
 
 3. Report results in a table:
    - Project name

@@ -44,6 +44,25 @@ public class OutputAssemblyLocatorTests
     }
 
     [Fact]
+    public void ResolveExisting_FallsBackToWindowsTfmExe()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "obfy-vs-" + Guid.NewGuid().ToString("N"));
+        var fallbackDir = Path.Combine(root, "bin", "Release", "net10.0-windows");
+        Directory.CreateDirectory(fallbackDir);
+        var exe = Path.Combine(fallbackDir, "App.exe");
+        File.WriteAllBytes(exe, [0]);
+        try
+        {
+            var resolved = OutputAssemblyLocator.ResolveExisting(root, "missing", "App.exe", "App");
+            resolved.ShouldBe(exe);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ResolveExisting_ReturnsNullWhenNothingExists()
     {
         var root = Path.Combine(Path.GetTempPath(), "obfy-vs-missing-" + Guid.NewGuid().ToString("N"));

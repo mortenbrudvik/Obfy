@@ -6,6 +6,7 @@ namespace Obfy.VisualStudio.Services;
 
 /// <summary>
 /// Adapter that saves Core nested obfy.json and loads both nested (Core) and flat (legacy VS) files.
+/// Serialize patches known keys on an existing document so Core-only fields are not stripped.
 /// </summary>
 public static class ObfySettingsJson
 {
@@ -48,32 +49,60 @@ public static class ObfySettingsJson
         return settings;
     }
 
-    public static string Serialize(ObfySettings settings)
+    /// <summary>
+    /// Writes VS-owned keys. When <paramref name="existingJson"/> is a JSON object, unknown keys
+    /// (runtimeProfile, virtualization, exclusions, preservePublicApi, …) are kept.
+    /// </summary>
+    public static string Serialize(ObfySettings settings, string? existingJson = null)
     {
-        var node = new JsonObject
+        var node = ParseObject(existingJson) ?? new JsonObject();
+
+        node["level"] = settings.Level.ToString().ToLowerInvariant();
+        node["postBuildEnabled"] = settings.PostBuildEnabled;
+        SetEnabled(node, "stringEncryption", settings.StringEncryption);
+        SetEnabled(node, "controlFlow", settings.ControlFlow);
+        SetEnabled(node, "symbolRenaming", settings.SymbolRenaming);
+        SetEnabled(node, "constantEncryption", settings.ConstantEncryption);
+        SetEnabled(node, "resourceEncryption", settings.ResourceEncryption);
+
+        if (node["protection"] is not JsonObject protection)
         {
-            ["level"] = settings.Level.ToString().ToLowerInvariant(),
-            ["postBuildEnabled"] = settings.PostBuildEnabled,
-            ["stringEncryption"] = new JsonObject { ["enabled"] = settings.StringEncryption },
-            ["controlFlow"] = new JsonObject { ["enabled"] = settings.ControlFlow },
-            ["symbolRenaming"] = new JsonObject
-            {
-                ["enabled"] = settings.SymbolRenaming,
-                ["preservePublicApi"] = false
-            },
-            ["protection"] = new JsonObject
-            {
-                ["antiDebug"] = settings.AntiDebug,
-                ["antiDump"] = settings.AntiDump,
-                ["referenceProxy"] = settings.ReferenceProxy,
-                ["antiTamper"] = new JsonObject { ["enabled"] = settings.AntiTamper },
-                ["antiDecompiler"] = new JsonObject { ["enabled"] = settings.AntiDecompiler }
-            },
-            ["constantEncryption"] = new JsonObject { ["enabled"] = settings.ConstantEncryption },
-            ["resourceEncryption"] = new JsonObject { ["enabled"] = settings.ResourceEncryption }
-        };
+            protection = new JsonObject();
+            node["protection"] = protection;
+        }
+
+        protection["antiDebug"] = settings.AntiDebug;
+        protection["antiDump"] = settings.AntiDump;
+        protection["referenceProxy"] = settings.ReferenceProxy;
+        SetEnabled(protection, "antiTamper", settings.AntiTamper);
+        SetEnabled(protection, "antiDecompiler", settings.AntiDecompiler);
 
         return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static JsonObject? ParseObject(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        try
+        {
+            return JsonNode.Parse(json) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static void SetEnabled(JsonObject parent, string name, bool enabled)
+    {
+        if (parent[name] is JsonObject existing)
+        {
+            existing["enabled"] = enabled;
+            return;
+        }
+
+        parent[name] = new JsonObject { ["enabled"] = enabled };
     }
 
     private static bool TryReadLevel(JsonElement root, out ObfuscationLevel level)
@@ -86,7 +115,12 @@ public static class ObfySettingsJson
 
         if (el.ValueKind == JsonValueKind.String)
         {
-            return Enum.TryParse(el.GetString(), ignoreCase: true, out level);
+            var raw = el.GetString();
+            if (string.IsNullOrWhiteSpace(raw))
+                return false;
+            if (Enum.TryParse(raw, ignoreCase: true, out level))
+                return true;
+            throw new JsonException($"obfy.json: unknown level '{raw}'.");
         }
 
         if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n) && Enum.IsDefined(typeof(ObfuscationLevel), n))
@@ -95,7 +129,7 @@ public static class ObfySettingsJson
             return true;
         }
 
-        return false;
+        throw new JsonException("obfy.json: 'level' must be a string or defined enum number.");
     }
 
     private static bool ReadEnabled(JsonElement parent, string name, bool defaultValue)
@@ -113,7 +147,7 @@ public static class ObfySettingsJson
             return ReadBool(el, "enabled", defaultValue);
         }
 
-        return defaultValue;
+        throw new JsonException($"obfy.json: '{name}' must be a boolean or {{ \"enabled\": bool }}.");
     }
 
     private static bool ReadBool(JsonElement parent, string name, bool defaultValue)
@@ -127,7 +161,7 @@ public static class ObfySettingsJson
         {
             JsonValueKind.True => true,
             JsonValueKind.False => false,
-            _ => defaultValue
+            _ => throw new JsonException($"obfy.json: '{name}' must be a boolean.")
         };
     }
 

@@ -107,6 +107,10 @@ public class EndToEndObfuscationTests
     };
 
     private static int RunLauncher(string launcher, string extraArgs = "", string? workingDirectory = null)
+        => RunLauncherCapture(launcher, extraArgs, workingDirectory).ExitCode;
+
+    private static (int ExitCode, string StdErr) RunLauncherCapture(
+        string launcher, string extraArgs = "", string? workingDirectory = null)
     {
         var args = string.IsNullOrEmpty(extraArgs) ? $"\"{launcher}\"" : $"\"{launcher}\" {extraArgs}";
         var start = new System.Diagnostics.ProcessStartInfo("dotnet", args)
@@ -119,8 +123,12 @@ public class EndToEndObfuscationTests
             start.WorkingDirectory = workingDirectory;
         using var process = System.Diagnostics.Process.Start(start);
         process.ShouldNotBeNull();
-        process!.WaitForExit(15000).ShouldBeTrue(process.StandardError.ReadToEnd());
-        return process.ExitCode;
+        var stdoutTask = process!.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        process.WaitForExit(15000).ShouldBeTrue("launcher timed out");
+        var stderr = stderrTask.GetAwaiter().GetResult();
+        stdoutTask.GetAwaiter().GetResult();
+        return (process.ExitCode, stderr);
     }
 
     private static void WriteRuntimeConfig(string assemblyPath)
@@ -1085,8 +1093,10 @@ public class EndToEndObfuscationTests
             var tampered = Path.Combine(dir, "TamperLib.tampered.dll");
             File.WriteAllBytes(tampered, bytes);
 
-            RunLauncher(runner, $"\"{tampered}\"")
-                .ShouldNotBe(7, "anti-tamper Verify should FailFast after the stored hash is flipped");
+            var (exit, stderr) = RunLauncherCapture(runner, $"\"{tampered}\"");
+            exit.ShouldNotBe(0, "FailFast must not return success");
+            exit.ShouldNotBe(7, "anti-tamper Verify should FailFast after the stored hash is flipped");
+            stderr.ShouldContain("Obfy anti-tamper: assembly integrity check failed");
         }
         finally
         {

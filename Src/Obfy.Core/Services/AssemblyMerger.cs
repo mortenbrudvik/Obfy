@@ -101,6 +101,8 @@ public class AssemblyMerger : IAssemblyMerger
                 LogVerbose = false
             };
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             var repackLogger = new RepackLogger(_logger);
             var repack = new ILRepack(options, repackLogger);
 
@@ -138,7 +140,7 @@ public class AssemblyMerger : IAssemblyMerger
 
             return Task.FromResult(result);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             stopwatch.Stop();
             _logger.LogError(ex, "Failed to merge assemblies");

@@ -97,6 +97,8 @@ jobs:
       with:
         distribution: temurin
         java-version: "21"
+        cache: gradle
+        cache-dependency-path: Src/Obfy.Rider/gradle/wrapper/gradle-wrapper.properties
 
     - name: Rider JVM tests
       working-directory: Src/Obfy.Rider

@@ -1,6 +1,6 @@
 # Testing improvements roadmap
 
-A plan to close the gap between **technique coverage** (strong) and **real-app scenario coverage** (mostly missing). This is a testing plan, not a product-feature plan. Product items it unblocks are cited as `QT-*` / `PS-*` from [Roadmap.md](Roadmap.md).
+Technique coverage is strong; SDK and platform scenarios now exist (see Current position). Remaining: Unity Development Player, MAUI iOS/Android, VS hive / Rider UI. This is a testing plan, not a product-feature plan. Product items it unblocks are cited as `QT-*` / `PS-*` from [Roadmap.md](Roadmap.md).
 
 How to run the current suite: [Testing.md](Testing.md).
 
@@ -21,9 +21,9 @@ Six projects; counts live in [Testing.md](Testing.md). That volume is real. What
 | Platform recipes | Partial | Unity stub in default CI; Blazor WASM / NativeAOT / MAUI Windows are `Category=Platform` |
 | IDE extensions | Partial | VS helpers + Rider JVM unit tests; no VS hive / Rider UI tests |
 
-Phase 0 (`TR-01` / `TR-02`) filters FlaUI out of default `dotnet test` / CI and resolves `ObfyUI.exe` per configuration. `TR-03` is confirming the first green GitHub Actions run after that merge (coverage report + 80% warning). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran. Later: [CI run 72](https://github.com/mortenbrudvik/Obfy/actions/runs/34750086309) — tests and coverage succeeded, then the sticky PR comment 403 (`Resource not accessible by integration`) skipped the summary and 80% warning.
+Phase 0 (`TR-01` / `TR-02`) filters FlaUI out of default `dotnet test` / CI and resolves `ObfyUI.exe` per configuration. `TR-03` is ✅ Done (coverage report + 80% warning on GitHub Actions). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran. Later: [CI run 72](https://github.com/mortenbrudvik/Obfy/actions/runs/34750086309) — tests and coverage succeeded, then the sticky PR comment 403 (`Resource not accessible by integration`) skipped the summary and 80% warning.
 
-`examples/` (console, public-API library, MSBuild AfterBuild, Unity/Blazor/MAUI JSON recipes) are manual demos, not fixtures.
+`examples/` are user-facing demos; `BasicConsoleApp`, `LibraryWithPublicApi`, and MSBuild AfterBuild are also CI fixtures (`TR-12` / `TR-22`).
 
 The product roadmap already refuses first-class Unity / MAUI / Blazor / NativeAOT claims until compile → obfuscate → run projects exist (`PS-01`–`PS-04`). This document is the testing path to those claims.
 
@@ -134,7 +134,7 @@ These are the product `PS-*` items. Do not advertise first-class support until t
 |----|------|----------|--------|--------|
 | TR-30 | Published Blazor WASM: obfuscate `_framework/*.dll` with `runtimeProfile: BlazorWasm`, then a headless/playwright or `dotnet` host smoke. | PS-03 | L | ✅ Done (`BlazorWasmTests`; ALC invoke of a probe type; `Category=Platform`) |
 | TR-31 | NativeAOT: obfuscate **before** `dotnet publish -p:PublishAot=true`, run the native exe. Rename + strings + control flow + in-module proxies. | PS-04 | L | ✅ Done (`NativeAotTests`; ILC stdout + native exe; `Category=Platform`) |
-| TR-32 | MAUI Windows (not iOS/Android in CI): `preserveXaml`, method encryption off, app launches. CI-feasible subset of `PS-02`; iOS/Android remain a later platform job. | PS-02 (Windows subset) | L | ✅ Done (`MauiWindowsTests`; `dotnet new maui` when workload is present; skips otherwise; does not launch the app) |
+| TR-32 | MAUI Windows (not iOS/Android in CI): obfuscates Windows TFM output; does not launch the app. CI-feasible subset of `PS-02`; iOS/Android remain a later platform job. | PS-02 (Windows subset) | L | ✅ Done (`MauiWindowsTests`; `dotnet new maui` when workload is present; skips otherwise) |
 | TR-33 | Unity: Development Player or a stripped managed assembly from a committed sample. Editor plugin is out of scope. | PS-01 | L | ✅ Done (`UnitySampleTests`; committed stub assembly; runs in the default job) |
 
 **Done when:** [Platforms.md](Platforms.md) / [Unity.md](Unity.md) can say “tested” for that row, not only “recipe.”

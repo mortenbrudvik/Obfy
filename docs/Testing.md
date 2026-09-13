@@ -1,6 +1,6 @@
 # Testing Guide
 
-How to run and extend the current suite. Planned gaps (real SDK/WPF solutions, platforms) are in [Testing-Roadmap.md](Testing-Roadmap.md).
+How to run and extend the current suite. Remaining gaps (Unity Development Player, MAUI iOS/Android, FlaUI local-only) are in [Testing-Roadmap.md](Testing-Roadmap.md).
 
 ## Overview
 
@@ -8,13 +8,13 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 433 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
+| Obfy.Tests | 434 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
 | Obfy.Console.Tests | 123 | CLI parsing (`IntegrationParseTests`) and `Program.Main` process tests |
 | Obfy.UI.Tests | 133 | ViewModel unit tests, startup CLI apply, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 25 | 6 locator unit tests (CI) + 19 FlaUI live-window tests (`Category=UI`, local) |
-| Obfy.ScenarioTests | 14 | 11 default SDK fixtures (Unity stub + merge) + 3 `Category=Platform` |
-| Obfy.VisualStudio.Tests | 11 | VS settings JSON, CLI args, output-assembly locator, CLI path locator (no VS hive) |
-| **Total** | **717** | Default CI (`Category!=UI&Category!=Platform`) |
+| Obfy.ScenarioTests | 16 | 13 default SDK fixtures (Unity stub + merge + merge-then-obfuscate) + 3 `Category=Platform` |
+| Obfy.VisualStudio.Tests | 16 | VS settings JSON, CLI args, output-assembly locator, CLI path locator (no VS hive) |
+| **Total** | **725** | Default CI (`Category!=UI&Category!=Platform`). Project counts include FlaUI + Platform; Total is the default filter. |
 
 ## Test Stack
 
@@ -41,6 +41,7 @@ dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
 dotnet test Tests/Obfy.ScenarioTests
+dotnet test Tests/Obfy.VisualStudio.Tests
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 ```
 
@@ -96,7 +97,8 @@ Tests the command-line interface:
 | HelpOutputTests | 15 | Help text verification |
 | ErrorHandlingTests | 14 | Error scenarios |
 | WizardDefaultsTests | 7 | Use-case wizard defaults (Unity, Desktop, Blazor, MAUI, library, ASP.NET, public API) |
-| IntegrationTests | 15 | Parse vs process split; `Program.Main` for generate, dry-run, missing file, bad JSON, unknown level |
+| IntegrationParseTests | 3 | CLI parse without invoking `Program.Main` |
+| IntegrationProcessTests | 12 | `Program.Main` for generate, dry-run, missing file, bad JSON, unknown level |
 
 Key patterns:
 
@@ -146,7 +148,7 @@ Location: `Tests/Obfy.UI.AutomationTests/`
 
 ### Obfy.VisualStudio.Tests
 
-Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBuilder`, `OutputAssemblyLocator`). Linked from `Src/Obfy.VisualStudio/Services` so CI does not load the VSIX SDK.
+Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBuilder`, `OutputAssemblyLocator`, `ObfyCliLocator`). Linked from `Src/Obfy.VisualStudio/Services` so CI does not load the VSIX SDK.
 
 Location: `Tests/Obfy.VisualStudio.Tests/`
 
@@ -165,6 +167,7 @@ Compile → obfuscate → run real SDK projects. Fixtures live under `Tests/Obfy
 | `WinFormsAppTests` | WinForms form constructs after obfuscation |
 | `SatelliteTests` | `*.resources.dll` satellite is not rewritten; parent still loads cultures |
 | `MsBuildIntegrationTests` | Example AfterBuild target invokes the CLI on Release |
+| `MergeScenarioTests` | Two SDK class libraries merge (and merge+obfuscate) then ALC-invoke |
 | `UnitySampleTests` | `examples/unity/obfy.json` on a stub with `UnityEngine` types (default job) |
 | `BlazorWasmTests` | Publish WASM, obfuscate `_framework/*.dll`, ALC-invoke probe (`Category=Platform`) |
 | `NativeAotTests` | Obfuscate IL, `PublishAot`, run native exe (`Category=Platform`) |

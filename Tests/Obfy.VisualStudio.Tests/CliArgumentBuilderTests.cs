@@ -45,4 +45,26 @@ public class CliArgumentBuilderTests
         stats.SymbolsRenamed.ShouldBe(9);
         stats.TotalTransformations.ShouldBe(13);
     }
+
+    [Fact]
+    public void ParseStatistics_ReadsSpectreTableRows()
+    {
+        const string table = """
+            │ Strings Encrypted │ 42 │
+            │ [bold]Total Transformations[/] │ [bold]42[/] │
+            """;
+        var stats = CliArgumentBuilder.ParseStatistics(table);
+        stats.StringsEncrypted.ShouldBe(42);
+        stats.TotalTransformations.ShouldBe(42);
+    }
+
+    [Fact]
+    public void Build_MismatchedStandardFlags_EmitsCustomLevel()
+    {
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Standard);
+        settings.AntiDebug = true;
+        var args = CliArgumentBuilder.Build(@"C:\a.dll", @"C:\out\a.dll", settings);
+        args.ShouldContain("-l custom");
+        args.ShouldContain("--anti-debug");
+    }
 }

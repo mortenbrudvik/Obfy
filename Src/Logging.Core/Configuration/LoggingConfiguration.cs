@@ -30,9 +30,21 @@ public static class LoggingConfiguration
     /// <summary>
     /// Creates a logger factory that writes files under <paramref name="logDirectory"/>.
     /// </summary>
+    /// <param name="logDirectory">Directory for rotating log files. If it cannot be created, only debugger/console targets are used.</param>
+    /// <param name="appName">Optional application name for log file naming.</param>
+    /// <param name="enableConsoleOutput">Whether to output logs to console.</param>
     public static ILoggerFactory CreateLoggerFactory(string logDirectory, string? appName, bool enableConsoleOutput)
     {
-        Directory.CreateDirectory(logDirectory);
+        var canWriteFiles = true;
+        try
+        {
+            Directory.CreateDirectory(logDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            canWriteFiles = false;
+            Console.Error.WriteLine($"Cannot write logs to {logDirectory}: {ex.Message}");
+        }
 
         // Configure NLog programmatically
         var config = new NLog.Config.LoggingConfiguration();
@@ -62,13 +74,15 @@ public static class LoggingConfiguration
             Layout = "${time} [${level:uppercase=true}] ${message}"
         };
 
-        config.AddTarget(fileTarget);
         config.AddTarget(debugTarget);
 
         // Debug and above to debugger
         config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, debugTarget);
-        // Debug and above to file
-        config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, fileTarget);
+        if (canWriteFiles)
+        {
+            config.AddTarget(fileTarget);
+            config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, fileTarget);
+        }
 
         // Console output only if enabled
         if (enableConsoleOutput)

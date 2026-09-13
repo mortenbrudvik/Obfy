@@ -124,6 +124,24 @@ public class VirtualizationObfuscatorTests
     }
 
     [Fact]
+    public async Task Virtualization_FailsWhenMaxMethodsOutOfRange()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        CreateAdd(type, "A");
+        var settings = VmSettings();
+        settings.Virtualization.MaxMethods = 0;
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        var result = await new VirtualizationObfuscator(new Mock<ILogger<VirtualizationObfuscator>>().Object)
+            .ObfuscateAsync(context);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage!.ShouldContain("MaxMethods");
+    }
+
+    [Fact]
     public async Task Virtualization_WarnsWhenMaxMethodsReached()
     {
         var module = CreateTestModule();

@@ -323,7 +323,7 @@ public class Program
 
                 context.ExitCode = await RunObfuscationAsync(input, output, settings, map, report, dryRun, verbose, merge).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or IOException)
+            catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or IOException or UnauthorizedAccessException)
             {
                 AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
                 context.ExitCode = 1;
@@ -683,8 +683,8 @@ public class Program
 
     private static void DisplayError(string fileName, ObfuscationResult result)
     {
-        AnsiConsole.MarkupLine($"[red]Failed to obfuscate {fileName}[/]");
-        AnsiConsole.MarkupLine($"[red]Error: {result.ErrorMessage}[/]");
+        AnsiConsole.MarkupLine($"[red]Failed to obfuscate {Markup.Escape(fileName)}[/]");
+        AnsiConsole.MarkupLine($"[red]Error: {Markup.Escape(result.ErrorMessage ?? "")}[/]");
 
         if (result.Exception != null)
         {

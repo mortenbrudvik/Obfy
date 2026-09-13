@@ -135,11 +135,10 @@ public partial class FilesViewModel : ObservableObject
             {
                 await _settingsService.SavePreferencesAsync();
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-            }
-            catch (UnauthorizedAccessException)
-            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "Could not save output directory preference: {0}", ex.Message);
             }
         }
     }
@@ -200,11 +199,9 @@ public partial class FilesViewModel : ObservableObject
                 if (!Files.Any(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
                     Files.Add(AssemblyFile.FromPath(path));
             }
-            catch (ArgumentException)
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
             {
-            }
-            catch (IOException)
-            {
+                System.Diagnostics.Trace.TraceWarning("Skipped '{0}': {1}", path, ex.Message);
             }
         }
     }

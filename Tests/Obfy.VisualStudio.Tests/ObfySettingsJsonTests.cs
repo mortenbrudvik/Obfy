@@ -72,4 +72,35 @@ public class ObfySettingsJsonTests
         loaded.StringEncryption.ShouldBeFalse();
         loaded.SymbolRenaming.ShouldBeTrue();
     }
+
+    [Fact]
+    public void Serialize_PreservesCoreOnlyFields()
+    {
+        const string existing = """
+            {
+              "level": "standard",
+              "runtimeProfile": "NativeAot",
+              "virtualization": { "enabled": true, "maxMethods": 8 },
+              "symbolRenaming": { "enabled": true, "preservePublicApi": true },
+              "exclusions": { "namespaces": ["UnityEngine"] }
+            }
+            """;
+
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Minimal);
+        var json = ObfySettingsJson.Serialize(settings, existing);
+
+        json.ShouldContain("\"runtimeProfile\"");
+        json.ShouldContain("NativeAot");
+        json.ShouldContain("\"virtualization\"");
+        json.ShouldContain("\"preservePublicApi\": true");
+        json.ShouldContain("UnityEngine");
+        json.ShouldContain("\"level\": \"minimal\"");
+    }
+
+    [Fact]
+    public void Parse_UnknownLevel_Throws()
+    {
+        Should.Throw<System.Text.Json.JsonException>(() =>
+            ObfySettingsJson.Parse("""{ "level": "aggresive" }"""));
+    }
 }

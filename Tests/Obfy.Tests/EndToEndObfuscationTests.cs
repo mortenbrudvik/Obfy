@@ -280,6 +280,62 @@ public class EndToEndObfuscationTests
     }
 
     [Fact]
+    public async Task Virtualization_RunsLocalsAndBranchesOnRealAssembly()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Scale(int a, int b)
+                {
+                    int x = a + 1;
+                    return x * b;
+                }
+
+                public static int Pick(int a, int b)
+                {
+                    if (a > 0)
+                        return a + b;
+                    return a - b;
+                }
+
+                public static int Const() => 40 + 2;
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-vm2-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "Vm2Lib");
+            var output = Path.Combine(dir, "Vm2Lib.obf.dll");
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Virtualization = { Enabled = true }
+            };
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Statistics.ProtectionsApplied.ShouldBeGreaterThanOrEqualTo(3);
+
+            LoadAndInvoke(output, "Lib", "Scale", 2, 3).ShouldBe(9);
+            LoadAndInvoke(output, "Lib", "Pick", 4, 1).ShouldBe(5);
+            LoadAndInvoke(output, "Lib", "Pick", -3, 1).ShouldBe(-4);
+            LoadAndInvoke(output, "Lib", "Const").ShouldBe(42);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public async Task Packing_ProducesRunnableLauncher()
     {
         const string source = "public static class Program { public static int Main() => 11; }";

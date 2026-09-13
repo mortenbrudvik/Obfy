@@ -9,7 +9,7 @@ namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
 /// Replaces simple static int methods with a bytecode interpreter stub.
-/// Supports ldc.i4, ldarg, add, sub, mul, and ret only.
+/// Supports ldc.i4, ldarg, ldloc/stloc, arithmetic, and conditional branches.
 /// </summary>
 public class VirtualizationObfuscator : IObfuscator
 {
@@ -19,6 +19,20 @@ public class VirtualizationObfuscator : IObfuscator
     private const byte OpSub = 4;
     private const byte OpMul = 5;
     private const byte OpRet = 6;
+    private const byte OpLdloc = 7;
+    private const byte OpStloc = 8;
+    private const byte OpBr = 9;
+    private const byte OpBrtrue = 10;
+    private const byte OpBrfalse = 11;
+    private const byte OpBle = 12;
+    private const byte OpBge = 13;
+    private const byte OpBlt = 14;
+    private const byte OpBgt = 15;
+    private const byte OpBeq = 16;
+    private const byte OpBne = 17;
+    private const byte OpCeq = 18;
+    private const byte OpCgt = 19;
+    private const byte OpClt = 20;
 
     private readonly ILogger<VirtualizationObfuscator> _logger;
 
@@ -82,12 +96,17 @@ public class VirtualizationObfuscator : IObfuscator
             return false;
         if (method.MethodSig.Params.Any(p => p.ElementType != ElementType.I4))
             return false;
-        if (method.Parameters.Count is < 1 or > 8)
+        if (method.Parameters.Count > 8)
+            return false;
+        if (method.Body.Variables.Count > 16)
             return false;
 
         var buffer = new List<byte>();
+        var map = new Dictionary<Instruction, int>();
+        var branches = new List<(int OperandIndex, Instruction Target)>();
         foreach (var instr in method.Body.Instructions)
         {
+            map[instr] = buffer.Count;
             var codeName = instr.OpCode.Code;
             if (codeName is Code.Nop or Code.Conv_I4)
                 continue;
@@ -103,6 +122,29 @@ public class VirtualizationObfuscator : IObfuscator
                 buffer.Add((byte)arg);
                 continue;
             }
+            if (TryReadLdloc(instr, out var loc))
+            {
+                buffer.Add(OpLdloc);
+                buffer.Add((byte)loc);
+                continue;
+            }
+            if (TryReadStloc(instr, out loc))
+            {
+                buffer.Add(OpStloc);
+                buffer.Add((byte)loc);
+                continue;
+            }
+
+            if (TryBranchOp(codeName, out var brOp))
+            {
+                if (instr.Operand is not Instruction target)
+                    return false;
+                buffer.Add(brOp);
+                branches.Add((buffer.Count, target));
+                buffer.Add(0);
+                buffer.Add(0);
+                continue;
+            }
 
             buffer.Add(codeName switch
             {
@@ -110,16 +152,78 @@ public class VirtualizationObfuscator : IObfuscator
                 Code.Sub => OpSub,
                 Code.Mul => OpMul,
                 Code.Ret => OpRet,
+                Code.Ceq => OpCeq,
+                Code.Cgt or Code.Cgt_Un => OpCgt,
+                Code.Clt or Code.Clt_Un => OpClt,
                 _ => (byte)0
             });
             if (buffer[^1] == 0)
                 return false;
         }
 
+        foreach (var (operandIndex, target) in branches)
+        {
+            if (!map.TryGetValue(target, out var dest))
+                return false;
+            var bytes = BitConverter.GetBytes((ushort)dest);
+            buffer[operandIndex] = bytes[0];
+            buffer[operandIndex + 1] = bytes[1];
+        }
+
         if (buffer.Count == 0 || buffer[^1] != OpRet)
             return false;
         code = buffer.ToArray();
         return true;
+    }
+
+    private static bool TryBranchOp(Code codeName, out byte op)
+    {
+        op = codeName switch
+        {
+            Code.Br or Code.Br_S => OpBr,
+            Code.Brtrue or Code.Brtrue_S => OpBrtrue,
+            Code.Brfalse or Code.Brfalse_S => OpBrfalse,
+            Code.Ble or Code.Ble_S or Code.Ble_Un or Code.Ble_Un_S => OpBle,
+            Code.Bge or Code.Bge_S or Code.Bge_Un or Code.Bge_Un_S => OpBge,
+            Code.Blt or Code.Blt_S or Code.Blt_Un or Code.Blt_Un_S => OpBlt,
+            Code.Bgt or Code.Bgt_S or Code.Bgt_Un or Code.Bgt_Un_S => OpBgt,
+            Code.Beq or Code.Beq_S => OpBeq,
+            Code.Bne_Un or Code.Bne_Un_S => OpBne,
+            _ => (byte)0
+        };
+        return op != 0;
+    }
+
+    private static bool TryReadLdloc(Instruction instr, out int index)
+    {
+        index = 0;
+        if (instr.OpCode.Code is >= Code.Ldloc_0 and <= Code.Ldloc_3)
+        {
+            index = instr.OpCode.Code - Code.Ldloc_0;
+            return true;
+        }
+        if (instr.OpCode is OpCode { Code: Code.Ldloc or Code.Ldloc_S } && instr.Operand is Local local)
+        {
+            index = local.Index;
+            return true;
+        }
+        return false;
+    }
+
+    private static bool TryReadStloc(Instruction instr, out int index)
+    {
+        index = 0;
+        if (instr.OpCode.Code is >= Code.Stloc_0 and <= Code.Stloc_3)
+        {
+            index = instr.OpCode.Code - Code.Stloc_0;
+            return true;
+        }
+        if (instr.OpCode is OpCode { Code: Code.Stloc or Code.Stloc_S } && instr.Operand is Local local)
+        {
+            index = local.Index;
+            return true;
+        }
+        return false;
     }
 
     private static bool TryReadLdcI4(Instruction instr, out int value)
@@ -236,11 +340,17 @@ public class VirtualizationObfuscator : IObfuscator
         var stack = new Local(new SZArraySig(module.CorLibTypes.Int32));
         var sp = new Local(module.CorLibTypes.Int32);
         var op = new Local(module.CorLibTypes.Int32);
+        var start = new Local(module.CorLibTypes.Int32);
+        var vars = new Local(new SZArraySig(module.CorLibTypes.Int32));
+        var tmp = new Local(module.CorLibTypes.Int32);
         body.Variables.Add(code);
         body.Variables.Add(ip);
         body.Variables.Add(stack);
         body.Variables.Add(sp);
         body.Variables.Add(op);
+        body.Variables.Add(start);
+        body.Variables.Add(vars);
+        body.Variables.Add(tmp);
 
         var loop = Instruction.Create(OpCodes.Nop);
         var doLdc = Instruction.Create(OpCodes.Nop);
@@ -249,6 +359,20 @@ public class VirtualizationObfuscator : IObfuscator
         var doSub = Instruction.Create(OpCodes.Nop);
         var doMul = Instruction.Create(OpCodes.Nop);
         var doRet = Instruction.Create(OpCodes.Nop);
+        var doLdloc = Instruction.Create(OpCodes.Nop);
+        var doStloc = Instruction.Create(OpCodes.Nop);
+        var doBr = Instruction.Create(OpCodes.Nop);
+        var doBrtrue = Instruction.Create(OpCodes.Nop);
+        var doBrfalse = Instruction.Create(OpCodes.Nop);
+        var doBle = Instruction.Create(OpCodes.Nop);
+        var doBge = Instruction.Create(OpCodes.Nop);
+        var doBlt = Instruction.Create(OpCodes.Nop);
+        var doBgt = Instruction.Create(OpCodes.Nop);
+        var doBeq = Instruction.Create(OpCodes.Nop);
+        var doBne = Instruction.Create(OpCodes.Nop);
+        var doCeq = Instruction.Create(OpCodes.Nop);
+        var doCgt = Instruction.Create(OpCodes.Nop);
+        var doClt = Instruction.Create(OpCodes.Nop);
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, blobField));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, code));
@@ -261,6 +385,11 @@ public class VirtualizationObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, stack));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, start));
+        body.Instructions.Add(Instruction.CreateLdcI4(16));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Int32.ToTypeDefOrRef()));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, vars));
 
         body.Instructions.Add(loop);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, code));
@@ -289,6 +418,48 @@ public class VirtualizationObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_6));
         body.Instructions.Add(Instruction.Create(OpCodes.Beq, doRet));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(7));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doLdloc));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(8));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doStloc));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(9));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doBr));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(10));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doBrtrue));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(11));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doBrfalse));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(12));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doBle));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(13));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doBge));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(14));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doBlt));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(15));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doBgt));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(16));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doBeq));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(17));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doBne));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(18));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doCeq));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(19));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doCgt));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, op));
+        body.Instructions.Add(Instruction.CreateLdcI4(20));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, doClt));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 
@@ -382,6 +553,139 @@ public class VirtualizationObfuscator : IObfuscator
         EmitBin(doAdd, OpCodes.Add);
         EmitBin(doSub, OpCodes.Sub);
         EmitBin(doMul, OpCodes.Mul);
+        EmitBin(doCeq, OpCodes.Ceq);
+        EmitBin(doCgt, OpCodes.Cgt);
+        EmitBin(doClt, OpCodes.Clt);
+
+        void EmitReadU16()
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, code));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, code));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+            body.Instructions.Add(Instruction.Create(OpCodes.Add));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+            body.Instructions.Add(Instruction.CreateLdcI4(8));
+            body.Instructions.Add(Instruction.Create(OpCodes.Shl));
+            body.Instructions.Add(Instruction.Create(OpCodes.Or));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stloc, tmp));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_2));
+            body.Instructions.Add(Instruction.Create(OpCodes.Add));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stloc, ip));
+        }
+
+        void EmitGotoTarget()
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, start));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, tmp));
+            body.Instructions.Add(Instruction.Create(OpCodes.Add));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stloc, ip));
+            body.Instructions.Add(Instruction.Create(OpCodes.Br, loop));
+        }
+
+        body.Instructions.Add(doLdloc);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, stack));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, vars));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, code));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, ip));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, loop));
+
+        body.Instructions.Add(doStloc);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Sub));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, vars));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, code));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, stack));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ip));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, ip));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, loop));
+
+        body.Instructions.Add(doBr);
+        EmitReadU16();
+        EmitGotoTarget();
+
+        var skipTrue = Instruction.Create(OpCodes.Br, loop);
+        body.Instructions.Add(doBrtrue);
+        EmitReadU16();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Sub));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, stack));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, skipTrue));
+        EmitGotoTarget();
+        body.Instructions.Add(skipTrue);
+
+        var skipFalse = Instruction.Create(OpCodes.Br, loop);
+        body.Instructions.Add(doBrfalse);
+        EmitReadU16();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Sub));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, stack));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, skipFalse));
+        EmitGotoTarget();
+        body.Instructions.Add(skipFalse);
+
+        void EmitCmp(Instruction label, OpCode compare, bool invert)
+        {
+            var skip = Instruction.Create(OpCodes.Br, loop);
+            body.Instructions.Add(label);
+            EmitReadU16();
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_2));
+            body.Instructions.Add(Instruction.Create(OpCodes.Sub));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stloc, sp));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, stack));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_I4));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, stack));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sp));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+            body.Instructions.Add(Instruction.Create(OpCodes.Add));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_I4));
+            body.Instructions.Add(Instruction.Create(compare));
+            body.Instructions.Add(Instruction.Create(invert ? OpCodes.Brtrue : OpCodes.Brfalse, skip));
+            EmitGotoTarget();
+            body.Instructions.Add(skip);
+        }
+
+        // skip VM-branch when the comparison is false
+        EmitCmp(doBlt, OpCodes.Clt, invert: false);
+        EmitCmp(doBgt, OpCodes.Cgt, invert: false);
+        EmitCmp(doBeq, OpCodes.Ceq, invert: false);
+        EmitCmp(doBge, OpCodes.Clt, invert: true);  // !(a < b)
+        EmitCmp(doBle, OpCodes.Cgt, invert: true);  // !(a > b)
+        EmitCmp(doBne, OpCodes.Ceq, invert: true);
 
         body.Instructions.Add(doRet);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, stack));

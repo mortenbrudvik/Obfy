@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Incremental obfuscation cache (`incremental.enabled`)
 - Selective IL virtualization for simple static int methods (`virtualization.enabled`)
+- Virtualization encodes locals and conditional branches (`if`/`else`, `ldloc`/`stloc`)
 - Framework-dependent managed launcher (`packing.enabled`): writes `{name}.launcher.exe` + `.runtimeconfig.json`; run with `dotnet`. Requires an entry point. Not a native/unmanaged packer.
 - Results Preview tab: ILSpy-engine C# of the last successful output assembly (truncated; not the launcher)
 - MSIX packaging for Microsoft Store / sideload (`build/build-msix.ps1`)

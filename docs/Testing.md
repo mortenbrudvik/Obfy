@@ -6,10 +6,11 @@ Obfy has comprehensive test coverage across all components:
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 285 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
-| Obfy.Console.Tests | 106 | CLI parsing & integration |
-| Obfy.UI.Tests | 103 | ViewModel unit tests |
-| **Total** | **494** | |
+| Obfy.Tests | 382 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
+| Obfy.Console.Tests | 117 | CLI parsing & integration |
+| Obfy.UI.Tests | 120 | ViewModel unit tests |
+| Obfy.UI.AutomationTests | 18 | FlaUI live-window tests (local, interactive desktop) |
+| **Total** | **637** | |
 
 ## Test Stack
 
@@ -32,6 +33,7 @@ dotnet test
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 ```
 
 ### With Coverage
@@ -158,7 +160,7 @@ public void NewProperty_WhenChanged_UpdatesState()
 
 ## Test Configuration
 
-Both `Obfy.Console.Tests` and `Obfy.UI.Tests` use `xunit.runner.json` to disable parallel test execution:
+`Obfy.Console.Tests`, `Obfy.UI.Tests`, and `Obfy.UI.AutomationTests` use `xunit.runner.json` to disable parallel test execution:
 
 ```json
 {

@@ -38,8 +38,8 @@ dotnet run -c Release
 
 ```
 MSBuild version ...
-  MsBuildIntegration -> bin\Release\net8.0\MsBuildIntegration.dll
-  Obfuscating bin\Release\net8.0\MsBuildIntegration.dll...
+  MsBuildIntegration -> bin\Release\net10.0\MsBuildIntegration.dll
+  Obfuscating bin\Release\net10.0\MsBuildIntegration.dll...
   Obfuscation complete!
 ```
 

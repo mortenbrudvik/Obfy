@@ -45,7 +45,7 @@ Thank you for your interest in contributing to Obfy! This document provides guid
    ./gradlew.bat build
    ```
 
-   The plugin ZIP will be created at `build/distributions/Obfy.Rider-1.0.0.zip`.
+   The plugin ZIP will be created at `build/distributions/Obfy.Rider-1.0.1.zip`.
 
 ## Project Structure
 
@@ -57,14 +57,22 @@ Obfy/
 │   ├── Obfy.UI/            # WPF desktop application
 │   ├── Obfy.VisualStudio/  # Visual Studio 2022 extension (C#)
 │   ├── Obfy.Rider/         # JetBrains Rider plugin (Kotlin)
+│   ├── Obfy.VSCode/        # VS Code stub (schema + problem matcher)
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/         # Core unit tests (152 tests)
-│   ├── Obfy.Console.Tests/ # CLI parsing tests (92 tests)
-│   └── Obfy.UI.Tests/      # ViewModel unit tests (59 tests)
+│   ├── Obfy.Tests/              # Core unit tests (382 tests)
+│   ├── Obfy.Console.Tests/      # CLI parsing tests (117 tests)
+│   ├── Obfy.UI.Tests/           # ViewModel unit tests (120 tests)
+│   └── Obfy.UI.AutomationTests/ # FlaUI live-window tests (18 tests)
 ├── docs/                   # Documentation
 └── examples/               # Example projects
+```
+
+Work on a feature branch in an isolated git worktree, not on the main checkout:
+
+```bash
+git worktree add .worktrees/<branch-name> -b <branch-name>
 ```
 
 ## Making Changes
@@ -104,13 +112,14 @@ Examples:
 
 ### Testing
 
-We have three test projects:
+We have four test projects:
 
 | Project | Purpose | Tests |
 |---------|---------|-------|
-| `Obfy.Tests` | Core obfuscation logic | 152 |
-| `Obfy.Console.Tests` | CLI argument parsing, help output | 106 |
-| `Obfy.UI.Tests` | ViewModel logic and commands | 59 |
+| `Obfy.Tests` | Core obfuscation logic | 382 |
+| `Obfy.Console.Tests` | CLI argument parsing, help output | 117 |
+| `Obfy.UI.Tests` | ViewModel logic and commands | 120 |
+| `Obfy.UI.AutomationTests` | FlaUI live window (local desktop) | 18 |
 
 ```bash
 # Run all tests
@@ -120,6 +129,7 @@ dotnet test
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 
 # Run with coverage
 dotnet test --collect:"XPlat Code Coverage"

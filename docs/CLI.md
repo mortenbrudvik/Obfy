@@ -61,6 +61,8 @@ obfy <input>... [options]
 | `--version` | | Show version information | |
 | `--help` | `-h`, `-?` | Show help | |
 
+**Config-only (no CLI flags):** `packing.enabled`, `incremental.enabled`, `virtualization.enabled`, `signing`, `runtimeProfile`, `dependencyEmbedding`, `symbolRenaming.preserveXaml`, `inclusions`, `watermark` (except `--watermark-id`), and nested anti-decompiler junk counts. Set these in `obfy.json`.
+
 ### config generate
 
 Generate a default configuration file.
@@ -131,7 +133,10 @@ obfy MyApp.dll -l minimal -o output/
 # Obfuscate multiple assemblies
 obfy MyApp.dll MyLibrary.dll -o output/
 
-# Obfuscate all DLLs in a directory
+# Obfuscate several assemblies (pass each path; Obfy does not expand globs)
+obfy MyApp.dll MyLibrary.dll -o output/
+
+# Shell glob (cmd.exe expands *.dll; PowerShell does not unless you use Get-ChildItem)
 obfy *.dll -o output/
 ```
 
@@ -180,8 +185,8 @@ obfy config wizard -o myproject.json
 # Enable specific protections
 obfy MyApp.dll --string-encrypt --rename -o output/
 
-# Enable all protections manually
-obfy MyApp.dll --string-encrypt --control-flow --rename --anti-debug --anti-dump --reference-proxy --strip-metadata --encrypt-resources --encrypt-constants -o output/
+# Enable all CLI protection flags (Aggressive also turns these on; intensity/junk counts still come from config)
+obfy MyApp.dll --string-encrypt --control-flow --rename --anti-debug --anti-tamper --anti-decompiler --anti-dump --reference-proxy --encrypt-methods --strip-metadata --encrypt-resources --encrypt-constants -o output/
 
 # Enable renaming but preserve public API
 obfy MyApp.dll --rename --preserve-public -o output/
@@ -243,8 +248,10 @@ Obfy stores configuration and logs in the following locations:
 
 | Type | Path |
 |------|------|
-| Settings | `%APPDATA%\Obfy\obfy.json` |
-| Logs | `%LOCALAPPDATA%\Obfy\Logs\` |
+| Settings | `ApplicationData/Obfy/obfy.json` (`%APPDATA%\Obfy\obfy.json` on Windows) |
+| Logs | `LocalApplicationData/Obfy/Logs/` (`%LOCALAPPDATA%\Obfy\Logs\` on Windows) |
+
+The WPF UI, method IL encryption (`VirtualProtect`), and anti-dump MiniDump hook are Windows-only. The CLI can obfuscate assemblies on any OS; PE-level Windows protections warn or no-op off-Windows.
 
 ## See Also
 

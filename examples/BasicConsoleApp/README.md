@@ -9,10 +9,10 @@ A simple console application demonstrating Obfy obfuscation.
 dotnet build -c Release
 
 # Obfuscate the output
-obfy bin/Release/net8.0/BasicConsoleApp.dll -c obfy.json -o bin/Release/net8.0/obfuscated/
+obfy bin/Release/net10.0/BasicConsoleApp.dll -c obfy.json -o bin/Release/net10.0/obfuscated/
 
 # Run the obfuscated version
-dotnet bin/Release/net8.0/obfuscated/BasicConsoleApp.dll
+dotnet bin/Release/net10.0/obfuscated/BasicConsoleApp.dll
 ```
 
 ## What Gets Obfuscated
@@ -22,7 +22,7 @@ dotnet bin/Release/net8.0/obfuscated/BasicConsoleApp.dll
 | Class name | `Program` | `_‌‍‏` |
 | Method names | `ProcessUserData`, `PerformCalculation` | `_‌‍‎`, `_‌‍‏` |
 | String literals | `"Welcome to the application!"` | Encrypted, decrypted at runtime |
-| Constants | `SecretApiKey`, `ConnectionString` | Encrypted values |
+| Constants | `SecretApiKey`, `ConnectionString` | Encrypted values (demo strings — obfuscation is not secret storage) |
 
 ## Configuration
 
@@ -34,5 +34,5 @@ The `obfy.json` configuration uses standard protection:
 ## Verify Obfuscation
 
 Use a decompiler like ILSpy or dnSpy to compare:
-- `bin/Release/net8.0/BasicConsoleApp.dll` (original)
-- `bin/Release/net8.0/obfuscated/BasicConsoleApp.dll` (obfuscated)
+- `bin/Release/net10.0/BasicConsoleApp.dll` (original)
+- `bin/Release/net10.0/obfuscated/BasicConsoleApp.dll` (obfuscated)

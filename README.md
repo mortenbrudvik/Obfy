@@ -6,13 +6,15 @@
 
 **Professional .NET obfuscation tool for protecting C# assemblies and source code.**
 
-Obfy helps protect your .NET applications from reverse engineering by applying multiple obfuscation techniques including string encryption, control flow obfuscation, symbol renaming, anti-debugging, and metadata removal.
+Obfy helps protect your .NET applications from reverse engineering by applying multiple obfuscation techniques including string encryption, control flow obfuscation, symbol renaming, anti-debugging, anti-tamper, and metadata removal.
+
+These techniques raise the cost of casual reverse engineering. They are **not** confidentiality: decryption keys live in the output assembly. Do not ship real secrets (API keys, tokens, credentials) inside an assembly and rely on obfuscation.
 
 ## Why Obfy?
 
 - **Easy to Use** - Single command to obfuscate your assemblies
-- **Configurable** - From minimal to aggressive protection levels
-- **Modern** - Built for .NET 10 with cross-platform support
+- **Configurable** - From minimal to aggressive protection levels, plus an interactive `config wizard`
+- **Modern** - Built for .NET 10; CLI runs cross-platform, WPF UI is Windows
 - **Extensible** - JSON configuration for fine-grained control
 - **IDE Integration** - Visual Studio 2022 and JetBrains Rider extensions with right-click obfuscation
 - **Fast** - Efficient obfuscation with minimal overhead
@@ -48,6 +50,9 @@ obfy config generate -o obfy.json
 
 # Generate an obfuscation report
 obfy MyApp.dll -o output/ --report report.html
+
+# Interactive configuration wizard
+obfy config wizard -o obfy.json
 ```
 
 ### Desktop Application
@@ -91,9 +96,13 @@ For JetBrains Rider users, Obfy provides seamless IDE integration:
 - Settings → Tools → Obfy for global defaults
 
 **Installation:**
-1. Download `Obfy.Rider-1.0.0.zip` from releases
+1. Download `Obfy.Rider-1.0.1.zip` from releases
 2. In Rider: Settings → Plugins → Gear icon → Install Plugin from Disk
 3. Select the ZIP file and restart Rider
+
+### Visual Studio Code (stub)
+
+`Src/Obfy.VSCode` contributes JSON schema validation for `obfy.json` and a problem matcher for CLI `Error:` / `⚠` lines. There is no TaskProvider; add a shell task that runs `obfy` on PATH. See `Src/Obfy.VSCode/README.md`.
 
 ## Before & After
 
@@ -101,29 +110,27 @@ For JetBrains Rider users, Obfy provides seamless IDE integration:
 ```csharp
 public class UserService
 {
-    private const string ApiKey = "sk-1234567890";
-
     public User GetUser(int userId)
     {
-        var connection = "Server=db.example.com";
-        return Database.Query(connection, userId);
+        var status = "Looking up user";
+        return Database.Query(status, userId);
     }
 }
 ```
 
-**After obfuscation:**
+**After obfuscation (conceptual):**
 ```csharp
 public class _‌‍‏‎
 {
-    private const string _‌‍‏ = /* encrypted */;
-
     public _‌‍‎ _‌‍‏‪(int _‌‍‏‫)
     {
-        var _‌‍‏‬ = _StringDecryptor.Decrypt(0);
+        var _‌‍‏‬ = _StringDecryptor.Decrypt(encodedIndex);
         return _‌‍‎‏._‌‍‏‭(_‌‍‏‬, _‌‍‏‫);
     }
 }
 ```
+
+String/constant “encryption” is obfuscation. The key is in the assembly and is recoverable.
 
 ## Protection Levels
 
@@ -131,28 +138,36 @@ public class _‌‍‏‎
 |-------|-------------|----------|
 | `minimal` | Symbol renaming only | Quick protection, debugging easier |
 | `standard` | String encryption + renaming + metadata | Balanced protection (default) |
-| `aggressive` | All protections at maximum | Maximum security |
+| `aggressive` | Most protections on (control-flow intensity 80; method IL encryption on Windows) | Stronger protection; test thoroughly |
 | `custom` | Configure via flags or config file | Fine-tuned control |
+
+Aggressive does **not** enable watermark, packing, incremental cache, virtualization, dependency embedding, or external call proxies. Those are opt-in in `obfy.json`.
 
 ## Features
 
 ### String Encryption
-Encrypts string literals with AES-256 or XOR, making sensitive data like API keys and connection strings unreadable in the binary.
+Encrypts string literals with AES-256 or XOR so they are not stored as plaintext. The key is embedded; this is not secret storage.
+
+### Constant Encryption
+Encrypts numeric literals (int, long, float, double) with XOR or AES-256.
 
 ### Resource Encryption
-Encrypts embedded resources (config files, data files, images) so they cannot be extracted from the assembly.
+Encrypts embedded resources and rewrites `GetManifestResourceStream` call sites so they decrypt at runtime.
 
 ### Control Flow Obfuscation
 Transforms code structure using switch dispatchers and opaque predicates, making the logic harder to follow.
 
 ### Symbol Renaming
-Renames types, methods, fields, properties, and parameters to meaningless identifiers while preserving functionality.
+Renames types, methods, fields, properties, events, namespaces, and parameters to meaningless identifiers while preserving functionality.
 
-### Anti-Debug Protection
-Injects debugger detection that responds to debugging attempts, deterring runtime analysis.
+### Anti-Debug / Anti-Dump / Anti-Tamper
+Injects debugger detection, wipes in-memory PE headers (Windows), and verifies a whole-file SHA-256 at load.
 
 ### Anti-Decompiler Protection
-Injects junk types and methods to clutter decompiler output, making reverse engineering more difficult.
+Injects junk types and methods to clutter decompiler output, plus optional decoy ConfusedBy/Dotfuscator attributes.
+
+### Method IL Encryption and Reference Proxy
+XOR-encrypts method bodies in the PE (Windows) and hides call targets behind `calli` trampolines.
 
 ### Metadata Removal
 Strips debug information, custom attributes, and documentation, reducing attack surface and file size.
@@ -205,6 +220,9 @@ Check out the [examples](examples/) folder:
 | [BasicConsoleApp](examples/BasicConsoleApp/) | Simple console app obfuscation |
 | [LibraryWithPublicApi](examples/LibraryWithPublicApi/) | Preserve public API while obfuscating internals |
 | [MsBuildIntegration](examples/MsBuildIntegration/) | Automatic obfuscation in build process |
+| [unity](examples/unity/) | `runtimeProfile: UnityIl2Cpp` recipe (`obfy.json` only) |
+| [blazor](examples/blazor/) | `runtimeProfile: BlazorWasm` recipe (`obfy.json` only) |
+| [maui](examples/maui/) | MAUI / XAML `preserveXaml` recipe (`obfy.json` only) |
 
 ## Documentation
 
@@ -214,7 +232,11 @@ Check out the [examples](examples/) folder:
 | [Configuration](docs/Configuration.md) | Full JSON schema and examples |
 | [Techniques](docs/Techniques.md) | How each obfuscation technique works |
 | [Advanced](docs/Advanced.md) | Exclusions, best practices, troubleshooting |
+| [Platforms](docs/Platforms.md) | NativeAOT, Blazor WASM, MAUI |
+| [Unity](docs/Unity.md) | Mono / IL2CPP recipe |
+| [Testing](docs/Testing.md) | Test projects and how to add tests |
 | [Roadmap](docs/Roadmap.md) | Feature roadmap and backlog |
+| [Competitive Analysis](docs/Competitive-Analysis.md) | Comparison with other .NET obfuscators |
 
 ## Build Integration
 

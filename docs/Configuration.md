@@ -229,7 +229,8 @@ Maximum protection with all techniques enabled.
     "antiTamper": { "enabled": true },
     "antiDecompiler": { "enabled": true },
     "antiDump": true,
-    "referenceProxy": true
+    "referenceProxy": true,
+    "methodEncryption": true
   },
   "metadata": {
     "removeDebugInfo": true,
@@ -237,6 +238,8 @@ Maximum protection with all techniques enabled.
   }
 }
 ```
+
+Aggressive enables the flags above at intensity **80** (not 100). It does **not** turn on `proxyExternalCalls`, watermark, packing, incremental, virtualization, dependency embedding, or signing.
 
 ### Custom
 
@@ -476,6 +479,27 @@ Opt-in; not flipped by level presets. CLI: `--watermark-id`. Settings panel has 
 
 Signing runs after PE patches (method-IL XOR, anti-tamper hash) by refreshing the strong-name blob in place. The run fails if signing is enabled and the key cannot be applied.
 
+### incremental
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | Skip re-obfuscation when the input file and settings JSON are unchanged |
+
+Cache file: `{outputPath}.obfycache` (SHA-256 of input bytes + serialized settings). A hit requires the output file to exist. If packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. Written only after a successful write. Off in every preset. Config-only (no CLI flag).
+
+### virtualization
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | Replace eligible simple static `int` methods with a bytecode interpreter stub |
+| `maxMethods` | int | `32` | Maximum methods to virtualize (1–256) |
+
+Eligible methods: `static`, non-generic, no exception handlers, `int` return and `int` parameters, body limited to `ldc.i4` / `ldarg` / `add` / `sub` / `mul` / `ret`. This is **not** a general IL virtualizer. Off in every preset. Config-only.
+
+### packing
+
+See [Packing (managed launcher)](#packing-managed-launcher) below. Config-only.
+
 ## Example Configurations
 
 ### Library with Public API
@@ -500,7 +524,7 @@ Signing runs after PE patches (method-IL XOR, anti-tamper hash) by refreshing th
   "level": "aggressive",
   "protection": {
     "antiDebug": true,
-    "antiTamper": true
+    "antiTamper": { "enabled": true }
   }
 }
 ```
@@ -561,7 +585,8 @@ JSON/XML property attributes are excluded from renaming by default. Add extra se
       "junkMethodsPerType": 5
     },
     "antiDump": true,
-    "referenceProxy": true
+    "referenceProxy": true,
+    "methodEncryption": true
   },
   "metadata": {
     "removeDebugInfo": true,

@@ -17,11 +17,14 @@ Obfy applies techniques in a specific order (priority):
 | 20 | Anti-Decompiler | Junk types, SuppressIldasm, decoy ConfusedBy/Dotfuscator attributes |
 | 21 | Watermark | Assembly-level pinned WatermarkAttribute |
 | 22 | Anti-Tamper | Verify assembly integrity |
+| 24 | Virtualization | Replace selected simple static int methods with a bytecode interpreter |
 | 25 | Method Encryption | XOR method IL in the PE (Windows) |
 | 30 | Control Flow | Flatten control flow |
 | 40 | Reference Proxy | Hide call targets behind proxies |
 | 50 | Symbol Renaming | Rename identifiers |
 | 90 | Metadata Removal | Strip debug info |
+
+**Encryption is obfuscation, not confidentiality.** String, constant, resource, method-IL, and virtualization “encryption” embed the key or interpreter in the output assembly. Anyone who runs or inspects the binary can recover plaintext. Do not ship real secrets (API keys, tokens, credentials) inside an assembly and rely on Obfy to keep them secret.
 
 ## Assembly Obfuscation (dnlib)
 
@@ -96,7 +99,7 @@ Encrypts numeric constants (int, long, float, double) so they don't appear as li
    - `ldc.i8` (long constants)
    - `ldc.r4` (float constants)
    - `ldc.r8` (double constants)
-2. Encrypts each constant using XOR encryption
+2. Encrypts each constant using the configured algorithm (XOR or AES-256)
 3. Injects a runtime decryptor class (`Obfy.Runtime.<ConstantDecryptor>`)
 4. Replaces constant loads with decryptor calls
 
@@ -121,7 +124,8 @@ double pi = ConstantDecryptor.DecryptDouble(1);
 
 | Algorithm | Description |
 |-----------|-------------|
-| **XOR** | Fast XOR with key rotation. Recommended for constants due to frequent access. |
+| **XOR** | Fast XOR with key rotation. Recommended for constants due to frequent access. Default. |
+| **AES-256** | AES-256 obfuscation with a random IV (not confidentiality; the key is in the assembly). Higher overhead per constant access. |
 
 **Threshold Settings:**
 
@@ -168,43 +172,42 @@ Encrypts embedded resources (images, configs, data files) so they are not visibl
 
 1. Scans all `EmbeddedResource` entries in the assembly
 2. Filters resources based on include/exclude patterns
-3. Encrypts each resource using the configured algorithm
-4. Removes original resources from the assembly
-5. Injects a runtime decryptor class (`Obfy.Runtime.<ResourceDecryptor>`)
-6. Stores encrypted resources in the decryptor type
+3. Encrypts each resource in place using the configured algorithm
+4. Injects a runtime decryptor class (`Obfy.Runtime.<ResourceDecryptor>`)
+5. Rewrites `GetManifestResourceStream` call sites to decrypt matching names
 
 **Before:**
 ```
 Assembly
 └── Resources
-    ├── Config.json (visible)
-    ├── Data.xml (visible)
-    └── Image.png (visible)
+    ├── Config.json (plaintext)
+    ├── Data.xml (plaintext)
+    └── Image.png (plaintext)
 ```
 
 **After:**
 ```
 Assembly
-├── Obfy.Runtime.<ResourceDecryptor>
-│   ├── _k (encryption key)
-│   ├── _d (encrypted data)
-│   ├── _n (resource names)
-│   └── GetResource(string name) → byte[]
-└── Resources (empty - all moved to decryptor)
+├── Obfy.Runtime.<ResourceDecryptor>  (key + encrypted-name table + load helpers)
+└── Resources
+    ├── Config.json (ciphertext)
+    ├── Data.xml (ciphertext)
+    └── Image.png (ciphertext)
 ```
 
-**Runtime Access:**
+**Runtime access:** The obfuscator rewrites `Assembly.GetManifestResourceStream(string)`, `GetManifestResourceStream(Type, string)`, and `Module` overloads so existing call sites decrypt automatically. Other load paths (`ResourceManager` for binary resources, `GetManifestResourceNames` plus a custom reader, native unpackers) are **not** rewritten; those resources stay ciphertext and the run emits a warning if no call site was rewritten.
+
 ```csharp
-// Original code that uses Assembly.GetManifestResourceStream
-// will need to call the decryptor instead:
-var data = ResourceDecryptor.GetResource("Config.json");
+// Unchanged source — the call is rewritten in IL:
+using var stream = Assembly.GetExecutingAssembly()
+    .GetManifestResourceStream("Config.json");
 ```
 
 **Algorithms:**
 
 | Algorithm | Description |
 |-----------|-------------|
-| **AES-256** | Strong encryption with random IV. Recommended for sensitive resources. |
+| **AES-256** | AES-256 obfuscation with random IV (not confidentiality; the key is in the assembly). |
 | **XOR** | Fast XOR with key rotation. Lower security but faster startup. |
 
 **Settings:**
@@ -227,8 +230,9 @@ var data = ResourceDecryptor.GetResource("Config.json");
 - `*.resources` - matches .NET resource files (typically excluded)
 
 **Limitations:**
-- Resources accessed via reflection need code changes
-- System resources (*.resources) may cause runtime issues if encrypted
+- Only rewritten `GetManifestResourceStream` overloads decrypt at runtime; other load paths see ciphertext
+- System resources (`*.resources`) may cause runtime issues if encrypted (excluded by default)
+- Packed dependency resources (`Obfy.Embedded.*`) are hard-skipped even if `excludePatterns` is overwritten
 - Large resources increase assembly size slightly due to encryption overhead
 
 ---
@@ -252,6 +256,31 @@ Enabled in the Aggressive preset (`protection.methodEncryption`).
   }
 }
 ```
+
+---
+
+### Virtualization
+
+Replaces a small set of **simple static `int` methods** with a bytecode interpreter stub. This is not commercial-grade code virtualization (no custom VM for arbitrary IL).
+
+**Eligible methods** (everything else is skipped):
+
+- `static`, non-generic, no exception handlers
+- Return `int`; parameters are `int` only
+- Body limited to `ldc.i4`, `ldarg`, `add`, `sub`, `mul`, and `ret`
+
+**Settings:**
+
+```json
+{
+  "virtualization": {
+    "enabled": false,
+    "maxMethods": 32
+  }
+}
+```
+
+Off in every level preset. `maxMethods` is clamped to 1–256 (default 32). Config-only (no CLI flag). Runs at priority 24, before method IL encryption.
 
 ---
 
@@ -616,24 +645,27 @@ The hash must be computed after all obfuscation is complete, but the verificatio
 5. Write final file
 ```
 
-**Verification Logic:**
+**Verification Logic (conceptual):**
+
+The injected helper does **not** use dnlib at runtime. It reads the assembly file and hashes the PE bytes:
 
 ```csharp
 static void Verify()
 {
-    // Get assembly path (handles single-file apps)
     var path = Assembly.GetExecutingAssembly().Location;
     if (string.IsNullOrEmpty(path))
         path = Environment.ProcessPath;  // .NET 6+ fallback
     if (string.IsNullOrEmpty(path))
-        return;  // Skip verification gracefully
+        return;  // in-memory / empty-path loads skip the check
 
-    // Load and hash method bodies
-    var module = ModuleDefMD.Load(path);
-    var actualHash = ComputeMethodBodiesHash(module);
+    var bytes = File.ReadAllBytes(path);
+    var offset = FindHashOffset(bytes);  // magic marker in the PE
+    if (offset < 0)
+        Environment.Exit(1);  // missing blob is treated as tamper
 
-    // Compare with expected
-    if (!HashesEqual(actualHash, _h))
+    // Zero the hash slot (and the strong-name signature if present), then SHA-256
+    var actual = SHA256.HashData(ZeroedCopy(bytes, offset));
+    if (!HashesEqual(actual, storedHash))
         Environment.Exit(1);
 }
 ```
@@ -715,32 +747,34 @@ Obfy can also obfuscate C# source code files using Roslyn.
 
 ### Source String Encryption
 
-Similar to assembly string encryption, but transforms source code.
+Encrypts string literals (and interpolations without alignment/format clauses) with the same XOR or AES-256 setting as assembly mode. Emits a helper `Obfy.Runtime.__ObfyStringDecryptor.Decrypt(string)` (key is a Base64 field in that type — not confidentiality). Attribute arguments are left alone. `[Obfuscation(Exclude = true, Feature = "strings")]` is honored.
 
 **Before:**
 ```csharp
 var message = "Hello World";
 ```
 
-**After:**
+**After (conceptual):**
 ```csharp
-var message = Decrypt("SGVsbG8gV29ybGQ=", "key");
+var message = Obfy.Runtime.__ObfyStringDecryptor.Decrypt("<base64 ciphertext>");
 ```
 
 ### Source Symbol Renaming
 
-Renames identifiers in source code using semantic analysis.
+Renames identifiers using Roslyn semantic symbols (`ISymbol`), including attributes and record positional properties.
 
 - Preserves compilation correctness
 - Handles overloads and generics
 - Maintains references across files
+- Honors `[Obfuscation]` for `renaming`
 
 ### Source Control Flow
 
 Transforms control flow structures in source code.
 
 - Adds opaque predicates
-- Transforms loops
+- Switch-flattens eligible methods (skips methods with locals/`break`/`continue` that would emit CS0161)
+- Honors `[Obfuscation]` for `controlflow`
 - Maintains compilability
 
 ---
@@ -790,11 +824,15 @@ Transforms control flow structures in source code.
 }
 ```
 
+## Post-processing: incremental cache
+
+`incremental.enabled` (config-only, off in every preset) skips re-obfuscation when the input bytes and serialized settings have not changed. The cache file is `{outputPath}.obfycache` and stores a SHA-256 of the input plus settings JSON. A hit also requires the output file to exist; if packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. The cache is written only after a successful write (including a successful launcher emit when packing is on).
+
 ## Post-processing: managed launcher
 
-`packing.enabled` compiles a framework-dependent managed console host (`{name}.launcher.exe` + `.runtimeconfig.json`) that embeds the obfuscated assembly as `packed.dll` and invokes its entry point. Run with `dotnet {name}.launcher.exe`. This is not native code generation (PF-09 remaining work).
+`packing.enabled` compiles a framework-dependent managed console host (`{name}.launcher.exe` + `.runtimeconfig.json`) that embeds the obfuscated assembly as `packed.dll` and invokes its entry point. Run with `dotnet {name}.launcher.exe`. This is not native code generation (PF-09 remaining work). Config-only; off in every preset.
 
-The payload is extracted to `{launcher}.payload.dll` at runtime so `Assembly.Location` is a real path (anti-tamper hashes that file). Sibling assemblies next to the launcher are resolved from `AppContext.BaseDirectory`.
+The payload is extracted to `{launcher}.payload.dll` at runtime so `Assembly.Location` is a real path (anti-tamper hashes that file). Sibling assemblies next to the launcher are resolved from `AppContext.BaseDirectory`. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning.
 
 ## See Also
 

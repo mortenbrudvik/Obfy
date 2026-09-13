@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--proxy-external` help text matches that it enables `--reference-proxy`
 
 ### Added
+- Desktop UI opens input files and `-o`/`--output` from the command line
 - Incremental obfuscation cache (`incremental.enabled`)
 - Selective IL virtualization for simple static int methods (`virtualization.enabled`)
 - Framework-dependent managed launcher (`packing.enabled`): writes `{name}.launcher.exe` + `.runtimeconfig.json`; run with `dotnet`. Requires an entry point. Not a native/unmanaged packer.
@@ -56,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI `--watermark-id` and Settings panel watermark / decoy-attribute controls
 
 ### Changed
+- README includes screenshots of the desktop application
 - Documentation matches the Unreleased pipeline: README, CLI, configuration, techniques, roadmap, competitive analysis, test counts, and examples (net10.0). Encryption is documented as obfuscation, not confidentiality.
 - Strong-name signing refreshes the signature blob in place after method-IL XOR; anti-tamper hashing skips the signature so Aggressive + `signing.keyFile` keeps both protections
 - Method IL encryption records generic skips in the report and uses a distinct XOR key per method; warns when many methods are skipped because they are generic

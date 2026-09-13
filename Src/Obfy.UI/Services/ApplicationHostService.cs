@@ -32,10 +32,26 @@ public sealed class ApplicationHostService : IHostedService
 
         var mainViewModel = _serviceProvider.GetRequiredService<MainViewModel>();
         await mainViewModel.InitializeAsync();
+        ApplyCommandLineInputs();
 
         var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
         mainWindow.DataContext = mainViewModel;
         mainWindow.Show();
+    }
+
+    /// <summary>
+    /// Opens assemblies/source files passed on the command line, e.g.
+    /// <c>ObfyUI.exe MyApp.dll -o output</c>. Unknown flags are ignored.
+    /// </summary>
+    private void ApplyCommandLineInputs()
+    {
+        var parsed = StartupCommandLine.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray());
+
+        if (parsed.Files.Count > 0)
+            _files.HandleFileDrop(parsed.Files.ToArray());
+
+        if (!string.IsNullOrWhiteSpace(parsed.OutputDirectory))
+            _files.OutputDirectory = parsed.OutputDirectory;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

@@ -8,12 +8,12 @@ Technique-level coverage is strong. SDK project scenarios (WPF app, WPF+library,
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 381 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
-| Obfy.Console.Tests | 117 | CLI parsing, wizard defaults, and a thin integration file |
+| Obfy.Tests | 397 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
+| Obfy.Console.Tests | 117 | CLI parsing (`IntegrationParseTests`) and process (`IntegrationProcessTests`) |
 | Obfy.UI.Tests | 132 | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 24 | 6 locator unit tests (CI) + 18 FlaUI live-window tests (`Category=UI`, local) |
-| Obfy.ScenarioTests | 4 | SDK fixtures: examples, WPF app, WPF+library (merge skipped: ILRepack net10 host) |
-| **Total** | **658** | |
+| Obfy.ScenarioTests | 9 | SDK fixtures: examples, WPF, console+lib, WinForms, satellites, MSBuild AfterBuild |
+| **Total** | **661** | |
 
 ## Test Stack
 
@@ -140,6 +140,10 @@ Compile → obfuscate → run real SDK projects. Fixtures live under `Tests/Obfy
 | `ExampleScenarioTests` | Shipped example `obfy.json` still builds, obfuscates, and runs |
 | `WpfAppTests` | `preserveXaml` + MainWindow exclusion: window constructs, `{Binding Title}` survives, non-ViewModel type is renamed |
 | `WpfSolutionTests` | WPF app + class library: both outputs obfuscated, app still calls into the library |
+| `ConsoleSolutionTests` | Console app + library: public API preserved on the lib |
+| `WinFormsAppTests` | WinForms form constructs after obfuscation |
+| `SatelliteTests` | `*.resources.dll` satellite is not rewritten; parent still loads cultures |
+| `MsBuildIntegrationTests` | Example AfterBuild target invokes the CLI on Release |
 
 Harness: copy fixture to `%TEMP%`, `dotnet build -c Release`, obfuscate with `IObfuscationService`, `dotnet <assembly>` (WPF uses `--smoke`).
 

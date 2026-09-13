@@ -1,0 +1,12 @@
+{
+  "level": "standard",
+  "stringEncryption": { "enabled": true },
+  "symbolRenaming": {
+    "enabled": true,
+    "mode": "sequential",
+    "preservePublicApi": false
+  },
+  "exclusions": {
+    "types": [ "MainForm" ]
+  }
+}

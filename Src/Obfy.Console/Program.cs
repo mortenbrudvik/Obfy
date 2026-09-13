@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Autofac;
 using Logging.Core.DependencyInjection;
 using Obfy.Console.Wizard;
@@ -372,7 +373,8 @@ public class Program
             var json = await File.ReadAllTextAsync(configFile.FullName).ConfigureAwait(false);
             settings = JsonSerializer.Deserialize<ObfySettings>(json, new JsonSerializerOptions
             {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
             }) ?? throw new InvalidOperationException("Config file deserialized to null.");
 
             // The per-technique flags in a config file are authoritative. Treat file-sourced settings

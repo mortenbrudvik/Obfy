@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Src\Obfy.Core\Obfy.Core.csproj" />
+    <ProjectReference Include="..\..\Src\Obfy.Console\Obfy.Console.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,6 +34,7 @@
     <Compile Remove="Fixtures\**\*" />
     <Page Remove="Fixtures\**\*" />
     <ApplicationDefinition Remove="Fixtures\**\*" />
+    <EmbeddedResource Remove="Fixtures\**\*" />
     <None Include="Fixtures\**\*" />
   </ItemGroup>
 

@@ -1,0 +1,11 @@
+{
+  "level": "standard",
+  "stringEncryption": { "enabled": true },
+  "resourceEncryption": { "enabled": true },
+  "dependencyEmbedding": { "enabled": true },
+  "symbolRenaming": {
+    "enabled": true,
+    "mode": "sequential",
+    "preservePublicApi": true
+  }
+}

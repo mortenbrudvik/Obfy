@@ -264,8 +264,8 @@ public class AntiTamperObfuscator : IObfuscator
         var isNullOrEmpty = new MemberRefUser(module, "IsNullOrEmpty",
             MethodSig.CreateStatic(module.CorLibTypes.Boolean, module.CorLibTypes.String),
             new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef));
-        var exitMethod = new MemberRefUser(module, "Exit",
-            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32), environmentType);
+        var failFast = new MemberRefUser(module, "FailFast",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String), environmentType);
         var readAllBytes = new MemberRefUser(module, "ReadAllBytes",
             MethodSig.CreateStatic(new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.String), fileType);
         var sha256Create = new MemberRefUser(module, "Create",
@@ -289,7 +289,7 @@ public class AntiTamperObfuscator : IObfuscator
             bitConverterType);
 
         var skipLabel = Instruction.Create(OpCodes.Ret);
-        var exitLabel = Instruction.Create(OpCodes.Ldc_I4_1);
+        var exitLabel = Instruction.Create(OpCodes.Ldstr, "Obfy anti-tamper: assembly integrity check failed");
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, verifiedField));
         body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, skipLabel));
@@ -425,7 +425,7 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Br, skipLabel));
 
         body.Instructions.Add(exitLabel);
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, failFast));
         body.Instructions.Add(skipLabel);
 
         body.UpdateInstructionOffsets();

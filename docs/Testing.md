@@ -8,13 +8,13 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 413 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
-| Obfy.Console.Tests | 117 | CLI parsing (`IntegrationParseTests`) and process (`IntegrationProcessTests`) |
-| Obfy.UI.Tests | 132 | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
+| Obfy.Tests | 433 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
+| Obfy.Console.Tests | 123 | CLI parsing (`IntegrationParseTests`) and `Program.Main` process tests |
+| Obfy.UI.Tests | 133 | ViewModel unit tests, startup CLI apply, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 25 | 6 locator unit tests (CI) + 19 FlaUI live-window tests (`Category=UI`, local) |
-| Obfy.ScenarioTests | 14 | 10 default SDK fixtures (Unity stub included) + 3 `Category=Platform` + 1 skipped merge |
-| Obfy.VisualStudio.Tests | 9 | VS settings JSON, CLI args, output-assembly locator (no VS hive) |
-| **Total** | **687** | Default CI (`Category!=UI&Category!=Platform`) |
+| Obfy.ScenarioTests | 14 | 11 default SDK fixtures (Unity stub + merge) + 3 `Category=Platform` |
+| Obfy.VisualStudio.Tests | 11 | VS settings JSON, CLI args, output-assembly locator, CLI path locator (no VS hive) |
+| **Total** | **717** | Default CI (`Category!=UI&Category!=Platform`) |
 
 ## Test Stack
 
@@ -95,8 +95,8 @@ Tests the command-line interface:
 | CommandParsingTests | 72 | CLI options and arguments (parse) |
 | HelpOutputTests | 15 | Help text verification |
 | ErrorHandlingTests | 14 | Error scenarios |
-| WizardDefaultsTests | 4 | Use-case wizard defaults |
-| IntegrationTests | 12 | Mix of parse, config generate, and one real `Program.Main` run (see TR-14 / TR-25) |
+| WizardDefaultsTests | 7 | Use-case wizard defaults (Unity, Desktop, Blazor, MAUI, library, ASP.NET, public API) |
+| IntegrationTests | 15 | Parse vs process split; `Program.Main` for generate, dry-run, missing file, bad JSON, unknown level |
 
 Key patterns:
 
@@ -246,13 +246,14 @@ This prevents race conditions with static properties and shared state during tes
 ## Best Practices
 
 1. **Arrange-Act-Assert**: Structure tests clearly with these three sections
-2. **One assertion per test**: Keep tests focused on a single behavior
+2. **One behavior per test**: Multiple asserts on that behavior are expected; do not split a compile→run scenario into one-assert tests
 3. **Descriptive names**: Use `Method_Scenario_ExpectedResult` pattern
 4. **Mock external dependencies**: Use Moq for services and I/O
 5. **Use temp files**: Clean up after integration tests with `IDisposable`
+6. **Prove run, not emit**: scenario and e2e tests should execute the obfuscated output (process or ALC invoke) when the product claims runtime behavior
 
 ## Continuous Integration
 
-PRs and pushes to `main` run `.github/workflows/ci.yml`: `dotnet test -c Release` with `Category!=UI&Category!=Platform`. The coverage report and an 80% **warning** (not a hard fail) run when tests succeed (later steps still run if the PR comment fails). The sticky PR coverage comment is best-effort (`continue-on-error`, same-repo PRs only); a 403 does not skip the summary or threshold. Pushes to `main` get the artifact, job summary, and 80% warning, not a PR comment.
+PRs and pushes to `main` run `.github/workflows/ci.yml`: `dotnet test -c Release` with `Category!=UI&Category!=Platform` and `coverage.runsettings` (product assemblies only). The coverage report and an 80% **warning** (not a hard fail) run when tests succeed (later steps still run if the PR comment fails). The sticky PR coverage comment is best-effort (`continue-on-error`, same-repo PRs only); a 403 does not skip the summary or threshold. Pushes to `main` get the artifact, job summary, and 80% warning, not a PR comment. A second job runs Rider JVM tests (`./gradlew test`).
 
-FlaUI (`Category=UI`) is local-only. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml`. See [Testing-Roadmap.md](Testing-Roadmap.md) (`TR-01`–`TR-03`, `TR-30`–`TR-33`, `TR-42`).
+FlaUI (`Category=UI`) is local-only — there is no nightly UI workflow. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml` (weekly Monday + `workflow_dispatch`). See [Testing-Roadmap.md](Testing-Roadmap.md).

@@ -19,6 +19,10 @@ jobs:
       with:
         dotnet-version: "10.0.x"
 
+    - name: Install MAUI Windows workload
+      continue-on-error: true
+      run: dotnet workload install maui-windows
+
     - name: Restore dependencies
       run: dotnet restore
 
@@ -27,5 +31,4 @@ jobs:
 
     - name: Platform tests
       run: dotnet test --no-build -c Release --filter "Category=Platform" --nologo
-      # Blazor WASM and NativeAOT run here. MAUI skips unless the workload is installed.
-      # Unity stub is not Category=Platform; it runs on every PR in the default job.
+      # Blazor WASM and NativeAOT run here. MAUI Windows runs when the workload install above succeeded.

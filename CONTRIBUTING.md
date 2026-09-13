@@ -61,7 +61,7 @@ Obfy/
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/              # Core unit tests (413 tests)
+│   ├── Obfy.Tests/              # Core unit tests
 │   ├── Obfy.Console.Tests/      # CLI parsing tests (117 tests)
 │   ├── Obfy.UI.Tests/           # ViewModel unit tests (132 tests)
 │   ├── Obfy.ScenarioTests/      # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)

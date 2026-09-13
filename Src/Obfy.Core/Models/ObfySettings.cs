@@ -237,6 +237,7 @@ public class ObfySettings
         ValidateObject(Inclusions);
         ValidateObject(Signing);
         ValidateObject(Watermark);
+        ValidateObject(Virtualization);
 
         Inclusions.Namespaces ??= new();
         Inclusions.Types ??= new();

@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Src\Obfy.Core\Obfy.Core.csproj" />
     <ProjectReference Include="..\..\Src\Settings.Core\Settings.Core.csproj" />
+    <ProjectReference Include="..\..\Src\Logging.Core\Logging.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

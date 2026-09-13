@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CLI `Program.Main` tests for dry-run, missing file, malformed JSON, and unknown `--level`
+- Anti-tamper child-process test that a tampered PE exits non-zero
+- Pipeline fail-closed tests (Failed result, throw, cancel, target-type filter)
+- Source string encryption compile-and-run; merge fail-closed; signing wrong PFX / truncated SNK
+- Logging.Core factory/module tests; VS `ObfyCliLocator`; UI `ApplyStartup` command-line apply
+- Coverlet include filter (`coverage.runsettings`); Rider JVM tests on CI; MAUI workload install on the weekly platform job
+
 ### Fixed
+- Assembly merge uses `ILRepack.Lib` 2.0.48 so `--merge` works on a net10 host (was `ILRepack.NETStandard` 2.0.4 `NotSupportedException`)
+- `ObfySettings.Validate` enforces `Virtualization.MaxMethods` range
+- Anti-tamper integrity failure uses `Environment.FailFast` so the process cannot continue after a failed check
+- Settings panel FlaUI toggle no longer passes silently when the Toggle pattern is missing
+- MSBuild AfterBuild scenario test name no longer claims the app is run
 - Assembly write calls `SimplifyBranches` / `OptimizeBranches` so control-flow on async state machines (Blazor WASM `MoveNext`) no longer fails with “short branch too far”
 - Unity recipe and wizard exclude `UnityEngine` / `Unity` as well as `UnityEngine.*` / `Unity.*` (`*` does not match the namespace itself)
 - CI requests `pull-requests: write` for the sticky coverage comment, skips the comment on fork PRs, and sets `continue-on-error` on that step so a 403 (fork/read-only token) cannot skip the coverage summary or 80% warning

@@ -948,6 +948,89 @@ namespace Test
         result.ErrorMessage.ShouldContain("Less than two assemblies remain");
     }
 
+    [Fact]
+    public async Task ObfuscationService_MergeAndObfuscate_FailsClosedWhenMergerFails()
+    {
+        var outputPath = Path.Combine(_tempDirectory, "merged-out.dll");
+        var merger = new Mock<IAssemblyMerger>();
+        merger.Setup(m => m.MergeAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<string>(),
+                It.IsAny<AssemblyMergeSettings>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AssemblyMergeResult { Success = false, ErrorMessage = "ILRepack boom" });
+
+        var pipeline = new Mock<IObfuscationPipeline>();
+        var service = new ObfuscationService(
+            new Mock<IAssemblyProcessor>().Object,
+            new Mock<ISourceProcessor>().Object,
+            pipeline.Object,
+            merger.Object,
+            new Mock<ILogger<ObfuscationService>>().Object);
+
+        var result = await service.MergeAndObfuscateAsync(
+            [CreateTestAssembly("MergeA.dll"), CreateTestAssembly("MergeB.dll")],
+            outputPath,
+            new ObfySettings());
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("Merge failed");
+        result.ErrorMessage.ShouldContain("ILRepack boom");
+        File.Exists(outputPath).ShouldBeFalse();
+        pipeline.Verify(
+            p => p.ExecuteAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task AssemblyProcessor_Save_WrongPfxPassword_Fails()
+    {
+        var pfxPath = Path.Combine(_tempDirectory, "wrong-pass.pfx");
+        WritePfx(pfxPath, "secret");
+        const string env = "OBFY_TEST_PFX_WRONG";
+        Environment.SetEnvironmentVariable(env, "not-the-password");
+        try
+        {
+            var assemblyPath = CreateTestAssembly("PfxWrong.dll");
+            var outputPath = Path.Combine(_tempDirectory, "pfx-wrong.dll");
+            var processor = new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object);
+            var settings = new ObfySettings
+            {
+                Signing =
+                {
+                    Enabled = true,
+                    KeyFile = pfxPath,
+                    PasswordEnvironmentVariable = env
+                }
+            };
+            var context = await processor.LoadAsync(assemblyPath, settings);
+
+            await Should.ThrowAsync<InvalidOperationException>(
+                async () => await processor.SaveAsync(context, outputPath));
+            File.Exists(outputPath).ShouldBeFalse();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(env, null);
+        }
+    }
+
+    [Fact]
+    public async Task AssemblyProcessor_Save_TruncatedSnk_Fails()
+    {
+        var snkPath = Path.Combine(_tempDirectory, "truncated.snk");
+        File.WriteAllBytes(snkPath, [0x07, 0x02, 0x00]);
+        var assemblyPath = CreateTestAssembly("TruncSnk.dll");
+        var outputPath = Path.Combine(_tempDirectory, "trunc-snk.dll");
+        var processor = new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object);
+        var settings = new ObfySettings { Signing = { Enabled = true, KeyFile = snkPath } };
+        var context = await processor.LoadAsync(assemblyPath, settings);
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            async () => await processor.SaveAsync(context, outputPath));
+        File.Exists(outputPath).ShouldBeFalse();
+    }
+
     #endregion
 
     #region Helper Methods

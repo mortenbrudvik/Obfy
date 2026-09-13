@@ -45,13 +45,7 @@ public sealed class ApplicationHostService : IHostedService
     /// </summary>
     private void ApplyCommandLineInputs()
     {
-        var parsed = StartupCommandLine.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray());
-
-        if (parsed.Files.Count > 0)
-            _files.HandleFileDrop(parsed.Files.ToArray());
-
-        if (!string.IsNullOrWhiteSpace(parsed.OutputDirectory))
-            _files.OutputDirectory = parsed.OutputDirectory;
+        _files.ApplyStartup(StartupCommandLine.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray()));
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

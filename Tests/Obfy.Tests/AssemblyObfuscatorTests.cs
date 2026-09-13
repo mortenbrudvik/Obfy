@@ -778,6 +778,8 @@ public class AssemblyObfuscatorTests
 
         // Assert
         result.Success.ShouldBeTrue();
+        result.Statistics.MethodsControlFlowObfuscated.ShouldBe(1);
+        type.FindMethod("LongMethod")!.Body.Instructions.Count.ShouldBeGreaterThan(20);
     }
 
     [Fact]

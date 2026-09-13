@@ -152,6 +152,18 @@ public partial class FilesViewModel : ObservableObject
         AddFilesInternal(filePaths);
     }
 
+    /// <summary>
+    /// Applies parsed process-start arguments (files and <c>-o</c> output directory).
+    /// </summary>
+    public void ApplyStartup(StartupCommandLine parsed)
+    {
+        if (parsed.Files.Count > 0)
+            HandleFileDrop(parsed.Files.ToArray());
+
+        if (!string.IsNullOrWhiteSpace(parsed.OutputDirectory))
+            OutputDirectory = parsed.OutputDirectory;
+    }
+
     public static bool CanAcceptDrop(IEnumerable<string>? paths)
         => paths != null && paths.Any(IsSupportedInputPath);
 

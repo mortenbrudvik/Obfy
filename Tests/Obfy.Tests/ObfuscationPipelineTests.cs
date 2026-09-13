@@ -108,4 +108,91 @@ public class ObfuscationPipelineTests
         pipeline.Obfuscators[1].Name.ShouldBe("Medium");
         pipeline.Obfuscators[2].Name.ShouldBe("High");
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenObfuscatorReturnsFailed_StopsAndFailsClosed()
+    {
+        var first = EnabledObfuscator("First", 10, ObfuscationResult.Failed("nope"));
+        var second = EnabledObfuscator("Second", 20, ObfuscationResult.Successful(new ObfuscationStatistics()));
+
+        var pipeline = new ObfuscationPipeline([first.Object, second.Object], new Mock<ILogger<ObfuscationPipeline>>().Object);
+        var result = await pipeline.ExecuteAsync(new PipelineContext
+        {
+            TargetType = TargetType.Assembly,
+            Settings = new ObfySettings()
+        });
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("First");
+        result.ErrorMessage.ShouldContain("nope");
+        second.Verify(o => o.ObfuscateAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenObfuscatorThrows_FailsClosed()
+    {
+        var obfuscator = EnabledObfuscator("Boom", 10, ObfuscationResult.Successful(new ObfuscationStatistics()));
+        obfuscator.Setup(o => o.ObfuscateAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("exploded"));
+
+        var pipeline = new ObfuscationPipeline([obfuscator.Object], new Mock<ILogger<ObfuscationPipeline>>().Object);
+        var result = await pipeline.ExecuteAsync(new PipelineContext
+        {
+            TargetType = TargetType.Assembly,
+            Settings = new ObfySettings()
+        });
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("exploded");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCancelled_ReturnsFailed()
+    {
+        var obfuscator = EnabledObfuscator("Slow", 10, ObfuscationResult.Successful(new ObfuscationStatistics()));
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var pipeline = new ObfuscationPipeline([obfuscator.Object], new Mock<ILogger<ObfuscationPipeline>>().Object);
+        var result = await pipeline.ExecuteAsync(new PipelineContext
+        {
+            TargetType = TargetType.Assembly,
+            Settings = new ObfySettings()
+        }, cts.Token);
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("cancelled");
+        obfuscator.Verify(o => o.ObfuscateAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SkipsObfuscatorsThatDoNotSupportTargetType()
+    {
+        var obfuscator = new Mock<IObfuscator>();
+        obfuscator.Setup(o => o.Name).Returns("SourceOnly");
+        obfuscator.Setup(o => o.SupportsTargetType(TargetType.Assembly)).Returns(false);
+        obfuscator.Setup(o => o.IsEnabled(It.IsAny<ObfySettings>())).Returns(true);
+
+        var pipeline = new ObfuscationPipeline([obfuscator.Object], new Mock<ILogger<ObfuscationPipeline>>().Object);
+        var result = await pipeline.ExecuteAsync(new PipelineContext
+        {
+            TargetType = TargetType.Assembly,
+            Settings = new ObfySettings()
+        });
+
+        result.Success.ShouldBeTrue();
+        obfuscator.Verify(o => o.ObfuscateAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private static Mock<IObfuscator> EnabledObfuscator(string name, int priority, ObfuscationResult result)
+    {
+        var obfuscator = new Mock<IObfuscator>();
+        obfuscator.Setup(o => o.Name).Returns(name);
+        obfuscator.Setup(o => o.Priority).Returns(priority);
+        obfuscator.Setup(o => o.SupportsTargetType(TargetType.Assembly)).Returns(true);
+        obfuscator.Setup(o => o.IsEnabled(It.IsAny<ObfySettings>())).Returns(true);
+        obfuscator.Setup(o => o.ObfuscateAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+        return obfuscator;
+    }
 }

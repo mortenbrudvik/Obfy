@@ -150,6 +150,19 @@ public class FilesViewModelTests : IDisposable
     }
 
     [Fact]
+    public void ApplyStartup_AddsFilesAndOutputDirectory()
+    {
+        var dllPath = CreateTestFile("startup.dll");
+        var output = Path.Combine(_tempDirectory, "out");
+
+        _viewModel.ApplyStartup(new StartupCommandLine([dllPath], output));
+
+        _viewModel.Files.Count.ShouldBe(1);
+        _viewModel.Files[0].FilePath.ShouldBe(dllPath);
+        _viewModel.OutputDirectory.ShouldBe(output);
+    }
+
+    [Fact]
     public void HandleFileDrop_WithValidExe_AddsFile()
     {
         // Arrange

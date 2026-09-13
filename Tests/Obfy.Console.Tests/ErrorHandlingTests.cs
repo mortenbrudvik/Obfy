@@ -73,15 +73,10 @@ public class ErrorHandlingTests
         // Arrange
         var console = new TestConsole();
 
-        // Act
-        // System.CommandLine treats unknown options as file arguments
-        // The invoke succeeds (parsing wise) but the handler runs with
-        // non-existent files - the handler would fail but the dummy handler
-        // in CreateRootCommand doesn't do anything
+        // Act — CreateRootCommand uses a no-op handler so parse-only invoke is 0.
+        // Product process behavior is covered by Program.Main tests in IntegrationProcessTests.
         var exitCode = _rootCommand.Invoke("input.dll --fake-option", console);
 
-        // Assert - parsing succeeds (exit code 0) because unknown options
-        // are treated as file arguments
         exitCode.ShouldBe(0);
     }
 

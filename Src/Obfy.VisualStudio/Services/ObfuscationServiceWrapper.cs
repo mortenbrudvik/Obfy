@@ -32,7 +32,6 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
 
         try
         {
-            // Find the CLI executable
             var cliPath = FindCliPath();
             if (string.IsNullOrEmpty(cliPath))
             {
@@ -76,47 +75,10 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
             return _cliPath;
         }
 
-        // Global dotnet tool install was removed; search it last as a fallback only.
-        var possiblePaths = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Obfy", "obfy.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Obfy", "obfy.exe"),
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "obfy.exe"),
-        };
-
-        foreach (var path in possiblePaths)
-        {
-            if (File.Exists(path))
-            {
-                _cliPath = path;
-                return path;
-            }
-        }
-
-        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach (var dir in pathEnv.Split(Path.PathSeparator))
-        {
-            if (string.IsNullOrWhiteSpace(dir))
-            {
-                continue;
-            }
-
-            var exePath = Path.Combine(dir, "obfy.exe");
-            if (File.Exists(exePath))
-            {
-                _cliPath = exePath;
-                return exePath;
-            }
-        }
-
-        var dotnetTool = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "tools", "obfy.exe");
-        if (File.Exists(dotnetTool))
-        {
-            _cliPath = dotnetTool;
-            return dotnetTool;
-        }
-
-        return null;
+        var found = ObfyCliLocator.Find(ObfyCliLocator.DefaultSearchDirectories());
+        if (found != null)
+            _cliPath = found;
+        return found;
     }
 
     private async Task<ObfuscationResult> RunCliAsync(string cliPath, string args, CancellationToken cancellationToken)

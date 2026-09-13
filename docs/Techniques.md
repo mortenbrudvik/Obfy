@@ -661,12 +661,12 @@ static void Verify()
     var bytes = File.ReadAllBytes(path);
     var offset = FindHashOffset(bytes);  // magic marker in the PE
     if (offset < 0)
-        Environment.Exit(1);  // missing blob is treated as tamper
+        Environment.FailFast("Obfy anti-tamper: assembly integrity check failed");
 
     // Zero the hash slot (and the strong-name signature if present), then SHA-256
     var actual = SHA256.HashData(ZeroedCopy(bytes, offset));
     if (!HashesEqual(actual, storedHash))
-        Environment.Exit(1);
+        Environment.FailFast("Obfy anti-tamper: assembly integrity check failed");
 }
 ```
 

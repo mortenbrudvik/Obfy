@@ -10,7 +10,7 @@ namespace Obfy.ScenarioTests;
 
 public class MergeScenarioTests
 {
-    [Fact(Skip = "ILRepack.NETStandard 2.0.4 (net40) throws NotSupportedException when hosted on net10.0")]
+    [Fact]
     public async Task Merge_TwoSdkClassLibraries_SucceedsAndRuns()
     {
         var root = Path.Combine(Path.GetTempPath(), "obfy-merge-" + Guid.NewGuid().ToString("N"));

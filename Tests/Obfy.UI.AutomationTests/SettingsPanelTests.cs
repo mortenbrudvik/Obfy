@@ -44,11 +44,7 @@ public class SettingsPanelTests : TestBase
 
         // Get initial state
         var initialPattern = toggle.Patterns.Toggle.PatternOrDefault;
-        if (initialPattern == null)
-        {
-            // Skip if toggle pattern not supported
-            return;
-        }
+        initialPattern.ShouldNotBeNull("StringEncryptionToggle must expose the Toggle pattern");
 
         var initialState = initialPattern.ToggleState.Value;
 

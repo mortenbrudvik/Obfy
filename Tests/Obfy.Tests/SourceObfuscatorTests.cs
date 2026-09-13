@@ -47,6 +47,8 @@ public class SourceObfuscatorTests
         var newSource = context.Compilation!.SyntaxTrees.First().ToString();
         newSource.ShouldNotContain("\"Hello World\"");
         newSource.ShouldContain("__ObfyStringDecryptor");
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Test", "GetMessage").ShouldBe("Hello World");
     }
 
     [Fact]

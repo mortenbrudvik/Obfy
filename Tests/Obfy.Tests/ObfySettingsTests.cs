@@ -145,6 +145,42 @@ public class ObfySettingsTests
         Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate());
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(101)]
+    public void Validate_ThrowsOnOutOfRangeMinStringLength(int length)
+    {
+        var settings = new ObfySettings { StringEncryption = { MinStringLength = length } };
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(51)]
+    public void Validate_ThrowsOnOutOfRangeJunkTypeCount(int count)
+    {
+        var settings = new ObfySettings { Protection = { AntiDecompiler = { JunkTypeCount = count } } };
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(21)]
+    public void Validate_ThrowsOnOutOfRangeJunkMethodsPerType(int count)
+    {
+        var settings = new ObfySettings { Protection = { AntiDecompiler = { JunkMethodsPerType = count } } };
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(257)]
+    public void Validate_ThrowsOnOutOfRangeVirtualizationMaxMethods(int count)
+    {
+        var settings = new ObfySettings { Virtualization = { MaxMethods = count } };
+        Should.Throw<System.ComponentModel.DataAnnotations.ValidationException>(() => settings.Validate());
+    }
+
     [Fact]
     public void Validate_AcceptsDefaults()
     {

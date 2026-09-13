@@ -8,7 +8,7 @@ How to run the current suite: [Testing.md](Testing.md).
 
 ## Current position (2026-09)
 
-Six projects; counts live in [Testing.md](Testing.md) (687 default as of 2026-09-13). That volume is real. What it proves is narrower than the docs imply.
+Six projects; counts live in [Testing.md](Testing.md). That volume is real. What it proves is narrower than a raw count implies.
 
 | Layer | Quality | What it actually proves |
 |-------|---------|-------------------------|
@@ -16,7 +16,7 @@ Six projects; counts live in [Testing.md](Testing.md) (687 default as of 2026-09
 | Compile → obfuscate → run | Good | `EndToEndObfuscationTests` (Roslyn snippets) plus `Obfy.ScenarioTests` SDK fixtures |
 | CLI parse / wizard defaults | Strong | Flags and use-case presets map to settings |
 | WPF product UI (ViewModels) | Strong | Commands and bindings of *Obfy itself*, not of customer apps |
-| FlaUI smoke | Local-only | Chrome exists; does not add files or obfuscate (`Category=UI`) |
+| FlaUI smoke | Local-only | Chrome plus `ObfuscateFlowTests` (command-line DLL, click Obfuscate, non-empty output file). `Category=UI`. |
 | SDK projects / solutions | Good | WPF, console+lib, WinForms, examples, satellites, MSBuild AfterBuild |
 | Platform recipes | Partial | Unity stub in default CI; Blazor WASM / NativeAOT / MAUI Windows are `Category=Platform` |
 | IDE extensions | Partial | VS helpers + Rider JVM unit tests; no VS hive / Rider UI tests |
@@ -60,7 +60,7 @@ Effort is relative to this repo (S ≤ 1 day, M a few days, L a week-plus includ
 |----|------|--------|-------|--------|
 | TR-01 | Trait-filter FlaUI out of default `dotnet test` / CI (`Category=UI` or equivalent). Document local-only run in [Testing.md](Testing.md). | S | High | ✅ Done (`Category=UI` + default `VSTestTestCaseFilter`) |
 | TR-02 | Resolve `ObfyUI.exe` from the current build configuration and TFM, not a hardcoded Debug path. | S | High | ✅ Done (`UiExecutableLocator`) |
-| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | Open — waiting for first green Actions run on `main` after permissions + continue-on-error |
+| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | ✅ Done ([CI run 79](https://github.com/mortenbrudvik/Obfy/actions/runs/34753072894); 80% is a warning, not a hard fail) |
 
 **Done when:** a Release `dotnet test` of the solution on GitHub Actions passes; coverage artifact uploads; job step summary and 80% warning run; sticky PR comment is optional (same-repo, best-effort); FlaUI still runs locally with one documented command (see [Testing.md](Testing.md)).
 
@@ -93,7 +93,7 @@ Build fixtures with `dotnet build -c Release` in a temp copy (or `OutputPath` un
 | TR-10 | **WPF app fixture.** Window with `{Binding}`, `x:Name`, a public property on a type that does **not** match `LooksLikeXamlBindable`’s `*ViewModel`/`*View` suffix (or an extra type that does). Aggressive or Standard rename + `preserveXaml`. Headless or process-start smoke: window constructs, bound value is readable. | M | High | ✅ Done (`WpfAppTests`, MainWindow excluded for BAML) |
 | TR-11 | **WPF + class library solution.** App references a library; both outputs obfuscated (app with rename, library with `preservePublicApi` or as a private impl). App still calls into the library. | M | High | ✅ Done (`WpfSolutionTests`) |
 | TR-12 | **Promote `examples/BasicConsoleApp` and `examples/LibraryWithPublicApi` to CI.** Build, obfuscate with their `obfy.json`, run / invoke. Fail if the example recipe bitrots. | S | High | ✅ Done (`ExampleScenarioTests`) |
-| TR-13 | **Merge happy path on real assemblies.** Two Roslyn- or SDK-built DLLs, `IAssemblyMerger.MergeAsync` **must** succeed, merged output loads and runs. Replace `AssemblyMerger_ReturnsCorrectAssemblyCount_OnSuccess` accepting failure. | S | Medium | Blocked — `MergeScenarioTests` exists; ILRepack.NETStandard 2.0.4 throws `NotSupportedException` on a net10 host |
+| TR-13 | **Merge happy path on real assemblies.** Two Roslyn- or SDK-built DLLs, `IAssemblyMerger.MergeAsync` **must** succeed, merged output loads and runs. Replace `AssemblyMerger_ReturnsCorrectAssemblyCount_OnSuccess` accepting failure. | S | Medium | ✅ Done (`MergeScenarioTests` + `ILRepack.Lib` 2.0.48; `MergeAndObfuscateAsync` fails closed when merge fails) |
 | TR-14 | **CLI dry-run is a real handler test.** Stop using `SetupMainHandler` no-op for tests that claim integration. Keep parse-only tests separate. | S | Medium | ✅ Done |
 | TR-23 | Unit tests for `LooksLikeXamlBindable`: `*ViewModel` suffix, `INotifyPropertyChanged`, `DependencyProperty` field, `DependencyObject` base, `*View` false-positive (`Overview`/`Preview`), negative case (plain public DTO). Does not need the SDK harness. | S | Medium | ✅ Done (`ObfuscatorHelpersTests`; suffix match is ordinal-ignore-case) |
 
@@ -145,7 +145,7 @@ These are the product `PS-*` items. Do not advertise first-class support until t
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
-| TR-40 | Visual Studio: unit-test `ObfuscationServiceWrapper` / settings JSON / `GetOutputAssemblyPathAsync` without a VS hive. Optional vsix integration later. | M | Medium | ✅ Done (`Obfy.VisualStudio.Tests`: JSON, CLI args, `OutputAssemblyLocator`) |
+| TR-40 | Visual Studio: unit-test `ObfuscationServiceWrapper` / settings JSON / `GetOutputAssemblyPathAsync` without a VS hive. Optional vsix integration later. | M | Medium | ✅ Done (`Obfy.VisualStudio.Tests`: JSON, CLI args, `OutputAssemblyLocator`, `ObfyCliLocator`; wrapper process still needs a hive/CLI) |
 | TR-41 | Rider: JVM unit tests for settings + `AssemblyLocator`. | M | Low | ✅ Done (`src/test/kotlin`; `./gradlew test` needs JDK 21 + Rider SDK) |
 | TR-42 | FlaUI: one path that adds a built fixture DLL and clicks Obfuscate (needs TR-02). Still local-or-trait-filtered. | M | Low | ✅ Done (`ObfuscateFlowTests`; command-line DLL + Obfuscate; `Category=UI`) |
 | TR-43 | Dedicated tests for `Settings.Core` validation if scenario work does not already hit it. | S | Low | ✅ Done (`SettingsValidatorTests`) |
@@ -181,7 +181,7 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 |-----|--------|------|
 | Default (every PR) | exclude `UI`, `Platform` | Always |
 | Coverage | same as default | Always (80% *warning*, not a hard fail; PR comment is best-effort) |
-| UI | `Category=UI` | Manual / nightly / local |
+| UI | `Category=UI` | Local only (no nightly workflow) |
 | Platform | `Category=Platform` | `.github/workflows/platform.yml` (weekly Monday + `workflow_dispatch`); MAUI skips if the workload is missing |
 
 `Obfy.ScenarioTests` runs in the default job once fixtures are small (WPF + examples). If TR-10 exceeds ~2 minutes, split it to a `Category=Scenario` job that still runs on every PR.

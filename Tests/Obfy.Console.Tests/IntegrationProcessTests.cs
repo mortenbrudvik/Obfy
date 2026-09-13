@@ -108,14 +108,52 @@ public class IntegrationProcessTests : IDisposable
         var outputDir = Path.Combine(_tempDirectory, "dry-run-output");
         Directory.CreateDirectory(outputDir);
 
-        var rootCommand = Program.CreateRootCommand();
-        var console = new TestConsole();
-        var exitCode = await rootCommand.InvokeAsync(
-            $"\"{assemblyPath}\" -o \"{outputDir}\" --dry-run --no-logo",
-            console);
+        var exitCode = await Program.Main([assemblyPath, "-o", outputDir, "--dry-run", "--no-logo"]);
 
         exitCode.ShouldBe(0);
         File.Exists(Path.Combine(outputDir, "DryRunTest.dll")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Main_MissingInputFile_ReturnsNonZero()
+    {
+        var outputDir = Path.Combine(_tempDirectory, "missing-out");
+        Directory.CreateDirectory(outputDir);
+
+        var exitCode = await Program.Main([
+            Path.Combine(_tempDirectory, "no-such.dll"), "-o", outputDir, "--no-logo"
+        ]);
+
+        exitCode.ShouldNotBe(0);
+        Directory.GetFiles(outputDir).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Main_MalformedConfigJson_ReturnsNonZero()
+    {
+        var input = ConsoleTestAssembly.Create(_tempDirectory, "BadJson.dll");
+        var config = Path.Combine(_tempDirectory, "broken.json");
+        File.WriteAllText(config, "{ not json");
+        var outputDir = Path.Combine(_tempDirectory, "bad-json-out");
+        Directory.CreateDirectory(outputDir);
+
+        var exitCode = await Program.Main([input, "-c", config, "-o", outputDir, "--no-logo"]);
+
+        exitCode.ShouldNotBe(0);
+        File.Exists(Path.Combine(outputDir, "BadJson.dll")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Main_UnknownLevel_ReturnsNonZero()
+    {
+        var input = ConsoleTestAssembly.Create(_tempDirectory, "BadLevel.dll");
+        var outputDir = Path.Combine(_tempDirectory, "bad-level-out");
+        Directory.CreateDirectory(outputDir);
+
+        var exitCode = await Program.Main([input, "-o", outputDir, "-l", "banana", "--no-logo"]);
+
+        exitCode.ShouldNotBe(0);
+        File.Exists(Path.Combine(outputDir, "BadLevel.dll")).ShouldBeFalse();
     }
 
     [Fact]

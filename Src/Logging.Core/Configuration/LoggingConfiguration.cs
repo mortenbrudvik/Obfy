@@ -25,8 +25,14 @@ public static class LoggingConfiguration
     /// <param name="enableConsoleOutput">Whether to output logs to console. Default is true.</param>
     /// <returns>A configured ILoggerFactory instance.</returns>
     public static ILoggerFactory CreateLoggerFactory(string? appName = null, bool enableConsoleOutput = true)
+        => CreateLoggerFactory(_logDirectory, appName, enableConsoleOutput);
+
+    /// <summary>
+    /// Creates a logger factory that writes files under <paramref name="logDirectory"/>.
+    /// </summary>
+    public static ILoggerFactory CreateLoggerFactory(string logDirectory, string? appName, bool enableConsoleOutput)
     {
-        Directory.CreateDirectory(_logDirectory);
+        Directory.CreateDirectory(logDirectory);
 
         // Configure NLog programmatically
         var config = new NLog.Config.LoggingConfiguration();
@@ -38,7 +44,7 @@ public static class LoggingConfiguration
 
         var fileTarget = new NLog.Targets.FileTarget("file")
         {
-            FileName = Path.Combine(_logDirectory, fileName),
+            FileName = Path.Combine(logDirectory, fileName),
             Layout = "${longdate} [${level:uppercase=true}] ${logger}: ${message}${onexception:inner=${newline}${exception:format=tostring}}",
             ArchiveEvery = NLog.Targets.FileArchivePeriod.Day,
             MaxArchiveFiles = 30

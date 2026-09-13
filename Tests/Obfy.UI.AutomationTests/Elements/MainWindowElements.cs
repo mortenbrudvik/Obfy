@@ -17,6 +17,7 @@ public class MainWindowElements
     public Button? SaveConfigButton => FindButton("SaveConfigButton");
     public Button? LoadConfigButton => FindButton("LoadConfigButton");
     public Button? AboutButton => FindButton("AboutButton");
+    public Button? HelpButton => FindButton("HelpButton");
 
     // Progress
     public AutomationElement? OverallProgressBar => Find("OverallProgressBar");

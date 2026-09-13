@@ -23,6 +23,7 @@ public class ApplicationLaunchTests : TestBase
         FindById("SaveConfigButton").ShouldNotBeNull("SaveConfigButton should exist");
         FindById("LoadConfigButton").ShouldNotBeNull("LoadConfigButton should exist");
         FindById("AboutButton").ShouldNotBeNull("AboutButton should exist");
+        FindById("HelpButton").ShouldNotBeNull("HelpButton should exist");
     }
 
     [Fact]

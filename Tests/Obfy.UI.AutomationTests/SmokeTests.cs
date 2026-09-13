@@ -25,6 +25,7 @@ public class SmokeTests : TestBase
         FindById("SaveConfigButton").ShouldNotBeNull();
         FindById("LoadConfigButton").ShouldNotBeNull();
         FindById("AboutButton").ShouldNotBeNull();
+        FindById("HelpButton").ShouldNotBeNull();
         FindById("AddFilesButton").ShouldNotBeNull();
         FindById("ClearFilesButton").ShouldNotBeNull();
         FindById("OutputDirectoryTextBox").ShouldNotBeNull();

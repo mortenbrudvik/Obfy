@@ -3,7 +3,9 @@ using System.Text.Json;
 using Autofac;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
+using Obfy.Core.Models.Solution;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Services.Solution;
 using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Services;
@@ -18,6 +20,7 @@ public class ObfuscationService : IObfuscationService
     private readonly IObfuscationPipeline _pipeline;
     private readonly IAssemblyMerger _assemblyMerger;
     private readonly ILogger<ObfuscationService> _logger;
+    private readonly IClosedSetProcessor _closedSetProcessor;
     private readonly ILifetimeScope? _lifetimeScope;
 
     public ObfuscationService(
@@ -26,6 +29,7 @@ public class ObfuscationService : IObfuscationService
         IObfuscationPipeline pipeline,
         IAssemblyMerger assemblyMerger,
         ILogger<ObfuscationService> logger,
+        IClosedSetProcessor closedSetProcessor,
         ILifetimeScope? lifetimeScope = null)
     {
         _assemblyProcessor = assemblyProcessor;
@@ -33,6 +37,7 @@ public class ObfuscationService : IObfuscationService
         _pipeline = pipeline;
         _assemblyMerger = assemblyMerger;
         _logger = logger;
+        _closedSetProcessor = closedSetProcessor;
         _lifetimeScope = lifetimeScope;
     }
 
@@ -321,6 +326,22 @@ public class ObfuscationService : IObfuscationService
                 _logger.LogWarning(ex, "Failed to cleanup temp directory: {TempDir}", tempDir);
             }
         }
+    }
+
+    /// <inheritdoc/>
+    public Task<ClosedSetResult> ObfuscateClosedSetAsync(
+        IReadOnlyList<ClosedSetInput> inputs,
+        string outputDirectory,
+        ObfySettings settings,
+        bool forcePreservePublic = false,
+        CancellationToken cancellationToken = default)
+    {
+        return _closedSetProcessor.ExecuteAsync(
+            inputs,
+            outputDirectory,
+            settings,
+            forcePreservePublic,
+            cancellationToken);
     }
 
     private static string GenerateOutputPath(string inputPath)

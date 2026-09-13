@@ -64,6 +64,60 @@ public class ClosedSetProcessorTests
         }
         """;
 
+    private const string GenericMethodLibSource = """
+        namespace Lib.Api;
+        public static class Util
+        {
+            public static string Id<T>(T value) => "ok";
+        }
+        """;
+
+    private const string GenericMethodAppSource = """
+        using Lib.Api;
+        public static class Program
+        {
+            public static void Main() { }
+            public static string Run() => Util.Id<int>(42);
+        }
+        """;
+
+    private const string GenericFieldLibSource = """
+        namespace Lib.Api;
+        public class Box<T>
+        {
+            public static readonly string Tag = "ok";
+        }
+        """;
+
+    private const string GenericFieldAppSource = """
+        using Lib.Api;
+        public static class Program
+        {
+            public static void Main() { }
+            public static string Run() => Box<int>.Tag;
+        }
+        """;
+
+    [Fact]
+    public void ClosedSetInput_FromIncluded_CopiesPathAndHints()
+    {
+        var hints = new ProjectSettingsHints { PreservePublicApi = true };
+        var entry = ProjectProtectionEntry.Included(@"C:\src\App.csproj", "App", @"C:\out\App.dll", hints);
+
+        var input = ClosedSetInput.FromIncluded(entry);
+
+        input.AssemblyPath.ShouldBe(@"C:\out\App.dll");
+        input.Hints.PreservePublicApi.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ClosedSetInput_FromIncluded_RejectedWhenSkipped()
+    {
+        var entry = ProjectProtectionEntry.Skipped(@"C:\src\Tests.csproj", "Tests", ProjectSkipReason.Test);
+
+        Should.Throw<ArgumentException>(() => ClosedSetInput.FromIncluded(entry));
+    }
+
     [Fact]
     public void RenameClosedSet_RewritesLibTypeRefsInApp_AndProgramRunStillReturnsHi()
     {
@@ -125,6 +179,57 @@ public class ClosedSetProcessorTests
         renamer.RenameClosedSet([(libModule, libSettings), (appModule, appSettings)], shared);
 
         box.Name.String.ShouldNotBe("Box`1");
+        var id = box.Methods.Single(static m => m.IsStatic && m.Parameters.Count == 1);
+        id.Name.String.ShouldNotBe("Id");
+        var idRef = appModule.GetTypes()
+            .SelectMany(static t => t.Methods)
+            .SelectMany(static m => m.Body?.Instructions ?? [])
+            .Select(static i => i.Operand)
+            .OfType<MemberRef>()
+            .Single(static r => r.MethodSig?.Params.Count == 1);
+        idRef.Name.ShouldBe(id.Name);
+
+        var (libPath, appPath) = fixture.Write(libModule, appModule);
+        InvokeProgramRun(appPath, libPath).ShouldBe("ok");
+    }
+
+    [Fact]
+    public void RenameClosedSet_RewritesGenericMethodSpecs_AndProgramRunStillReturnsOk()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libModule, appModule) = fixture.LoadGenericMethodClosedSet();
+        var util = libModule.GetTypes().Single(t => t.Name == "Util");
+        var id = util.Methods.Single(static m => m.HasGenericParameters);
+
+        var libSettings = ClosedSetRenameSettings(preservePublicApi: false);
+        var appSettings = ClosedSetRenameSettings(preservePublicApi: false);
+        var shared = PipelineContext.ForAssembly(libModule, libSettings);
+        var renamer = CreateRenamer();
+
+        renamer.RenameClosedSet([(libModule, libSettings), (appModule, appSettings)], shared);
+
+        id.Name.String.ShouldNotBe("Id");
+
+        var (libPath, appPath) = fixture.Write(libModule, appModule);
+        InvokeProgramRun(appPath, libPath).ShouldBe("ok");
+    }
+
+    [Fact]
+    public void RenameClosedSet_RewritesGenericFieldMemberRefs_AndProgramRunStillReturnsOk()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libModule, appModule) = fixture.LoadGenericFieldClosedSet();
+        var box = libModule.GetTypes().Single(t => t.Name == "Box`1");
+        var tag = box.Fields.Single(static f => f.IsStatic);
+
+        var libSettings = ClosedSetRenameSettings(preservePublicApi: false);
+        var appSettings = ClosedSetRenameSettings(preservePublicApi: false);
+        var shared = PipelineContext.ForAssembly(libModule, libSettings);
+        var renamer = CreateRenamer();
+
+        renamer.RenameClosedSet([(libModule, libSettings), (appModule, appSettings)], shared);
+
+        tag.Name.String.ShouldNotBe("Tag");
 
         var (libPath, appPath) = fixture.Write(libModule, appModule);
         InvokeProgramRun(appPath, libPath).ShouldBe("ok");
@@ -631,6 +736,20 @@ public class ClosedSetProcessorTests
         {
             var libPath = Compile(GenericLibSource, "Lib", OutputKind.DynamicallyLinkedLibrary);
             var appPath = Compile(GenericAppSource, "App", OutputKind.ConsoleApplication, libPath);
+            return LoadPair((libPath, appPath));
+        }
+
+        public (ModuleDefMD Lib, ModuleDefMD App) LoadGenericMethodClosedSet()
+        {
+            var libPath = Compile(GenericMethodLibSource, "Lib", OutputKind.DynamicallyLinkedLibrary);
+            var appPath = Compile(GenericMethodAppSource, "App", OutputKind.ConsoleApplication, libPath);
+            return LoadPair((libPath, appPath));
+        }
+
+        public (ModuleDefMD Lib, ModuleDefMD App) LoadGenericFieldClosedSet()
+        {
+            var libPath = Compile(GenericFieldLibSource, "Lib", OutputKind.DynamicallyLinkedLibrary);
+            var appPath = Compile(GenericFieldAppSource, "App", OutputKind.ConsoleApplication, libPath);
             return LoadPair((libPath, appPath));
         }
 

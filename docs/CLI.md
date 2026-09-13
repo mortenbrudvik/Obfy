@@ -139,10 +139,10 @@ obfy MyApp.dll -l minimal -o output/
 ### Multiple Files
 
 ```bash
-# Two or more assemblies are a closed set (in-solution public APIs can be renamed together)
-obfy MyApp.dll MyLibrary.dll -o output/
-
-# Obfuscate several assemblies (pass each path; Obfy does not expand globs)
+# Two or more existing assemblies (no .sln/.csproj) are a closed set so cross-assembly
+# references stay consistent after rename. --merge still merges instead.
+# --preserve-public, or a library-only set with no exe, keeps public names.
+# Without -o, output goes to {first-assembly-dir}/obfy-out/.
 obfy MyApp.dll MyLibrary.dll -o output/
 
 # Shell glob (cmd.exe expands *.dll; PowerShell does not unless you use Get-ChildItem)

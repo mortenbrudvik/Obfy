@@ -92,7 +92,19 @@ public class ClosedSetProcessor : IClosedSetProcessor
             }
 
             if (baseSettings.SymbolRenaming.Enabled)
-                _renamer.RenameClosedSet(renamePairs, sessionContext, cancellationToken);
+            {
+                try
+                {
+                    _renamer.RenameClosedSet(renamePairs, sessionContext, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Closed-set symbol renaming failed");
+                    return ClosedSetResult.Failed(
+                        $"Closed-set symbol renaming failed: {ex.Message}",
+                        loadFailures);
+                }
+            }
 
             var symbolMap = new Dictionary<string, string>(sessionContext.SymbolMap);
             var moduleResults = new List<ObfuscationResult>(jobs.Count);

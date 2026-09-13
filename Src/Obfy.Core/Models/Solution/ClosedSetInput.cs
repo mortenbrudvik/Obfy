@@ -27,4 +27,16 @@ public sealed class ClosedSetInput
             Hints = hints ?? new ProjectSettingsHints()
         };
     }
+
+    /// <summary>
+    /// Creates an input from an included session entry.
+    /// </summary>
+    public static ClosedSetInput FromIncluded(ProjectProtectionEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if (!entry.IsIncluded)
+            throw new ArgumentException("Entry is not included in the closed set.", nameof(entry));
+
+        return From(entry.OutputPath!, entry.Hints);
+    }
 }

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - CLI ships as a .NET tool again (`dotnet tool install --global Obfy`); CI packs the nupkg and GitHub Releases push it to nuget.org
 - Drop or pass a Visual Studio solution/project to obfuscate included assemblies as one closed set (in-solution public APIs can be renamed together; test projects and missing `bin` outputs are skipped)
+- `obfy App.dll Lib.dll` (two or more existing assemblies, no `.sln`/`.csproj`) uses the same closed-set path as a solution drop; `--merge` still merges. Without `-o`, output is `{first-assembly-dir}/obfy-out/` instead of sibling `*.obfuscated.dll` files
 
 ### Changed
 - Competitive analysis rewritten against 2026 vendor pages and GitHub stats (ArmDot/DNGuard/Agile.NET added; LoGiC.NET archived; Obfy positioned as conventional protection, not a general VM)
@@ -17,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VS 2022 extension SDK/BuildTools stay on 17.14 (not VSSDK 18)
 
 ### Fixed
+- Closed-set rename rewrites generic MemberRefs from CIL and MethodSpec (not dnlib `GetMemberRefs()` copies), so `Box<int>.Id(...)` still runs after in-set public names change
+- CLI closed-set of loose DLLs fails (exit 1) when a listed assembly is missing or fails to load, including `--dry-run`
 - Closed-set UI no longer overwrites input assemblies when the output directory is empty (writes `{inputDir}/obfy-out` instead)
 - Closed-set rename matches TypeRefs by assembly name and TFM so multi-TFM copies of the same assembly do not steal each other's names
 - Closed-set commit copies then replaces dest files; restore failures include `*.obfyprev` backup paths in the error

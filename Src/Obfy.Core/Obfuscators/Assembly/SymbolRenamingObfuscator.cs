@@ -261,10 +261,11 @@ public class SymbolRenamingObfuscator : IObfuscator
     }
 
     /// <summary>
-    /// Renames symbols across a closed set of assemblies with a single name-generator reset,
-    /// then rewrites <see cref="TypeRef"/>, <see cref="MemberRef"/> (including generic
-    /// signatures, enumerated by metadata RID so dnlib copies are not mutated), and
-    /// <see cref="ExportedType"/> rows that resolve to defs in the set.
+    /// Renames symbols across a closed set with a single name-generator reset, then copies
+    /// renamed def names (and type namespaces) onto in-set <see cref="TypeRef"/>,
+    /// <see cref="MemberRef"/>, and <see cref="ExportedType"/> rows that resolved to those defs.
+    /// MemberRefs used from generic instantiations must be the instances CIL/MethodSpec hold;
+    /// see <see cref="EnumerateMemberRefs"/>.
     /// </summary>
     public void RenameClosedSet(
         IReadOnlyList<(ModuleDef Module, ObfySettings Settings)> modules,
@@ -298,7 +299,8 @@ public class SymbolRenamingObfuscator : IObfuscator
         var exportedUpdates = new List<(ExportedType Ref, TypeDef Def)>();
         var set = plans.ConvertAll(static p => p.Module);
         foreach (var (module, _, _) in plans)
-            SnapshotClosedSetReferences(module, set, typeRefUpdates, memberRefUpdates, exportedUpdates);
+            SnapshotClosedSetReferences(
+                module, set, typeRefUpdates, memberRefUpdates, exportedUpdates, sharedContext.Warnings);
 
         foreach (var (module, settings, plan) in plans)
         {
@@ -531,7 +533,8 @@ public class SymbolRenamingObfuscator : IObfuscator
         IReadOnlyList<ModuleDef> set,
         List<(TypeRef Ref, TypeDef Def)> typeRefUpdates,
         List<(MemberRef Ref, IMemberDef Def)> memberRefUpdates,
-        List<(ExportedType Ref, TypeDef Def)> exportedUpdates)
+        List<(ExportedType Ref, TypeDef Def)> exportedUpdates,
+        ICollection<string> warnings)
     {
         foreach (var typeRef in module.GetTypeRefs())
         {
@@ -541,6 +544,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         }
 
         var seenMemberRefs = new HashSet<MemberRef>(ReferenceEqualityComparer.Instance);
+        var unresolvedInSet = 0;
         foreach (var memberRef in EnumerateMemberRefs(module))
         {
             if (!seenMemberRefs.Add(memberRef))
@@ -549,6 +553,14 @@ public class SymbolRenamingObfuscator : IObfuscator
             var def = FindMemberDefInSet(memberRef, module, set);
             if (def != null)
                 memberRefUpdates.Add((memberRef, def));
+            else if (IsInSetMemberRef(memberRef, set))
+                unresolvedInSet++;
+        }
+
+        if (unresolvedInSet > 0)
+        {
+            warnings.Add(
+                $"{unresolvedInSet} MemberRef(s) in {module.Name} resolve to in-set assemblies but were not rewritten.");
         }
 
         foreach (var exported in module.ExportedTypes)
@@ -566,6 +578,23 @@ public class SymbolRenamingObfuscator : IObfuscator
             return typeRef.ResolveTypeDef();
 
         return FindType(chosen, typeRef.Namespace, typeRef.Name);
+    }
+
+    private static bool IsInSetMemberRef(MemberRef memberRef, IReadOnlyList<ModuleDef> set)
+    {
+        var declaring = memberRef.DeclaringType ?? memberRef.Class as ITypeDefOrRef;
+        var name = declaring?.DefinitionAssembly?.Name?.String;
+        if (string.IsNullOrEmpty(name))
+            return false;
+
+        foreach (var module in set)
+        {
+            if (module.Assembly?.Name?.String is { } moduleName
+                && moduleName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static IMemberDef? FindMemberDefInSet(MemberRef memberRef, ModuleDef referring, IReadOnlyList<ModuleDef> set)

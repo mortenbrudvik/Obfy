@@ -347,8 +347,11 @@ public class Program
     }
 
     /// <summary>
-    /// Two or more existing assemblies, with no solution/project/source inputs, are a closed set
-    /// (same as dropping a solution). <c>--merge</c> is handled separately.
+    /// True when the CLI should run a closed-set on loose files: at least two assembly
+    /// paths exist on disk, and the argument list contains no solution or project files.
+    /// Does not inspect <c>--merge</c>; the caller must take the merge path first.
+    /// Source files and other non-assemblies are skipped later; they do not disable closed-set.
+    /// Unlike a solution session, this does not analyze projects or apply csproj hints.
     /// </summary>
     internal static bool ShouldUseLooseClosedSet(IReadOnlyList<FileInfo> inputs)
     {
@@ -357,7 +360,7 @@ public class Program
 
         foreach (var input in inputs)
         {
-            if (IsSolutionOrProject(input.FullName) || IsSourceFile(input.FullName))
+            if (IsSolutionOrProject(input.FullName))
                 return false;
         }
 
@@ -741,22 +744,10 @@ public class Program
 
         var closedSetInputs = new List<ClosedSetInput>();
         foreach (var entry in session.Included)
-        {
-            closedSetInputs.Add(new ClosedSetInput
-            {
-                AssemblyPath = entry.OutputPath!,
-                Hints = entry.Hints
-            });
-        }
+            closedSetInputs.Add(ClosedSetInput.FromIncluded(entry));
 
         foreach (var extra in presentExtras)
-        {
-            closedSetInputs.Add(new ClosedSetInput
-            {
-                AssemblyPath = extra.FullName,
-                Hints = new ProjectSettingsHints()
-            });
-        }
+            closedSetInputs.Add(ClosedSetInput.From(extra.FullName));
 
         if (closedSetInputs.Count == 0)
         {
@@ -813,6 +804,102 @@ public class Program
             closedSetInputs, outputDir, settings, forcePreservePublic: preservePublic, cancellationToken)
             .ConfigureAwait(false);
 
+        return await WriteClosedSetOutcomeAsync(
+            result, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
+    }
+
+    private static async Task<int> RunLooseClosedSetAsync(
+        FileInfo[] inputs,
+        DirectoryInfo? output,
+        ObfySettings settings,
+        FileInfo? mapFile,
+        FileInfo? reportFile,
+        bool dryRun,
+        bool preservePublic,
+        IObfuscationService service,
+        IReportService reportService,
+        CancellationToken cancellationToken)
+    {
+        var present = inputs.Where(static i => IsAssemblyFile(i.FullName) && File.Exists(i.FullName)).ToList();
+        var missing = inputs.Where(static i => IsAssemblyFile(i.FullName) && !File.Exists(i.FullName)).ToList();
+        var skippedSource = new List<FileInfo>();
+        var skippedOther = new List<FileInfo>();
+        foreach (var input in inputs)
+        {
+            if (IsAssemblyFile(input.FullName) || IsSolutionOrProject(input.FullName))
+                continue;
+            if (IsSourceFile(input.FullName))
+                skippedSource.Add(input);
+            else
+                skippedOther.Add(input);
+        }
+
+        foreach (var file in missing)
+            AnsiConsole.MarkupLine($"[red]File not found: {Markup.Escape(file.FullName)}[/]");
+        foreach (var file in skippedSource)
+            AnsiConsole.MarkupLine(
+                $"[yellow]Source files are not part of a closed set and were skipped: {Markup.Escape(file.FullName)}[/]");
+        foreach (var file in skippedOther)
+            AnsiConsole.MarkupLine(
+                $"[yellow]Ignoring non-assembly input: {Markup.Escape(file.FullName)}[/]");
+
+        if (present.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red]No assemblies found.[/]");
+            return 2;
+        }
+
+        var hints = new ProjectSettingsHints();
+        var entries = present.Select(f => ProjectProtectionEntry.Included(
+            f.FullName,
+            Path.GetFileNameWithoutExtension(f.Name),
+            f.FullName,
+            hints)).ToList();
+
+        var session = new ProtectionSession
+        {
+            SourcePath = present[0].FullName,
+            Entries = entries
+        };
+
+        PrintSessionPlan(session, [], missing, preservePublic);
+
+        if (missing.Count > 0)
+        {
+            AnsiConsole.MarkupLine("[red]Closed-set obfuscation requires every listed assembly to exist.[/]");
+            return 1;
+        }
+
+        var closedSetInputs = session.Included.Select(ClosedSetInput.FromIncluded).ToList();
+
+        if (dryRun)
+            return 0;
+
+        var outputDir = output?.FullName;
+        if (string.IsNullOrEmpty(outputDir))
+        {
+            var firstDir = Path.GetDirectoryName(Path.GetFullPath(present[0].FullName))
+                ?? Directory.GetCurrentDirectory();
+            outputDir = Path.Combine(firstDir, "obfy-out");
+            AnsiConsole.MarkupLine($"[cyan]Output directory:[/] {Markup.Escape(outputDir)}");
+        }
+
+        var result = await service.ObfuscateClosedSetAsync(
+            closedSetInputs, outputDir, settings, forcePreservePublic: preservePublic, cancellationToken)
+            .ConfigureAwait(false);
+
+        return await WriteClosedSetOutcomeAsync(
+            result, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
+    }
+
+    private static async Task<int> WriteClosedSetOutcomeAsync(
+        ClosedSetResult result,
+        FileInfo? mapFile,
+        FileInfo? reportFile,
+        ObfySettings settings,
+        IObfuscationService service,
+        IReportService reportService)
+    {
         foreach (var failure in result.LoadFailures)
         {
             AnsiConsole.MarkupLine(
@@ -834,6 +921,14 @@ public class Program
             DisplaySuccess(name, module);
         }
 
+        if (reportFile != null && result.ModuleResults.Count > 1)
+        {
+            var firstName = Path.GetFileName(result.ModuleResults[0].InputPath) ?? "module";
+            AnsiConsole.MarkupLine(
+                $"[yellow]Report contains the first module only ({Markup.Escape(firstName)}); " +
+                $"{result.ModuleResults.Count - 1} other module(s) omitted.[/]");
+        }
+
         var reportSource = result.ModuleResults.Count > 0 ? result.ModuleResults[0] : null;
         await WriteMapAndReportAsync(mapFile, reportFile, result.SymbolMap, reportSource, settings, service, reportService)
             .ConfigureAwait(false);
@@ -845,88 +940,6 @@ public class Program
             return 1;
         }
 
-        AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
-        return 0;
-    }
-
-    private static async Task<int> RunLooseClosedSetAsync(
-        FileInfo[] inputs,
-        DirectoryInfo? output,
-        ObfySettings settings,
-        FileInfo? mapFile,
-        FileInfo? reportFile,
-        bool dryRun,
-        bool preservePublic,
-        IObfuscationService service,
-        IReportService reportService,
-        CancellationToken cancellationToken)
-    {
-        var present = inputs.Where(static i => IsAssemblyFile(i.FullName) && File.Exists(i.FullName)).ToList();
-        var missing = inputs.Where(static i => IsAssemblyFile(i.FullName) && !File.Exists(i.FullName)).ToList();
-        foreach (var file in missing)
-            AnsiConsole.MarkupLine($"[red]File not found: {Markup.Escape(file.FullName)}[/]");
-
-        var entries = present.Select(f => new ProjectProtectionEntry
-        {
-            ProjectPath = f.FullName,
-            ProjectName = Path.GetFileNameWithoutExtension(f.Name),
-            OutputPath = f.FullName,
-            SkipReason = Obfy.Core.Models.Solution.SkipReason.None,
-            Hints = new ProjectSettingsHints()
-        }).ToList();
-
-        var session = new ProtectionSession
-        {
-            SourcePath = present[0].FullName,
-            Entries = entries
-        };
-
-        PrintSessionPlan(session, [], missing, preservePublic);
-
-        var closedSetInputs = present.Select(f => new ClosedSetInput
-        {
-            AssemblyPath = f.FullName,
-            Hints = new ProjectSettingsHints()
-        }).ToList();
-
-        if (dryRun)
-            return 0;
-
-        var outputDir = output?.FullName;
-        if (string.IsNullOrEmpty(outputDir))
-        {
-            var firstDir = Path.GetDirectoryName(Path.GetFullPath(present[0].FullName))
-                ?? Directory.GetCurrentDirectory();
-            outputDir = Path.Combine(firstDir, "obfy-out");
-            AnsiConsole.MarkupLine($"[cyan]Output directory:[/] {Markup.Escape(outputDir)}");
-        }
-
-        var result = await service.ObfuscateClosedSetAsync(
-            closedSetInputs, outputDir, settings, forcePreservePublic: preservePublic, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!result.Success)
-        {
-            AnsiConsole.MarkupLine(
-                $"[red]{Markup.Escape(result.ErrorMessage ?? "Closed-set obfuscation failed.")}[/]");
-            foreach (var failure in result.LoadFailures)
-                AnsiConsole.MarkupLine($"[yellow]Failed to load {Markup.Escape(failure)}[/]");
-            foreach (var module in result.ModuleResults.Where(static m => !m.Success))
-                DisplayError(Path.GetFileName(module.InputPath) ?? "module", module);
-            return 1;
-        }
-
-        foreach (var module in result.ModuleResults)
-        {
-            var name = Path.GetFileName(module.OutputPath ?? module.InputPath) ?? "module";
-            DisplaySuccess(name, module);
-        }
-
-        var reportSource = result.ModuleResults.Count > 0 ? result.ModuleResults[0] : null;
-        await WriteMapAndReportAsync(mapFile, reportFile, result.SymbolMap, reportSource, settings, service, reportService)
-            .ConfigureAwait(false);
-
-        AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
         return 0;
     }

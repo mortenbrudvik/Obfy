@@ -1,3 +1,4 @@
+using dnlib.DotNet;
 using Obfy.Console;
 using Shouldly;
 
@@ -49,14 +50,25 @@ public class SolutionInputTests : IDisposable
     }
 
     [Fact]
-    public void ShouldUseLooseClosedSet_DllPlusSource_IsFalse()
+    public void ShouldUseLooseClosedSet_TwoDllsPlusSource_IsTrue()
     {
         var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
         var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
         var cs = Path.Combine(_tempDirectory, "Extra.cs");
         File.WriteAllText(cs, "class Extra {}");
 
-        Program.ShouldUseLooseClosedSet([new FileInfo(a), new FileInfo(b), new FileInfo(cs)]).ShouldBeFalse();
+        Program.ShouldUseLooseClosedSet([new FileInfo(a), new FileInfo(b), new FileInfo(cs)]).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ShouldUseLooseClosedSet_TwoDllsPlusMissing_IsTrue()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
+        var missing = Path.Combine(_tempDirectory, "NoSuch.dll");
+
+        Program.ShouldUseLooseClosedSet(
+            [new FileInfo(a), new FileInfo(b), new FileInfo(missing)]).ShouldBeTrue();
     }
 
     [Fact]
@@ -70,10 +82,11 @@ public class SolutionInputTests : IDisposable
             command, $"\"{a}\" \"{b}\" --dry-run --no-logo", out _);
 
         exitCode.ShouldBe(0);
+        Directory.Exists(Path.Combine(Path.GetDirectoryName(a)!, "obfy-out")).ShouldBeFalse();
     }
 
     [Fact]
-    public void Invoke_TwoDlls_WritesBothOutputs()
+    public void Invoke_TwoDlls_WritesBothOutputs_AndKeepsUnreferencedPublicTypes()
     {
         var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll", "Alpha");
         var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll", "Beta");
@@ -86,6 +99,130 @@ public class SolutionInputTests : IDisposable
         exitCode.ShouldBe(0);
         File.Exists(Path.Combine(outputDir, "A.dll")).ShouldBeTrue();
         File.Exists(Path.Combine(outputDir, "B.dll")).ShouldBeTrue();
+        using var module = ModuleDefMD.Load(File.ReadAllBytes(Path.Combine(outputDir, "A.dll")));
+        module.GetTypes().ShouldContain(t => t.Name == "Alpha");
+    }
+
+    [Fact]
+    public void Invoke_TwoDllsPlusMissing_DryRun_ReturnsExitCode1()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
+        var missing = Path.Combine(_tempDirectory, "NoSuch.dll");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{a}\" \"{b}\" \"{missing}\" --dry-run --no-logo", out _);
+
+        exitCode.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Invoke_TwoDllsPlusMissing_ReturnsExitCode1()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
+        var missing = Path.Combine(_tempDirectory, "NoSuch.dll");
+        var outputDir = Path.Combine(_tempDirectory, "missing-third-out");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{a}\" \"{b}\" \"{missing}\" -o \"{outputDir}\" -l minimal --no-logo", out _);
+
+        exitCode.ShouldBe(1);
+        Directory.Exists(outputDir).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Invoke_TwoDllsPlusCorrupt_ReturnsExitCode1()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll", "Alpha");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll", "Beta");
+        var corrupt = Path.Combine(_tempDirectory, "Corrupt.dll");
+        File.WriteAllText(corrupt, "not an assembly");
+        var outputDir = Path.Combine(_tempDirectory, "corrupt-out");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{a}\" \"{b}\" \"{corrupt}\" -o \"{outputDir}\" -l minimal --no-logo", out _);
+
+        exitCode.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Invoke_TwoDllsPlusSource_WritesBothDlls()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll", "Alpha");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll", "Beta");
+        var cs = Path.Combine(_tempDirectory, "Extra.cs");
+        File.WriteAllText(cs, "class Extra {}");
+        var outputDir = Path.Combine(_tempDirectory, "dll-plus-cs-out");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{a}\" \"{b}\" \"{cs}\" -o \"{outputDir}\" -l minimal --no-logo", out _);
+
+        exitCode.ShouldBe(0);
+        File.Exists(Path.Combine(outputDir, "A.dll")).ShouldBeTrue();
+        File.Exists(Path.Combine(outputDir, "B.dll")).ShouldBeTrue();
+        using var module = ModuleDefMD.Load(File.ReadAllBytes(Path.Combine(outputDir, "A.dll")));
+        module.GetTypes().ShouldContain(t => t.Name == "Alpha");
+    }
+
+    [Fact]
+    public void Invoke_TwoDlls_WithMerge_WritesSingleMergedOutput()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
+        var outputDir = Path.Combine(_tempDirectory, "merge-out");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{a}\" \"{b}\" --merge -o \"{outputDir}\" -l minimal --no-logo", out _);
+
+        exitCode.ShouldBe(0);
+        File.Exists(Path.Combine(outputDir, "A.dll")).ShouldBeTrue();
+        File.Exists(Path.Combine(outputDir, "B.dll")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Invoke_TwoAssemblies_AppAndLib_RenamesLibPublicType_AndRunStillReturnsHi()
+    {
+        var (libPath, appPath) = ConsoleTestAssembly.CreateClosedSetPair(_tempDirectory);
+        var outputDir = Path.Combine(_tempDirectory, "app-lib-out");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{appPath}\" \"{libPath}\" -o \"{outputDir}\" -l minimal --no-logo", out _);
+
+        exitCode.ShouldBe(0);
+        var outLib = Path.Combine(outputDir, "Lib.dll");
+        var outApp = Path.Combine(outputDir, "App.exe");
+        File.Exists(outLib).ShouldBeTrue();
+        File.Exists(outApp).ShouldBeTrue();
+        using (var libModule = ModuleDefMD.Load(File.ReadAllBytes(outLib)))
+            libModule.GetTypes().ShouldNotContain(t => t.Name == "Greeter");
+        ConsoleTestAssembly.InvokeProgramRun(outApp, outLib).ShouldBe("hi");
+    }
+
+    [Fact]
+    public void Invoke_TwoAssemblies_PreservePublic_KeepsGreeterName()
+    {
+        var (libPath, appPath) = ConsoleTestAssembly.CreateClosedSetPair(_tempDirectory);
+        var outputDir = Path.Combine(_tempDirectory, "preserve-out");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command,
+            $"\"{appPath}\" \"{libPath}\" -o \"{outputDir}\" -l minimal --preserve-public --no-logo",
+            out _);
+
+        exitCode.ShouldBe(0);
+        using var libModule = ModuleDefMD.Load(File.ReadAllBytes(Path.Combine(outputDir, "Lib.dll")));
+        libModule.GetTypes().ShouldContain(t => t.Name == "Greeter");
+        ConsoleTestAssembly.InvokeProgramRun(
+            Path.Combine(outputDir, "App.exe"),
+            Path.Combine(outputDir, "Lib.dll")).ShouldBe("hi");
     }
 
     [Fact]

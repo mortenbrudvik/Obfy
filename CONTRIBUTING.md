@@ -140,7 +140,7 @@ When adding new features:
 - ViewModel changes → Add tests to `Obfy.UI.Tests`
 - Core obfuscation → Add tests to `Obfy.Tests`
 
-See [docs/Testing.md](docs/Testing.md) for comprehensive testing guidelines.
+See [docs/Testing.md](docs/Testing.md) for how to run tests, and [docs/Testing-Roadmap.md](docs/Testing-Roadmap.md) for planned scenario coverage.
 
 ## Pull Request Process
 

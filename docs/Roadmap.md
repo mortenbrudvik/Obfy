@@ -117,6 +117,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 | QT-04 | UI automation tests | P3 | High | Low | ✅ Done |
 | QT-05 | Aggressive pipeline e2e (compile → run) | P0 | Medium | High | ✅ Done (unreleased) |
 | QT-06 | Decompiler-resistance fixtures | P0 | Medium | High | ✅ Done |
+| QT-07 | Scenario / SDK project tests | P1 | Medium | High | Open — [Testing-Roadmap.md](Testing-Roadmap.md) |
 
 ---
 
@@ -130,9 +131,13 @@ Ship the work already on main: anti-dump, method encryption, reference proxy, he
 
 `Src/Obfy.VSCode` validates `obfy.json` and matches CLI `Error:` / `⚠` lines. Remaining: a TaskProvider, marketplace listing, and docs in the README install path.
 
+### Testing: scenario coverage
+
+Engine unit/e2e tests are in place (`QT-01`–`QT-06`). Missing: real SDK projects (WPF app + class library solutions), CI-honest FlaUI, and platform compile → obfuscate → run jobs. Plan: [Testing-Roadmap.md](Testing-Roadmap.md) (`TR-*`, including `QT-07`).
+
 ### PS-01 / PS-02 / PS-03: real platform tests
 
-Recipes exist (`examples/unity`, `blazor`, `maui`). Do not claim first-class Unity/MAUI/Blazor support until there are compile → obfuscate → run projects (Unity Development Player, MAUI iOS/Android without method encryption, published Blazor `_framework` DLLs).
+Recipes exist (`examples/unity`, `blazor`, `maui`). Do not claim first-class Unity/MAUI/Blazor support until there are compile → obfuscate → run projects (Unity Development Player, MAUI iOS/Android without method encryption, published Blazor `_framework` DLLs). Those jobs are Phase 3 in the testing roadmap (`TR-30`–`TR-33`).
 
 ### PS-04: NativeAOT beyond gating
 
@@ -253,6 +258,7 @@ When shipping a phase, update:
 5. `docs/Competitive-Analysis.md` — feature matrix
 6. `README.md` / `CLAUDE.md` — technique table if the pipeline changes
 7. `docs/Testing.md` / `CONTRIBUTING.md` — test counts
+8. `docs/Testing-Roadmap.md` — flip `TR-*` status when a testing item lands
 
 ---
 

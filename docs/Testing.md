@@ -1,8 +1,10 @@
 # Testing Guide
 
+How to run and extend the current suite. Planned gaps (real SDK/WPF solutions, CI FlaUI, platforms) are in [Testing-Roadmap.md](Testing-Roadmap.md).
+
 ## Overview
 
-Obfy has comprehensive test coverage across all components:
+Technique-level coverage is strong (~637 tests). Integration against real app/project types is not; see the testing roadmap.
 
 | Project | Tests | Coverage |
 |---------|-------|----------|

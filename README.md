@@ -235,6 +235,7 @@ Check out the [examples](examples/) folder:
 | [Platforms](docs/Platforms.md) | NativeAOT, Blazor WASM, MAUI |
 | [Unity](docs/Unity.md) | Mono / IL2CPP recipe |
 | [Testing](docs/Testing.md) | Test projects and how to add tests |
+| [Testing roadmap](docs/Testing-Roadmap.md) | Scenario coverage plan (WPF solutions, CI, platforms) |
 | [Roadmap](docs/Roadmap.md) | Feature roadmap and backlog |
 | [Competitive Analysis](docs/Competitive-Analysis.md) | Comparison with other .NET obfuscators |
 

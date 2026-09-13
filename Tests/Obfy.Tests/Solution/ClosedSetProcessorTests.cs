@@ -44,6 +44,23 @@ public class ClosedSetProcessorTests
         }
         """;
 
+    private const string GenericLibSource = """
+        namespace Lib.Api;
+        public class Box<T>
+        {
+            public static string Id(T value) => "ok";
+        }
+        """;
+
+    private const string GenericAppSource = """
+        using Lib.Api;
+        public static class Program
+        {
+            public static void Main() { }
+            public static string Run() => Box<int>.Id(42);
+        }
+        """;
+
     [Fact]
     public void RenameClosedSet_RewritesLibTypeRefsInApp_AndProgramRunStillReturnsHi()
     {
@@ -88,6 +105,26 @@ public class ClosedSetProcessorTests
 
         var (libPath, appPath) = fixture.Write(libModule, appModule);
         InvokeProgramRun(appPath, libPath).ShouldBe("hi");
+    }
+
+    [Fact]
+    public void RenameClosedSet_RewritesGenericMemberRefs_AndProgramRunStillReturnsOk()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libModule, appModule) = fixture.LoadGenericClosedSet();
+        var box = libModule.GetTypes().Single(t => t.Name == "Box`1");
+
+        var libSettings = ClosedSetRenameSettings(preservePublicApi: false);
+        var appSettings = ClosedSetRenameSettings(preservePublicApi: false);
+        var shared = PipelineContext.ForAssembly(libModule, libSettings);
+        var renamer = CreateRenamer();
+
+        renamer.RenameClosedSet([(libModule, libSettings), (appModule, appSettings)], shared);
+
+        box.Name.String.ShouldNotBe("Box`1");
+
+        var (libPath, appPath) = fixture.Write(libModule, appModule);
+        InvokeProgramRun(appPath, libPath).ShouldBe("ok");
     }
 
     [Fact]
@@ -371,12 +408,20 @@ public class ClosedSetProcessorTests
         public string CompileExtra() => Compile(ExtraSource, "Extra", OutputKind.DynamicallyLinkedLibrary);
 
         public (ModuleDefMD Lib, ModuleDefMD App) LoadClosedSet()
-        {
-            var (libPath, appPath) = CompileClosedSet();
+            => LoadPair(CompileClosedSet());
 
+        public (ModuleDefMD Lib, ModuleDefMD App) LoadGenericClosedSet()
+        {
+            var libPath = Compile(GenericLibSource, "Lib", OutputKind.DynamicallyLinkedLibrary);
+            var appPath = Compile(GenericAppSource, "App", OutputKind.ConsoleApplication, libPath);
+            return LoadPair((libPath, appPath));
+        }
+
+        private (ModuleDefMD Lib, ModuleDefMD App) LoadPair((string LibPath, string AppPath) paths)
+        {
             var ctx = ModuleDef.CreateModuleContext();
-            _lib = ModuleDefMD.Load(File.ReadAllBytes(libPath), ctx);
-            _app = ModuleDefMD.Load(File.ReadAllBytes(appPath), ctx);
+            _lib = ModuleDefMD.Load(File.ReadAllBytes(paths.LibPath), ctx);
+            _app = ModuleDefMD.Load(File.ReadAllBytes(paths.AppPath), ctx);
             var resolver = (AssemblyResolver)ctx.AssemblyResolver;
             resolver.AddToCache(_lib);
             resolver.AddToCache(_app);

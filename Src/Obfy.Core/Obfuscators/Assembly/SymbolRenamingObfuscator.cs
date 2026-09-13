@@ -262,8 +262,9 @@ public class SymbolRenamingObfuscator : IObfuscator
 
     /// <summary>
     /// Renames symbols across a closed set of assemblies with a single name-generator reset,
-    /// then rewrites <see cref="TypeRef"/>, <see cref="MemberRef"/>, and <see cref="ExportedType"/>
-    /// rows that resolve to defs in the set.
+    /// then rewrites <see cref="TypeRef"/>, <see cref="MemberRef"/> (including generic
+    /// signatures, enumerated by metadata RID so dnlib copies are not mutated), and
+    /// <see cref="ExportedType"/> rows that resolve to defs in the set.
     /// </summary>
     public void RenameClosedSet(
         IReadOnlyList<(ModuleDef Module, ObfySettings Settings)> modules,
@@ -535,9 +536,14 @@ public class SymbolRenamingObfuscator : IObfuscator
                 typeRefUpdates.Add((typeRef, def));
         }
 
-        foreach (var memberRef in module.GetMemberRefs())
+        var seenMemberRefs = new HashSet<MemberRef>(ReferenceEqualityComparer.Instance);
+        foreach (var memberRef in EnumerateMemberRefs(module))
         {
-            if (memberRef.Resolve() is IMemberDef def)
+            if (!seenMemberRefs.Add(memberRef))
+                continue;
+
+            var def = ResolveMemberDef(memberRef);
+            if (def != null)
                 memberRefUpdates.Add((memberRef, def));
         }
 
@@ -547,6 +553,79 @@ public class SymbolRenamingObfuscator : IObfuscator
             if (def != null)
                 exportedUpdates.Add((exported, def));
         }
+    }
+
+    /// <summary>
+    /// dnlib's <see cref="ModuleDef.GetMemberRefs"/> returns a new copy for generic signatures.
+    /// Mutating that copy does not update the table row the writer emits. Prefer RID rows,
+    /// then the MemberRef instances actually referenced from CIL and MethodSpec (those are
+    /// what ModuleWriter emits).
+    /// </summary>
+    private static IEnumerable<MemberRef> EnumerateMemberRefs(ModuleDef module)
+    {
+        if (module is ModuleDefMD md)
+        {
+            var rows = md.TablesStream.MemberRefTable.Rows;
+            for (uint rid = 1; rid <= rows; rid++)
+            {
+                var memberRef = md.ResolveMemberRef(rid);
+                if (memberRef != null)
+                    yield return memberRef;
+            }
+
+            var methodSpecRows = md.TablesStream.MethodSpecTable.Rows;
+            for (uint rid = 1; rid <= methodSpecRows; rid++)
+            {
+                var spec = md.ResolveMethodSpec(rid);
+                if (spec?.Method is MemberRef fromSpec)
+                    yield return fromSpec;
+            }
+        }
+        else
+        {
+            foreach (var memberRef in module.GetMemberRefs())
+                yield return memberRef;
+        }
+
+        foreach (var type in module.GetTypes())
+        {
+            foreach (var method in type.Methods)
+            {
+                if (method.Body is null)
+                    continue;
+
+                foreach (var instruction in method.Body.Instructions)
+                {
+                    switch (instruction.Operand)
+                    {
+                        case MemberRef memberRef:
+                            yield return memberRef;
+                            break;
+                        case MethodSpec { Method: MemberRef fromSpec }:
+                            yield return fromSpec;
+                            break;
+                    }
+                }
+            }
+        }
+    }
+
+    private static IMemberDef? ResolveMemberDef(MemberRef memberRef)
+    {
+        if (memberRef.ResolveMethodDef() is { } method)
+            return method;
+        if (memberRef.ResolveFieldDef() is { } field)
+            return field;
+        return memberRef.Resolve() as IMemberDef;
+    }
+
+    private sealed class ReferenceEqualityComparer : IEqualityComparer<MemberRef>
+    {
+        public static readonly ReferenceEqualityComparer Instance = new();
+
+        public bool Equals(MemberRef? x, MemberRef? y) => ReferenceEquals(x, y);
+
+        public int GetHashCode(MemberRef obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
 
     private static void ApplyClosedSetReferenceUpdates(

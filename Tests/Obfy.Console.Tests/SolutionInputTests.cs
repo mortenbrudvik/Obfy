@@ -32,6 +32,63 @@ public class SolutionInputTests : IDisposable
     }
 
     [Fact]
+    public void ShouldUseLooseClosedSet_TwoExistingDlls_IsTrue()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
+
+        Program.ShouldUseLooseClosedSet([new FileInfo(a), new FileInfo(b)]).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ShouldUseLooseClosedSet_SingleDll_IsFalse()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+
+        Program.ShouldUseLooseClosedSet([new FileInfo(a)]).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ShouldUseLooseClosedSet_DllPlusSource_IsFalse()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
+        var cs = Path.Combine(_tempDirectory, "Extra.cs");
+        File.WriteAllText(cs, "class Extra {}");
+
+        Program.ShouldUseLooseClosedSet([new FileInfo(a), new FileInfo(b), new FileInfo(cs)]).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Invoke_TwoDlls_DryRun_ReturnsExitCode0()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{a}\" \"{b}\" --dry-run --no-logo", out _);
+
+        exitCode.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Invoke_TwoDlls_WritesBothOutputs()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll", "Alpha");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll", "Beta");
+        var outputDir = Path.Combine(_tempDirectory, "two-dll-out");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            command, $"\"{a}\" \"{b}\" -o \"{outputDir}\" -l minimal --no-logo", out _);
+
+        exitCode.ShouldBe(0);
+        File.Exists(Path.Combine(outputDir, "A.dll")).ShouldBeTrue();
+        File.Exists(Path.Combine(outputDir, "B.dll")).ShouldBeTrue();
+    }
+
+    [Fact]
     public void Invoke_TestsOnlySolution_DryRun_ReturnsExitCode2()
     {
         var sln = WriteTestsOnlySolution();

@@ -25,12 +25,14 @@ Obfy/
 │   │   └── Utilities/         # Helper classes
 │   ├── Obfy.VisualStudio/     # Visual Studio 2022 extension (C#)
 │   ├── Obfy.Rider/            # JetBrains Rider plugin (Kotlin)
+│   ├── Obfy.VSCode/           # VS Code stub (schema + problem matcher)
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/            # Core unit tests (285 tests)
-│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (106 tests)
-│   └── Obfy.UI.Tests/         # ViewModel unit tests (103 tests)
+│   ├── Obfy.Tests/            # Core unit tests (382 tests)
+│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (117 tests)
+│   ├── Obfy.UI.Tests/         # ViewModel unit tests (132 tests)
+│   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
 ├── docs/                      # Documentation
 ├── package/                   # MSIX manifest and Store assets
 ├── build/                     # Build scripts and installer
@@ -55,6 +57,7 @@ dotnet build Obfy.sln -c Release
 dotnet test Tests/Obfy.Tests/Obfy.Tests.csproj
 dotnet test Tests/Obfy.Console.Tests/Obfy.Console.Tests.csproj
 dotnet test Tests/Obfy.UI.Tests/Obfy.UI.Tests.csproj
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
 
 # Run CLI
 dotnet run --project Src/Obfy.Console/Obfy.Console.csproj -- --help
@@ -81,6 +84,9 @@ obfy input.dll -c obfy.json
 # Generate config
 obfy config generate -o obfy.json
 
+# Interactive wizard
+obfy config wizard -o obfy.json
+
 # Multiple files
 obfy file1.dll file2.dll -o output/
 
@@ -106,6 +112,7 @@ Tech stack: WPF-UI 4.2.1 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 
 | Technique | Priority | Description |
 |-----------|----------|-------------|
+| DependencyEmbedding | 8 | Packs sibling `{AssemblyRef.Name}.dll` as `Obfy.Embedded.*` resources |
 | StringEncryption | 10 | Encrypts string literals (XOR or AES-256) |
 | ConstantEncryption | 11 | Encrypts numeric constants (int, long, float, double; XOR or AES-256) |
 | ResourceEncryption | 15 | Encrypts embedded resources (XOR or AES-256) |
@@ -194,3 +201,4 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 | `NameGenerator` | Generates obfuscated symbol names |
 | `EncryptionHelper` | String encryption utilities |
 | `PipelineContext` | Shared state across obfuscators |
+| `IncrementalCache` | SHA-256 skip when input + settings are unchanged (`{output}.obfycache`) |

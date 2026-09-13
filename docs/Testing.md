@@ -1,15 +1,18 @@
 # Testing Guide
 
+How to run and extend the current suite. Planned gaps (real SDK/WPF solutions, platforms) are in [Testing-Roadmap.md](Testing-Roadmap.md).
+
 ## Overview
 
-Obfy has comprehensive test coverage across all components:
+Technique-level coverage is strong (655 tests as of 2026-09-13). Integration against real app/project types is not; see the testing roadmap.
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 285 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
-| Obfy.Console.Tests | 106 | CLI parsing & integration |
-| Obfy.UI.Tests | 103 | ViewModel unit tests |
-| **Total** | **494** | |
+| Obfy.Tests | 382 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
+| Obfy.Console.Tests | 117 | CLI parsing, wizard defaults, and a thin integration file |
+| Obfy.UI.Tests | 132 | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
+| Obfy.UI.AutomationTests | 24 | 6 locator unit tests (CI) + 18 FlaUI live-window tests (`Category=UI`, local) |
+| **Total** | **655** | |
 
 ## Test Stack
 
@@ -20,10 +23,13 @@ Obfy has comprehensive test coverage across all components:
 
 ## Running Tests
 
-### All Tests
+Default `dotnet test` (and CI) skip `Category=UI` and `Category=Platform`. FlaUI needs an interactive desktop and a built `ObfyUI.exe`; it is opt-in.
+
+### Default (CI / every PR)
 
 ```bash
 dotnet test
+# equivalent: --filter "Category!=UI&Category!=Platform"
 ```
 
 ### Specific Projects
@@ -32,7 +38,21 @@ dotnet test
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 ```
+
+The AutomationTests project still runs locator unit tests under the default filter. FlaUI cases stay skipped.
+
+### FlaUI (local, interactive desktop)
+
+Build the UI for the same configuration you test, then:
+
+```bash
+dotnet build Src/Obfy.UI/Obfy.UI.csproj -c Release
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj -c Release --filter Category=UI
+```
+
+`UiExecutableLocator` prefers the test configuration (Release vs Debug) and falls back to the other if that `ObfyUI.exe` is missing.
 
 ### With Coverage
 
@@ -59,10 +79,11 @@ Tests the command-line interface:
 
 | Category | Tests | Description |
 |----------|-------|-------------|
-| CommandParsingTests | 50+ | All CLI options and arguments |
-| HelpOutputTests | 14 | Help text verification |
-| ErrorHandlingTests | 13 | Error scenarios |
-| IntegrationTests | 15 | End-to-end workflows |
+| CommandParsingTests | 72 | CLI options and arguments (parse) |
+| HelpOutputTests | 15 | Help text verification |
+| ErrorHandlingTests | 14 | Error scenarios |
+| WizardDefaultsTests | 4 | Use-case wizard defaults |
+| IntegrationTests | 12 | Mix of parse, config generate, and one real `Program.Main` run (see TR-14 / TR-25) |
 
 Key patterns:
 
@@ -95,14 +116,16 @@ Location: `Tests/Obfy.UI.Tests/`
 
 ### Obfy.UI.AutomationTests (FlaUI)
 
-Launches `ObfyUI.exe` and drives the live window:
+Launches `ObfyUI.exe` and drives the live window (`Category=UI`, not in default CI):
 
 - Launch and chrome (toolbar, files, settings, output, status)
 - About ContentDialog (in-window overlay, not a separate window)
 - Settings toggles, Protection and Assembly Merge expanders
 - Add Files opens the native picker (Escape cancels)
 
-Run: `dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj`
+Locator unit tests in the same project (no trait) resolve Debug vs Release `ObfyUI.exe` and run in CI.
+
+Run FlaUI: `dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI`
 
 Location: `Tests/Obfy.UI.AutomationTests/`
 
@@ -158,7 +181,7 @@ public void NewProperty_WhenChanged_UpdatesState()
 
 ## Test Configuration
 
-Both `Obfy.Console.Tests` and `Obfy.UI.Tests` use `xunit.runner.json` to disable parallel test execution:
+`Obfy.Console.Tests`, `Obfy.UI.Tests`, and `Obfy.UI.AutomationTests` use `xunit.runner.json` to disable parallel test execution:
 
 ```json
 {
@@ -179,10 +202,6 @@ This prevents race conditions with static properties and shared state during tes
 
 ## Continuous Integration
 
-Tests run automatically on:
+PRs and pushes to `main` run `.github/workflows/ci.yml`: `dotnet test -c Release` with `Category!=UI&Category!=Platform`. The coverage report and an 80% **warning** (not a hard fail) run when that job succeeds.
 
-- Pull request creation
-- Push to main branch
-- Release builds
-
-All tests must pass before merging.
+FlaUI (`Category=UI`) is local-only. See [Testing-Roadmap.md](Testing-Roadmap.md) (`TR-01`–`TR-03`, `TR-42`).

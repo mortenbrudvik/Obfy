@@ -52,13 +52,15 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 
 | Feature | Obfy | Dotfuscator | SmartAssembly | .NET Reactor | Babel | Eazfuscator |
 |---------|:----:|:-----------:|:-------------:|:------------:|:-----:|:-----------:|
-| **Code Virtualization** | - | - | - | Yes | Yes | Yes |
-| **Native Code Generation** | - | - | - | Yes | - | - |
-| **MSIL Encryption** | - | - | - | Yes | Yes | - |
+| **Code Virtualization** | Partial | - | - | Yes | Yes | Yes |
+| **Native Code Generation** | Partial | - | - | Yes | - | - |
+| **MSIL Encryption** | Yes | - | - | Yes | Yes | - |
 | **Anti-Debug** | Yes | Yes | - | Yes | Yes | Yes |
 | **Anti-Tamper** | Yes | Yes | Yes | Yes | Yes | - |
 | **Anti-Dump** | Yes | - | - | Yes | Yes | - |
-| **Watermarking** | - | Yes | - | Yes | - | - |
+| **Watermarking** | Yes | Yes | - | Yes | - | - |
+
+Obfy virtualization is a bytecode interpreter for simple static `int` methods only, not a general IL VM. Native “generation” is a managed framework-dependent launcher (`{name}.launcher.exe`), not an unmanaged packer. MSIL encryption is per-method XOR of method bodies in the PE (Windows).
 
 ### Naming Modes
 
@@ -99,10 +101,12 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 | **.NET Core 3.x** | Yes | Yes | Yes | Yes | Yes |
 | **.NET Framework 4.x** | Yes | Yes | Yes | Yes | Yes |
 | **.NET Standard** | Yes | Yes | Yes | Yes | Yes |
-| **MAUI** | Yes | Yes | - | Yes | Yes |
-| **Blazor** | Yes | - | - | Yes | Yes |
-| **Unity** | - | - | - | Yes | Yes |
+| **MAUI** | Recipe | Yes | - | Yes | Yes |
+| **Blazor** | Recipe | - | - | Yes | Yes |
+| **Unity** | Recipe | - | - | Yes | Yes |
 | **Xamarin** | - | Yes | - | Yes | Yes |
+
+Obfy Unity / Blazor / MAUI support is `runtimeProfile` gating plus example `obfy.json` files, not an Editor plugin or first-class product SKU.
 
 ---
 
@@ -114,7 +118,7 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 | **GUI** | Yes | Yes | Yes | Yes | Yes |
 | **MSBuild Integration** | Yes | Yes | Yes | Yes | Yes |
 | **Visual Studio Plugin** | Yes | Yes | Yes | Yes | Yes |
-| **VS Code / Rider** | Rider | - | - | Yes | - |
+| **VS Code / Rider** | Rider + VS Code stub | - | - | Yes | - |
 | **NuGet Package** | - | - | - | - | Yes |
 | **Azure DevOps** | Yes | Yes | Yes | Yes | Yes |
 | **GitHub Actions** | Yes | Yes | - | Yes | Yes |
@@ -130,7 +134,7 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 | **Crash Analytics** | - | - | Yes | - |
 | **License Management** | - | - | - | Yes |
 | **DLL Merging** | Yes | - | Yes | Yes |
-| **Assembly Embedding** | - | - | Yes | Yes |
+| **Assembly Embedding** | Yes | - | Yes | Yes |
 | **RASP** | - | Yes | - | - |
 
 ---
@@ -148,17 +152,21 @@ Obfy is a modern, open-source .NET obfuscation tool that provides essential prot
 - Simple installer-based distribution
 - Dual-mode: Assembly (dnlib) + Source (Roslyn) obfuscation
 - Resource, constant, and string encryption
+- Method IL XOR encryption (Windows) and in-module `calli` reference proxies
 - Anti-tamper detection with SHA-256 hash verification
-- Anti-decompiler protection (junk types, SuppressIldasm)
+- Anti-decompiler protection (junk types, SuppressIldasm, decoy attributes)
+- Watermark (`WatermarkAttribute`) and dependency embedding
 - Assembly merging to combine multiple DLLs into one
 - Obfuscation reports (HTML/JSON)
+- NativeAOT / Unity IL2CPP / Blazor WASM runtime-profile gating
 - Excellent documentation
 - Active development
 
 **Weaknesses:**
-- No code virtualization
-- No native code generation
+- No general code virtualization (simple static `int` methods only)
+- No native/unmanaged packer (managed FDD launcher only)
 - No licensing/DRM features
+- Unity / MAUI / Blazor are recipes, not first-class plugins
 - Smaller community (new project)
 
 **Best For:** Developers who need solid protection without cost, modern .NET projects, CI/CD pipelines
@@ -286,7 +294,7 @@ A detailed comparison of free, open-source .NET obfuscators.
 
 | Tool | GitHub Stars | Last Update | License | Status |
 |------|-------------|-------------|---------|--------|
-| **Obfy** | New | Jan 2026 | MIT | Active |
+| **Obfy** | New | Sep 2026 | MIT | Active |
 | **Obfuscar** | 3,000+ | Dec 2025 | MIT | Active |
 | **BitMono** | 490+ | Dec 2025 | MIT | Active |
 | **LoGic.NET** | ~200 | 2024 | MIT | Active |
@@ -304,11 +312,15 @@ A detailed comparison of free, open-source .NET obfuscators.
 | **Anti-Debug** | Yes | - | Yes | - | - | Yes |
 | **Anti-Decompiler** | Yes | - | Yes | - | - | Yes |
 | **Anti-Tamper** | Yes | - | - | - | - | Yes |
-| **Anti-de4dot** | - | - | Yes | - | - | - |
+| **Anti-de4dot** | Partial | - | Yes | - | - | - |
 | **Constant Encryption** | Yes | - | - | Yes | - | Yes |
 | **Resource Encryption** | Yes | - | - | - | - | Yes |
 | **Assembly Merging** | Yes | - | - | - | - | - |
 | **Metadata Removal** | Yes | - | Yes | - | - | - |
+| **Watermarking** | Yes | - | - | - | - | - |
+| **Method IL encryption** | Yes | - | - | - | - | - |
+
+Obfy “anti-de4dot” is decoy ConfusedBy/Dotfuscator attributes (name-based detector bait), not a de4dot block.
 
 ### .NET Version Support (Open Source)
 
@@ -517,21 +529,21 @@ dotnet tool install --global Obfuscar.GlobalTool
 
 | Feature | Difficulty | Value | Notes |
 |---------|------------|-------|-------|
-| **Code Virtualization** | Very High | High | Converts IL to custom VM bytecode; major undertaking |
+| **General code virtualization** | Very High | High | Current interpreter covers simple static `int` methods only |
 
 ### Moderate Gaps (Nice to Have)
 
 | Feature | Difficulty | Value | Notes |
 |---------|------------|-------|-------|
-| **Native Code Generation** | Very High | Medium | Generate native stubs; complex |
+| **Native packer** | Very High | Medium | Managed FDD launcher exists; unmanaged host does not |
 
 ### Minor Gaps (Low Priority)
 
 | Feature | Difficulty | Value | Notes |
 |---------|------------|-------|-------|
-| **Watermarking** | Low | Low | Embed tracking information |
 | **License Management** | High | Low | Out of scope for obfuscator |
 | **Error Reporting** | High | Low | Separate concern |
+| **Unity Editor plugin** | Medium | Medium | Recipe + `runtimeProfile` exist; no Editor integration |
 
 ---
 
@@ -543,15 +555,19 @@ dotnet tool install --global Obfuscar.GlobalTool
 
 ### Medium-Term (Strategic Features)
 
-*All medium-term items completed - see Recently Completed section*
+*v1.4–v1.5 hardening is on main (Unreleased): helper control-flow, scattered anti-debug, per-method XOR keys, `[Obfuscation]`, JSON/XAML defaults, `runtimeProfile` gating, signing, dependency embedding, watermark, limited virtualization, managed launcher.*
 
 ### Long-Term (Advanced Protection)
 
-5. **Code Virtualization** - Custom VM for method protection
-6. **Native Code Bridge** - Optional native launcher
+5. **General code virtualization** - Custom VM beyond the current static-int interpreter
+6. **Native packer** - Unmanaged host (managed `{name}.launcher.exe` already ships)
 
 ### Recently Completed
 
+- **Protection hardening (Unreleased)** ✅ - Helper control-flow, three string decrypt entry points, scattered anti-debug, per-method method-IL keys, random dispatcher states
+- **Compatibility (Unreleased)** ✅ - `[Obfuscation]` + inclusions, JSON/XML/COM/XAML defaults, `runtimeProfile`, signing
+- **Watermark + decoy attributes (Unreleased)** ✅
+- **Dependency embedding, incremental cache, managed launcher, limited virtualization (Unreleased)** ✅
 - **Configuration Wizard** ✅ - Interactive CLI wizard with Quick/Advanced modes (v1.3.0)
 - **Visual Studio Extension** ✅ - VS 2022 plugin with right-click obfuscation and post-build automation (v1.3.0)
 - **Assembly Merging** ✅ - Merge multiple assemblies into one (v1.2.0)
@@ -588,7 +604,7 @@ Obfy provides a compelling open-source alternative to commercial .NET obfuscator
 - **vs Budget commercial**: Matches .NET Reactor's core features at zero cost, including anti-tamper
 - **vs Enterprise commercial**: Covers most protection needs but lacks enterprise features (RASP, licensing)
 
-For most applications, Obfy's combination of string encryption, constant encryption, resource encryption, control flow obfuscation, symbol renaming, anti-debug, anti-decompiler, anti-tamper, assembly merging, and metadata removal provides comprehensive protection. Teams requiring maximum security should consider .NET Reactor ($249) or Dotfuscator (enterprise) for additional protection layers like code virtualization.
+For most applications, Obfy's combination of string/constant/resource encryption, method IL XOR, control flow, symbol renaming, anti-debug/dump/tamper/decompiler, reference proxies, assembly merging, and metadata removal provides comprehensive protection against casual reverse engineering. Teams requiring a general IL VM or a native packer should consider .NET Reactor ($249) or Dotfuscator (enterprise).
 
 ---
 
@@ -615,4 +631,4 @@ For most applications, Obfy's combination of string encryption, constant encrypt
 
 ---
 
-*Last updated: January 2026*
+*Last updated: September 2026*

@@ -260,7 +260,7 @@ dotnet build -c Debug
 
 # Production with obfuscation
 dotnet build -c Release
-obfy bin/Release/net8.0/MyApp.dll -o dist/
+obfy bin/Release/net10.0/MyApp.dll -o dist/
 ```
 
 ## Performance Considerations
@@ -376,7 +376,7 @@ obfy bin/Release/net8.0/MyApp.dll -o dist/
 dotnet build -c Release
 
 # 2. Obfuscate the DLLs
-obfy bin/Release/net8.0/MyApp.dll -o bin/Release/net8.0/ -l aggressive
+obfy bin/Release/net10.0/MyApp.dll -o bin/Release/net10.0/ -l aggressive
 
 # 3. Publish single-file (uses obfuscated assemblies)
 dotnet publish -c Release -p:PublishSingleFile=true
@@ -449,7 +449,7 @@ By default, the plugin only runs obfuscation for Release builds. Configure this 
 
 ```yaml
 - name: Obfuscate
-  run: obfy bin/Release/net8.0/MyApp.dll -l aggressive -o dist/
+  run: obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
 ```
 
 ### Azure DevOps

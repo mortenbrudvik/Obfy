@@ -45,7 +45,7 @@ Thank you for your interest in contributing to Obfy! This document provides guid
    ./gradlew.bat build
    ```
 
-   The plugin ZIP will be created at `build/distributions/Obfy.Rider-1.0.0.zip`.
+   The plugin ZIP will be created at `build/distributions/Obfy.Rider-1.0.1.zip`.
 
 ## Project Structure
 
@@ -57,14 +57,22 @@ Obfy/
 │   ├── Obfy.UI/            # WPF desktop application
 │   ├── Obfy.VisualStudio/  # Visual Studio 2022 extension (C#)
 │   ├── Obfy.Rider/         # JetBrains Rider plugin (Kotlin)
+│   ├── Obfy.VSCode/        # VS Code stub (schema + problem matcher)
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/         # Core unit tests (152 tests)
-│   ├── Obfy.Console.Tests/ # CLI parsing tests (92 tests)
-│   └── Obfy.UI.Tests/      # ViewModel unit tests (59 tests)
+│   ├── Obfy.Tests/              # Core unit tests (382 tests)
+│   ├── Obfy.Console.Tests/      # CLI parsing tests (117 tests)
+│   ├── Obfy.UI.Tests/           # ViewModel unit tests (132 tests)
+│   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
 ├── docs/                   # Documentation
 └── examples/               # Example projects
+```
+
+Work on a feature branch in an isolated git worktree, not on the main checkout:
+
+```bash
+git worktree add .worktrees/<branch-name> -b <branch-name>
 ```
 
 ## Making Changes
@@ -104,22 +112,24 @@ Examples:
 
 ### Testing
 
-We have three test projects:
+We have four test projects:
 
 | Project | Purpose | Tests |
 |---------|---------|-------|
-| `Obfy.Tests` | Core obfuscation logic | 152 |
-| `Obfy.Console.Tests` | CLI argument parsing, help output | 106 |
-| `Obfy.UI.Tests` | ViewModel logic and commands | 59 |
+| `Obfy.Tests` | Core obfuscation logic | 382 |
+| `Obfy.Console.Tests` | CLI argument parsing, help output | 117 |
+| `Obfy.UI.Tests` | ViewModel logic and commands | 132 |
+| `Obfy.UI.AutomationTests` | Locator unit tests + FlaUI live window (`Category=UI`, local) | 24 |
 
 ```bash
-# Run all tests
+# Default suite (skips Category=UI and Category=Platform)
 dotnet test
 
 # Run specific test project
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
 
 # Run with coverage
 dotnet test --collect:"XPlat Code Coverage"
@@ -130,7 +140,7 @@ When adding new features:
 - ViewModel changes → Add tests to `Obfy.UI.Tests`
 - Core obfuscation → Add tests to `Obfy.Tests`
 
-See [docs/Testing.md](docs/Testing.md) for comprehensive testing guidelines.
+See [docs/Testing.md](docs/Testing.md) for how to run tests, and [docs/Testing-Roadmap.md](docs/Testing-Roadmap.md) for planned scenario coverage.
 
 ## Pull Request Process
 

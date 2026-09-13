@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Virtualization skips unsigned compares (`cgt.un`, `b*.un`) instead of executing them as signed
+- Dark-theme UI text uses theme foreground brushes so file names, settings, and logs stay readable
+- Disabled toolbar buttons (Obfuscate with no files) keep readable label and border contrast
+- CI `dotnet test` no longer fails 18 FlaUI tests that looked for Debug `ObfyUI.exe` after a Release build; live-window tests are `Category=UI` (opt-in) and the locator prefers the current configuration
 - Packing writes the incremental cache only after a successful launcher emit; cache hits require the launcher files
 - Preview failures no longer fail a successful obfuscation run
 - Packed host awaits async Main, resolves sibling assemblies, and extracts the payload to disk so anti-tamper can hash it
@@ -21,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--proxy-external` help text matches that it enables `--reference-proxy`
 
 ### Added
+- Desktop UI opens input files and `-o`/`--output` from the command line
 - Incremental obfuscation cache (`incremental.enabled`)
 - Selective IL virtualization for simple static int methods (`virtualization.enabled`)
 - Virtualization encodes locals, comparisons, and branches (`ldloc`/`stloc`, `ceq`/`cgt`/`clt`, `if`/`else`), and allows zero-argument static int methods (still ≤8 params / ≤16 int locals; unsigned compares are skipped)
@@ -58,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI `--watermark-id` and Settings panel watermark / decoy-attribute controls
 
 ### Changed
+- README includes screenshots of the desktop application
+- Documentation matches the Unreleased pipeline: README, CLI, configuration, techniques, roadmap, competitive analysis, test counts, and examples (net10.0). Encryption is documented as obfuscation, not confidentiality.
 - Strong-name signing refreshes the signature blob in place after method-IL XOR; anti-tamper hashing skips the signature so Aggressive + `signing.keyFile` keeps both protections
 - Method IL encryption records generic skips in the report and uses a distinct XOR key per method; warns when many methods are skipped because they are generic
 - Method IL encryption always warns that it is Windows-only / not NativeAOT; decrypt failure leaves ciphertext

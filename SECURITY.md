@@ -49,9 +49,10 @@ Security issues we are interested in:
 When using Obfy:
 
 1. **Keep Updated**: Always use the latest version
-2. **Secure Keys**: If using custom encryption keys, store them securely
+2. **Do not treat obfuscation as encryption of secrets**: String, constant, resource, and method-IL “encryption” embed the key in the output assembly. Anyone who runs or inspects the binary can recover plaintext. Store real secrets outside the assembly.
 3. **Test Thoroughly**: Always test obfuscated assemblies before deployment
 4. **Backup Original**: Keep unobfuscated versions for debugging
+5. **Signing keys**: If `signing.enabled` is on, keep `.snk` / `.pfx` files and the PFX password environment variable out of source control.
 
 ## Acknowledgments
 

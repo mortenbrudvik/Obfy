@@ -9,6 +9,11 @@ This folder contains example projects demonstrating various Obfy use cases.
 | [BasicConsoleApp](BasicConsoleApp/) | Simple console app with standard obfuscation |
 | [LibraryWithPublicApi](LibraryWithPublicApi/) | Class library preserving public API |
 | [MsBuildIntegration](MsBuildIntegration/) | Automatic obfuscation in build process |
+| [unity](unity/) | Unity IL2CPP-safe `obfy.json` (`runtimeProfile: UnityIl2Cpp`) |
+| [blazor](blazor/) | Blazor WASM `obfy.json` (`runtimeProfile: BlazorWasm`) |
+| [maui](maui/) | MAUI / XAML `obfy.json` (`preserveXaml`, no method encryption) |
+
+`unity`, `blazor`, and `maui` are config recipes, not full sample apps. See [docs/Unity.md](../docs/Unity.md) and [docs/Platforms.md](../docs/Platforms.md).
 
 ## Quick Start
 
@@ -22,7 +27,7 @@ This folder contains example projects demonstrating various Obfy use cases.
 3. Build and obfuscate:
    ```bash
    dotnet build -c Release
-   obfy bin/Release/net8.0/BasicConsoleApp.dll -c obfy.json -o bin/Release/net8.0/obfuscated/
+   obfy bin/Release/net10.0/BasicConsoleApp.dll -c obfy.json -o bin/Release/net10.0/obfuscated/
    ```
 
 4. Compare original vs obfuscated using a decompiler (ILSpy, dnSpy)

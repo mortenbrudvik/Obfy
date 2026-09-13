@@ -6,6 +6,7 @@ namespace Obfy.UI.AutomationTests;
 /// <summary>
 /// Tests for the Settings panel functionality.
 /// </summary>
+[Trait("Category", "UI")]
 public class SettingsPanelTests : TestBase
 {
     [Fact]

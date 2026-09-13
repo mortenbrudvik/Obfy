@@ -16,7 +16,7 @@ When distributing a library, you want to:
 dotnet build -c Release
 
 # Obfuscate with public API preservation
-obfy bin/Release/net8.0/LibraryWithPublicApi.dll -c obfy.json -o bin/Release/net8.0/obfuscated/
+obfy bin/Release/net10.0/LibraryWithPublicApi.dll -c obfy.json -o bin/Release/net10.0/obfuscated/
 ```
 
 ## What Happens

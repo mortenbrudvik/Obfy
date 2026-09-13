@@ -9,4 +9,8 @@
   <PropertyGroup Condition="!$(MSBuildProjectName.Contains('Tests')) and '$(MSBuildProjectName)' != 'Obfy.VisualStudio'">
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <!-- FlaUI (Category=UI) and future platform jobs stay opt-in. Pass filter Category=UI to run them. -->
+  <PropertyGroup Condition="$(MSBuildProjectName.Contains('Tests')) and '$(VSTestTestCaseFilter)' == ''">
+    <VSTestTestCaseFilter>Category!=UI&amp;Category!=Platform</VSTestTestCaseFilter>
+  </PropertyGroup>
 </Project>

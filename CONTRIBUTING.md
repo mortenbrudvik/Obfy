@@ -61,7 +61,7 @@ Obfy/
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/              # Core unit tests (405 tests)
+│   ├── Obfy.Tests/              # Core unit tests (413 tests)
 │   ├── Obfy.Console.Tests/      # CLI parsing tests (117 tests)
 │   ├── Obfy.UI.Tests/           # ViewModel unit tests (132 tests)
 │   ├── Obfy.ScenarioTests/      # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
@@ -118,7 +118,7 @@ We have six test projects:
 
 | Project | Purpose | Tests |
 |---------|---------|-------|
-| `Obfy.Tests` | Core obfuscation logic | 405 |
+| `Obfy.Tests` | Core obfuscation logic | 413 |
 | `Obfy.Console.Tests` | CLI argument parsing, help output | 117 |
 | `Obfy.UI.Tests` | ViewModel logic and commands | 132 |
 | `Obfy.ScenarioTests` | SDK fixtures (examples, WPF, console, WinForms, MSBuild, Unity) + platform | 14 |

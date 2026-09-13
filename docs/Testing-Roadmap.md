@@ -8,7 +8,7 @@ How to run the current suite: [Testing.md](Testing.md).
 
 ## Current position (2026-09)
 
-Six projects; counts live in [Testing.md](Testing.md) (679 default as of 2026-09-13). That volume is real. What it proves is narrower than the docs imply.
+Six projects; counts live in [Testing.md](Testing.md) (687 default as of 2026-09-13). That volume is real. What it proves is narrower than the docs imply.
 
 | Layer | Quality | What it actually proves |
 |-------|---------|-------------------------|
@@ -154,16 +154,18 @@ Do not start TR-42 until Phase 0 and TR-10 exist — driving the UI to obfuscate
 
 ---
 
-## Engine gaps to close opportunistically (not a phase)
+## Phase 5 — Engine-gap unit tests
 
-These are holes in the *existing* suite. Fold them into PRs that already touch the code, rather than a dedicated testing epic.
+The items that were listed as opportunistic holes. TR-52 stays IL-only (PF-19).
 
-| ID | Gap | Suggested test |
-|----|-----|----------------|
-| TR-50 | Virtualization has one e2e arithmetic method, no unit file | Skip ineligible methods (leave IL unchanged); encode only `ldc.i4`/`ldarg`/`add`/`sub`/`mul`/`ret`; do not fail the run when nothing is eligible. Fail-closed on unsupported IL would be a product change (PF-08), not current behavior |
-| TR-51 | Incremental cache has three e2e tests (hit, pack-fail, pack+hit regenerates launcher); no unit tests of `IncrementalCache.TryHit` | Settings change invalidates cache; input byte change invalidates |
-| TR-52 | Anti-dump has no runtime process test | Leave as IL-only; a MiniDump test is not worth CI cost (see PF-19) |
-| TR-53 | Source obfuscation of a multi-file directory is thin | Two `.cs` files, rename across files, recompile and run |
+| ID | Work | Status |
+|----|------|--------|
+| TR-50 | Virtualization: skip ineligible IL unchanged; encode `ldc.i4`/`ldarg`/`add`/`sub`/`mul`/`ret`; succeed when nothing is eligible | ✅ Done (`VirtualizationObfuscatorTests`) |
+| TR-51 | `IncrementalCache.TryHit`: settings change and input-byte change invalidate; packing without launcher is a miss | ✅ Done (`IncrementalCacheTests`) |
+| TR-52 | Anti-dump runtime MiniDump | Left as IL-only (see PF-19) |
+| TR-53 | Two `.cs` files, rename across files, recompile and run | ✅ Done (`SourceDirectory_TwoFiles_RenameAcrossFiles_RecompilesAndRuns`) |
+
+**Done when:** TR-50, TR-51, and TR-53 have passing tests on the default CI filter.
 
 ---
 
@@ -206,6 +208,7 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 | 2 | Console+lib and MSBuild AfterBuild on CI; merge success asserted |
 | 3 | Each claimed platform has one compile → obfuscate → run job (possibly nightly) |
 | 4 | VS wrapper / `GetOutputAssemblyPathAsync` covered without a VS instance |
+| 5 | Virtualization skip/encode, `IncrementalCache.TryHit`, and two-file source rename all on the default CI filter |
 
 ---
 
@@ -222,6 +225,7 @@ TR-13, TR-14, TR-23      # cheap correctness; TR-23 does not need the SDK harnes
 TR-20, TR-21, TR-22, TR-24, TR-25  # Phase 2
 TR-30 … TR-33            # only when claiming the platform
 TR-40 … TR-43            # tooling
+TR-50, TR-51, TR-53      # engine gaps; TR-52 stays IL-only
 ```
 
 ---

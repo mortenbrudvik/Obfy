@@ -8,13 +8,13 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 405 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
+| Obfy.Tests | 413 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
 | Obfy.Console.Tests | 117 | CLI parsing (`IntegrationParseTests`) and process (`IntegrationProcessTests`) |
 | Obfy.UI.Tests | 132 | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 25 | 6 locator unit tests (CI) + 19 FlaUI live-window tests (`Category=UI`, local) |
 | Obfy.ScenarioTests | 14 | 10 default SDK fixtures (Unity stub included) + 3 `Category=Platform` + 1 skipped merge |
 | Obfy.VisualStudio.Tests | 9 | VS settings JSON, CLI args, output-assembly locator (no VS hive) |
-| **Total** | **679** | Default CI (`Category!=UI&Category!=Platform`) |
+| **Total** | **687** | Default CI (`Category!=UI&Category!=Platform`) |
 
 ## Test Stack
 

@@ -164,6 +164,53 @@ public class VirtualizationObfuscatorTests
     }
 
     [Fact]
+    public async Task Virtualization_LeavesIneligibleInstanceMethodUnchanged_AndSucceeds()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var method = new MethodDefUser(
+            "Inst",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public);
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_7));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
+        var snapshot = method.Body.Instructions.Select(i => i.OpCode.Code).ToArray();
+
+        var context = PipelineContext.ForAssembly(module, VmSettings());
+        var result = await new VirtualizationObfuscator(new Mock<ILogger<VirtualizationObfuscator>>().Object)
+            .ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBe(0);
+        CallsExecute(method).ShouldBeFalse();
+        method.Body.Instructions.Select(i => i.OpCode.Code).ShouldBe(snapshot);
+        context.Warnings.ShouldContain(w => w.Contains("no eligible methods"));
+    }
+
+    [Fact]
+    public async Task Virtualization_EncodesLdcI4SubAndMul()
+    {
+        var (module, method) = CreateModuleWithMethod("SubMul", body =>
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
+            body.Instructions.Add(Instruction.Create(OpCodes.Mul));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4, 1));
+            body.Instructions.Add(Instruction.Create(OpCodes.Sub));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        });
+
+        var result = await RunAsync(module);
+
+        result.Success.ShouldBeTrue();
+        result.Statistics.ProtectionsApplied.ShouldBe(1);
+        CallsExecute(method).ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task Virtualization_EncodesSignedCompareBranches()
     {
         var module = CreateTestModule();

@@ -29,7 +29,7 @@ Obfy/
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/            # Core unit tests (405 tests)
+│   ├── Obfy.Tests/            # Core unit tests (413 tests)
 │   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (117 tests)
 │   ├── Obfy.UI.Tests/         # ViewModel unit tests (132 tests)
 │   ├── Obfy.ScenarioTests/    # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)

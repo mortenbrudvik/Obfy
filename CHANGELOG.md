@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--proxy-external` help text matches that it enables `--reference-proxy`
 
 ### Added
+- Engine-gap tests: virtualization skip/encode, `IncrementalCache.TryHit` invalidation, two-file source rename compile-and-run
 - Tooling tests: VS settings JSON / CLI args / output-assembly locator (no hive), Rider settings + `AssemblyLocator` JVM tests, FlaUI command-line DLL obfuscate path, Settings.Core validation
 - Platform scenario tests: published Blazor WASM `_framework` DLL, NativeAOT obfuscate-then-publish, MAUI Windows (skip without workload), and a Unity stub assembly
 - SDK scenario tests (`Obfy.ScenarioTests`): shipped examples, WPF app/solution, console+lib, WinForms, satellites, and MSBuild AfterBuild compile → obfuscate → run

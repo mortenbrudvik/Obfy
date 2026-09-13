@@ -1,12 +1,16 @@
 using System.Reflection;
 using System.Runtime.Loader;
+using Autofac;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Obfy.Core.DependencyInjection;
 using Obfy.Core.Models;
 using Obfy.Core.Obfuscators.Source;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Services;
 using Obfy.Core.Utilities;
 using Shouldly;
 
@@ -741,6 +745,87 @@ public class SourceObfuscatorTests
     }
 
     #endregion
+
+    [Fact]
+    public async Task SourceDirectory_TwoFiles_RenameAcrossFiles_RecompilesAndRuns()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "obfy-srcdir-" + Guid.NewGuid().ToString("N"));
+        var output = Path.Combine(dir, "out");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "Helper.cs"), """
+                internal static class Helper
+                {
+                    internal static int Double(int x) => x * 2;
+                }
+                """);
+            File.WriteAllText(Path.Combine(dir, "Entry.cs"), """
+                public static class Entry
+                {
+                    public static int Run() => Helper.Double(21);
+                }
+                """);
+
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+            var service = container.Resolve<IObfuscationService>();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                SymbolRenaming =
+                {
+                    Enabled = true,
+                    RenameTypes = true,
+                    RenameMethods = true,
+                    PreservePublicApi = true,
+                    Mode = NamingMode.Sequential
+                }
+            };
+
+            var result = await service.ObfuscateAsync(dir, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            var files = Directory.GetFiles(output, "*.cs");
+            files.Length.ShouldBe(2);
+            var combined = string.Join("\n", files.Select(File.ReadAllText));
+            combined.ShouldNotContain("Helper");
+            combined.ShouldContain("Entry");
+            combined.ShouldContain("Run");
+
+            var compilation = CSharpCompilation.Create(
+                "SrcDir",
+                files.Select(f => CSharpSyntaxTree.ParseText(File.ReadAllText(f), path: f)),
+                ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+                    .Split(Path.PathSeparator)
+                    .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                    .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            using var ms = new MemoryStream();
+            var emit = compilation.Emit(ms);
+            emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+            ms.Position = 0;
+            var alc = new AssemblyLoadContext("srcdir-" + Guid.NewGuid().ToString("N"), isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromStream(ms);
+                var entry = asm.GetType("Entry");
+                entry.ShouldNotBeNull();
+                entry!.GetMethod("Run")!.Invoke(null, null).ShouldBe(42);
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* ignore */ }
+        }
+    }
 
     private static CSharpCompilation CreateCompilation(string sourceCode)
     {

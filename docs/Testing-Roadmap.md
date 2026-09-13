@@ -53,15 +53,15 @@ Effort is relative to this repo (S ≤ 1 day, M a few days, L a week-plus includ
 
 ## Phase 0 — Make CI honest (P0)
 
-`TR-01` and `TR-02` landed. Remaining: confirm GitHub Actions on `main` actually posts coverage.
+`TR-01` and `TR-02` landed. Remaining: confirm a green `main` job with coverage artifact, step summary, and 80% warning. Same-repo PRs post a best-effort sticky comment; `main` never does.
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
 | TR-01 | Trait-filter FlaUI out of default `dotnet test` / CI (`Category=UI` or equivalent). Document local-only run in [Testing.md](Testing.md). | S | High | ✅ Done (`Category=UI` + default `VSTestTestCaseFilter`) |
 | TR-02 | Resolve `ObfyUI.exe` from the current build configuration and TFM, not a hardcoded Debug path. | S | High | ✅ Done (`UiExecutableLocator`) |
-| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | Open — coverage comment needs `pull-requests: write`; 403 must not skip the 80% warning |
+| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | Open — waiting for first green Actions run on `main` after permissions + continue-on-error |
 
-**Done when:** a Release `dotnet test` of the solution on GitHub Actions passes; coverage summary is posted; FlaUI still runs locally with one documented command (see [Testing.md](Testing.md)).
+**Done when:** a Release `dotnet test` of the solution on GitHub Actions passes; coverage artifact uploads; job step summary and 80% warning run; sticky PR comment is optional (same-repo, best-effort); FlaUI still runs locally with one documented command (see [Testing.md](Testing.md)).
 
 ---
 
@@ -200,7 +200,7 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 
 | Phase | KPI |
 |-------|-----|
-| 0 | `main` CI green; coverage comment publishes |
+| 0 | `main` CI green; coverage artifact + step summary + 80% warning run; same-repo PR comment is best-effort |
 | 1 | At least one WPF solution and two examples compile → obfuscate → run on CI |
 | 2 | Console+lib and MSBuild AfterBuild on CI; merge success asserted |
 | 3 | Each claimed platform has one compile → obfuscate → run job (possibly nightly) |

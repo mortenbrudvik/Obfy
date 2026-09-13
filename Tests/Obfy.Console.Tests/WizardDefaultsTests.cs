@@ -18,7 +18,9 @@ public class WizardDefaultsTests
         ConfigurationWizard.ApplyUseCaseDefaults(context);
 
         context.Settings.RuntimeProfile.ShouldBe(RuntimeProfile.UnityIl2Cpp);
+        context.Settings.Exclusions.Namespaces.ShouldContain("UnityEngine");
         context.Settings.Exclusions.Namespaces.ShouldContain("UnityEngine.*");
+        context.Settings.Exclusions.Namespaces.ShouldContain("Unity");
         context.Settings.Exclusions.Namespaces.ShouldContain("Unity.*");
     }
 

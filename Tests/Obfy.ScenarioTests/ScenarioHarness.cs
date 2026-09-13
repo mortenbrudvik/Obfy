@@ -45,13 +45,23 @@ internal static class ScenarioHarness
         return dest;
     }
 
-    public static void DotnetBuild(string projectOrSln, string configuration = "Release", string extraArgs = "")
+    public static void DotnetBuild(
+        string projectOrSln,
+        string configuration = "Release",
+        string extraArgs = "",
+        int timeoutMs = 60_000)
     {
         var args = $"build \"{projectOrSln}\" -c {configuration} --nologo";
         if (!string.IsNullOrWhiteSpace(extraArgs))
             args += " " + extraArgs;
-        var result = RunProcess("dotnet", args, Path.GetDirectoryName(projectOrSln)!, 60_000);
+        var result = RunProcess("dotnet", args, Path.GetDirectoryName(projectOrSln)!, timeoutMs);
         result.ExitCode.ShouldBe(0, result.StdOut + Environment.NewLine + result.StdErr);
+    }
+
+    public static ProcessResult DotnetPublish(string project, string extraArgs = "", int timeoutMs = 180_000)
+    {
+        var args = $"publish \"{project}\" --nologo {extraArgs}".Trim();
+        return RunProcess("dotnet", args, Path.GetDirectoryName(project)!, timeoutMs);
     }
 
     public static ObfySettings LoadSettings(string jsonPath)

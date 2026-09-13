@@ -13,7 +13,7 @@ This folder contains example projects demonstrating various Obfy use cases.
 | [blazor](blazor/) | Blazor WASM `obfy.json` (`runtimeProfile: BlazorWasm`) |
 | [maui](maui/) | MAUI / XAML `obfy.json` (`preserveXaml`, no method encryption) |
 
-`unity`, `blazor`, and `maui` are config recipes, not full sample apps. See [docs/Unity.md](../docs/Unity.md) and [docs/Platforms.md](../docs/Platforms.md).
+`unity`, `blazor`, and `maui` are config recipes, not full sample apps. Scenario tests cover them: Unity stub in the default job; Blazor WASM / NativeAOT / MAUI Windows as `Category=Platform`. See [docs/Unity.md](../docs/Unity.md) and [docs/Platforms.md](../docs/Platforms.md).
 
 ## Quick Start
 

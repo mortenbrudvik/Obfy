@@ -1,0 +1,13 @@
+{
+  "level": "custom",
+  "runtimeProfile": "NativeAot",
+  "stringEncryption": { "enabled": true },
+  "symbolRenaming": { "enabled": true, "preservePublicApi": false },
+  "controlFlow": { "enabled": true, "intensity": 30 },
+  "protection": {
+    "antiDebug": false,
+    "antiDump": false,
+    "methodEncryption": false,
+    "referenceProxy": true
+  }
+}

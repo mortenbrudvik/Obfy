@@ -212,7 +212,9 @@ public class ConfigurationWizard
                 break;
 
             case "Game (Unity)":
+                context.Settings.Exclusions.Namespaces.Add("UnityEngine");
                 context.Settings.Exclusions.Namespaces.Add("UnityEngine.*");
+                context.Settings.Exclusions.Namespaces.Add("Unity");
                 context.Settings.Exclusions.Namespaces.Add("Unity.*");
                 context.Settings.RuntimeProfile = RuntimeProfile.UnityIl2Cpp;
                 break;

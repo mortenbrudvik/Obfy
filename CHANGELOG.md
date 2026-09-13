@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Assembly write calls `SimplifyBranches` / `OptimizeBranches` so control-flow on async state machines (Blazor WASM `MoveNext`) no longer fails with “short branch too far”
+- Unity recipe and wizard exclude `UnityEngine` / `Unity` as well as `UnityEngine.*` / `Unity.*` (`*` does not match the namespace itself)
 - CI requests `pull-requests: write` for the sticky coverage comment, skips the comment on fork PRs, and sets `continue-on-error` on that step so a 403 (fork/read-only token) cannot skip the coverage summary or 80% warning
 - CLI config files accept camelCase enum values (`"level": "aggressive"`)
 - `preserveXaml` View/ViewModel suffix match is case-insensitive (`Overview` / `Preview`)
@@ -27,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--proxy-external` help text matches that it enables `--reference-proxy`
 
 ### Added
+- Platform scenario tests: published Blazor WASM `_framework` DLL, NativeAOT obfuscate-then-publish, MAUI Windows (skip without workload), and a Unity stub assembly
 - SDK scenario tests (`Obfy.ScenarioTests`): shipped examples, WPF app/solution, console+lib, WinForms, satellites, and MSBuild AfterBuild compile → obfuscate → run
 - Desktop UI opens input files and `-o`/`--output` from the command line
 - Incremental obfuscation cache (`incremental.enabled`)

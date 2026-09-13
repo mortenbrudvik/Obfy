@@ -61,10 +61,10 @@ Obfy/
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/              # Core unit tests (382 tests)
+│   ├── Obfy.Tests/              # Core unit tests (400 tests)
 │   ├── Obfy.Console.Tests/      # CLI parsing tests (117 tests)
 │   ├── Obfy.UI.Tests/           # ViewModel unit tests (132 tests)
-│   ├── Obfy.ScenarioTests/      # SDK fixtures: examples, WPF app, WPF+library
+│   ├── Obfy.ScenarioTests/      # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
 │   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
 ├── docs/                   # Documentation
 └── examples/               # Example projects
@@ -117,15 +117,18 @@ We have five test projects:
 
 | Project | Purpose | Tests |
 |---------|---------|-------|
-| `Obfy.Tests` | Core obfuscation logic | 397 |
+| `Obfy.Tests` | Core obfuscation logic | 400 |
 | `Obfy.Console.Tests` | CLI argument parsing, help output | 117 |
 | `Obfy.UI.Tests` | ViewModel logic and commands | 132 |
-| `Obfy.ScenarioTests` | SDK fixtures (examples, WPF, console, WinForms, MSBuild) | 9 |
+| `Obfy.ScenarioTests` | SDK fixtures (examples, WPF, console, WinForms, MSBuild, Unity) + platform | 14 |
 | `Obfy.UI.AutomationTests` | Locator unit tests + FlaUI live window (`Category=UI`, local) | 24 |
 
 ```bash
 # Default suite (skips Category=UI and Category=Platform)
 dotnet test
+
+# Platform recipes (Blazor WASM, NativeAOT; MAUI skips without the workload)
+dotnet test Tests/Obfy.ScenarioTests --filter Category=Platform
 
 # Run specific test project
 dotnet test Tests/Obfy.Tests

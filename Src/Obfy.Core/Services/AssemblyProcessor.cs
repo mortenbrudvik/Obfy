@@ -88,6 +88,19 @@ public class AssemblyProcessor : IAssemblyProcessor
 
         try
         {
+            // Control-flow (and other IL rewrites) can leave br.s / brfalse.s whose
+            // targets no longer fit in a signed byte. dnlib then throws on write.
+            foreach (var type in context.Module.GetTypes())
+            {
+                foreach (var method in type.Methods)
+                {
+                    if (!method.HasBody)
+                        continue;
+                    method.Body.SimplifyBranches();
+                    method.Body.OptimizeBranches();
+                }
+            }
+
             context.Module.Write(writePath, writerOptions);
             if (context.MethodEncryptionMetadata is not null)
                 MethodBodyPeEncryptor.Encrypt(writePath, context.MethodEncryptionMetadata);

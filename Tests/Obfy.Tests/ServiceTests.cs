@@ -99,6 +99,28 @@ public class ServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AssemblyProcessor_Save_ConvertsShortBranchesThatAreTooFar()
+    {
+        var assemblyPath = CreateTestAssembly("ShortBranch.dll");
+        var outputPath = Path.Combine(_tempDirectory, "short-branch.dll");
+        var processor = new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object);
+        var context = await processor.LoadAsync(assemblyPath, new ObfySettings());
+
+        var method = context.Module!.Types.Single(t => t.Name == "TestClass").Methods
+            .Single(m => m.Name == "TestMethod");
+        var ret = Instruction.Create(OpCodes.Ret);
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Br_S, ret));
+        for (var i = 0; i < 200; i++)
+            method.Body.Instructions.Add(Instruction.Create(OpCodes.Nop));
+        method.Body.Instructions.Add(ret);
+
+        await processor.SaveAsync(context, outputPath);
+        File.Exists(outputPath).ShouldBeTrue();
+        File.ReadAllBytes(outputPath).Length.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
     public async Task AssemblyProcessor_Save_ThrowsOnNullModule()
     {
         // Arrange

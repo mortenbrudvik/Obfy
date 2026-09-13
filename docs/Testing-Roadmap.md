@@ -8,16 +8,17 @@ How to run the current suite: [Testing.md](Testing.md).
 
 ## Current position (2026-09)
 
-Four projects; counts live in [Testing.md](Testing.md) (655 as of 2026-09-13). That volume is real. What it proves is narrower than the docs imply.
+Five projects; counts live in [Testing.md](Testing.md) (665 default as of 2026-09-13). That volume is real. What it proves is narrower than the docs imply.
 
 | Layer | Quality | What it actually proves |
 |-------|---------|-------------------------|
 | Per-technique unit tests | Strong | Obfuscators rewrite IL on synthetic dnlib modules and tiny Roslyn snippets |
-| Compile → obfuscate → run | Good | `EndToEndObfuscationTests` Roslyn-emits libraries (in-process invoke) and console exes (separate `dotnet` process). Not SDK `.csproj` builds |
+| Compile → obfuscate → run | Good | `EndToEndObfuscationTests` (Roslyn snippets) plus `Obfy.ScenarioTests` SDK fixtures |
 | CLI parse / wizard defaults | Strong | Flags and use-case presets map to settings |
 | WPF product UI (ViewModels) | Strong | Commands and bindings of *Obfy itself*, not of customer apps |
 | FlaUI smoke | Local-only | Chrome exists; does not add files or obfuscate (`Category=UI`) |
-| SDK projects / solutions | **Missing** | No `.csproj` / `.sln` is built, obfuscated, and run |
+| SDK projects / solutions | Good | WPF, console+lib, WinForms, examples, satellites, MSBuild AfterBuild |
+| Platform recipes | Partial | Unity stub in default CI; Blazor WASM / NativeAOT / MAUI Windows are `Category=Platform` |
 | IDE extensions | **Missing** | VS / Rider / VS Code have no tests |
 
 Phase 0 (`TR-01` / `TR-02`) filters FlaUI out of default `dotnet test` / CI and resolves `ObfyUI.exe` per configuration. `TR-03` is confirming the first green GitHub Actions run after that merge (coverage report + 80% warning). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran. Later: [CI run 72](https://github.com/mortenbrudvik/Obfy/actions/runs/34750086309) — tests and coverage succeeded, then the sticky PR comment 403 (`Resource not accessible by integration`) skipped the summary and 80% warning.
@@ -127,14 +128,14 @@ Only after Phase 1 is green. Same harness, more fixtures.
 
 ## Phase 3 — Platform claims (P3)
 
-These are the product `PS-*` items. Do not advertise first-class support until the corresponding test exists. After `TR-01`, new platform tests should use `[Trait("Category", "Platform")]` and skip when SDKs/workloads are absent. That trait exists in `Directory.Build.props`; no tests use it yet.
+These are the product `PS-*` items. Do not advertise first-class support until the corresponding test exists. After `TR-01`, new platform tests should use `[Trait("Category", "Platform")]` and skip when SDKs/workloads are absent.
 
 | ID | Work | Unblocks | Effort | Status |
 |----|------|----------|--------|--------|
-| TR-30 | Published Blazor WASM: obfuscate `_framework/*.dll` with `runtimeProfile: BlazorWasm`, then a headless/playwright or `dotnet` host smoke. | PS-03 | L | Open |
-| TR-31 | NativeAOT: obfuscate **before** `dotnet publish -p:PublishAot=true`, run the native exe. Rename + strings + control flow + in-module proxies. | PS-04 | L | Open |
-| TR-32 | MAUI Windows (not iOS/Android in CI): `preserveXaml`, method encryption off, app launches. CI-feasible subset of `PS-02`; iOS/Android remain a later platform job. | PS-02 (Windows subset) | L | Open |
-| TR-33 | Unity: Development Player or a stripped managed assembly from a committed sample. Editor plugin is out of scope. | PS-01 | L | Open |
+| TR-30 | Published Blazor WASM: obfuscate `_framework/*.dll` with `runtimeProfile: BlazorWasm`, then a headless/playwright or `dotnet` host smoke. | PS-03 | L | ✅ Done (`BlazorWasmTests`; ALC invoke of a probe type; `Category=Platform`) |
+| TR-31 | NativeAOT: obfuscate **before** `dotnet publish -p:PublishAot=true`, run the native exe. Rename + strings + control flow + in-module proxies. | PS-04 | L | ✅ Done (`NativeAotTests`; ILC stdout + native exe; `Category=Platform`) |
+| TR-32 | MAUI Windows (not iOS/Android in CI): `preserveXaml`, method encryption off, app launches. CI-feasible subset of `PS-02`; iOS/Android remain a later platform job. | PS-02 (Windows subset) | L | ✅ Done (`MauiWindowsTests`; `dotnet new maui` when workload is present; skips otherwise; does not launch the app) |
+| TR-33 | Unity: Development Player or a stripped managed assembly from a committed sample. Editor plugin is out of scope. | PS-01 | L | ✅ Done (`UnitySampleTests`; committed stub assembly; runs in the default job) |
 
 **Done when:** [Platforms.md](Platforms.md) / [Unity.md](Unity.md) can say “tested” for that row, not only “recipe.”
 
@@ -179,7 +180,7 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 | Default (every PR) | exclude `UI`, `Platform` | Always |
 | Coverage | same as default | Always (80% *warning*, not a hard fail; PR comment is best-effort) |
 | UI | `Category=UI` | Manual / nightly / local |
-| Platform | `Category=Platform` | Nightly or workflow_dispatch; skip if workload missing |
+| Platform | `Category=Platform` | `.github/workflows/platform.yml` (weekly Monday + `workflow_dispatch`); MAUI skips if the workload is missing |
 
 `Obfy.ScenarioTests` runs in the default job once fixtures are small (WPF + examples). If TR-10 exceeds ~2 minutes, split it to a `Category=Scenario` job that still runs on every PR.
 

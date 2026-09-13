@@ -1,0 +1,31 @@
+name: Platform
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  platform:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: "10.0.x"
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --no-restore -c Release
+
+    - name: Platform tests
+      run: dotnet test --no-build -c Release --filter "Category=Platform" --nologo
+      # Blazor WASM and NativeAOT run here. MAUI skips unless the workload is installed.
+      # Unity stub is not Category=Platform; it runs on every PR in the default job.

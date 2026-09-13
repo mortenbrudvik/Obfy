@@ -10,6 +10,8 @@ public class WildcardMatcherTests
     [InlineData("Keep.Resources", "*.resources", true)]
     [InlineData("keep.RESOURCES", "*.resources", true)]
     [InlineData("System.Foo", "System.*", true)]
+    [InlineData("System", "System.*", false)]
+    [InlineData("UnityEngine", "UnityEngine", true)]
     [InlineData("Other.Foo", "System.*", false)]
     [InlineData("FooBar", "Foo?Bar", false)]
     public void IsMatch_SupportsGlobAndIsCaseInsensitive(string value, string pattern, bool expected)

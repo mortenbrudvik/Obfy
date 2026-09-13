@@ -12,6 +12,6 @@
     "referenceProxy": true
   },
   "exclusions": {
-    "namespaces": ["UnityEngine.*", "Unity.*"]
+    "namespaces": ["UnityEngine", "UnityEngine.*", "Unity", "Unity.*"]
   }
 }

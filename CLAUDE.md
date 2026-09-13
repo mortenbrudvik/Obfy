@@ -29,10 +29,10 @@ Obfy/
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/            # Core unit tests (382 tests)
+│   ├── Obfy.Tests/            # Core unit tests (400 tests)
 │   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (117 tests)
 │   ├── Obfy.UI.Tests/         # ViewModel unit tests (132 tests)
-│   ├── Obfy.ScenarioTests/    # SDK fixtures: examples, WPF app, WPF+library
+│   ├── Obfy.ScenarioTests/    # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
 │   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
 ├── docs/                      # Documentation
 ├── package/                   # MSIX manifest and Store assets

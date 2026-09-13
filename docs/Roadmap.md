@@ -92,10 +92,10 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 
 | ID | Feature | Priority | Effort | Value | Status |
 |----|---------|----------|--------|-------|--------|
-| PS-01 | Unity support (Mono / IL2CPP tested) | P2 | Medium | High | ✅ Partial (recipe + `UnityIl2Cpp` profile; no Editor plugin) |
-| PS-02 | Xamarin/MAUI support | P2 | Medium | Medium | ✅ Partial (recipe + `preserveXaml`; no MAUI profile) |
-| PS-03 | Blazor WebAssembly | P2 | Low | Medium | ✅ Partial (recipe + `BlazorWasm` profile) |
-| PS-04 | NativeAOT compatibility | P2 | High | Medium | ✅ Partial (gating via `NativeAot`; remaining techniques not AOT-proved) |
+| PS-01 | Unity support (Mono / IL2CPP tested) | P2 | Medium | High | ✅ Partial (recipe + `UnityIl2Cpp` profile + stub-assembly test; no Editor plugin) |
+| PS-02 | Xamarin/MAUI support | P2 | Medium | Medium | ✅ Partial (recipe + `preserveXaml` + Windows MAUI test when workload is present; no MAUI profile; iOS/Android untested) |
+| PS-03 | Blazor WebAssembly | P2 | Low | Medium | ✅ Partial (recipe + `BlazorWasm` profile + published `_framework` DLL test) |
+| PS-04 | NativeAOT compatibility | P2 | High | Medium | ✅ Partial (gating via `NativeAot` + obfuscate-then-`PublishAot` exe test) |
 
 ### Utility features
 

@@ -4,16 +4,16 @@ How to run and extend the current suite. Planned gaps (real SDK/WPF solutions, p
 
 ## Overview
 
-Technique-level coverage is strong. SDK project scenarios (WPF app, WPF+library, shipped examples) run in `Obfy.ScenarioTests`. Remaining platform gaps are in [Testing-Roadmap.md](Testing-Roadmap.md).
+Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForms, examples, Unity stub) run in `Obfy.ScenarioTests`. Blazor WASM, NativeAOT, and MAUI Windows are `Category=Platform` (see [Testing-Roadmap.md](Testing-Roadmap.md) Phase 3).
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 397 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
+| Obfy.Tests | 400 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
 | Obfy.Console.Tests | 117 | CLI parsing (`IntegrationParseTests`) and process (`IntegrationProcessTests`) |
 | Obfy.UI.Tests | 132 | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 24 | 6 locator unit tests (CI) + 18 FlaUI live-window tests (`Category=UI`, local) |
-| Obfy.ScenarioTests | 9 | SDK fixtures: examples, WPF, console+lib, WinForms, satellites, MSBuild AfterBuild |
-| **Total** | **661** | |
+| Obfy.ScenarioTests | 14 | 10 default SDK fixtures (Unity stub included) + 3 `Category=Platform` + 1 skipped merge |
+| **Total** | **665** | Default CI (`Category!=UI&Category!=Platform`) |
 
 ## Test Stack
 
@@ -55,6 +55,16 @@ dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj -c Rele
 ```
 
 `UiExecutableLocator` prefers the test configuration (Release vs Debug) and falls back to the other if that `ObfyUI.exe` is missing.
+
+### Platform (Blazor WASM, NativeAOT, MAUI Windows)
+
+Skipped by default. Blazor and NativeAOT restore extra packs on first run. MAUI skips when the workload is not installed. Unity is a committed stub and runs in the default job.
+
+```bash
+dotnet test Tests/Obfy.ScenarioTests/Obfy.ScenarioTests.csproj -c Release --filter Category=Platform
+```
+
+CI: `.github/workflows/platform.yml` (`workflow_dispatch` and weekly Monday).
 
 ### With Coverage
 
@@ -144,6 +154,10 @@ Compile → obfuscate → run real SDK projects. Fixtures live under `Tests/Obfy
 | `WinFormsAppTests` | WinForms form constructs after obfuscation |
 | `SatelliteTests` | `*.resources.dll` satellite is not rewritten; parent still loads cultures |
 | `MsBuildIntegrationTests` | Example AfterBuild target invokes the CLI on Release |
+| `UnitySampleTests` | `examples/unity/obfy.json` on a stub with `UnityEngine` types (default job) |
+| `BlazorWasmTests` | Publish WASM, obfuscate `_framework/*.dll`, ALC-invoke probe (`Category=Platform`) |
+| `NativeAotTests` | Obfuscate IL, `PublishAot`, run native exe (`Category=Platform`) |
+| `MauiWindowsTests` | `dotnet new maui` + Windows TFM when workload is present (`Category=Platform`) |
 
 Harness: copy fixture to `%TEMP%`, `dotnet build -c Release`, obfuscate with `IObfuscationService`, `dotnet <assembly>` (WPF uses `--smoke`).
 
@@ -230,4 +244,4 @@ This prevents race conditions with static properties and shared state during tes
 
 PRs and pushes to `main` run `.github/workflows/ci.yml`: `dotnet test -c Release` with `Category!=UI&Category!=Platform`. The coverage report and an 80% **warning** (not a hard fail) run when tests succeed (later steps still run if the PR comment fails). The sticky PR coverage comment is best-effort (`continue-on-error`, same-repo PRs only); a 403 does not skip the summary or threshold. Pushes to `main` get the artifact, job summary, and 80% warning, not a PR comment.
 
-FlaUI (`Category=UI`) is local-only. See [Testing-Roadmap.md](Testing-Roadmap.md) (`TR-01`–`TR-03`, `TR-42`).
+FlaUI (`Category=UI`) is local-only. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml`. See [Testing-Roadmap.md](Testing-Roadmap.md) (`TR-01`–`TR-03`, `TR-30`–`TR-33`, `TR-42`).

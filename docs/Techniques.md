@@ -826,13 +826,13 @@ Transforms control flow structures in source code.
 
 ## Post-processing: incremental cache
 
-`incremental.enabled` (config-only, off in every preset) skips re-obfuscation when the input bytes and serialized settings have not changed. The cache file is `{outputPath}.obfycache` and stores a SHA-256 of the input plus settings JSON. A hit also requires the output file to exist; if packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. The cache is written only after a successful write (including a successful launcher emit when packing is on).
+`incremental.enabled` (config-only, off in every preset) skips re-obfuscation when the Obfy version, input bytes, and serialized settings have not changed. The cache file is `{outputPath}.obfycache` and stores a SHA-256 of those inputs. A hit also requires the output file to exist; if packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. A locked or corrupt cache is a miss. The cache is written only after a successful write (including a successful launcher emit when packing is on).
 
 ## Post-processing: managed launcher
 
 `packing.enabled` compiles a framework-dependent managed console host (`{name}.launcher.exe` + `.runtimeconfig.json`) that embeds the obfuscated assembly as `packed.dll` and invokes its entry point. Run with `dotnet {name}.launcher.exe`. This is not native code generation (PF-09 remaining work). Config-only; off in every preset.
 
-The payload is extracted to `{launcher}.payload.dll` at runtime so `Assembly.Location` is a real path (anti-tamper hashes that file). Sibling assemblies next to the launcher are resolved from `AppContext.BaseDirectory`. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning.
+The payload stays in memory (`AssemblyLoadContext.LoadFromStream`); anti-tamper skips ALC loads instead of hashing the launcher. Sibling assemblies next to the launcher are resolved from the load context. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning.
 
 ## See Also
 

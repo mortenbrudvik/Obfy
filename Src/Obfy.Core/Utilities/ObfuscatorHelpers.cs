@@ -68,7 +68,7 @@ public static class ObfuscatorHelpers
     }
 
     /// <summary>
-    /// PE-sensitive runtime helpers that must keep a linear body (VM interpreter).
+    /// Skip CFG flatten on the injected <c>&lt;Vm&gt;</c> interpreter so its body stays linear.
     /// </summary>
     public static bool SkipControlFlowFlattening(TypeDef type) =>
         type.Name == "<Vm>";

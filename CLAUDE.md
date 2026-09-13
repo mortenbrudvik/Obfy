@@ -29,9 +29,9 @@ Obfy/
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/            # Core unit tests (413 tests)
-│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (117 tests)
-│   ├── Obfy.UI.Tests/         # ViewModel unit tests (132 tests)
+│   ├── Obfy.Tests/            # Core unit tests (421+ tests)
+│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (117+ tests)
+│   ├── Obfy.UI.Tests/         # ViewModel unit tests (133+ tests)
 │   ├── Obfy.ScenarioTests/    # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
 │   ├── Obfy.VisualStudio.Tests/ # VS helpers without a hive
 │   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
@@ -205,4 +205,4 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 | `NameGenerator` | Generates obfuscated symbol names |
 | `EncryptionHelper` | String encryption utilities |
 | `PipelineContext` | Shared state across obfuscators |
-| `IncrementalCache` | SHA-256 skip when input + settings are unchanged (`{output}.obfycache`) |
+| `IncrementalCache` | SHA-256 of Obfy version + input bytes + settings (`{output}.obfycache`); locked/corrupt cache is a miss |

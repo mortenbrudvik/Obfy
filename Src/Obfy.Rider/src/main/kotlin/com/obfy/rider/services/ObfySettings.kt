@@ -33,26 +33,26 @@ data class ObfySettings(
 ) {
     /**
      * Serialize to Core nested obfy.json so the CLI can deserialize Obfy.Core.Models.ObfySettings.
+     * When [existingJson] is present, unknown Core keys are kept.
      */
-    fun toJson(): String {
-        val root = JsonObject()
+    fun toJson(existingJson: String? = null): String {
+        val root = parseObject(existingJson) ?: JsonObject()
         root.addProperty("level", level.name.lowercase())
         root.addProperty("postBuildEnabled", postBuildEnabled)
-        root.add("stringEncryption", enabledObject(stringEncryption))
-        root.add("controlFlow", enabledObject(controlFlow))
-        root.add("symbolRenaming", JsonObject().apply {
-            addProperty("enabled", symbolRenaming)
-            addProperty("preservePublicApi", false)
-        })
-        root.add("protection", JsonObject().apply {
-            addProperty("antiDebug", antiDebug)
-            addProperty("antiDump", antiDump)
-            addProperty("referenceProxy", referenceProxy)
-            add("antiTamper", enabledObject(antiTamper))
-            add("antiDecompiler", enabledObject(antiDecompiler))
-        })
-        root.add("constantEncryption", enabledObject(constantEncryption))
-        root.add("resourceEncryption", enabledObject(resourceEncryption))
+        setEnabled(root, "stringEncryption", stringEncryption)
+        setEnabled(root, "controlFlow", controlFlow)
+        setEnabled(root, "symbolRenaming", symbolRenaming)
+        setEnabled(root, "constantEncryption", constantEncryption)
+        setEnabled(root, "resourceEncryption", resourceEncryption)
+
+        val protection = root.get("protection")?.takeIf { it.isJsonObject }?.asJsonObject ?: JsonObject()
+        protection.addProperty("antiDebug", antiDebug)
+        protection.addProperty("antiDump", antiDump)
+        protection.addProperty("referenceProxy", referenceProxy)
+        setEnabled(protection, "antiTamper", antiTamper)
+        setEnabled(protection, "antiDecompiler", antiDecompiler)
+        root.add("protection", protection)
+
         return com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root)
     }
 
@@ -156,6 +156,30 @@ data class ObfySettings(
                 }
             }
             return null
+        }
+
+        fun patchPostBuildEnabled(existingJson: String, enabled: Boolean): String {
+            val root = parseObject(existingJson) ?: JsonObject()
+            root.addProperty("postBuildEnabled", enabled)
+            return com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root)
+        }
+
+        private fun parseObject(json: String?): JsonObject? {
+            if (json.isNullOrBlank()) return null
+            return try {
+                JsonParser.parseString(json).takeIf { it.isJsonObject }?.asJsonObject
+            } catch (_: Exception) {
+                JsonObject()
+            }
+        }
+
+        private fun setEnabled(parent: JsonObject, name: String, enabled: Boolean) {
+            val existing = parent.get(name)
+            if (existing != null && existing.isJsonObject) {
+                existing.asJsonObject.addProperty("enabled", enabled)
+            } else {
+                parent.add(name, enabledObject(enabled))
+            }
         }
 
         private fun enabledObject(enabled: Boolean): JsonObject =

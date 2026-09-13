@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using dnlib.DotNet;
 using dnlib.DotNet.Writer;
 using Microsoft.Extensions.Logging;
@@ -19,11 +20,14 @@ public class AssemblyProcessor : IAssemblyProcessor
     public AssemblyProcessor(ILogger<AssemblyProcessor> logger, IEnumerable<IPePostProcessor>? postProcessors = null)
     {
         _logger = logger;
-        _postProcessors = (postProcessors ??
-        [
-            new MethodEncryptionPePostProcessor(),
-            new AntiTamperPePostProcessor()
-        ]).OrderBy(p => p.Order).ToList();
+        var resolved = postProcessors is null ? null : postProcessors as ICollection<IPePostProcessor> ?? postProcessors.ToList();
+        _postProcessors = (resolved is null || resolved.Count == 0
+            ?
+            [
+                new MethodEncryptionPePostProcessor(),
+                new AntiTamperPePostProcessor()
+            ]
+            : resolved).OrderBy(p => p.Order).ToList();
     }
 
     /// <inheritdoc/>

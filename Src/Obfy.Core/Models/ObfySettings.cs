@@ -139,19 +139,20 @@ public class ObfySettings
     }
 
     /// <summary>
-    /// Applies the current level preset to all individual settings.
+    /// Applies the preset's protection flags for Minimal/Standard/Aggressive. Custom is a no-op.
+    /// Nested options not listed in the preset (algorithms, naming, exclusions, watermark, …)
+    /// are left as-is.
     /// </summary>
     public void ApplyLevel()
     {
         switch (Level)
         {
-            // Each non-Custom branch assigns this fixed set of flags (enabled bits, intensity,
-            // constant-encryption algorithm, metadata/debug) so *those* values do not leak from a
-            // previously applied level. Other nested settings (control-flow mode, string/resource
-            // algorithms, naming mode, PreservePublicApi, PreserveXaml, junk counts, include/exclude
-            // patterns, RuntimeProfile, Signing, Watermark, DependencyEmbedding, AddDecoyAttributes,
-            // Packing, Incremental, Virtualization)
-            // keep their prior or default values. ProxyExternalCalls is cleared when ReferenceProxy is turned off.
+            // Each non-Custom branch assigns enabled bits, intensity, CF mode → Switch, XOR
+            // constants, metadata/debug, virtualization/packing/incremental off, and clears
+            // ProxyExternalCalls when ReferenceProxy is turned off. Other nested settings
+            // (string/resource algorithms, naming mode, PreservePublicApi, PreserveXaml, junk
+            // counts, include/exclude patterns, RuntimeProfile, Signing, Watermark,
+            // DependencyEmbedding, AddDecoyAttributes) keep their prior or default values.
             case ObfuscationLevel.Minimal:
                 ApplySharedPresetFlags(
                     stringEncryption: false,

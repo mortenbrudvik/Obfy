@@ -7,7 +7,7 @@ namespace Obfy.ScenarioTests;
 [Trait("Category", "Platform")]
 public class BlazorWasmTests
 {
-    [PlatformFact("blazor")]
+    [PlatformFact(PlatformWorkload.Blazor)]
     public async Task PublishedFrameworkDll_ObfuscatesWithBlazorWasmProfile_AndLoads()
     {
         var fixture = Path.Combine(ScenarioHarness.FindRepoRoot(), "Tests", "Obfy.ScenarioTests", "Fixtures", "BlazorWasmApp");

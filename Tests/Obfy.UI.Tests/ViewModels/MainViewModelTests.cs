@@ -37,7 +37,7 @@ public class MainViewModelTests : IDisposable
             .Returns(Task.CompletedTask);
 
         _files = new FilesViewModel(_fileDialogService.Object, _settingsService.Object);
-        _output = new OutputViewModel(new InlineUiDispatcher(), _clipboard.Object);
+        _output = new OutputViewModel(new InlineUiDispatcher(), _clipboard.Object, _notifications.Object);
         _results = new ResultsViewModel(
             _fileDialogService.Object,
             _reportService.Object,

@@ -69,13 +69,23 @@ public class AntiTamperObfuscator : IObfuscator
             _logger.LogInformation("Applied {Count} anti-tamper protections", stats.ProtectionsApplied);
 
             // Emitted unconditionally: at obfuscation time we cannot know whether the consumer will
-            // publish as single-file. The runtime still skips when Assembly.Location is empty.
+            // publish as single-file. The runtime still skips when Assembly.Location is empty
+            // (single-file) or for packed ALC/LoadFromStream loads (hashing the launcher would false-fail).
             const string singleFileWarning =
                 "Anti-tamper: the integrity check verifies the assembly file on disk and is skipped for " +
-                "single-file / self-contained deployments (Assembly.Location is empty). Ship a file-based " +
-                "deployment for tamper protection to take effect.";
+                "single-file / self-contained deployments (Assembly.Location is empty) and packed ALC/" +
+                "LoadFromStream loads. Ship a file-based, unpacked deployment for tamper protection to take effect.";
             context.Warnings.Add(singleFileWarning);
             _logger.LogWarning("{Warning}", singleFileWarning);
+
+            if (context.Settings.Packing.Enabled)
+            {
+                const string packingWarning =
+                    "Anti-tamper is skipped at runtime for packed ALC/LoadFromStream loads. " +
+                    "The launcher will not verify the embedded payload.";
+                context.Warnings.Add(packingWarning);
+                _logger.LogWarning("{Warning}", packingWarning);
+            }
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }

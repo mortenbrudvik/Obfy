@@ -65,11 +65,55 @@ public class ObfySettingsJsonTests
         var json = ObfySettingsJson.Serialize(original);
         json.ShouldContain("\"protection\"");
         json.ShouldContain("\"enabled\"");
+        json.ShouldNotContain("preservePublicApi");
 
         var loaded = ObfySettingsJson.Parse(json);
         loaded.Level.ShouldBe(ObfuscationLevel.Minimal);
         loaded.PostBuildEnabled.ShouldBeTrue();
         loaded.StringEncryption.ShouldBeFalse();
         loaded.SymbolRenaming.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Serialize_ExistingDocument_KeepsUnknownCoreKeys()
+    {
+        const string existing = """
+            {
+              "level": "custom",
+              "virtualization": { "enabled": true },
+              "packing": { "enabled": true },
+              "incremental": { "enabled": true },
+              "exclusions": { "types": [ "Foo" ] },
+              "symbolRenaming": { "enabled": true, "preservePublicApi": true, "preserveXaml": true }
+            }
+            """;
+
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Standard);
+        settings.PostBuildEnabled = true;
+        var json = ObfySettingsJson.Serialize(settings, existing);
+
+        json.ShouldContain("\"virtualization\"");
+        json.ShouldContain("\"packing\"");
+        json.ShouldContain("\"incremental\"");
+        json.ShouldContain("\"exclusions\"");
+        json.ShouldContain("\"preservePublicApi\": true");
+        json.ShouldContain("\"preserveXaml\": true");
+        json.ShouldContain("\"postBuildEnabled\": true");
+        json.ShouldContain("\"level\": \"standard\"");
+    }
+
+    [Fact]
+    public void PatchPostBuildEnabled_DoesNotDropUnknownKeys()
+    {
+        const string existing = """
+            {
+              "virtualization": { "enabled": true },
+              "postBuildEnabled": false
+            }
+            """;
+
+        var patched = ObfySettingsJson.PatchPostBuildEnabled(existing, true);
+        patched.ShouldContain("\"virtualization\"");
+        patched.ShouldContain("\"postBuildEnabled\": true");
     }
 }

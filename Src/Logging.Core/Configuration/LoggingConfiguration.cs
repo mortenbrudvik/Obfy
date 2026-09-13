@@ -87,4 +87,12 @@ public static class LoggingConfiguration
             builder.AddNLog();
         });
     }
+
+    public static void Flush() => LogManager.Flush();
+
+    public static void Shutdown()
+    {
+        LogManager.Flush();
+        LogManager.Shutdown();
+    }
 }

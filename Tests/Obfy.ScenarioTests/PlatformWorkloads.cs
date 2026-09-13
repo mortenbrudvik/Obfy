@@ -25,10 +25,17 @@ internal static class PlatformWorkloads
         try
         {
             var result = ScenarioHarness.RunProcess("dotnet", "workload list", Directory.GetCurrentDirectory(), 20_000);
+            if (result.ExitCode != 0)
+            {
+                System.Console.Error.WriteLine($"dotnet workload list exited {result.ExitCode}: {result.StdOut}{result.StdErr}");
+                return string.Empty;
+            }
+
             return result.StdOut + result.StdErr;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Console.Error.WriteLine($"dotnet workload list failed: {ex}");
             return string.Empty;
         }
     }

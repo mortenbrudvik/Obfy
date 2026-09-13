@@ -38,30 +38,43 @@ class ObfuscationService {
 
         val inPlace = !outputPath.isNullOrEmpty() && File(outputPath).canonicalPath == File(assemblyPath).canonicalPath
         var tempDir: File? = null
+        var keepTemp = false
         val cliOutput = if (inPlace) {
             tempDir = File(System.getProperty("java.io.tmpdir"), "obfy_" + System.nanoTime())
-            tempDir.mkdirs()
+            if (!tempDir.mkdirs() && !tempDir.isDirectory) {
+                return ObfuscationResult.failure("Could not create temp directory ${tempDir.absolutePath}")
+            }
             File(tempDir, File(assemblyPath).name).absolutePath
         } else {
             outputPath
         }
 
-        val args = buildArguments(assemblyPath, cliOutput, configPath)
+        val args = ObfyCli.buildArguments(assemblyPath, cliOutput, configPath)
         outputService.info("Executing: obfy ${args.joinToString(" ")}")
 
         return try {
             val result = runCli(cliPath, args, outputService)
             val elapsedTime = System.currentTimeMillis() - startTime
             if (result.success && inPlace && cliOutput != null) {
-                File(cliOutput).copyTo(File(assemblyPath), overwrite = true)
+                try {
+                    ObfyCli.copyTempOutputToDestination(cliOutput, assemblyPath)
+                } catch (e: Exception) {
+                    keepTemp = true
+                    logger.error("Failed to replace in-place output; temp files kept at $tempDir", e)
+                    return ObfuscationResult.failure(
+                        "${e.message ?: "Failed to replace in-place output"}. Temp files kept at $tempDir"
+                    )
+                }
             }
-            tempDir?.deleteRecursively()
             val resolvedOutput = if (result.success) (outputPath ?: assemblyPath) else result.outputPath
             result.copy(elapsedTimeMs = elapsedTime, outputPath = resolvedOutput)
         } catch (e: Exception) {
-            tempDir?.deleteRecursively()
             logger.error("CLI execution failed", e)
             ObfuscationResult.failure(e.message ?: "Unknown error")
+        } finally {
+            if (!keepTemp && tempDir != null && !tempDir.deleteRecursively()) {
+                logger.warn("Could not delete temp directory ${tempDir.absolutePath}")
+            }
         }
     }
 
@@ -118,25 +131,6 @@ class ObfuscationService {
     }
 
     /**
-     * Build command line arguments for the CLI
-     */
-    private fun buildArguments(assemblyPath: String, outputPath: String?, configPath: String?): List<String> {
-        val args = mutableListOf(assemblyPath)
-        if (!outputPath.isNullOrEmpty()) {
-            val outputDir = File(outputPath).parent
-            if (!outputDir.isNullOrEmpty()) {
-                args.add("-o")
-                args.add(outputDir)
-            }
-        }
-        if (!configPath.isNullOrEmpty() && File(configPath).exists()) {
-            args.add("-c")
-            args.add(configPath)
-        }
-        return args
-    }
-
-    /**
      * Run the CLI process and capture output
      */
     private fun runCli(cliPath: String, args: List<String>, outputService: OutputService): ObfuscationResult {
@@ -180,9 +174,11 @@ class ObfuscationService {
             return ObfuscationResult.failure("Process timed out")
         }
 
-        // Wait for output threads to finish
-        stdoutThread.join(1000)
-        stderrThread.join(1000)
+        stdoutThread.join()
+        stderrThread.join()
+        if (stdoutThread.isAlive || stderrThread.isAlive) {
+            return ObfuscationResult.failure("Timed out draining CLI output")
+        }
 
         val success = process.exitValue() == 0
 

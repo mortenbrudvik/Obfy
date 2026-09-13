@@ -6,9 +6,12 @@ namespace Obfy.VisualStudio.Services;
 
 /// <summary>
 /// Adapter that saves Core nested obfy.json and loads both nested (Core) and flat (legacy VS) files.
+/// Serialize overlays known host fields onto an existing document so Core-only keys are kept.
 /// </summary>
 public static class ObfySettingsJson
 {
+    private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+
     public static ObfySettings Parse(string json)
     {
         using var doc = JsonDocument.Parse(json);
@@ -48,32 +51,48 @@ public static class ObfySettingsJson
         return settings;
     }
 
-    public static string Serialize(ObfySettings settings)
+    public static string Serialize(ObfySettings settings, string? existingJson = null)
     {
-        var node = new JsonObject
-        {
-            ["level"] = settings.Level.ToString().ToLowerInvariant(),
-            ["postBuildEnabled"] = settings.PostBuildEnabled,
-            ["stringEncryption"] = new JsonObject { ["enabled"] = settings.StringEncryption },
-            ["controlFlow"] = new JsonObject { ["enabled"] = settings.ControlFlow },
-            ["symbolRenaming"] = new JsonObject
-            {
-                ["enabled"] = settings.SymbolRenaming,
-                ["preservePublicApi"] = false
-            },
-            ["protection"] = new JsonObject
-            {
-                ["antiDebug"] = settings.AntiDebug,
-                ["antiDump"] = settings.AntiDump,
-                ["referenceProxy"] = settings.ReferenceProxy,
-                ["antiTamper"] = new JsonObject { ["enabled"] = settings.AntiTamper },
-                ["antiDecompiler"] = new JsonObject { ["enabled"] = settings.AntiDecompiler }
-            },
-            ["constantEncryption"] = new JsonObject { ["enabled"] = settings.ConstantEncryption },
-            ["resourceEncryption"] = new JsonObject { ["enabled"] = settings.ResourceEncryption }
-        };
+        var node = ParseObject(existingJson) ?? new JsonObject();
+        node["level"] = settings.Level.ToString().ToLowerInvariant();
+        node["postBuildEnabled"] = settings.PostBuildEnabled;
+        SetEnabled(node, "stringEncryption", settings.StringEncryption);
+        SetEnabled(node, "controlFlow", settings.ControlFlow);
+        SetEnabled(node, "symbolRenaming", settings.SymbolRenaming);
+        SetEnabled(node, "constantEncryption", settings.ConstantEncryption);
+        SetEnabled(node, "resourceEncryption", settings.ResourceEncryption);
 
-        return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        var protection = node["protection"] as JsonObject ?? new JsonObject();
+        protection["antiDebug"] = settings.AntiDebug;
+        protection["antiDump"] = settings.AntiDump;
+        protection["referenceProxy"] = settings.ReferenceProxy;
+        SetEnabled(protection, "antiTamper", settings.AntiTamper);
+        SetEnabled(protection, "antiDecompiler", settings.AntiDecompiler);
+        node["protection"] = protection;
+
+        return node.ToJsonString(WriteOptions);
+    }
+
+    public static string PatchPostBuildEnabled(string existingJson, bool enabled)
+    {
+        var node = ParseObject(existingJson) ?? new JsonObject();
+        node["postBuildEnabled"] = enabled;
+        return node.ToJsonString(WriteOptions);
+    }
+
+    private static JsonObject? ParseObject(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        return JsonNode.Parse(json!) as JsonObject;
+    }
+
+    private static void SetEnabled(JsonObject parent, string name, bool enabled)
+    {
+        if (parent[name] is JsonObject existing)
+            existing["enabled"] = enabled;
+        else
+            parent[name] = new JsonObject { ["enabled"] = enabled };
     }
 
     private static bool TryReadLevel(JsonElement root, out ObfuscationLevel level)

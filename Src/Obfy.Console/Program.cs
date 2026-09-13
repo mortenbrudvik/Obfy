@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Autofac;
+using Logging.Core.Configuration;
 using Logging.Core.DependencyInjection;
 using Obfy.Console.Wizard;
 using Obfy.Core.DependencyInjection;
@@ -278,12 +279,15 @@ public class Program
     {
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
-            if (e.ExceptionObject is Exception ex)
-                System.Console.Error.WriteLine($"Unhandled exception: {ex.Message}");
+            var text = e.ExceptionObject is Exception ex ? ex.ToString() : e.ExceptionObject?.ToString();
+            System.Console.Error.WriteLine($"Unhandled exception: {text}");
+            LoggingConfiguration.Shutdown();
         };
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            System.Console.Error.WriteLine($"Unobserved task exception: {e.Exception.Message}");
+            System.Console.Error.WriteLine($"Unobserved task exception: {e.Exception}");
+            LoggingConfiguration.Flush();
+            Environment.ExitCode = 1;
             e.SetObserved();
         };
 

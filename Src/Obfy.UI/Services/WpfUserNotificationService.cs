@@ -19,14 +19,16 @@ public sealed class WpfUserNotificationService : IUserNotificationService
         {
             NotificationSeverity.Error => ControlAppearance.Danger,
             NotificationSeverity.Warning => ControlAppearance.Caution,
-            _ => ControlAppearance.Success
+            NotificationSeverity.Success => ControlAppearance.Success,
+            _ => throw new ArgumentOutOfRangeException(nameof(severity), severity, null)
         };
 
         var symbol = severity switch
         {
             NotificationSeverity.Error => SymbolRegular.ErrorCircle24,
             NotificationSeverity.Warning => SymbolRegular.Warning24,
-            _ => SymbolRegular.Checkmark24
+            NotificationSeverity.Success => SymbolRegular.Checkmark24,
+            _ => throw new ArgumentOutOfRangeException(nameof(severity), severity, null)
         };
 
         IconElement? icon = Application.Current is null ? null : new SymbolIcon(symbol);

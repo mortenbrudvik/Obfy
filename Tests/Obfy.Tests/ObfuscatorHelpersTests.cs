@@ -52,14 +52,15 @@ public class ObfuscatorHelpersTests
     [Fact]
     public void LooksLikeXamlBindable_ViewModelSuffix_IsTrue()
     {
-        var type = NewType("MainViewModel");
-        ObfuscatorHelpers.LooksLikeXamlBindable(type).ShouldBeTrue();
+        ObfuscatorHelpers.LooksLikeXamlBindable(NewType("MainViewModel")).ShouldBeTrue();
+        ObfuscatorHelpers.LooksLikeXamlBindable(NewType("mainviewmodel")).ShouldBeTrue();
     }
 
     [Fact]
     public void LooksLikeXamlBindable_ViewSuffix_IsTrueIncludingOverview()
     {
         ObfuscatorHelpers.LooksLikeXamlBindable(NewType("DetailsView")).ShouldBeTrue();
+        ObfuscatorHelpers.LooksLikeXamlBindable(NewType("BOARDVIEW")).ShouldBeTrue();
         ObfuscatorHelpers.LooksLikeXamlBindable(NewType("Overview")).ShouldBeTrue();
         ObfuscatorHelpers.LooksLikeXamlBindable(NewType("Preview")).ShouldBeTrue();
     }

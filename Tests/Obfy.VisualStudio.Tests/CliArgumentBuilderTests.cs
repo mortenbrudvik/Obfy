@@ -1,30 +1,45 @@
 using Obfy.VisualStudio.Services;
 using Shouldly;
 
-// ProjectSupport tests live here too.
-
 namespace Obfy.VisualStudio.Tests;
 
 public class CliArgumentBuilderTests
 {
     [Fact]
-    public void Build_QuotesPaths_AndPassesConfigFile()
+    public void Build_PassesConfigFileAsArgv_WithoutTechniqueFlags()
     {
         var args = CliArgumentBuilder.Build(@"C:\src\My App.dll", @"C:\out\My App.dll", @"C:\src\obfy.json");
-        args.ShouldContain("\"C:\\src\\My App.dll\"");
-        args.ShouldContain("-o \"C:\\out\"");
-        args.ShouldContain("-c \"C:\\src\\obfy.json\"");
-        args.ShouldNotContain("-l ");
+        args.ShouldBe(new[]
+        {
+            @"C:\src\My App.dll",
+            "-o",
+            @"C:\out",
+            "-c",
+            @"C:\src\obfy.json"
+        });
+        args.ShouldNotContain("-l");
         args.ShouldNotContain("--anti-debug");
+
+        var commandLine = CliArgumentBuilder.ToCommandLine(args);
+        commandLine.ShouldContain("\"C:\\src\\My App.dll\"");
+        commandLine.ShouldContain("-c \"C:\\src\\obfy.json\"");
     }
 
     [Fact]
     public void Build_WithoutConfig_FallsBackToLevel()
     {
         var args = CliArgumentBuilder.Build(@"D:\a.dll", null, configPath: null, level: ObfuscationLevel.Standard, generateSymbolMap: true);
-        args.ShouldContain("-l standard");
-        args.ShouldContain("--map \"D:\\a.map.json\"");
-        args.ShouldNotContain("-c ");
+        args.ShouldContain("-l");
+        args.ShouldContain("standard");
+        args.ShouldContain("--map");
+        args.ShouldContain(@"D:\a.map.json");
+        args.ShouldNotContain("-c");
+    }
+
+    [Fact]
+    public void Quote_EscapesEmbeddedQuotes()
+    {
+        CliArgumentBuilder.Quote(@"C:\src\My ""App"".dll").ShouldBe("\"C:\\src\\My \\\"App\\\".dll\"");
     }
 
     [Theory]

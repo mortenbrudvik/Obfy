@@ -175,8 +175,11 @@ public class ObfuscationService : IObfuscationService
                     }
                 }
 
-                if (settings.Incremental.Enabled && target.TargetType == TargetType.Assembly)
-                    IncrementalCache.Write(inputPath, effectiveOutput, settings);
+                if (settings.Incremental.Enabled && target.TargetType == TargetType.Assembly &&
+                    !IncrementalCache.TryWrite(inputPath, effectiveOutput, settings))
+                {
+                    _logger.LogWarning("Could not write incremental cache for {Output}", effectiveOutput);
+                }
 
                 return ObfuscationResult.Successful(
                     context.Statistics,

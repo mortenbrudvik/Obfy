@@ -1,35 +1,44 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
 namespace Obfy.VisualStudio.Services;
 
 /// <summary>
-/// Builds <c>obfy</c> CLI arguments and parses summary lines from CLI output.
+/// Builds <c>obfy</c> CLI argv and parses summary lines from CLI output.
 /// </summary>
 public static class CliArgumentBuilder
 {
-    public static string Build(
+    public static IReadOnlyList<string> Build(
         string assemblyPath,
         string? outputPath,
         string? configPath,
         ObfuscationLevel? level = null,
         bool generateSymbolMap = false)
     {
-        var sb = new StringBuilder();
-        sb.Append($"\"{assemblyPath}\"");
+        var args = new List<string> { assemblyPath };
 
         if (!string.IsNullOrEmpty(outputPath))
         {
             var outputDir = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(outputDir))
-                sb.Append($" -o \"{outputDir}\"");
+            {
+                args.Add("-o");
+                args.Add(outputDir);
+            }
         }
 
         if (!string.IsNullOrEmpty(configPath))
-            sb.Append($" -c \"{configPath}\"");
+        {
+            args.Add("-c");
+            args.Add(configPath!);
+        }
         else if (level is not null)
-            sb.Append($" -l {level.Value.ToString().ToLowerInvariant()}");
+        {
+            args.Add("-l");
+            args.Add(level.Value.ToString().ToLowerInvariant());
+        }
 
         if (generateSymbolMap)
         {
@@ -37,12 +46,32 @@ public static class CliArgumentBuilder
             var assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
             if (!string.IsNullOrEmpty(assemblyDir) && !string.IsNullOrEmpty(assemblyName))
             {
-                var mapPath = Path.Combine(assemblyDir, assemblyName + ".map.json");
-                sb.Append($" --map \"{mapPath}\"");
+                args.Add("--map");
+                args.Add(Path.Combine(assemblyDir, assemblyName + ".map.json"));
             }
         }
 
+        return args;
+    }
+
+    public static string ToCommandLine(IReadOnlyList<string> args)
+    {
+        var sb = new StringBuilder();
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (i > 0)
+                sb.Append(' ');
+            sb.Append(Quote(args[i]));
+        }
+
         return sb.ToString();
+    }
+
+    internal static string Quote(string value)
+    {
+        if (value.Length > 0 && value[0] == '-')
+            return value;
+        return "\"" + value.Replace("\"", "\\\"") + "\"";
     }
 
     public static ObfuscationStatistics ParseStatistics(string output)

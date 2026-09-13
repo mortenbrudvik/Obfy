@@ -6,7 +6,8 @@ using Obfy.Core.Models;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// File-backed cache so CI can skip obfuscation when input and settings are unchanged.
+/// File-backed cache so CI can skip obfuscation when Obfy version, input bytes, and settings
+/// are unchanged. A locked or corrupt <c>{output}.obfycache</c> is a miss, not a failed run.
 /// </summary>
 public static class IncrementalCache
 {
@@ -52,8 +53,19 @@ public static class IncrementalCache
         }
     }
 
-    public static void Write(string inputPath, string outputPath, ObfySettings settings)
+    public static bool TryWrite(string inputPath, string outputPath, ObfySettings settings)
     {
-        File.WriteAllText(CachePath(outputPath), ComputeKey(inputPath, settings));
+        try
+        {
+            File.WriteAllText(CachePath(outputPath), ComputeKey(inputPath, settings));
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
+
+    public static void Write(string inputPath, string outputPath, ObfySettings settings) =>
+        TryWrite(inputPath, outputPath, settings);
 }

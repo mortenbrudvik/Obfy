@@ -1,6 +1,6 @@
 # Testing Guide
 
-How to run and extend the current suite. Planned gaps (real SDK/WPF solutions, platforms) are in [Testing-Roadmap.md](Testing-Roadmap.md).
+How to run and extend the current suite. Remaining gaps (real Unity player, MAUI iOS/Android, blocked merge) are in [Testing-Roadmap.md](Testing-Roadmap.md).
 
 ## Overview
 
@@ -8,13 +8,13 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 413 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
-| Obfy.Console.Tests | 117 | CLI parsing (`IntegrationParseTests`) and process (`IntegrationProcessTests`) |
-| Obfy.UI.Tests | 132 | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
+| Obfy.Tests | 421+ | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
+| Obfy.Console.Tests | 117+ | CLI parsing (`CommandParsingTests`, `IntegrationParseTests`) and process (`IntegrationProcessTests`) |
+| Obfy.UI.Tests | 133+ | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 25 | 6 locator unit tests (CI) + 19 FlaUI live-window tests (`Category=UI`, local) |
 | Obfy.ScenarioTests | 14 | 10 default SDK fixtures (Unity stub included) + 3 `Category=Platform` + 1 skipped merge |
-| Obfy.VisualStudio.Tests | 9 | VS settings JSON, CLI args, output-assembly locator (no VS hive) |
-| **Total** | **687** | Default CI (`Category!=UI&Category!=Platform`) |
+| Obfy.VisualStudio.Tests | 13+ | VS settings JSON, CLI argv, in-place copy, output-assembly locator (no VS hive) |
+| **Total** | see `dotnet test --list-tests` | Default CI (`Category!=UI&Category!=Platform`) |
 
 ## Test Stack
 
@@ -41,6 +41,7 @@ dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
 dotnet test Tests/Obfy.UI.Tests
 dotnet test Tests/Obfy.ScenarioTests
+dotnet test Tests/Obfy.VisualStudio.Tests
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 ```
 
@@ -96,7 +97,8 @@ Tests the command-line interface:
 | HelpOutputTests | 15 | Help text verification |
 | ErrorHandlingTests | 14 | Error scenarios |
 | WizardDefaultsTests | 4 | Use-case wizard defaults |
-| IntegrationTests | 12 | Mix of parse, config generate, and one real `Program.Main` run (see TR-14 / TR-25) |
+| IntegrationParseTests | 3 | Config generate / parse (no process) |
+| IntegrationProcessTests | 9 | Real `Program.Main` runs (see TR-14 / TR-25) |
 
 Key patterns:
 

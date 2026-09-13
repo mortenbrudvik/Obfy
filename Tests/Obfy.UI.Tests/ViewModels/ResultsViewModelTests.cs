@@ -261,6 +261,20 @@ public class ResultsViewModelTests : IDisposable
         _clipboard.Verify(c => c.SetText("Foo -> a"), Times.Once);
     }
 
+    [Fact]
+    public void CopySymbol_WhenClipboardThrows_ShowsErrorNotification()
+    {
+        var node = SymbolTreeNode.Create("Foo", "a", SymbolType.Type);
+        _clipboard.Setup(c => c.SetText(It.IsAny<string>()))
+            .Throws(new InvalidOperationException("clipboard locked"));
+
+        _viewModel.CopySymbolCommand.Execute(node);
+
+        _notifications.Verify(
+            n => n.Show("Copy failed", "clipboard locked", NotificationSeverity.Error),
+            Times.Once);
+    }
+
     private void VerifySnackbar(ControlAppearance appearance, string messagePart)
     {
         var severity = appearance == ControlAppearance.Danger

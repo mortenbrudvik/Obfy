@@ -8,11 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- VS and Rider save/post-build toggle merge into existing `obfy.json` instead of rewriting a subset (Core-only keys such as virtualization, packing, and exclusions are kept)
+- In-place IDE overwrite copies packing sidecars and `.obfycache`, fails if temp output is missing, stages then replaces the live assembly, and deletes the temp dir in `finally`
+- Incremental cache write I/O errors are a warning, not a failed run; `Obfy.Core` is versioned `1.3.0` so upgrade keys actually change
+- Log copy clipboard failures surface in the UI; CLI unobserved/unhandled exceptions print the full exception and flush NLog
 - Incremental cache keys include the Obfy assembly version so an upgrade is not a false cache hit; a locked or corrupt `.obfycache` is a miss instead of a failed run
 - Pipeline cancellation rethrows `OperationCanceledException` so CLI/UI cancel is not reported as an obfuscator error
 - VS and Rider invoke `obfy -c obfy.json` instead of reconstructing a subset of flags; in-place overwrite writes to a temp file then copies back
 - VS Tools → Options is read via `GetDialogPage`; command visibility no longer blocks the UI thread with `JoinableTaskFactory.Run`
-- Managed launcher loads the embedded assembly from a stream (no `{name}.payload.dll` on disk); anti-tamper skips ALC loads instead of hashing the host
+- Managed launcher loads the embedded assembly from a stream (no `{name}.payload.dll` on disk); anti-tamper skips ALC loads instead of hashing the host, and packing+anti-tamper emits an explicit warning
 - Source directory save preserves relative subfolders; compilation uses trusted platform assemblies
 - `ApplyLevel` resets control-flow mode, virtualization, packing, and incremental so Aggressive leftovers do not leak into Standard/Minimal
 - Enter in text boxes no longer starts obfuscation (`IsDefault` removed; Ctrl+Enter remains)
@@ -75,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional `proxyExternalCalls` / `--proxy-external` to hide selected out-of-module call targets (`--proxy-external` enables `--reference-proxy`)
 - Dependency embedding (`dependencyEmbedding.enabled`) loads sibling referenced DLLs from resources via AssemblyResolve
 - Unity / Blazor / MAUI recipes and wizard presets; `runtimeProfile: BlazorWasm`
-- VS Code extension stub (`Src/Obfy.VSCode`) with `obfy.json` schema, task type, and problem matcher
+- VS Code extension stub (`Src/Obfy.VSCode`) with `obfy.json` schema and problem matcher (no custom task type)
 - Watermark (`watermark.enabled` + `watermark.id`; empty/whitespace `id` is rejected). Type name `WatermarkAttribute` is pinned against renaming; the id is a plaintext CA constructor argument and `Id` field
 - Decoy `ConfusedByAttribute` / `DotfuscatorAttribute` (`protection.antiDecompiler.addDecoyAttributes`, default true when anti-decompiler is on). Names are pinned against renaming. Name-based detector bait; does not block de4dot
 - Anti-dump also overwrites the first byte of in-process `dbghelp!MiniDumpWriteDump` with x86/x64 `ret` (`0xC3`) after an X86/X64 architecture check (Windows; ARM64 is skipped; `VirtualProtect` failure skips the write). External dumpers are unaffected.

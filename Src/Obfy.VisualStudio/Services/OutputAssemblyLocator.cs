@@ -5,7 +5,8 @@ namespace Obfy.VisualStudio.Services;
 
 /// <summary>
 /// Resolves a project's output assembly path without EnvDTE.
-/// Prefers MSBuild OutputPath+OutputFileName when the file exists, then common bin fallbacks.
+/// Prefers MSBuild OutputPath+OutputFileName when the file exists, then
+/// <c>bin/{Release,Debug}/{net10.0,net9.0,net8.0}/{project}.dll</c> (exe projects rely on MSBuild OutputFileName).
 /// </summary>
 public static class OutputAssemblyLocator
 {

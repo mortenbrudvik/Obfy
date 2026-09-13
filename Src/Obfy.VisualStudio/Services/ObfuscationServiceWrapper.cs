@@ -30,6 +30,8 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         string? configPath = null)
     {
         var stopwatch = Stopwatch.StartNew();
+        string? tempDir = null;
+        var keepTemp = false;
 
         try
         {
@@ -45,7 +47,6 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
             var inPlace = !string.IsNullOrEmpty(outputPath) &&
                           string.Equals(Path.GetFullPath(outputPath), Path.GetFullPath(assemblyPath), StringComparison.OrdinalIgnoreCase);
             var cliOutput = outputPath;
-            string? tempDir = null;
             if (inPlace)
             {
                 tempDir = Path.Combine(Path.GetTempPath(), "obfy_" + Guid.NewGuid().ToString("N"));
@@ -59,27 +60,33 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
                 configPath,
                 configPath is null ? settings.Level : null,
                 generateMap);
+            var commandLine = CliArgumentBuilder.ToCommandLine(args);
 
-            _outputService.Info($"Executing: obfy {args}");
+            _outputService.Info($"Executing: obfy {commandLine}");
 
-            // Run the CLI
-            var result = await RunCliAsync(cliPath!, args, cancellationToken);
+            var result = await RunCliAsync(cliPath!, commandLine, cancellationToken);
 
             stopwatch.Stop();
             result.ElapsedTime = stopwatch.Elapsed;
 
             if (result.Success)
             {
-                if (inPlace && cliOutput is not null && File.Exists(cliOutput))
+                if (inPlace)
                 {
-                    File.Copy(cliOutput, assemblyPath, overwrite: true);
-                    TryDeleteDirectory(tempDir);
+                    try
+                    {
+                        InPlaceOutputCopy.CopyTempDirectoryToDestination(cliOutput!, assemblyPath);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        keepTemp = true;
+                        _outputService.Error(
+                            $"Failed to replace in-place output: {ex.Message}. Temp files kept at {tempDir}");
+                        return ObfuscationResult.Failure(assemblyPath, ex.Message, ex);
+                    }
                 }
+
                 result.OutputPath = outputPath ?? assemblyPath;
-            }
-            else
-            {
-                TryDeleteDirectory(tempDir);
             }
 
             return result;
@@ -92,6 +99,11 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         {
             _outputService.Error($"CLI execution failed: {ex.Message}");
             return ObfuscationResult.Failure(assemblyPath, ex.Message, ex);
+        }
+        finally
+        {
+            if (!keepTemp)
+                TryDeleteDirectory(tempDir);
         }
     }
 

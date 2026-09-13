@@ -102,7 +102,10 @@ public class SolutionAnalyzer : ISolutionAnalyzer
             {
                 ProjectPath = resolved,
                 ProjectName = projectRef.Name,
-                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipUnsupported
+                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipUnsupported,
+                SkipMessage = string.IsNullOrEmpty(extension)
+                    ? "Unsupported project type"
+                    : $"Unsupported project type '{extension}'"
             };
         }
 
@@ -112,7 +115,8 @@ public class SolutionAnalyzer : ISolutionAnalyzer
             {
                 ProjectPath = resolved,
                 ProjectName = projectRef.Name,
-                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipMissingProject
+                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipMissingProject,
+                SkipMessage = "Project file not found"
             };
         }
 

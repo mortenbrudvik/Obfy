@@ -226,6 +226,11 @@ public class ClosedSetProcessor : IClosedSetProcessor
         {
             settings.SymbolRenaming.PreservePublicApi = forcePreservePublic;
         }
+        else if (!HasEntryPoint(item.Module))
+        {
+            // Extra assemblies not referenced by an in-set exe stay library-mode.
+            settings.SymbolRenaming.PreservePublicApi = true;
+        }
 
         return settings;
     }

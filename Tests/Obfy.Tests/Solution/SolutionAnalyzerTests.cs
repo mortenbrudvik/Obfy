@@ -180,14 +180,17 @@ public class SolutionAnalyzerTests
         var folder = session.Entries.Single(e => e.ProjectName == "src");
         folder.IsIncluded.ShouldBeFalse();
         folder.SkipReason.ShouldBe(Obfy.Core.Models.Solution.SkipReason.SkipUnsupported);
+        folder.SkipMessage.ShouldBe("Unsupported project type");
 
         var native = session.Entries.Single(e => e.ProjectName == "Native");
         native.IsIncluded.ShouldBeFalse();
         native.SkipReason.ShouldBe(Obfy.Core.Models.Solution.SkipReason.SkipUnsupported);
+        native.SkipMessage.ShouldBe("Unsupported project type '.vcxproj'");
 
         var ghost = session.Entries.Single(e => e.ProjectName == "Ghost");
         ghost.IsIncluded.ShouldBeFalse();
         ghost.SkipReason.ShouldBe(Obfy.Core.Models.Solution.SkipReason.SkipMissingProject);
+        ghost.SkipMessage.ShouldBe("Project file not found");
 
         var lib = session.Entries.Single(e => e.ProjectName == "Lib");
         lib.IsIncluded.ShouldBeTrue();

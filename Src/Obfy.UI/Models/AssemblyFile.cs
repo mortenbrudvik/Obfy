@@ -117,7 +117,7 @@ public partial class AssemblyFile : ObservableObject
             FileName = fileInfo.Name,
             FileSize = fileInfo.Exists ? fileInfo.Length : 0,
             Status = entry.IsIncluded ? FileStatus.Pending : FileStatus.Skipped,
-            SkipReason = entry.SkipMessage,
+            SkipReason = entry.IsIncluded ? null : entry.SkipMessage ?? entry.SkipReason.ToString(),
             Hints = entry.Hints
         };
     }

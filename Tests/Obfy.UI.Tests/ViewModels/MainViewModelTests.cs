@@ -567,6 +567,56 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task ObfuscateCommand_ClosedSetSuccess_LoadFailureAndSourceFile_DoNotMarkSuccess()
+    {
+        var firstPath = Path.Combine(_tempDirectory, "first.dll");
+        var secondPath = Path.Combine(_tempDirectory, "second.dll");
+        _obfuscationService
+            .Setup(s => s.ObfuscateClosedSetAsync(
+                It.IsAny<IReadOnlyList<ClosedSetInput>>(),
+                It.IsAny<string>(),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClosedSetResult
+            {
+                Success = true,
+                ModuleResults =
+                [
+                    ObfuscationResult.Successful(
+                        new ObfuscationStatistics(),
+                        inputPath: firstPath,
+                        outputPath: Path.Combine(_tempDirectory, "first.dll"))
+                ],
+                LoadFailures = [secondPath]
+            });
+        _reportService
+            .Setup(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()))
+            .Returns(new ObfuscationReport());
+
+        AddTestFile("first.dll");
+        AddTestFile("second.dll");
+        AddTestFile("Extra.cs");
+
+        await _viewModel.ObfuscateCommand.ExecuteAsync(null);
+
+        _viewModel.Files.Files.ShouldContain(f => f.FileName == "first.dll" && f.Status == FileStatus.Success);
+        var failed = _viewModel.Files.Files.Single(f => f.FileName == "second.dll");
+        failed.Status.ShouldBe(FileStatus.Error);
+        failed.ErrorMessage.ShouldNotBeNullOrWhiteSpace();
+        var source = _viewModel.Files.Files.Single(f => f.FileName == "Extra.cs");
+        source.Status.ShouldNotBe(FileStatus.Success);
+        source.Status.ShouldBe(FileStatus.Pending);
+        _obfuscationService.Verify(
+            s => s.ObfuscateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task ObfuscateCommand_PreservePublicApi_PassesForcePreservePublicTrue()
     {
         _settings.PreservePublicApi = true;

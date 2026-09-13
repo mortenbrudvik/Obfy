@@ -36,6 +36,14 @@ public class ClosedSetProcessorTests
         }
         """;
 
+    private const string ExtraSource = """
+        namespace Extra.Api;
+        public class Unused
+        {
+            public static string Ping() => "pong";
+        }
+        """;
+
     [Fact]
     public void RenameClosedSet_RewritesLibTypeRefsInApp_AndProgramRunStillReturnsHi()
     {
@@ -207,6 +215,34 @@ public class ClosedSetProcessorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_UnreferencedExtraWithExe_KeepsExtraPublicType()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        var extraPath = fixture.CompileExtra();
+        var outputDir = Path.Combine(fixture.Root, "extra-out");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints { PreservePublicApi = false } },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = extraPath, Hints = new ProjectSettingsHints { PreservePublicApi = false } }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: false));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.LoadFailures.ShouldBeEmpty();
+
+        using (var libModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(Path.Combine(outputDir, "Lib.dll"))))
+            libModule.GetTypes().ShouldNotContain(t => t.Name == "Greeter");
+
+        using var extraModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(Path.Combine(outputDir, "Extra.dll")));
+        extraModule.GetTypes().ShouldContain(t => t.Name == "Unused");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_SymbolRenamingDisabled_KeepsGreeter()
     {
         using var fixture = new ClosedSetEmit();
@@ -331,6 +367,8 @@ public class ClosedSetProcessorTests
         }
 
         public string CompileLib() => Compile(LibSource, "Lib", OutputKind.DynamicallyLinkedLibrary);
+
+        public string CompileExtra() => Compile(ExtraSource, "Extra", OutputKind.DynamicallyLinkedLibrary);
 
         public (ModuleDefMD Lib, ModuleDefMD App) LoadClosedSet()
         {

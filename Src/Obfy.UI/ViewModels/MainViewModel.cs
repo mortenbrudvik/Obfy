@@ -435,9 +435,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ObfuscationStatistics totalStats,
         List<ObfuscationResult> successfulResults)
     {
-        foreach (var file in included)
-            file.Progress = 100;
-
         if (result.Success)
         {
             var byInput = result.ModuleResults
@@ -447,18 +444,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             foreach (var file in included)
             {
-                file.Status = FileStatus.Success;
-                if (byInput.TryGetValue(file.FilePath, out var module))
+                var module = FindModuleResult(file, byInput, result.ModuleResults);
+                if (module != null)
                 {
-                    file.OutputPath = module.OutputPath;
+                    file.Progress = 100;
+                    if (module.Success)
+                    {
+                        file.Status = FileStatus.Success;
+                        file.OutputPath = module.OutputPath;
+                    }
+                    else
+                    {
+                        file.Status = FileStatus.Error;
+                        file.ErrorMessage = module.ErrorMessage;
+                    }
+
                     continue;
                 }
 
-                var match = result.ModuleResults.FirstOrDefault(m =>
-                    string.Equals(Path.GetFileName(m.InputPath), file.FileName, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(Path.GetFileName(m.OutputPath), file.FileName, StringComparison.OrdinalIgnoreCase));
-                if (match != null)
-                    file.OutputPath = match.OutputPath;
+                if (IsLoadFailure(file, result.LoadFailures))
+                {
+                    file.Progress = 100;
+                    file.Status = FileStatus.Error;
+                    file.ErrorMessage = $"Failed to load {file.FileName}";
+                    continue;
+                }
+
+                if (file.Status == FileStatus.Processing)
+                    file.Status = FileStatus.Pending;
             }
 
             foreach (var module in result.ModuleResults.Where(static m => m.Success))
@@ -492,6 +505,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var message = result.ErrorMessage ?? "Closed-set obfuscation failed.";
             foreach (var file in included)
             {
+                file.Progress = 100;
                 file.Status = FileStatus.Error;
                 file.ErrorMessage = message;
             }
@@ -502,6 +516,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var module in result.ModuleResults.Where(static m => !m.Success))
                 Output.Error($"Failed {Path.GetFileName(module.InputPath)}: {module.ErrorMessage}");
         }
+    }
+
+    private static ObfuscationResult? FindModuleResult(
+        AssemblyFile file,
+        Dictionary<string, ObfuscationResult> byInput,
+        IReadOnlyList<ObfuscationResult> modules)
+    {
+        if (byInput.TryGetValue(file.FilePath, out var module))
+            return module;
+
+        return modules.FirstOrDefault(m =>
+            (!string.IsNullOrEmpty(m.InputPath)
+                && string.Equals(Path.GetFileName(m.InputPath), file.FileName, StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrEmpty(m.OutputPath)
+                && string.Equals(Path.GetFileName(m.OutputPath), file.FileName, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool IsLoadFailure(AssemblyFile file, IReadOnlyList<string> loadFailures)
+    {
+        foreach (var failure in loadFailures)
+        {
+            if (string.Equals(failure, file.FilePath, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (string.Equals(Path.GetFileName(failure), file.FileName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static void ResetProcessingFiles(List<AssemblyFile> files, string? error)

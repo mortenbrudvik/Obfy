@@ -1,5 +1,6 @@
 using System.IO;
 using Moq;
+using Obfy.Core.Models.Solution;
 using Obfy.Core.Services.Solution;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
@@ -341,6 +342,29 @@ public class FilesViewModelTests : IDisposable
 
         _viewModel.HasIncludedFiles.ShouldBeFalse();
         _viewModel.HasFiles.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void FromSessionEntry_UsesSkipMessageOrFallsBackToSkipReason()
+    {
+        var withMessage = AssemblyFile.FromSessionEntry(new ProjectProtectionEntry
+        {
+            ProjectPath = Path.Combine(_tempDirectory, "Native.vcxproj"),
+            ProjectName = "Native",
+            SkipReason = SkipReason.SkipUnsupported,
+            SkipMessage = "Unsupported project type '.vcxproj'"
+        });
+        withMessage.Status.ShouldBe(FileStatus.Skipped);
+        withMessage.SkipReason.ShouldBe("Unsupported project type '.vcxproj'");
+
+        var withoutMessage = AssemblyFile.FromSessionEntry(new ProjectProtectionEntry
+        {
+            ProjectPath = Path.Combine(_tempDirectory, "Ghost.csproj"),
+            ProjectName = "Ghost",
+            SkipReason = SkipReason.SkipMissingProject
+        });
+        withoutMessage.Status.ShouldBe(FileStatus.Skipped);
+        withoutMessage.SkipReason.ShouldBe(nameof(SkipReason.SkipMissingProject));
     }
 
     [Fact]

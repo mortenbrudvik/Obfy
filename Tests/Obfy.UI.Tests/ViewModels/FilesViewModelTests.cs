@@ -1,5 +1,6 @@
 using System.IO;
 using Moq;
+using Obfy.Core.Services.Solution;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
 using Obfy.UI.ViewModels;
@@ -54,6 +55,50 @@ public class FilesViewModelTests : IDisposable
         var path = Path.Combine(_tempDirectory, name);
         File.WriteAllBytes(path, Array.Empty<byte>());
         return path;
+    }
+
+    private string WriteAppAndTestsSolution()
+    {
+        var appProj = Path.Combine(_tempDirectory, "App", "App.csproj");
+        var testsProj = Path.Combine(_tempDirectory, "App.Tests", "App.Tests.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(appProj)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(testsProj)!);
+        File.WriteAllText(appProj, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net8.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+        File.WriteAllText(testsProj, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <IsTestProject>true</IsTestProject>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var appDll = Path.Combine(_tempDirectory, "App", "bin", "Release", "net8.0", "App.dll");
+        var testsDll = Path.Combine(_tempDirectory, "App.Tests", "bin", "Release", "net8.0", "App.Tests.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(appDll)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(testsDll)!);
+        File.WriteAllBytes(appDll, Array.Empty<byte>());
+        File.WriteAllBytes(testsDll, Array.Empty<byte>());
+
+        var sln = Path.Combine(_tempDirectory, "App.sln");
+        var appGuid = Guid.NewGuid().ToString("D").ToUpperInvariant();
+        var testsGuid = Guid.NewGuid().ToString("D").ToUpperInvariant();
+        File.WriteAllText(sln, string.Join(Environment.NewLine, new[]
+        {
+            "Microsoft Visual Studio Solution File, Format Version 12.00",
+            "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"App\", \"App\\App.csproj\", \"{" + appGuid + "}\"",
+            "EndProject",
+            "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"App.Tests\", \"App.Tests\\App.Tests.csproj\", \"{" + testsGuid + "}\"",
+            "EndProject"
+        }));
+        return sln;
     }
 
     #region Initial State Tests
@@ -268,6 +313,62 @@ public class FilesViewModelTests : IDisposable
         FilesViewModel.CanAcceptDrop(new[] { CreateTestFile("no.txt") }).ShouldBeFalse();
         FilesViewModel.CanAcceptDrop(null).ShouldBeFalse();
         FilesViewModel.IsSupportedInputPath(":::not-a-path").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void IsSupportedInputPath_TrueForTempSln()
+    {
+        var sln = CreateTestFile("App.sln");
+        FilesViewModel.IsSupportedInputPath(sln).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void CanAcceptDrop_TrueForSln()
+    {
+        var sln = CreateTestFile("App.sln");
+        FilesViewModel.CanAcceptDrop(new[] { sln }).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void HasIncludedFiles_FalseWhenOnlySkippedRows()
+    {
+        _viewModel.Files.Add(new AssemblyFile
+        {
+            FilePath = CreateTestFile("skipped.dll"),
+            FileName = "skipped.dll",
+            Status = FileStatus.Skipped
+        });
+
+        _viewModel.HasIncludedFiles.ShouldBeFalse();
+        _viewModel.HasFiles.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void HandleFileDrop_WithSolution_AddsIncludedDllAndSkippedTest()
+    {
+        var sln = WriteAppAndTestsSolution();
+        var viewModel = new FilesViewModel(
+            _mockFileDialogService.Object,
+            _mockSettingsService.Object,
+            new SolutionAnalyzer());
+
+        viewModel.HandleFileDrop(new[] { sln });
+
+        viewModel.Files.Count.ShouldBe(2);
+
+        var app = viewModel.Files.Single(f => f.FileName == "App.dll");
+        app.IsIncluded.ShouldBeTrue();
+        app.IsSkipped.ShouldBeFalse();
+        app.Status.ShouldBe(FileStatus.Pending);
+        app.Hints.ShouldNotBeNull();
+        app.FilePath.ShouldEndWith(Path.Combine("App", "bin", "Release", "net8.0", "App.dll"));
+
+        var tests = viewModel.Files.Single(f => f.IsSkipped);
+        tests.FileName.ShouldBe("App.Tests.csproj");
+        tests.IsIncluded.ShouldBeFalse();
+        tests.Status.ShouldBe(FileStatus.Skipped);
+        tests.SkipReason.ShouldBe("Test project");
+        tests.Hints.ShouldNotBeNull();
     }
 
     [Fact]

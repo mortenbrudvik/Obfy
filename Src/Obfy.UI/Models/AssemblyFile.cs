@@ -1,5 +1,6 @@
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Obfy.Core.Models.Solution;
 
 namespace Obfy.UI.Models;
 
@@ -11,7 +12,8 @@ public enum FileStatus
     Pending,
     Processing,
     Success,
-    Error
+    Error,
+    Skipped
 }
 
 /// <summary>
@@ -34,6 +36,8 @@ public partial class AssemblyFile : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsSuccess))]
     [NotifyPropertyChangedFor(nameof(IsError))]
     [NotifyPropertyChangedFor(nameof(IsPending))]
+    [NotifyPropertyChangedFor(nameof(IsSkipped))]
+    [NotifyPropertyChangedFor(nameof(IsIncluded))]
     private FileStatus _status = FileStatus.Pending;
 
     [ObservableProperty]
@@ -47,6 +51,12 @@ public partial class AssemblyFile : ObservableObject
     [ObservableProperty]
     private string? _outputPath;
 
+    [ObservableProperty]
+    private string? _skipReason;
+
+    [ObservableProperty]
+    private ProjectSettingsHints? _hints;
+
     /// <summary>
     /// Gets whether this file is currently being processed.
     /// </summary>
@@ -57,6 +67,10 @@ public partial class AssemblyFile : ObservableObject
     public bool IsError => Status == FileStatus.Error;
 
     public bool IsPending => Status == FileStatus.Pending;
+
+    public bool IsSkipped => Status == FileStatus.Skipped;
+
+    public bool IsIncluded => Status != FileStatus.Skipped;
 
     public string FormattedSize => FileSize switch
     {
@@ -87,6 +101,24 @@ public partial class AssemblyFile : ObservableObject
             FilePath = path,
             FileName = fileInfo.Name,
             FileSize = fileInfo.Exists ? fileInfo.Length : 0
+        };
+    }
+
+    /// <summary>
+    /// Creates an AssemblyFile from a protection-session project entry.
+    /// </summary>
+    public static AssemblyFile FromSessionEntry(ProjectProtectionEntry entry)
+    {
+        var path = entry.OutputPath ?? entry.ProjectPath;
+        var fileInfo = new FileInfo(path);
+        return new AssemblyFile
+        {
+            FilePath = path,
+            FileName = fileInfo.Name,
+            FileSize = fileInfo.Exists ? fileInfo.Length : 0,
+            Status = entry.IsIncluded ? FileStatus.Pending : FileStatus.Skipped,
+            SkipReason = entry.SkipMessage,
+            Hints = entry.Hints
         };
     }
 }

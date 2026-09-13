@@ -74,6 +74,8 @@ public class ConverterTests
             .ShouldBe(SymbolRegular.ErrorCircle24);
         converter.Convert(FileStatus.Processing, typeof(SymbolRegular), null!, Culture)
             .ShouldBe(SymbolRegular.ArrowSync24);
+        converter.Convert(FileStatus.Skipped, typeof(SymbolRegular), null!, Culture)
+            .ShouldBe(SymbolRegular.Warning24);
     }
 
     [Fact]

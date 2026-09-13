@@ -110,7 +110,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     private bool CanObfuscate() =>
-        !IsObfuscating && Files.HasFiles &&
+        !IsObfuscating && Files.HasIncludedFiles &&
         (!Settings.WatermarkEnabled || !string.IsNullOrWhiteSpace(Settings.WatermarkId));
 
     [RelayCommand(CanExecute = nameof(CanObfuscate))]

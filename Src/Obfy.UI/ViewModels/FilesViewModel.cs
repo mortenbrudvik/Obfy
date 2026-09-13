@@ -3,6 +3,7 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using Obfy.Core.Services.Solution;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
 
@@ -15,6 +16,7 @@ public partial class FilesViewModel : ObservableObject
 {
     private readonly IFileDialogService _fileDialogService;
     private readonly ISettingsService _settingsService;
+    private readonly ISolutionAnalyzer? _solutionAnalyzer;
     private readonly ILogger<FilesViewModel>? _logger;
     private bool _suppressPreferenceSave;
 
@@ -42,13 +44,21 @@ public partial class FilesViewModel : ObservableObject
     /// </summary>
     public bool HasNoFiles => Files.Count == 0;
 
+    /// <summary>
+    /// Gets whether any listed file is included for obfuscation.
+    /// </summary>
+    public bool HasIncludedFiles =>
+        Files.Any(f => f.IsIncluded && (f.IsAssembly || f.IsSourceFile));
+
     public FilesViewModel(
         IFileDialogService fileDialogService,
         ISettingsService settingsService,
+        ISolutionAnalyzer? solutionAnalyzer = null,
         ILogger<FilesViewModel>? logger = null)
     {
         _fileDialogService = fileDialogService;
         _settingsService = settingsService;
+        _solutionAnalyzer = solutionAnalyzer;
         _logger = logger;
 
         _suppressPreferenceSave = true;
@@ -66,6 +76,7 @@ public partial class FilesViewModel : ObservableObject
         {
             OnPropertyChanged(nameof(HasFiles));
             OnPropertyChanged(nameof(HasNoFiles));
+            OnPropertyChanged(nameof(HasIncludedFiles));
         };
     }
 
@@ -180,7 +191,8 @@ public partial class FilesViewModel : ObservableObject
             var ext = Path.GetExtension(path);
             return ext.Equals(".dll", StringComparison.OrdinalIgnoreCase)
                 || ext.Equals(".exe", StringComparison.OrdinalIgnoreCase)
-                || ext.Equals(".cs", StringComparison.OrdinalIgnoreCase);
+                || ext.Equals(".cs", StringComparison.OrdinalIgnoreCase)
+                || IsSolutionOrProjectExtension(ext);
         }
         catch (ArgumentException)
         {
@@ -201,6 +213,12 @@ public partial class FilesViewModel : ObservableObject
                 if (!IsSupportedInputPath(path))
                     continue;
 
+                if (IsSolutionOrProjectExtension(Path.GetExtension(path)))
+                {
+                    AddSessionEntries(path);
+                    continue;
+                }
+
                 if (!Files.Any(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
                     Files.Add(AssemblyFile.FromPath(path));
             }
@@ -211,6 +229,27 @@ public partial class FilesViewModel : ObservableObject
         }
     }
 
+    private void AddSessionEntries(string path)
+    {
+        if (_solutionAnalyzer is null)
+            return;
+
+        var session = _solutionAnalyzer.Analyze(path);
+        foreach (var entry in session.Entries)
+        {
+            var file = AssemblyFile.FromSessionEntry(entry);
+            if (!Files.Any(f => f.FilePath.Equals(file.FilePath, StringComparison.OrdinalIgnoreCase)))
+                Files.Add(file);
+        }
+    }
+
+    private static bool IsSolutionOrProjectExtension(string ext)
+        => ext.Equals(".sln", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".slnx", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".vbproj", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".fsproj", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Resets the status of all files to pending.
     /// </summary>
@@ -218,6 +257,9 @@ public partial class FilesViewModel : ObservableObject
     {
         foreach (var file in Files)
         {
+            if (file.Status == FileStatus.Skipped)
+                continue;
+
             file.Status = FileStatus.Pending;
             file.Progress = 0;
             file.ErrorMessage = null;

@@ -1,18 +1,18 @@
 # Testing Guide
 
-How to run and extend the current suite. Planned gaps (real SDK/WPF solutions, CI FlaUI, platforms) are in [Testing-Roadmap.md](Testing-Roadmap.md).
+How to run and extend the current suite. Planned gaps (real SDK/WPF solutions, platforms) are in [Testing-Roadmap.md](Testing-Roadmap.md).
 
 ## Overview
 
-Technique-level coverage is strong (~637 tests). Integration against real app/project types is not; see the testing roadmap.
+Technique-level coverage is strong (655 tests as of 2026-09-13). Integration against real app/project types is not; see the testing roadmap.
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
 | Obfy.Tests | 382 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures |
-| Obfy.Console.Tests | 117 | CLI parsing & integration |
-| Obfy.UI.Tests | 120 | ViewModel unit tests |
+| Obfy.Console.Tests | 117 | CLI parsing, wizard defaults, and a thin integration file |
+| Obfy.UI.Tests | 132 | ViewModel unit tests, startup CLI, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 24 | 6 locator unit tests (CI) + 18 FlaUI live-window tests (`Category=UI`, local) |
-| **Total** | **643** | |
+| **Total** | **655** | |
 
 ## Test Stack
 
@@ -79,10 +79,11 @@ Tests the command-line interface:
 
 | Category | Tests | Description |
 |----------|-------|-------------|
-| CommandParsingTests | 50+ | All CLI options and arguments |
-| HelpOutputTests | 14 | Help text verification |
-| ErrorHandlingTests | 13 | Error scenarios |
-| IntegrationTests | 15 | End-to-end workflows |
+| CommandParsingTests | 72 | CLI options and arguments (parse) |
+| HelpOutputTests | 15 | Help text verification |
+| ErrorHandlingTests | 14 | Error scenarios |
+| WizardDefaultsTests | 4 | Use-case wizard defaults |
+| IntegrationTests | 12 | Mix of parse, config generate, and one real `Program.Main` run (see TR-14 / TR-25) |
 
 Key patterns:
 
@@ -201,10 +202,6 @@ This prevents race conditions with static properties and shared state during tes
 
 ## Continuous Integration
 
-Tests run automatically on:
+PRs and pushes to `main` run `.github/workflows/ci.yml`: `dotnet test -c Release` with `Category!=UI&Category!=Platform`. The coverage report and an 80% **warning** (not a hard fail) run when that job succeeds.
 
-- Pull request creation
-- Push to main branch
-- Release builds
-
-All tests must pass before merging.
+FlaUI (`Category=UI`) is local-only. See [Testing-Roadmap.md](Testing-Roadmap.md) (`TR-01`–`TR-03`, `TR-42`).

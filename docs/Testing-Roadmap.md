@@ -8,19 +8,19 @@ How to run the current suite: [Testing.md](Testing.md).
 
 ## Current position (2026-09)
 
-~637 tests across four projects. That volume is real. What it proves is narrower than the docs imply.
+Four projects; counts live in [Testing.md](Testing.md) (655 as of 2026-09-13). That volume is real. What it proves is narrower than the docs imply.
 
 | Layer | Quality | What it actually proves |
 |-------|---------|-------------------------|
 | Per-technique unit tests | Strong | Obfuscators rewrite IL on synthetic dnlib modules and tiny Roslyn snippets |
-| Compile → obfuscate → run | Good | `EndToEndObfuscationTests` loads/invokes class libraries and console exes emitted in-process |
+| Compile → obfuscate → run | Good | `EndToEndObfuscationTests` Roslyn-emits libraries (in-process invoke) and console exes (separate `dotnet` process). Not SDK `.csproj` builds |
 | CLI parse / wizard defaults | Strong | Flags and use-case presets map to settings |
 | WPF product UI (ViewModels) | Strong | Commands and bindings of *Obfy itself*, not of customer apps |
-| FlaUI smoke | Local-only | Chrome exists; does not add files or obfuscate |
+| FlaUI smoke | Local-only | Chrome exists; does not add files or obfuscate (`Category=UI`) |
 | SDK projects / solutions | **Missing** | No `.csproj` / `.sln` is built, obfuscated, and run |
 | IDE extensions | **Missing** | VS / Rider / VS Code have no tests |
 
-CI on `main` is currently red: `Obfy.UI.AutomationTests` looks for `Src/Obfy.UI/bin/Debug/.../ObfyUI.exe` after a Release build. The coverage report and 80% gate never run. See [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530).
+Phase 0 (`TR-01` / `TR-02`) filters FlaUI out of default `dotnet test` / CI and resolves `ObfyUI.exe` per configuration. `TR-03` is confirming the first green GitHub Actions run after that merge (coverage report + 80% warning). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran.
 
 `examples/` (console, public-API library, MSBuild AfterBuild, Unity/Blazor/MAUI JSON recipes) are manual demos, not fixtures.
 
@@ -53,17 +53,15 @@ Effort is relative to this repo (S ≤ 1 day, M a few days, L a week-plus includ
 
 ## Phase 0 — Make CI honest (P0)
 
-Until this lands, new tests cannot be trusted in CI and coverage is not measured.
+`TR-01` and `TR-02` landed. Remaining: confirm GitHub Actions on `main` actually posts coverage.
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
 | TR-01 | Trait-filter FlaUI out of default `dotnet test` / CI (`Category=UI` or equivalent). Document local-only run in [Testing.md](Testing.md). | S | High | ✅ Done (`Category=UI` + default `VSTestTestCaseFilter`) |
-| TR-02 | Resolve `ObfyUI.exe` from the current build configuration and TFM, not a hardcoded Debug path in `TestBase.GetAppPath()`. | S | High | ✅ Done (`UiExecutableLocator`) |
-| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | Local Release `dotnet test` green; GitHub Actions after merge |
+| TR-02 | Resolve `ObfyUI.exe` from the current build configuration and TFM, not a hardcoded Debug path. | S | High | ✅ Done (`UiExecutableLocator`) |
+| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | Open — local Release `dotnet test` green; GitHub Actions after merge |
 
-**Done when:** a Release `dotnet test` of the solution on GitHub Actions passes; coverage summary is posted; FlaUI still runs locally with one documented command.
-
-Do TR-01 first if TR-02 is not ready — skipping the suite is better than a permanently red badge.
+**Done when:** a Release `dotnet test` of the solution on GitHub Actions passes; coverage summary is posted; FlaUI still runs locally with one documented command (see [Testing.md](Testing.md)).
 
 ---
 
@@ -96,6 +94,7 @@ Build fixtures with `dotnet build -c Release` in a temp copy (or `OutputPath` un
 | TR-12 | **Promote `examples/BasicConsoleApp` and `examples/LibraryWithPublicApi` to CI.** Build, obfuscate with their `obfy.json`, run / invoke. Fail if the example recipe bitrots. | S | High | Open |
 | TR-13 | **Merge happy path on real assemblies.** Two Roslyn- or SDK-built DLLs, `IAssemblyMerger.MergeAsync` **must** succeed, merged output loads and runs. Replace `AssemblyMerger_ReturnsCorrectAssemblyCount_OnSuccess` accepting failure. | S | Medium | Open |
 | TR-14 | **CLI dry-run is a real handler test.** Stop using `SetupMainHandler` no-op for tests that claim integration. Keep parse-only tests separate. | S | Medium | Open |
+| TR-23 | Unit tests for `LooksLikeXamlBindable`: `*ViewModel` suffix, `INotifyPropertyChanged`, `DependencyProperty` field, `DependencyObject` base, `*View` false-positive (`Overview`/`Preview`), negative case (plain public DTO). Does not need the SDK harness. | S | Medium | Open |
 
 **Done when:** a WPF solution and the two examples are obfuscated and executed on CI; merge success is asserted; `docs/Testing.md` describes how to add a fixture.
 
@@ -119,7 +118,6 @@ Only after Phase 1 is green. Same harness, more fixtures.
 | TR-20 | Console app + class library solution (no WPF). Default rename on internals, public API preserved on the library. | S | Medium | Open |
 | TR-21 | WinForms exe smoke (one form, one event handler). | S | Low | Open |
 | TR-22 | `examples/MsBuildIntegration` AfterBuild in CI (`dotnet build -c Release` with `obfy` on PATH or `$(ObfyCli)`). | S | Medium | Open |
-| TR-23 | Unit tests for `LooksLikeXamlBindable`: `*ViewModel` suffix, `INotifyPropertyChanged`, `DependencyProperty` field, negative case (plain public DTO). | S | Medium | Open |
 | TR-24 | Satellite / `*.resources.dll` skip: one fixture or a built satellite; confirm default exclude leaves it unobfuscated and the parent still loads. | S | Low | Open |
 | TR-25 | Split CLI “integration” file: parse vs process. Rename tests that only parse so the file list stops over-claiming. | S | Low | Open |
 
@@ -129,13 +127,13 @@ Only after Phase 1 is green. Same harness, more fixtures.
 
 ## Phase 3 — Platform claims (P3)
 
-These are the product `PS-*` items. Do not advertise first-class support until the corresponding test exists. All should be trait-filtered (`Category=Platform`) and allowed to skip when SDKs/workloads are absent.
+These are the product `PS-*` items. Do not advertise first-class support until the corresponding test exists. After `TR-01`, new platform tests should use `[Trait("Category", "Platform")]` and skip when SDKs/workloads are absent. That trait exists in `Directory.Build.props`; no tests use it yet.
 
 | ID | Work | Unblocks | Effort | Status |
 |----|------|----------|--------|--------|
 | TR-30 | Published Blazor WASM: obfuscate `_framework/*.dll` with `runtimeProfile: BlazorWasm`, then a headless/playwright or `dotnet` host smoke. | PS-03 | L | Open |
 | TR-31 | NativeAOT: obfuscate **before** `dotnet publish -p:PublishAot=true`, run the native exe. Rename + strings + control flow + in-module proxies. | PS-04 | L | Open |
-| TR-32 | MAUI Windows (not iOS/Android in CI): `preserveXaml`, method encryption off, app launches. | PS-02 | L | Open |
+| TR-32 | MAUI Windows (not iOS/Android in CI): `preserveXaml`, method encryption off, app launches. CI-feasible subset of `PS-02`; iOS/Android remain a later platform job. | PS-02 (Windows subset) | L | Open |
 | TR-33 | Unity: Development Player or a stripped managed assembly from a committed sample. Editor plugin is out of scope. | PS-01 | L | Open |
 
 **Done when:** [Platforms.md](Platforms.md) / [Unity.md](Unity.md) can say “tested” for that row, not only “recipe.”
@@ -146,8 +144,8 @@ These are the product `PS-*` items. Do not advertise first-class support until t
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
-| TR-40 | Visual Studio: unit-test `ObfuscationServiceWrapper` / settings JSON / assembly locator without a VS hive. Optional vsix integration later. | M | Medium | Open |
-| TR-41 | Rider: JVM unit tests for settings + assembly locator. | M | Low | Open |
+| TR-40 | Visual Studio: unit-test `ObfuscationServiceWrapper` / settings JSON / `GetOutputAssemblyPathAsync` without a VS hive. Optional vsix integration later. | M | Medium | Open |
+| TR-41 | Rider: JVM unit tests for settings + `AssemblyLocator`. | M | Low | Open |
 | TR-42 | FlaUI: one path that adds a built fixture DLL and clicks Obfuscate (needs TR-02). Still local-or-trait-filtered. | M | Low | Open |
 | TR-43 | Dedicated tests for `Settings.Core` validation if scenario work does not already hit it. | S | Low | Open |
 
@@ -161,14 +159,16 @@ These are holes in the *existing* suite. Fold them into PRs that already touch t
 
 | ID | Gap | Suggested test |
 |----|-----|----------------|
-| TR-50 | Virtualization has one e2e arithmetic method, no unit file | Skip ineligible methods; fail closed on unsupported IL |
-| TR-51 | Incremental cache has e2e hit + pack-fail only | Settings change invalidates cache; input byte change invalidates |
+| TR-50 | Virtualization has one e2e arithmetic method, no unit file | Skip ineligible methods (leave IL unchanged); encode only `ldc.i4`/`ldarg`/`add`/`sub`/`mul`/`ret`; do not fail the run when nothing is eligible. Fail-closed on unsupported IL would be a product change (PF-08), not current behavior |
+| TR-51 | Incremental cache has three e2e tests (hit, pack-fail, pack+hit regenerates launcher); no unit tests of `IncrementalCache.TryHit` | Settings change invalidates cache; input byte change invalidates |
 | TR-52 | Anti-dump has no runtime process test | Leave as IL-only; a MiniDump test is not worth CI cost (see PF-19) |
 | TR-53 | Source obfuscation of a multi-file directory is thin | Two `.cs` files, rename across files, recompile and run |
 
 ---
 
-## Suggested CI shape after Phase 0–1
+## CI shape (after Phase 0)
+
+Default `dotnet test` already applies `VSTestTestCaseFilter` (`Category!=UI&Category!=Platform`) from `Directory.Build.props`. CI repeats the same filter explicitly:
 
 ```text
 dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
@@ -204,7 +204,7 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 | 1 | At least one WPF solution and two examples compile → obfuscate → run on CI |
 | 2 | Console+lib and MSBuild AfterBuild on CI; merge success asserted |
 | 3 | Each claimed platform has one compile → obfuscate → run job (possibly nightly) |
-| 4 | VS wrapper / locator covered without a VS instance |
+| 4 | VS wrapper / `GetOutputAssemblyPathAsync` covered without a VS instance |
 
 ---
 
@@ -213,13 +213,12 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 Do not parallelize Phase 1 across many fixtures until the harness (`ScenarioTestBase`, fixture copy/build, obfuscate, run, cleanup) exists once.
 
 ```text
-TR-01  →  TR-03          # CI green (skip FlaUI)
-TR-02                    # can follow; unblocks TR-42
+TR-03                    # confirm GitHub Actions green
 TR-10 harness + WpfApp   # first scenario
 TR-11 WpfSolution
 TR-12 examples in CI
-TR-13, TR-14, TR-23      # cheap correctness while the harness is warm
-TR-20 … TR-25            # Phase 2
+TR-13, TR-14, TR-23      # cheap correctness; TR-23 does not need the SDK harness
+TR-20, TR-21, TR-22, TR-24, TR-25  # Phase 2
 TR-30 … TR-33            # only when claiming the platform
 TR-40 … TR-43            # tooling
 ```

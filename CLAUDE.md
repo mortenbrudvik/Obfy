@@ -31,7 +31,7 @@ Obfy/
 ├── Tests/
 │   ├── Obfy.Tests/            # Core unit tests (382 tests)
 │   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (117 tests)
-│   ├── Obfy.UI.Tests/         # ViewModel unit tests (120 tests)
+│   ├── Obfy.UI.Tests/         # ViewModel unit tests (132 tests)
 │   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
 ├── docs/                      # Documentation
 ├── package/                   # MSIX manifest and Store assets

@@ -41,6 +41,9 @@ See `package/README.md` for sideload, certificate trust, and Partner Center iden
 # Basic obfuscation with standard protection
 obfy MyApp.dll -o output/
 
+# Obfuscate a solution as a closed set
+obfy MyApp.sln -o out/
+
 # Aggressive protection for maximum security
 obfy MyApp.dll -l aggressive -o output/
 

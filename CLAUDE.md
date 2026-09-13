@@ -79,6 +79,9 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
 # Basic obfuscation
 obfy input.dll -o output/
 
+# Solution (closed set)
+obfy MyApp.sln -o out/
+
 # With specific level
 obfy input.dll -l aggressive
 

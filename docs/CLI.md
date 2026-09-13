@@ -14,7 +14,7 @@ obfy config wizard [options]
 
 ### Root Command
 
-Obfuscate one or more .NET assemblies or C# source files.
+Obfuscate one or more .NET assemblies, C# source files, solutions, or projects.
 
 ```bash
 obfy <input>... [options]
@@ -24,7 +24,7 @@ obfy <input>... [options]
 
 | Argument | Description |
 |----------|-------------|
-| `<input>` | One or more input files to obfuscate (DLL, EXE, or .cs files) |
+| `<input>` | One or more input files to obfuscate (DLL, EXE, .cs, .sln, .slnx, or project files) |
 
 **Options:**
 
@@ -119,6 +119,10 @@ The wizard applies sensible defaults based on your application type:
 ### Basic Usage
 
 ```bash
+# Obfuscate a solution as a closed set
+obfy MyApp.sln -o out/
+obfy MyApp.sln --dry-run
+
 # Obfuscate a single DLL with standard protection
 obfy MyApp.dll -o output/
 
@@ -241,8 +245,9 @@ obfy MyApp.dll -v -o output/
 
 | Code | Description |
 |------|-------------|
-| 0 | Success |
-| 1 | Error (file not found, obfuscation failed, etc.) |
+| 0 | Success, or dry-run of a session with included assemblies |
+| 1 | Error (file not found, obfuscation failed, two solution files, etc.) |
+| 2 | Solution/project session had no included assemblies (all skipped) |
 
 ## Environment
 

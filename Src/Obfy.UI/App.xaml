@@ -10,6 +10,12 @@
                 <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
 
+            <!-- WPF-UI's disabled button tokens are ~4–36% white on dark, so Primary
+                 actions like Obfuscate vanish when CanExecute is false. -->
+            <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="{DynamicResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="{DynamicResource ControlFillColorDefault}" />
+            <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="{DynamicResource ControlStrongStrokeColorDefault}" />
+
             <!-- Converters -->
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
             <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>

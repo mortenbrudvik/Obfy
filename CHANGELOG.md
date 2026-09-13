@@ -40,15 +40,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resource encryption hard-skips `Obfy.Embedded.*` even if `excludePatterns` is overwritten
 - UI load/save/run preserves `dependencyEmbedding` instead of dropping it
 - `--proxy-external` help text matches that it enables `--reference-proxy`
+- Rider JVM CI compiles against Rider 2024.3 (`com.jetbrains.rd.protocol.SolutionExtListener`)
+- VS CLI stats parser reads Spectre table rows as well as colon summary lines
+- Anti-tamper `Verify` FailFasts on IO/crypto exceptions, not only hash mismatch
+- `Virtualization.MaxMethods` out of range fails instead of clamping
 
 ### Added
+- CLI `Program.Main` tests for dry-run, missing file, malformed JSON, and unknown `--level`
+- Anti-tamper child-process test that a tampered PE FailFasts (payload does not run)
+- Pipeline fail-closed tests (Failed result, throw, cancel, target-type filter)
+- Source string encryption compile-and-run; merge fail-closed; merge-then-obfuscate; signing wrong PFX / truncated SNK
+- Logging.Core factory/module tests; VS `ObfyCliLocator`; UI `ApplyStartup` command-line apply
+- Coverlet include filter (`coverage.runsettings`); Rider JVM tests on CI; MAUI workload install on the weekly platform job
 - CLI flags `--virtualize` and `--incremental`
 - Desktop UI toggles for virtualization and incremental cache
 - `IPePostProcessor` for PE post-write steps (method IL XOR, integrity hash)
 - Engine-gap tests: virtualization skip/encode, `IncrementalCache.TryHit` invalidation, two-file source rename compile-and-run
 - Tooling tests: VS settings JSON / CLI args / output-assembly locator (no hive), Rider settings + `AssemblyLocator` JVM tests, FlaUI command-line DLL obfuscate path, Settings.Core validation
-- Platform scenario tests: published Blazor WASM `_framework` DLL, NativeAOT obfuscate-then-publish, MAUI Windows (skip without workload), and a Unity stub assembly
-- SDK scenario tests (`Obfy.ScenarioTests`): shipped examples, WPF app/solution, console+lib, WinForms, satellites, and MSBuild AfterBuild compile → obfuscate → run
+- Platform scenario tests: published Blazor WASM `_framework` DLL, NativeAOT obfuscate-then-publish, MAUI Windows (skip without workload)
+- SDK scenario tests (`Obfy.ScenarioTests`): shipped examples, WPF app/solution, console+lib, WinForms, satellites, Unity stub, and MSBuild AfterBuild compile → obfuscate → run
 - Desktop UI opens input files and `-o`/`--output` from the command line
 - Incremental obfuscation cache (`incremental.enabled`)
 - Selective IL virtualization for simple static int methods (`virtualization.enabled`)
@@ -85,6 +95,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Anti-dump also overwrites the first byte of in-process `dbghelp!MiniDumpWriteDump` with x86/x64 `ret` (`0xC3`) after an X86/X64 architecture check (Windows; ARM64 is skipped; `VirtualProtect` failure skips the write). External dumpers are unaffected.
 - NativeAOT / Unity IL2CPP / Blazor WASM anti-debug keeps managed checks only (no kernel32 P/Invoke) and emits a report warning
 - CLI `--watermark-id` and Settings panel watermark / decoy-attribute controls
+
+### Fixed
+- Assembly merge uses `ILRepack.Lib` 2.0.48 so `--merge` works on a net10 host (was `ILRepack.NETStandard` 2.0.4 `NotSupportedException`)
+- `ObfySettings.Validate` enforces `Virtualization.MaxMethods` range
+- Anti-tamper integrity failure uses `Environment.FailFast` so the process cannot continue after a failed check
+- Settings panel FlaUI toggle no longer passes silently when the Toggle pattern is missing
+- MSBuild AfterBuild scenario test name no longer claims the app is run
+- Assembly write calls `SimplifyBranches` / `OptimizeBranches` so control-flow on async state machines (Blazor WASM `MoveNext`) no longer fails with “short branch too far”
+- Unity recipe and wizard exclude `UnityEngine` / `Unity` as well as `UnityEngine.*` / `Unity.*` (`*` does not match the namespace itself)
+- CI requests `pull-requests: write` for the sticky coverage comment, skips the comment on fork PRs, and sets `continue-on-error` on that step so a 403 (fork/read-only token) cannot skip the coverage summary or 80% warning
+- CLI config files accept camelCase enum values (`"level": "aggressive"`)
+- `preserveXaml` View/ViewModel suffix match is case-insensitive (`Overview` / `Preview`)
+- Virtualization skips unsigned compares (`cgt.un`, `b*.un`) instead of executing them as signed
+- Dark-theme UI text uses theme foreground brushes so file names, settings, and logs stay readable
+- Disabled toolbar buttons (Obfuscate with no files) keep readable label and border contrast
+- CI `dotnet test` no longer fails 18 FlaUI tests that looked for Debug `ObfyUI.exe` after a Release build; live-window tests are `Category=UI` (opt-in) and the locator prefers the current configuration
+- Packing writes the incremental cache only after a successful launcher emit; cache hits require the launcher files
+- Preview failures no longer fail a successful obfuscation run
+- Packed host awaits async Main, resolves sibling assemblies, and extracts the payload to disk so anti-tamper can hash it
+- Anti-dump MiniDumpWriteDump patch is skipped unless the process is X86/X64 (ARM64 is no longer written with `0xC3`)
+- Requested watermark/decoy skips are reported as warnings instead of silent success
+- `--watermark-id` with only whitespace is an error instead of a silent no-op
+- External reference proxy skips `constrained.` prefixes (foreach/`using` on structs) so the output stays verifiable
+- Resource encryption hard-skips `Obfy.Embedded.*` even if `excludePatterns` is overwritten
+- UI load/save/run preserves `dependencyEmbedding` instead of dropping it
+- `--proxy-external` help text matches that it enables `--reference-proxy`
+- Rider JVM CI compiles against Rider 2024.3 (`com.jetbrains.rd.protocol.SolutionExtListener`)
+- VS `obfy.json` save patches known keys instead of rewriting the document
+- VS CLI stats parser reads Spectre table rows as well as colon summary lines
+- Anti-tamper `Verify` FailFasts on IO/crypto exceptions, not only hash mismatch
 
 ### Changed
 - README includes screenshots of the desktop application

@@ -631,7 +631,7 @@ Verifies assembly integrity at runtime by computing and comparing cryptographic 
    - Reads the assembly file from disk (`Assembly.Location`, then `Environment.ProcessPath`)
    - Recomputes the whole-file hash with the hash slot zeroed
    - Compares with the stored expected hash
-   - Exits if mismatch is detected. Memory-only / empty-path loads still skip the check.
+   - Calls `Environment.FailFast` if the hash is missing or mismatches (IO/crypto failures in `Verify` also FailFast). Memory-only / empty-path loads still skip the check.
 
 **Two-Pass Process:**
 
@@ -661,12 +661,12 @@ static void Verify()
     var bytes = File.ReadAllBytes(path);
     var offset = FindHashOffset(bytes);  // magic marker in the PE
     if (offset < 0)
-        Environment.Exit(1);  // missing blob is treated as tamper
+        Environment.FailFast("Obfy anti-tamper: assembly integrity check failed");
 
     // Zero the hash slot (and the strong-name signature if present), then SHA-256
     var actual = SHA256.HashData(ZeroedCopy(bytes, offset));
     if (!HashesEqual(actual, storedHash))
-        Environment.Exit(1);
+        Environment.FailFast("Obfy anti-tamper: assembly integrity check failed");
 }
 ```
 

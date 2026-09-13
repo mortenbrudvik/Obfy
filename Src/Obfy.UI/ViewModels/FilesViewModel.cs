@@ -156,6 +156,18 @@ public partial class FilesViewModel : ObservableObject
         AddFilesInternal(filePaths);
     }
 
+    /// <summary>
+    /// Applies parsed process-start arguments (files and <c>-o</c> output directory).
+    /// </summary>
+    public void ApplyStartup(StartupCommandLine parsed)
+    {
+        if (parsed.Files.Count > 0)
+            HandleFileDrop(parsed.Files.ToArray());
+
+        if (!string.IsNullOrWhiteSpace(parsed.OutputDirectory))
+            OutputDirectory = parsed.OutputDirectory;
+    }
+
     public static bool CanAcceptDrop(IEnumerable<string>? paths)
         => paths != null && paths.Any(IsSupportedInputPath);
 
@@ -192,7 +204,7 @@ public partial class FilesViewModel : ObservableObject
                 if (!Files.Any(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
                     Files.Add(AssemblyFile.FromPath(path));
             }
-            catch (Exception ex) when (ex is ArgumentException or IOException)
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
             {
                 _logger?.LogWarning(ex, "Skipped adding file {Path}", path);
             }

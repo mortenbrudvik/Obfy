@@ -29,9 +29,9 @@ Obfy/
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/            # Core unit tests (421+ tests)
-│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests (117+ tests)
-│   ├── Obfy.UI.Tests/         # ViewModel unit tests (133+ tests)
+│   ├── Obfy.Tests/            # Core unit tests
+│   ├── Obfy.Console.Tests/    # CLI parsing & integration tests
+│   ├── Obfy.UI.Tests/         # ViewModel unit tests
 │   ├── Obfy.ScenarioTests/    # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
 │   ├── Obfy.VisualStudio.Tests/ # VS helpers without a hive
 │   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)

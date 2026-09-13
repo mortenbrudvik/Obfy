@@ -101,6 +101,8 @@ public class AssemblyMerger : IAssemblyMerger
                 LogVerbose = false
             };
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             var repackLogger = new RepackLogger(_logger);
             var repack = new ILRepack(options, repackLogger);
 

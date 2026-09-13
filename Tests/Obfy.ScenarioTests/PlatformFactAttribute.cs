@@ -1,3 +1,6 @@
+using Xunit.Abstractions;
+using Xunit.Sdk;
+
 namespace Obfy.ScenarioTests;
 
 public enum PlatformWorkload
@@ -7,14 +10,14 @@ public enum PlatformWorkload
 }
 
 /// <summary>
-/// Fact excluded from default CI via Category=Platform (on this attribute and typically the class)
-/// and optionally skipped when a named SDK/workload is missing at discovery.
+/// Always applies Category=Platform so a lone [PlatformFact] cannot leak into default CI.
+/// Optionally skips at discovery when a named SDK/workload is missing.
 /// NativeAOT is not skipped here: the ILCompiler pack is restored on first publish,
 /// not preinstalled under <c>dotnet/packs</c>.
 /// </summary>
+[TraitDiscoverer("Obfy.ScenarioTests.PlatformCategoryDiscoverer", "Obfy.ScenarioTests")]
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, AllowMultiple = false)]
-[Trait("Category", "Platform")]
-public sealed class PlatformFactAttribute : FactAttribute
+public sealed class PlatformFactAttribute : FactAttribute, ITraitAttribute
 {
     public PlatformFactAttribute()
     {
@@ -31,5 +34,13 @@ public sealed class PlatformFactAttribute : FactAttribute
                 Skip = "Microsoft.NET.Sdk.BlazorWebAssembly is not in this SDK";
                 break;
         }
+    }
+}
+
+public sealed class PlatformCategoryDiscoverer : ITraitDiscoverer
+{
+    public IEnumerable<KeyValuePair<string, string>> GetTraits(IAttributeInfo traitAttribute)
+    {
+        yield return new KeyValuePair<string, string>("Category", "Platform");
     }
 }

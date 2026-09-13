@@ -62,6 +62,44 @@ public class SettingsValidatorTests
         }
     }
 
+    [Fact]
+    public void SettingsServiceBase_Load_CorruptJson_UsesDefaultsWithoutOverwritingFile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "obfy-settings-" + Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(path, "{ not json");
+        try
+        {
+            var service = new SampleSettingsService(path);
+            service.Load();
+            service.Settings.Name.ShouldBe("ok");
+            File.ReadAllText(path).ShouldBe("{ not json");
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void SettingsServiceBase_Save_RaisesSettingsChanged()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "obfy-settings-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            var service = new SampleSettingsService(path);
+            var raised = 0;
+            service.SettingsChanged += (_, _) => raised++;
+            service.Save();
+            raised.ShouldBe(1);
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
     private sealed class SampleSettings
     {
         [Required]

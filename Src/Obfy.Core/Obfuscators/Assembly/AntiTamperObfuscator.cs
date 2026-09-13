@@ -66,6 +66,14 @@ public class AntiTamperObfuscator : IObfuscator
                 }
             }
 
+            if (stats.ProtectionsApplied == 0)
+            {
+                const string noneInjected =
+                    "Anti-tamper is enabled but no verification call was injected (no entry point and no module initializer).";
+                _logger.LogError("{Message}", noneInjected);
+                return Task.FromResult(ObfuscationResult.Failed(noneInjected));
+            }
+
             _logger.LogInformation("Applied {Count} anti-tamper protections", stats.ProtectionsApplied);
 
             // Emitted unconditionally: at obfuscation time we cannot know whether the consumer will
@@ -276,8 +284,8 @@ public class AntiTamperObfuscator : IObfuscator
         var isNullOrEmpty = new MemberRefUser(module, "IsNullOrEmpty",
             MethodSig.CreateStatic(module.CorLibTypes.Boolean, module.CorLibTypes.String),
             new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef));
-        var exitMethod = new MemberRefUser(module, "Exit",
-            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32), environmentType);
+        var failFast = new MemberRefUser(module, "FailFast",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String), environmentType);
         var readAllBytes = new MemberRefUser(module, "ReadAllBytes",
             MethodSig.CreateStatic(new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.String), fileType);
         var sha256Create = new MemberRefUser(module, "Create",
@@ -301,14 +309,15 @@ public class AntiTamperObfuscator : IObfuscator
             bitConverterType);
 
         var skipLabel = Instruction.Create(OpCodes.Ret);
-        var exitLabel = Instruction.Create(OpCodes.Ldc_I4_1);
+        var exitLabel = Instruction.Create(OpCodes.Ldstr, "Obfy anti-tamper: assembly integrity check failed");
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, verifiedField));
         body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, skipLabel));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
         body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, verifiedField));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, getExecutingAssembly));
+        var tryStart = Instruction.Create(OpCodes.Call, getExecutingAssembly);
+        body.Instructions.Add(tryStart);
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getLocation));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
         var havePath = Instruction.Create(OpCodes.Ldloc, pathLocal);
@@ -324,16 +333,18 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Dup));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, skipPop));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getExecutingAssembly));
-        body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, skipLabel));
+        var processPath = Instruction.Create(OpCodes.Call, getProcessPath);
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, processPath));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, getProcessPath));
+        body.Instructions.Add(processPath);
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
-        body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, skipLabel));
-        body.Instructions.Add(Instruction.Create(OpCodes.Br, havePath));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, havePath));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
         body.Instructions.Add(skipPop);
-        body.Instructions.Add(Instruction.Create(OpCodes.Br, skipLabel));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
 
         body.Instructions.Add(havePath);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readAllBytes));
@@ -447,11 +458,27 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(cmpCheck);
         body.Instructions.Add(Instruction.CreateLdcI4(AssemblyHashComputer.HashSize));
         body.Instructions.Add(Instruction.Create(OpCodes.Blt, cmpBody));
-        body.Instructions.Add(Instruction.Create(OpCodes.Br, skipLabel));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
 
         body.Instructions.Add(exitLabel);
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, exitMethod));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, failFast));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+
+        var catchStart = Instruction.Create(OpCodes.Pop);
+        body.Instructions.Add(catchStart);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "Obfy anti-tamper: assembly integrity check failed"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, failFast));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
         body.Instructions.Add(skipLabel);
+
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+        {
+            TryStart = tryStart,
+            TryEnd = catchStart,
+            HandlerStart = catchStart,
+            HandlerEnd = skipLabel,
+            CatchType = module.CorLibTypes.Object.ToTypeDefOrRef()
+        });
 
         body.UpdateInstructionOffsets();
         return method;

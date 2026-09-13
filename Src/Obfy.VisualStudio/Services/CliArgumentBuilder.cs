@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Obfy.VisualStudio.Services;
 
@@ -10,6 +11,8 @@ namespace Obfy.VisualStudio.Services;
 /// </summary>
 public static class CliArgumentBuilder
 {
+    private static readonly Regex LastInteger = new(@"-?\d+", RegexOptions.Compiled);
+
     public static IReadOnlyList<string> Build(
         string assemblyPath,
         string? outputPath,
@@ -21,7 +24,7 @@ public static class CliArgumentBuilder
 
         if (!string.IsNullOrEmpty(outputPath))
         {
-            var outputDir = Path.GetDirectoryName(outputPath);
+            var outputDir = Path.GetDirectoryName(Path.GetFullPath(outputPath));
             if (!string.IsNullOrEmpty(outputDir))
             {
                 args.Add("-o");
@@ -44,11 +47,15 @@ public static class CliArgumentBuilder
         {
             var assemblyDir = Path.GetDirectoryName(assemblyPath);
             var assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
-            if (!string.IsNullOrEmpty(assemblyDir) && !string.IsNullOrEmpty(assemblyName))
+            if (string.IsNullOrEmpty(assemblyDir) || string.IsNullOrEmpty(assemblyName))
             {
-                args.Add("--map");
-                args.Add(Path.Combine(assemblyDir, assemblyName + ".map.json"));
+                throw new ArgumentException(
+                    "Cannot build --map path; assembly path must include a directory and file name.",
+                    nameof(assemblyPath));
             }
+
+            args.Add("--map");
+            args.Add(Path.Combine(assemblyDir, assemblyName + ".map.json"));
         }
 
         return args;
@@ -74,38 +81,68 @@ public static class CliArgumentBuilder
         return "\"" + value.Replace("\"", "\\\"") + "\"";
     }
 
+    /// <summary>
+    /// Parses CLI summary output. Accepts colon lines (<c>Strings encrypted: 4</c>) and
+    /// Spectre table rows (<c>│ Strings Encrypted │ 42 │</c>).
+    /// </summary>
     public static ObfuscationStatistics ParseStatistics(string output)
     {
         var stats = new ObfuscationStatistics();
+        var sawExplicitTotal = false;
 
-        foreach (var line in output.Split('\n'))
+        foreach (var raw in output.Split('\n'))
         {
-            if (line.IndexOf("strings encrypted", StringComparison.OrdinalIgnoreCase) >= 0)
+            var line = StripMarkup(raw);
+            if (line.IndexOf("strings encrypted", StringComparison.OrdinalIgnoreCase) >= 0
+                && TryLastInt(line, out var strings))
             {
-                var parts = line.Split(':');
-                if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var count))
-                {
-                    stats.StringsEncrypted = count;
-                    stats.TotalTransformations += count;
-                }
+                stats.StringsEncrypted = strings;
             }
-            else if (line.IndexOf("symbols renamed", StringComparison.OrdinalIgnoreCase) >= 0)
+            else if (line.IndexOf("symbols renamed", StringComparison.OrdinalIgnoreCase) >= 0
+                && TryLastInt(line, out var symbols))
             {
-                var parts = line.Split(':');
-                if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var count))
-                {
-                    stats.SymbolsRenamed = count;
-                    stats.TotalTransformations += count;
-                }
+                stats.SymbolsRenamed = symbols;
             }
-            else if (line.IndexOf("transformations", StringComparison.OrdinalIgnoreCase) >= 0)
+            else if (line.IndexOf("transformations", StringComparison.OrdinalIgnoreCase) >= 0
+                && TryLastInt(line, out var total))
             {
-                var parts = line.Split(':');
-                if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var count))
-                    stats.TotalTransformations = count;
+                stats.TotalTransformations = total;
+                sawExplicitTotal = true;
             }
         }
 
+        if (!sawExplicitTotal)
+            stats.TotalTransformations = stats.StringsEncrypted + stats.SymbolsRenamed;
+
         return stats;
+    }
+
+    private static string StripMarkup(string line)
+    {
+        var result = line;
+        while (true)
+        {
+            var start = result.IndexOf('[');
+            if (start < 0) break;
+            var end = result.IndexOf(']', start + 1);
+            if (end < 0) break;
+            result = result.Remove(start, end - start + 1);
+        }
+        return result;
+    }
+
+    private static bool TryLastInt(string line, out int value)
+    {
+        value = 0;
+        Match? last = null;
+        foreach (Match match in LastInteger.Matches(line))
+            last = match;
+        if (last == null)
+            return false;
+        if (!int.TryParse(last.Value, out value))
+            return false;
+        if (value < 0)
+            value = 0;
+        return true;
     }
 }

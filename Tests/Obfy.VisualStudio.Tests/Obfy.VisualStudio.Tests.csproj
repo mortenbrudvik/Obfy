@@ -14,6 +14,7 @@
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ObfySettingsJson.cs" Link="Linked\ObfySettingsJson.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\OutputAssemblyLocator.cs" Link="Linked\OutputAssemblyLocator.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\CliArgumentBuilder.cs" Link="Linked\CliArgumentBuilder.cs" />
+    <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ObfyCliLocator.cs" Link="Linked\ObfyCliLocator.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\InPlaceOutputCopy.cs" Link="Linked\InPlaceOutputCopy.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ProjectSupport.cs" Link="Linked\ProjectSupport.cs" />
   </ItemGroup>

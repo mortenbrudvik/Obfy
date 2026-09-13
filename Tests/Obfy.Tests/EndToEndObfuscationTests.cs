@@ -106,7 +106,11 @@ public class EndToEndObfuscationTests
         Packing = { Enabled = true }
     };
 
-    private static int RunLauncher(string launcher, string extraArgs = "")
+    private static int RunLauncher(string launcher, string extraArgs = "", string? workingDirectory = null)
+        => RunLauncherCapture(launcher, extraArgs, workingDirectory).ExitCode;
+
+    private static (int ExitCode, string StdErr) RunLauncherCapture(
+        string launcher, string extraArgs = "", string? workingDirectory = null)
     {
         var args = string.IsNullOrEmpty(extraArgs) ? $"\"{launcher}\"" : $"\"{launcher}\" {extraArgs}";
         var start = new System.Diagnostics.ProcessStartInfo("dotnet", args)
@@ -115,10 +119,32 @@ public class EndToEndObfuscationTests
             RedirectStandardOutput = true,
             UseShellExecute = false
         };
+        if (!string.IsNullOrEmpty(workingDirectory))
+            start.WorkingDirectory = workingDirectory;
         using var process = System.Diagnostics.Process.Start(start);
         process.ShouldNotBeNull();
-        process!.WaitForExit(15000).ShouldBeTrue(process.StandardError.ReadToEnd());
-        return process.ExitCode;
+        var stdoutTask = process!.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        process.WaitForExit(15000).ShouldBeTrue("launcher timed out");
+        var stderr = stderrTask.GetAwaiter().GetResult();
+        stdoutTask.GetAwaiter().GetResult();
+        return (process.ExitCode, stderr);
+    }
+
+    private static void WriteRuntimeConfig(string assemblyPath)
+    {
+        var json = """
+            {
+              "runtimeOptions": {
+                "tfm": "net10.0",
+                "framework": {
+                  "name": "Microsoft.NETCore.App",
+                  "version": "10.0.0"
+                }
+              }
+            }
+            """;
+        File.WriteAllText(Path.ChangeExtension(assemblyPath, ".runtimeconfig.json"), json);
     }
 
     private static void TryDeleteDir(string dir)
@@ -649,7 +675,9 @@ public class EndToEndObfuscationTests
 
             var result = await CreateService().ObfuscateAsync(input, output, PackingSettings());
             result.Success.ShouldBeTrue(result.ErrorMessage);
-            RunLauncher(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBe(13);
+            var cwd = Path.Combine(dir, "cwd");
+            Directory.CreateDirectory(cwd);
+            RunLauncher(ManagedLauncherPacker.LauncherPathFor(output), workingDirectory: cwd).ShouldBe(13);
         }
         finally
         {
@@ -1006,6 +1034,73 @@ public class EndToEndObfuscationTests
         finally
         {
             try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task AntiTamper_TamperedPe_ChildProcessExitsNonZero()
+    {
+        const string source = "public static class Lib { public static int Get() => 7; }";
+        const string runnerSource = """
+            using System.Reflection;
+            using System.Runtime.Loader;
+            public static class Program
+            {
+                public static int Main(string[] args)
+                {
+                    var alc = new AssemblyLoadContext("tamper");
+                    var asm = alc.LoadFromAssemblyPath(args[0]);
+                    var lib = asm.GetTypes()[0];
+                    foreach (var t in asm.GetTypes())
+                        if (t.Name == "Lib") lib = t;
+                    return (int)lib.GetMethod("Get")!.Invoke(null, null)!;
+                }
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-tamper-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "TamperLib");
+            var runner = CompileToExe(runnerSource, dir, "TamperRunner");
+            WriteRuntimeConfig(runner);
+
+            var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Protection = { AntiTamper = { Enabled = true, CheckModuleInitializer = true } }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            var injected = await new AntiTamperObfuscator(new Mock<ILogger<AntiTamperObfuscator>>().Object)
+                .ObfuscateAsync(context);
+            injected.Success.ShouldBeTrue();
+            injected.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
+
+            var output = Path.Combine(dir, "TamperLib.obf.dll");
+            await new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object)
+                .SaveAsync(context, output);
+
+            RunLauncher(runner, $"\"{output}\"").ShouldBe(7);
+
+            var bytes = File.ReadAllBytes(output);
+            var hashOffset = AssemblyHashComputer.FindHashOffset(bytes);
+            hashOffset.ShouldBeGreaterThan(0);
+            bytes[hashOffset] ^= 0xFF;
+            var storedAfter = bytes.AsSpan(hashOffset, AssemblyHashComputer.HashSize).ToArray();
+            AssemblyHashComputer.ComputeIntegrityHash(bytes, hashOffset).ShouldNotBe(storedAfter);
+
+            var tampered = Path.Combine(dir, "TamperLib.tampered.dll");
+            File.WriteAllBytes(tampered, bytes);
+
+            var (exit, stderr) = RunLauncherCapture(runner, $"\"{tampered}\"");
+            exit.ShouldNotBe(0, "FailFast must not return success");
+            exit.ShouldNotBe(7, "anti-tamper Verify should FailFast after the stored hash is flipped");
+            stderr.ShouldContain("Obfy anti-tamper: assembly integrity check failed");
+        }
+        finally
+        {
+            TryDeleteDir(dir);
         }
     }
 

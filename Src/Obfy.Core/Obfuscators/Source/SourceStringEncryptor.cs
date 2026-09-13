@@ -122,10 +122,10 @@ public class SourceStringEncryptor : IObfuscator
                         var iv = new byte[aes.BlockSize / 8];
                         Buffer.BlockCopy(data, 0, iv, 0, iv.Length);
                         aes.IV = iv;
-                        var encrypted = new byte[data.Length - iv.Length];
-                        Buffer.BlockCopy(data, iv.Length, encrypted, 0, encrypted.Length);
+                        var ciphertext = new byte[data.Length - iv.Length];
+                        Buffer.BlockCopy(data, iv.Length, ciphertext, 0, ciphertext.Length);
                         using var decryptor = aes.CreateDecryptor();
-                        var decrypted = decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
+                        var decrypted = decryptor.TransformFinalBlock(ciphertext, 0, ciphertext.Length);
                         return Encoding.UTF8.GetString(decrypted);
             """;
     }

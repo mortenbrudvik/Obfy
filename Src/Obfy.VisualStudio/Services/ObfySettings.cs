@@ -10,6 +10,7 @@ public class ObfuscationResult
     public bool Success { get; set; }
     public string? ErrorMessage { get; set; }
     public string? OutputPath { get; set; }
+    public Exception? Exception { get; set; }
     public ObfuscationStatistics Statistics { get; set; } = new();
     public TimeSpan ElapsedTime { get; set; }
 
@@ -19,7 +20,8 @@ public class ObfuscationResult
         {
             Success = false,
             ErrorMessage = message,
-            OutputPath = inputPath
+            OutputPath = inputPath,
+            Exception = ex
         };
     }
 }

@@ -80,6 +80,7 @@ public class ObfySettingsJsonTests
         const string existing = """
             {
               "level": "custom",
+              "runtimeProfile": "NativeAot",
               "virtualization": { "enabled": true },
               "packing": { "enabled": true },
               "incremental": { "enabled": true },
@@ -92,6 +93,8 @@ public class ObfySettingsJsonTests
         settings.PostBuildEnabled = true;
         var json = ObfySettingsJson.Serialize(settings, existing);
 
+        json.ShouldContain("\"runtimeProfile\"");
+        json.ShouldContain("NativeAot");
         json.ShouldContain("\"virtualization\"");
         json.ShouldContain("\"packing\"");
         json.ShouldContain("\"incremental\"");
@@ -115,5 +118,12 @@ public class ObfySettingsJsonTests
         var patched = ObfySettingsJson.PatchPostBuildEnabled(existing, true);
         patched.ShouldContain("\"virtualization\"");
         patched.ShouldContain("\"postBuildEnabled\": true");
+    }
+
+    [Fact]
+    public void Parse_UnknownLevel_Throws()
+    {
+        Should.Throw<System.Text.Json.JsonException>(() =>
+            ObfySettingsJson.Parse("""{ "level": "aggresive" }"""));
     }
 }

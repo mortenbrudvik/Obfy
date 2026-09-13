@@ -10,7 +10,7 @@ namespace Obfy.ScenarioTests;
 
 public class MergeScenarioTests
 {
-    [Fact(Skip = "ILRepack.NETStandard 2.0.4 (net40) throws NotSupportedException when hosted on net10.0")]
+    [Fact]
     public async Task Merge_TwoSdkClassLibraries_SucceedsAndRuns()
     {
         var root = Path.Combine(Path.GetTempPath(), "obfy-merge-" + Guid.NewGuid().ToString("N"));
@@ -48,6 +48,60 @@ public class MergeScenarioTests
             File.Exists(output).ShouldBeTrue();
 
             var alc = new System.Runtime.Loader.AssemblyLoadContext("merge-" + Guid.NewGuid().ToString("N"), isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromAssemblyPath(output);
+                Invoke(asm, "Alpha", "Value").ShouldBe(3);
+                Invoke(asm, "Beta", "Value").ShouldBe(4);
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task MergeAndObfuscate_TwoSdkClassLibraries_SucceedsAndRuns()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "obfy-merge-obf-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            WriteClassLib(root, "MergeA", "public static class Alpha { public static int Value() => 3; }");
+            WriteClassLib(root, "MergeB", "public static class Beta { public static int Value() => 4; }");
+
+            ScenarioHarness.DotnetBuild(Path.Combine(root, "MergeA", "MergeA.csproj"));
+            ScenarioHarness.DotnetBuild(Path.Combine(root, "MergeB", "MergeB.csproj"));
+
+            var aDll = Path.Combine(root, "MergeA.dll");
+            var bDll = Path.Combine(root, "MergeB.dll");
+            File.Copy(Path.Combine(root, "MergeA", "bin", "Release", "netstandard2.0", "MergeA.dll"), aDll, overwrite: true);
+            File.Copy(Path.Combine(root, "MergeB", "bin", "Release", "netstandard2.0", "MergeB.dll"), bDll, overwrite: true);
+            var output = Path.Combine(root, "Merged.obf.dll");
+
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+            var service = container.Resolve<IObfuscationService>();
+
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false }
+            };
+
+            var result = await service.MergeAndObfuscateAsync([aDll, bDll], output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            File.Exists(output).ShouldBeTrue();
+
+            var alc = new System.Runtime.Loader.AssemblyLoadContext("merge-obf-" + Guid.NewGuid().ToString("N"), isCollectible: true);
             try
             {
                 var asm = alc.LoadFromAssemblyPath(output);

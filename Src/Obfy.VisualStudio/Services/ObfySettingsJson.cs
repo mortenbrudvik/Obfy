@@ -40,7 +40,6 @@ public static class ObfySettingsJson
         }
         else
         {
-            // Legacy flat root properties
             settings.AntiDebug = ReadBool(root, "antiDebug", settings.AntiDebug);
             settings.AntiDump = ReadBool(root, "antiDump", settings.AntiDump);
             settings.ReferenceProxy = ReadBool(root, "referenceProxy", settings.ReferenceProxy);
@@ -51,6 +50,10 @@ public static class ObfySettingsJson
         return settings;
     }
 
+    /// <summary>
+    /// Writes VS-owned keys. When <paramref name="existingJson"/> is a JSON object, unknown keys
+    /// (runtimeProfile, virtualization, exclusions, preservePublicApi, …) are kept.
+    /// </summary>
     public static string Serialize(ObfySettings settings, string? existingJson = null)
     {
         var node = ParseObject(existingJson) ?? new JsonObject();
@@ -84,7 +87,14 @@ public static class ObfySettingsJson
     {
         if (string.IsNullOrWhiteSpace(json))
             return null;
-        return JsonNode.Parse(json!) as JsonObject;
+        try
+        {
+            return JsonNode.Parse(json) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static void SetEnabled(JsonObject parent, string name, bool enabled)
@@ -105,7 +115,12 @@ public static class ObfySettingsJson
 
         if (el.ValueKind == JsonValueKind.String)
         {
-            return Enum.TryParse(el.GetString(), ignoreCase: true, out level);
+            var raw = el.GetString();
+            if (string.IsNullOrWhiteSpace(raw))
+                return false;
+            if (Enum.TryParse(raw, ignoreCase: true, out level))
+                return true;
+            throw new JsonException($"obfy.json: unknown level '{raw}'.");
         }
 
         if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n) && Enum.IsDefined(typeof(ObfuscationLevel), n))
@@ -114,7 +129,7 @@ public static class ObfySettingsJson
             return true;
         }
 
-        return false;
+        throw new JsonException("obfy.json: 'level' must be a string or defined enum number.");
     }
 
     private static bool ReadEnabled(JsonElement parent, string name, bool defaultValue)
@@ -132,7 +147,7 @@ public static class ObfySettingsJson
             return ReadBool(el, "enabled", defaultValue);
         }
 
-        return defaultValue;
+        throw new JsonException($"obfy.json: '{name}' must be a boolean or {{ \"enabled\": bool }}.");
     }
 
     private static bool ReadBool(JsonElement parent, string name, bool defaultValue)
@@ -146,7 +161,7 @@ public static class ObfySettingsJson
         {
             JsonValueKind.True => true,
             JsonValueKind.False => false,
-            _ => defaultValue
+            _ => throw new JsonException($"obfy.json: '{name}' must be a boolean.")
         };
     }
 

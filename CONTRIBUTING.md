@@ -61,9 +61,9 @@ Obfy/
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
 ├── Tests/
-│   ├── Obfy.Tests/              # Core unit tests (421+ tests)
-│   ├── Obfy.Console.Tests/      # CLI parsing & integration tests (117+ tests)
-│   ├── Obfy.UI.Tests/           # ViewModel unit tests (133+ tests)
+│   ├── Obfy.Tests/              # Core unit tests
+│   ├── Obfy.Console.Tests/      # CLI parsing tests
+│   ├── Obfy.UI.Tests/           # ViewModel unit tests
 │   ├── Obfy.ScenarioTests/      # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
 │   ├── Obfy.VisualStudio.Tests/ # VS helpers without a hive
 │   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
@@ -118,12 +118,12 @@ We have six test projects:
 
 | Project | Purpose | Tests |
 |---------|---------|-------|
-| `Obfy.Tests` | Core obfuscation logic | 421+ |
-| `Obfy.Console.Tests` | CLI argument parsing, help output | 117+ |
-| `Obfy.UI.Tests` | ViewModel logic and commands | 133+ |
-| `Obfy.ScenarioTests` | SDK fixtures (examples, WPF, console, WinForms, MSBuild, Unity) + platform | 14 |
-| `Obfy.VisualStudio.Tests` | VS JSON / CLI args / in-place copy / output path (no hive) | 13+ |
-| `Obfy.UI.AutomationTests` | Locator unit tests + FlaUI live window (`Category=UI`, local) | 25 |
+| `Obfy.Tests` | Core obfuscation logic | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.Console.Tests` | CLI argument parsing, help output | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.UI.Tests` | ViewModel logic and commands | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.ScenarioTests` | SDK fixtures (examples, WPF, console, WinForms, MSBuild, Unity) + platform | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.VisualStudio.Tests` | VS JSON / CLI args / in-place copy / output path (no hive) | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.UI.AutomationTests` | Locator unit tests + FlaUI live window (`Category=UI`, local) | see [docs/Testing.md](docs/Testing.md) |
 
 ```bash
 # Default suite (skips Category=UI and Category=Platform)

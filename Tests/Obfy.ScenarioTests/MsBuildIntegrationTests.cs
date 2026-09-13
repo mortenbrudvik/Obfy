@@ -6,7 +6,7 @@ namespace Obfy.ScenarioTests;
 public class MsBuildIntegrationTests
 {
     [Fact]
-    public void MsBuildAfterBuild_ObfuscatesReleaseOutput_AndAppRuns()
+    public void MsBuildAfterBuild_ObfuscatesReleaseOutput()
     {
         var repo = ScenarioHarness.FindRepoRoot();
         var source = Path.Combine(repo, "examples", "MsBuildIntegration");

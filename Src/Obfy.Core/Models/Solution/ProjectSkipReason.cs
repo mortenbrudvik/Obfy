@@ -3,35 +3,35 @@ namespace Obfy.Core.Models.Solution;
 /// <summary>
 /// Why a project was excluded from a protection session.
 /// </summary>
-public enum SkipReason
+public enum ProjectSkipReason
 {
     /// <summary>
-    /// Project is included (not skipped).
+    /// Project has an on-disk output and is included (load may still fail later).
     /// </summary>
     None,
 
     /// <summary>
-    /// Project name indicates a test project.
+    /// Test project (<c>IsTestProject</c>, test SDK/package, or test-like project name).
     /// </summary>
-    SkipTest,
+    Test,
 
     /// <summary>
-    /// Project or output is missing.
+    /// Built output was not found under conventional <c>bin/Release</c> or <c>bin/Debug</c> layouts.
     /// </summary>
-    SkipMissing,
+    MissingOutput,
 
     /// <summary>
     /// Project file path could not be resolved.
     /// </summary>
-    SkipMissingProject,
+    MissingProject,
 
     /// <summary>
-    /// Project failed to load.
+    /// Project file could not be read (invalid XML or I/O).
     /// </summary>
-    SkipLoadFailed,
+    LoadFailed,
 
     /// <summary>
     /// Project type or target is unsupported.
     /// </summary>
-    SkipUnsupported
+    Unsupported
 }

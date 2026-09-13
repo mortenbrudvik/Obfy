@@ -1,7 +1,7 @@
 namespace Obfy.Core.Models.Solution;
 
 /// <summary>
-/// Closed set of projects considered for a solution-drop protection run.
+/// Plan for a solution or project protection run (CLI or UI).
 /// </summary>
 public sealed class ProtectionSession
 {
@@ -16,7 +16,8 @@ public sealed class ProtectionSession
     public required IReadOnlyList<ProjectProtectionEntry> Entries { get; init; }
 
     /// <summary>
-    /// Entries that will be obfuscated.
+    /// Entries with an on-disk output (load may still fail).
     /// </summary>
-    public IEnumerable<ProjectProtectionEntry> Included => Entries.Where(static e => e.IsIncluded);
+    public IReadOnlyList<ProjectProtectionEntry> Included =>
+        Entries.Where(static e => e.IsIncluded).ToArray();
 }

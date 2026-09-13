@@ -45,7 +45,7 @@
                         <ui:SymbolIcon Symbol="ArrowUpload24" FontSize="48"/>
                         <ui:TextBlock Text="Drag and drop assemblies or a solution" FontSize="18" Margin="0,12,0,0" HorizontalAlignment="Center"
                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                        <ui:TextBlock Text=".dll, .exe, .cs, .sln, .csproj" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
+                        <ui:TextBlock Text=".dll, .exe, .cs, .sln, .slnx, .csproj, .vbproj, .fsproj" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
@@ -55,7 +55,7 @@
                     <ui:SymbolIcon Symbol="DocumentMultiple24" FontSize="48" Opacity="0.5"/>
                     <ui:TextBlock Text="Drag and drop assemblies or a solution" Margin="0,12,0,4" HorizontalAlignment="Center"
                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                    <ui:TextBlock Text=".dll, .exe, .cs, .sln, .csproj" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
+                    <ui:TextBlock Text=".dll, .exe, .cs, .sln, .slnx, .csproj, .vbproj, .fsproj" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- File List -->

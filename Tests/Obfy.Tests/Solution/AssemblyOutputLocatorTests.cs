@@ -48,6 +48,26 @@ public class AssemblyOutputLocatorTests
     }
 
     [Fact]
+    public void FindAll_DebugOnly_ReturnsDebugOutput()
+    {
+        var root = CreateTempDir();
+        try
+        {
+            var debugDll = Path.Combine(root, "bin", "Debug", "net8.0", "App.dll");
+            WriteEmptyFile(debugDll);
+
+            var found = AssemblyOutputLocator.FindAll(root, "App", new[] { "net8.0" });
+
+            found.Count.ShouldBe(1);
+            found[0].ShouldBe(debugDll);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void FindAll_EmptyTree_ReturnsEmptyList()
     {
         var root = CreateTempDir();

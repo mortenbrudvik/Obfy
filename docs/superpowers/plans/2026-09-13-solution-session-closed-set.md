@@ -1,5 +1,7 @@
 # Solution Session + Closed-Set Pipeline Implementation Plan
 
+> **As-built (review follow-up):** Implemented. Skip taxonomy is `ProjectSkipReason` (not `SkipReason`). Load failures live on `ClosedSetResult.LoadFailures`. UI session identity is `AssemblyFile.FromSession`. CLI closed-set is session-only (`obfy App.dll Lib.dll` stays per-file). Checkboxes below were the original task list, not remaining work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Accept a `.sln` / `.slnx` / `.csproj` in the CLI and WPF app, analyze the ship set on disk, skip tests and missing outputs, and obfuscate included assemblies as one closed application (in-solution public APIs renamed together).

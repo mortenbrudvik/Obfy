@@ -1,10 +1,13 @@
 using System.Reflection;
 using System.Runtime.Loader;
+using Autofac;
 using dnlib.DotNet;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Obfy.Core.DependencyInjection;
 using Obfy.Core.Models;
 using Obfy.Core.Models.Solution;
 using Obfy.Core.Obfuscators.Assembly;
@@ -139,7 +142,8 @@ public class ClosedSetProcessorTests
             ClosedSetRenameSettings(preservePublicApi: false));
 
         result.Success.ShouldBeTrue(result.ErrorMessage);
-        result.LoadFailures.ShouldContain(badPath);
+        result.LoadFailures.ShouldContain(f => f.Path == badPath);
+        result.LoadFailures.ShouldContain(f => f.Path == badPath && !string.IsNullOrWhiteSpace(f.Message));
 
         var outLib = Path.Combine(outputDir, "Lib.dll");
         File.Exists(outLib).ShouldBeTrue();
@@ -292,6 +296,199 @@ public class ClosedSetProcessorTests
         }
     }
 
+    [Fact]
+    public async Task ExecuteAsync_DuplicateRelativeOutputs_FailsWithoutWriting()
+    {
+        using var fixture = new ClosedSetEmit();
+        var libPath = fixture.CompileLib();
+        var first = Path.Combine(fixture.Root, "projA", "bin", "Release", "net8.0");
+        var second = Path.Combine(fixture.Root, "projB", "bin", "Release", "net8.0");
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+        var libA = Path.Combine(first, "Lib.dll");
+        var libB = Path.Combine(second, "Lib.dll");
+        File.Copy(libPath, libA);
+        File.Copy(libPath, libB);
+        var outputDir = Path.Combine(fixture.Root, "collision-out");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libA, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = libB, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: true));
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("Output path collision");
+        Directory.Exists(outputDir).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AllInputsFailToLoad_FailsWithNoOutput()
+    {
+        using var fixture = new ClosedSetEmit();
+        var badA = Path.Combine(fixture.Root, "A.dll");
+        var badB = Path.Combine(fixture.Root, "B.dll");
+        await File.WriteAllTextAsync(badA, "not an assembly");
+        await File.WriteAllTextAsync(badB, "also not");
+        var outputDir = Path.Combine(fixture.Root, "all-fail");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = badA, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = badB, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: false));
+
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldBe("No assemblies could be loaded.");
+        result.LoadFailures.Count.ShouldBe(2);
+        Directory.Exists(outputDir).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ForcePreservePublic_KeepsReferencedLibPublicNames()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        var outputDir = Path.Combine(fixture.Root, "force-preserve");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints { PreservePublicApi = false } },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: false),
+            forcePreservePublic: true);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        using var libModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(Path.Combine(outputDir, "Lib.dll")));
+        libModule.GetTypes().ShouldContain(t => t.Name == "Greeter");
+        InvokeProgramRun(Path.Combine(outputDir, "App.exe"), Path.Combine(outputDir, "Lib.dll")).ShouldBe("hi");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CorruptExe_RemainingLibStaysLibraryMode()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        await File.WriteAllTextAsync(appPath, "not an exe");
+        var outputDir = Path.Combine(fixture.Root, "exe-load-fail");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints { PreservePublicApi = false } },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: false));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.LoadFailures.ShouldContain(f => f.Path == appPath);
+        using var libModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(Path.Combine(outputDir, "Lib.dll")));
+        libModule.GetTypes().ShouldContain(t => t.Name == "Greeter");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_MultiTfmAppAndLib_BothPairsStillRun()
+    {
+        using var fixture = new ClosedSetEmit();
+        var net8 = Path.Combine(fixture.Root, "bin", "Release", "net8.0");
+        var windows = Path.Combine(fixture.Root, "bin", "Release", "net8.0-windows");
+        var (lib8, app8) = fixture.CompileClosedSetTo(net8);
+        var (libWin, appWin) = fixture.CompileClosedSetTo(windows);
+        var outputDir = Path.Combine(fixture.Root, "multi-tfm-out");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = lib8, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = app8, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = libWin, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = appWin, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: false));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        var outLib8 = Path.Combine(outputDir, "net8.0", "Lib.dll");
+        var outApp8 = Path.Combine(outputDir, "net8.0", "App.exe");
+        var outLibWin = Path.Combine(outputDir, "net8.0-windows", "Lib.dll");
+        var outAppWin = Path.Combine(outputDir, "net8.0-windows", "App.exe");
+        File.Exists(outLib8).ShouldBeTrue();
+        File.Exists(outApp8).ShouldBeTrue();
+        File.Exists(outLibWin).ShouldBeTrue();
+        File.Exists(outAppWin).ShouldBeTrue();
+        InvokeProgramRun(outApp8, outLib8).ShouldBe("hi");
+        InvokeProgramRun(outAppWin, outLibWin).ShouldBe("hi");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AppAndLib_RealPipeline_RenamesLibOnce_AndProgramRunStillReturnsHi()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        var outputDir = Path.Combine(fixture.Root, "real-pipeline");
+
+        var processor = CreateRealProcessor();
+        var settings = ClosedSetRenameSettings(preservePublicApi: false);
+        settings.StringEncryption.Enabled = true;
+
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            settings);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        var outLib = Path.Combine(outputDir, "Lib.dll");
+        var outApp = Path.Combine(outputDir, "App.exe");
+        using (var libModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(outLib)))
+            libModule.GetTypes().ShouldNotContain(t => t.Name == "Greeter");
+
+        InvokeProgramRun(outApp, outLib).ShouldBe("hi");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReferencedExtra_IsRenamed()
+    {
+        using var fixture = new ClosedSetEmit();
+        var extraPath = fixture.CompileExtra();
+        var appSource = """
+            using Extra.Api;
+            public static class Program
+            {
+                public static void Main() { }
+                public static string Run() => Unused.Ping();
+            }
+            """;
+        var appPath = fixture.CompileSource(appSource, "App", OutputKind.ConsoleApplication, extraPath);
+        var outputDir = Path.Combine(fixture.Root, "referenced-extra");
+
+        var processor = CreateProcessor();
+        var result = await processor.ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = extraPath, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            ClosedSetRenameSettings(preservePublicApi: false));
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        using var extraModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(Path.Combine(outputDir, "Extra.dll")));
+        extraModule.GetTypes().ShouldNotContain(t => t.Name == "Unused");
+        InvokeProgramRun(Path.Combine(outputDir, "App.exe"), Path.Combine(outputDir, "Extra.dll")).ShouldBe("pong");
+    }
+
     private static ClosedSetProcessor CreateProcessor(IObfuscationPipeline? pipeline = null)
     {
         if (pipeline is null)
@@ -307,6 +504,15 @@ public class ClosedSetProcessorTests
             pipeline,
             new AssemblyProcessor(new Mock<ILogger<AssemblyProcessor>>().Object),
             CreateRenamer());
+    }
+
+    private static ClosedSetProcessor CreateRealProcessor()
+    {
+        var builder = new ContainerBuilder();
+        builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+        builder.RegisterModule<ObfuscationModule>();
+        var container = builder.Build();
+        return (ClosedSetProcessor)container.Resolve<IClosedSetProcessor>();
     }
 
     private static SymbolRenamingObfuscator CreateRenamer() =>
@@ -366,9 +572,20 @@ public class ClosedSetProcessorTests
             return (libPath, appPath);
         }
 
+        public (string LibPath, string AppPath) CompileClosedSetTo(string directory)
+        {
+            Directory.CreateDirectory(directory);
+            var libPath = Compile(LibSource, "Lib", OutputKind.DynamicallyLinkedLibrary, destPath: Path.Combine(directory, "Lib.dll"));
+            var appPath = Compile(AppSource, "App", OutputKind.ConsoleApplication, libPath, Path.Combine(directory, "App.exe"));
+            return (libPath, appPath);
+        }
+
         public string CompileLib() => Compile(LibSource, "Lib", OutputKind.DynamicallyLinkedLibrary);
 
         public string CompileExtra() => Compile(ExtraSource, "Extra", OutputKind.DynamicallyLinkedLibrary);
+
+        public string CompileSource(string source, string assemblyName, OutputKind kind, string? referencePath = null)
+            => Compile(source, assemblyName, kind, referencePath);
 
         public (ModuleDefMD Lib, ModuleDefMD App) LoadClosedSet()
         {
@@ -394,7 +611,12 @@ public class ClosedSetProcessorTests
             return (libPath, appPath);
         }
 
-        private string Compile(string source, string assemblyName, OutputKind kind, string? referencePath = null)
+        private string Compile(
+            string source,
+            string assemblyName,
+            OutputKind kind,
+            string? referencePath = null,
+            string? destPath = null)
         {
             var tree = CSharpSyntaxTree.ParseText(source);
             var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
@@ -411,7 +633,8 @@ public class ClosedSetProcessorTests
                 new CSharpCompilationOptions(kind));
 
             var extension = kind == OutputKind.ConsoleApplication ? ".exe" : ".dll";
-            var path = Path.Combine(_root, assemblyName + extension);
+            var path = destPath ?? Path.Combine(_root, assemblyName + extension);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var emit = compilation.Emit(path);
             emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
             return path;

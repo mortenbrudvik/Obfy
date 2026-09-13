@@ -53,7 +53,7 @@ public class ObfuscationServiceClosedSetTests : IDisposable
         const string outputDir = "closed-out";
         var settings = new ObfySettings { Level = ObfuscationLevel.Custom };
         using var cts = new CancellationTokenSource();
-        var expected = new ClosedSetResult { Success = true };
+        var expected = ClosedSetResult.Succeeded([]);
 
         var processor = new Mock<IClosedSetProcessor>();
         processor

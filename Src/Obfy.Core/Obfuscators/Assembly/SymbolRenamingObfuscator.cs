@@ -290,11 +290,14 @@ public class SymbolRenamingObfuscator : IObfuscator
         }
 
         // Resolve while original names still match; apply mutates defs that the resolver keys on.
+        // Match in-set refs by assembly name + TFM path so two TFMs of the same identity
+        // do not steal each other's TypeRefs via the shared AssemblyResolver cache.
         var typeRefUpdates = new List<(TypeRef Ref, TypeDef Def)>();
         var memberRefUpdates = new List<(MemberRef Ref, IMemberDef Def)>();
         var exportedUpdates = new List<(ExportedType Ref, TypeDef Def)>();
+        var set = plans.ConvertAll(static p => p.Module);
         foreach (var (module, _, _) in plans)
-            SnapshotClosedSetReferences(module, typeRefUpdates, memberRefUpdates, exportedUpdates);
+            SnapshotClosedSetReferences(module, set, typeRefUpdates, memberRefUpdates, exportedUpdates);
 
         foreach (var (module, settings, plan) in plans)
         {
@@ -524,29 +527,110 @@ public class SymbolRenamingObfuscator : IObfuscator
 
     private static void SnapshotClosedSetReferences(
         ModuleDef module,
+        IReadOnlyList<ModuleDef> set,
         List<(TypeRef Ref, TypeDef Def)> typeRefUpdates,
         List<(MemberRef Ref, IMemberDef Def)> memberRefUpdates,
         List<(ExportedType Ref, TypeDef Def)> exportedUpdates)
     {
         foreach (var typeRef in module.GetTypeRefs())
         {
-            var def = typeRef.ResolveTypeDef();
+            var def = FindTypeDefInSet(typeRef, module, set);
             if (def != null)
                 typeRefUpdates.Add((typeRef, def));
         }
 
         foreach (var memberRef in module.GetMemberRefs())
         {
-            if (memberRef.Resolve() is IMemberDef def)
+            var def = FindMemberDefInSet(memberRef, module, set);
+            if (def != null)
                 memberRefUpdates.Add((memberRef, def));
         }
 
         foreach (var exported in module.ExportedTypes)
         {
-            var def = exported.Resolve();
+            var def = FindExportedTypeInSet(exported, module, set);
             if (def != null)
                 exportedUpdates.Add((exported, def));
         }
+    }
+
+    private static TypeDef? FindTypeDefInSet(TypeRef typeRef, ModuleDef referring, IReadOnlyList<ModuleDef> set)
+    {
+        var chosen = ChooseInSetModule(typeRef.DefinitionAssembly, referring, set);
+        if (chosen is null)
+            return typeRef.ResolveTypeDef();
+
+        return FindType(chosen, typeRef.Namespace, typeRef.Name);
+    }
+
+    private static IMemberDef? FindMemberDefInSet(MemberRef memberRef, ModuleDef referring, IReadOnlyList<ModuleDef> set)
+    {
+        TypeDef? typeDef = memberRef.Class switch
+        {
+            TypeRef typeRef => FindTypeDefInSet(typeRef, referring, set),
+            TypeDef declared => declared,
+            _ => null
+        };
+
+        if (typeDef is null)
+            return memberRef.Resolve() as IMemberDef;
+
+        if (memberRef.IsFieldRef)
+            return typeDef.FindField(memberRef.Name, memberRef.FieldSig);
+
+        return typeDef.FindMethod(memberRef.Name, memberRef.MethodSig);
+    }
+
+    private static TypeDef? FindExportedTypeInSet(ExportedType exported, ModuleDef referring, IReadOnlyList<ModuleDef> set)
+    {
+        var chosen = ChooseInSetModule(exported.DefinitionAssembly, referring, set);
+        if (chosen is null)
+            return exported.Resolve();
+
+        return FindType(chosen, exported.TypeNamespace, exported.TypeName);
+    }
+
+    private static ModuleDef? ChooseInSetModule(IAssembly? assembly, ModuleDef referring, IReadOnlyList<ModuleDef> set)
+    {
+        var name = assembly?.Name?.String;
+        if (string.IsNullOrEmpty(name))
+            return referring;
+
+        List<ModuleDef>? candidates = null;
+        foreach (var module in set)
+        {
+            if (module.Assembly?.Name?.String is not { } moduleName)
+                continue;
+            if (!moduleName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                continue;
+            candidates ??= new List<ModuleDef>();
+            candidates.Add(module);
+        }
+
+        if (candidates is null || candidates.Count == 0)
+            return null;
+        if (candidates.Count == 1)
+            return candidates[0];
+
+        var tfm = ClosedSetPath.FindTfmSegment(referring.Location);
+        foreach (var candidate in candidates)
+        {
+            if (string.Equals(ClosedSetPath.FindTfmSegment(candidate.Location), tfm, StringComparison.OrdinalIgnoreCase))
+                return candidate;
+        }
+
+        return candidates[0];
+    }
+
+    private static TypeDef? FindType(ModuleDef module, UTF8String? ns, UTF8String? name)
+    {
+        foreach (var type in module.GetTypes())
+        {
+            if (type.Name == name && type.Namespace == ns)
+                return type;
+        }
+
+        return null;
     }
 
     private static void ApplyClosedSetReferenceUpdates(

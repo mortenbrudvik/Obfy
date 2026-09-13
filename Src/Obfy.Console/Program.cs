@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Text.Json;
+using System.Xml;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Autofac;
@@ -429,7 +430,7 @@ public class Program
                 input ?? [], output, settings, map, report, dryRun, verbose, merge, preservePublic, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or XmlException or IOException or UnauthorizedAccessException)
         {
             AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
             return 1;
@@ -634,8 +635,20 @@ public class Program
         return 0;
     }
 
-    internal static string FormatLibraryMode(bool included, bool hintPreservePublic, bool forcePreservePublic)
-        => included && (forcePreservePublic || hintPreservePublic) ? "Yes" : "No";
+    internal static string FormatLibraryMode(
+        bool included,
+        bool hintPreservePublic,
+        bool forcePreservePublic,
+        bool extraUnknownUntilLoad = false)
+    {
+        if (!included)
+            return "No";
+        if (forcePreservePublic || hintPreservePublic)
+            return "Yes";
+        if (extraUnknownUntilLoad)
+            return "After load";
+        return "No";
+    }
 
     private static async Task<int> RunClosedSetSessionAsync(
         FileInfo[] inputs,
@@ -699,6 +712,9 @@ public class Program
 
         PrintSessionPlan(session, presentExtras, missingExtras, preservePublic);
 
+        if (missingExtras.Count > 0)
+            return 1;
+
         var closedSetInputs = new List<ClosedSetInput>();
         foreach (var entry in session.Included)
         {
@@ -725,6 +741,12 @@ public class Program
         }
 
         var useMerge = merge && closedSetInputs.Count >= 2;
+        if (merge && !useMerge)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]Merge requires at least two included assemblies; continuing as a closed set.[/]");
+        }
+
         if (useMerge)
             AnsiConsole.MarkupLine("[cyan]Merging included assemblies into one before obfuscating.[/]");
 
@@ -767,12 +789,16 @@ public class Program
             closedSetInputs, outputDir, settings, forcePreservePublic: preservePublic, cancellationToken)
             .ConfigureAwait(false);
 
+        foreach (var failure in result.LoadFailures)
+        {
+            AnsiConsole.MarkupLine(
+                $"[red]Failed to load {Markup.Escape(failure.Path)}: {Markup.Escape(failure.Message)}[/]");
+        }
+
         if (!result.Success)
         {
             AnsiConsole.MarkupLine(
                 $"[red]{Markup.Escape(result.ErrorMessage ?? "Closed-set obfuscation failed.")}[/]");
-            foreach (var failure in result.LoadFailures)
-                AnsiConsole.MarkupLine($"[yellow]Failed to load {Markup.Escape(failure)}[/]");
             foreach (var module in result.ModuleResults.Where(static m => !m.Success))
                 DisplayError(Path.GetFileName(module.InputPath) ?? "module", module);
             return 1;
@@ -789,6 +815,12 @@ public class Program
             .ConfigureAwait(false);
 
         AnsiConsole.WriteLine();
+        if (result.LoadFailures.Count > 0)
+        {
+            AnsiConsole.MarkupLine("[red]Closed-set finished with load failures. Remaining modules were written.[/]");
+            return 1;
+        }
+
         AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
         return 0;
     }
@@ -852,7 +884,7 @@ public class Program
                 Markup.Escape(Path.GetFileNameWithoutExtension(extra.Name)),
                 "Included",
                 Markup.Escape(extra.FullName),
-                FormatLibraryMode(included: true, hintPreservePublic: false, forcePreservePublic),
+                FormatLibraryMode(included: true, hintPreservePublic: false, forcePreservePublic, extraUnknownUntilLoad: true),
                 RuntimeProfile.Default.ToString());
         }
 

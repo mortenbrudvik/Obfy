@@ -10,7 +10,8 @@ namespace Obfy.Core.Services.Solution;
 
 /// <summary>
 /// Default closed-set coordinator: one module context, one rename pass, per-module pipeline,
-/// all-or-nothing write.
+/// all-or-nothing write. Pipeline/save/commit is all-or-nothing; modules that fail to load
+/// are omitted and the remaining set may still commit.
 /// </summary>
 public class ClosedSetProcessor : IClosedSetProcessor
 {
@@ -45,7 +46,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
 
         string? tempDir = null;
         var loaded = new List<LoadedModule>();
-        var loadFailures = new List<string>();
+        var loadFailures = new List<ClosedSetLoadFailure>();
 
         try
         {
@@ -54,12 +55,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
 
             if (loaded.Count == 0)
             {
-                return new ClosedSetResult
-                {
-                    Success = false,
-                    ErrorMessage = "No assemblies could be loaded.",
-                    LoadFailures = loadFailures
-                };
+                return ClosedSetResult.Failed("No assemblies could be loaded.", loadFailures);
             }
 
             var hasEntryPoint = loaded.Any(static m => HasEntryPoint(m.Module));
@@ -68,6 +64,11 @@ public class ClosedSetProcessor : IClosedSetProcessor
             var renamePairs = new List<(ModuleDef Module, ObfySettings Settings)>(loaded.Count);
             var jobs = new List<ModuleJob>(loaded.Count);
             var relativeOutputs = AssignRelativeOutputPaths(loaded);
+
+            var collision = FindOutputCollision(loaded, relativeOutputs);
+            if (collision is not null)
+                return ClosedSetResult.Failed(collision, loadFailures);
+
             var sessionContext = PipelineContext.ForAssembly(loaded[0].Module, baseSettings.Clone());
             sessionContext.InputPath = loaded[0].Input.AssemblyPath;
 
@@ -124,7 +125,11 @@ public class ClosedSetProcessor : IClosedSetProcessor
                         job.Loaded.Input.AssemblyPath,
                         result.ErrorMessage);
                     moduleResults.Add(result);
-                    return Fail(result.ErrorMessage ?? "Pipeline failed.", loadFailures, moduleResults, symbolMap);
+                    return ClosedSetResult.Failed(
+                        result.ErrorMessage ?? "Pipeline failed.",
+                        loadFailures,
+                        moduleResults,
+                        symbolMap);
                 }
 
                 foreach (var pair in context.SymbolMap)
@@ -151,7 +156,11 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogError(ex, "Failed to save {Path}", job.Loaded.Input.AssemblyPath);
-                    return Fail($"Failed to save output: {ex.Message}", loadFailures, moduleResults, symbolMap);
+                    return ClosedSetResult.Failed(
+                        $"Failed to save output: {ex.Message}",
+                        loadFailures,
+                        moduleResults,
+                        symbolMap);
                 }
             }
 
@@ -172,11 +181,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
         finally
         {
             foreach (var item in loaded)
-            {
-                if (item.Saved)
-                    continue;
                 item.Module.Dispose();
-            }
 
             DeleteDirectory(tempDir);
         }
@@ -185,7 +190,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
     private async Task LoadRemainingAsync(
         IReadOnlyList<ClosedSetInput> inputs,
         List<LoadedModule> loaded,
-        List<string> loadFailures,
+        List<ClosedSetLoadFailure> loadFailures,
         CancellationToken cancellationToken)
     {
         var ctx = ModuleDef.CreateModuleContext();
@@ -198,13 +203,18 @@ public class ClosedSetProcessor : IClosedSetProcessor
             {
                 var bytes = await File.ReadAllBytesAsync(input.AssemblyPath, cancellationToken).ConfigureAwait(false);
                 var module = ModuleDefMD.Load(bytes, ctx);
+                module.Location = input.AssemblyPath;
                 resolver.AddToCache(module);
                 loaded.Add(new LoadedModule(input, module));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogWarning(ex, "Failed to load {Path}", input.AssemblyPath);
-                loadFailures.Add(input.AssemblyPath);
+                loadFailures.Add(new ClosedSetLoadFailure
+                {
+                    Path = input.AssemblyPath,
+                    Message = ex.Message
+                });
             }
         }
     }
@@ -216,8 +226,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
         HashSet<string> referencedByExe,
         bool forcePreservePublic)
     {
-        var settings = baseSettings.Clone();
-        SolutionHintApplier.Apply(settings, item.Input.Hints, forcePreservePublic);
+        var settings = SolutionHintApplier.Overlay(baseSettings, item.Input.Hints, forcePreservePublic);
 
         if (!hasEntryPoint)
             settings.SymbolRenaming.PreservePublicApi = true;
@@ -269,7 +278,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
         string outputDirectory,
         string tempDir,
         List<ModuleJob> jobs,
-        List<string> loadFailures,
+        List<ClosedSetLoadFailure> loadFailures,
         List<ObfuscationResult> moduleResults,
         Dictionary<string, string> symbolMap,
         CancellationToken cancellationToken)
@@ -294,11 +303,11 @@ public class ClosedSetProcessor : IClosedSetProcessor
                     var backup = Path.Combine(
                         destDir ?? outputDirectory,
                         $".{Path.GetFileName(dest)}.{Guid.NewGuid():N}.obfyprev");
-                    File.Move(dest, backup);
+                    File.Copy(dest, backup, overwrite: true);
                     stashes.Add((dest, backup));
                 }
 
-                File.Move(source, dest);
+                File.Copy(source, dest, overwrite: true);
                 placed.Add(dest);
             }
         }
@@ -310,8 +319,15 @@ public class ClosedSetProcessor : IClosedSetProcessor
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to commit closed-set output to {Path}", outputDirectory);
-            RestoreCommit(placed, stashes);
-            return Fail($"Failed to save output: {ex.Message}", loadFailures, moduleResults, symbolMap);
+            var restoreErrors = RestoreCommit(placed, stashes);
+            var message = $"Failed to save output: {ex.Message}";
+            if (restoreErrors.Count > 0)
+            {
+                message += ". Restore also failed; backups left as *.obfyprev: "
+                    + string.Join("; ", restoreErrors);
+            }
+
+            return ClosedSetResult.Failed(message, loadFailures, moduleResults, symbolMap);
         }
 
         foreach (var (_, backup) in stashes)
@@ -325,34 +341,35 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 Path.Combine(outputDirectory, job.RelativeOutput)));
         }
 
-        return new ClosedSetResult
-        {
-            Success = true,
-            ModuleResults = finalResults,
-            LoadFailures = loadFailures,
-            SymbolMap = symbolMap
-        };
+        return ClosedSetResult.Succeeded(finalResults, loadFailures, symbolMap);
     }
 
-    private void RestoreCommit(List<string> placed, List<(string Dest, string Backup)> stashes)
+    private List<string> RestoreCommit(List<string> placed, List<(string Dest, string Backup)> stashes)
     {
+        var errors = new List<string>();
+
         foreach (var path in placed)
+        {
+            if (stashes.Exists(s => string.Equals(s.Dest, path, StringComparison.OrdinalIgnoreCase)))
+                continue;
             DeleteFile(path);
+        }
 
         foreach (var (dest, backup) in stashes)
         {
             try
             {
-                if (File.Exists(dest))
-                    File.Delete(dest);
                 if (File.Exists(backup))
-                    File.Move(backup, dest);
+                    File.Copy(backup, dest, overwrite: true);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to restore {Path}", dest);
+                _logger.LogError(ex, "Failed to restore {Path} from {Backup}", dest, backup);
+                errors.Add($"{dest} (backup: {backup}): {ex.Message}");
             }
         }
+
+        return errors;
     }
 
     private static ObfuscationResult ToSuccessfulModuleResult(ModuleJob job, string? outputPath)
@@ -367,6 +384,22 @@ public class ClosedSetProcessor : IClosedSetProcessor
             skippedItems: [.. context.SkippedItems],
             symbolMap: new Dictionary<string, string>(context.SymbolMap),
             warnings: [.. context.Warnings]);
+    }
+
+    private static string? FindOutputCollision(List<LoadedModule> loaded, IReadOnlyList<string> relativeOutputs)
+    {
+        var seen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < loaded.Count; i++)
+        {
+            if (seen.TryGetValue(relativeOutputs[i], out var first))
+            {
+                return $"Output path collision '{relativeOutputs[i]}' for '{first}' and '{loaded[i].Input.AssemblyPath}'.";
+            }
+
+            seen[relativeOutputs[i]] = loaded[i].Input.AssemblyPath;
+        }
+
+        return null;
     }
 
     private static IReadOnlyList<string> AssignRelativeOutputPaths(List<LoadedModule> loaded)
@@ -389,7 +422,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 continue;
             }
 
-            var tfm = FindTfmSegment(path);
+            var tfm = ClosedSetPath.FindTfmSegment(path);
             if (!string.IsNullOrEmpty(tfm))
             {
                 relative[i] = Path.Combine(tfm, fileName);
@@ -403,52 +436,9 @@ public class ClosedSetProcessor : IClosedSetProcessor
         return relative;
     }
 
-    private static string? FindTfmSegment(string path)
-    {
-        var segments = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        for (var i = segments.Length - 2; i >= 0; i--)
-        {
-            if (LooksLikeTfm(segments[i]))
-                return segments[i];
-        }
-
-        return null;
-    }
-
-    // netX.Y or netX.Y-platform (net8.0, net10.0-windows).
-    private static bool LooksLikeTfm(string segment)
-    {
-        if (segment.Length < 5 || !segment.StartsWith("net", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        var i = 3;
-        if (!char.IsDigit(segment[i]))
-            return false;
-        while (i < segment.Length && char.IsDigit(segment[i]))
-            i++;
-        if (i >= segment.Length || segment[i] != '.')
-            return false;
-        i++;
-        return i < segment.Length && char.IsDigit(segment[i]);
-    }
-
     private static bool HasEntryPoint(ModuleDef module)
         => module.EntryPoint is not null
             || module.Kind is ModuleKind.Console or ModuleKind.Windows;
-
-    private static ClosedSetResult Fail(
-        string errorMessage,
-        IReadOnlyList<string> loadFailures,
-        IReadOnlyList<ObfuscationResult>? moduleResults = null,
-        Dictionary<string, string>? symbolMap = null)
-        => new()
-        {
-            Success = false,
-            ErrorMessage = errorMessage,
-            ModuleResults = moduleResults ?? [],
-            LoadFailures = loadFailures,
-            SymbolMap = symbolMap ?? new Dictionary<string, string>()
-        };
 
     private void DeleteDirectory(string? path)
     {

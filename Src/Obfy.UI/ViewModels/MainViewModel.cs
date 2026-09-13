@@ -359,7 +359,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var included = files.Where(static f => f.IsIncluded);
         return included.Count(static a => a.IsAssembly) >= 2
-               || included.Any(static a => a.Hints != null);
+               || included.Any(static a => a.FromSession);
     }
 
     private static bool ShouldMerge(ObfySettings settings, List<AssemblyFile> files)
@@ -391,6 +391,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        foreach (var leftover in included.Where(static f => !f.IsAssembly))
+        {
+            leftover.Status = FileStatus.Skipped;
+            leftover.SkipReason = "Source files are not part of a closed-set session";
+            Output.Warning($"Skipping {leftover.FileName}: {leftover.SkipReason}");
+        }
+
         foreach (var file in assemblies)
         {
             file.Status = FileStatus.Processing;
@@ -403,9 +410,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var resolvedOutputDir = outputDir;
         if (string.IsNullOrEmpty(resolvedOutputDir))
         {
-            resolvedOutputDir = Path.GetDirectoryName(assemblies[0].FilePath);
-            if (string.IsNullOrEmpty(resolvedOutputDir))
-                resolvedOutputDir = ".";
+            var inputDir = Path.GetDirectoryName(assemblies[0].FilePath);
+            resolvedOutputDir = Path.Combine(
+                string.IsNullOrEmpty(inputDir) ? "." : inputDir,
+                "obfy-out");
+            Output.Info($"Output directory: {resolvedOutputDir}");
         }
 
         var inputs = assemblies.Select(static a => new ClosedSetInput
@@ -462,11 +471,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     continue;
                 }
 
-                if (IsLoadFailure(file, result.LoadFailures))
+                if (FindLoadFailure(file, result.LoadFailures) is { } loadFailure)
                 {
                     file.Progress = 100;
                     file.Status = FileStatus.Error;
-                    file.ErrorMessage = $"Failed to load {file.FileName}";
+                    file.ErrorMessage = $"Failed to load {file.FileName}: {loadFailure.Message}";
                     continue;
                 }
 
@@ -498,7 +507,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             Output.Success($"Closed-set obfuscation completed: {totalStats.TotalTransformations} transformations");
             foreach (var failure in result.LoadFailures)
-                Output.Warning($"Failed to load {failure}");
+                Output.Warning($"Failed to load {failure.Path}: {failure.Message}");
         }
         else
         {
@@ -512,7 +521,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             Output.Error(message);
             foreach (var failure in result.LoadFailures)
-                Output.Warning($"Failed to load {failure}");
+                Output.Warning($"Failed to load {failure.Path}: {failure.Message}");
             foreach (var module in result.ModuleResults.Where(static m => !m.Success))
                 Output.Error($"Failed {Path.GetFileName(module.InputPath)}: {module.ErrorMessage}");
         }
@@ -533,17 +542,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 && string.Equals(Path.GetFileName(m.OutputPath), file.FileName, StringComparison.OrdinalIgnoreCase)));
     }
 
-    private static bool IsLoadFailure(AssemblyFile file, IReadOnlyList<string> loadFailures)
+    private static ClosedSetLoadFailure? FindLoadFailure(
+        AssemblyFile file,
+        IReadOnlyList<ClosedSetLoadFailure> loadFailures)
     {
         foreach (var failure in loadFailures)
         {
-            if (string.Equals(failure, file.FilePath, StringComparison.OrdinalIgnoreCase))
-                return true;
-            if (string.Equals(Path.GetFileName(failure), file.FileName, StringComparison.OrdinalIgnoreCase))
-                return true;
+            if (string.Equals(failure.Path, file.FilePath, StringComparison.OrdinalIgnoreCase))
+                return failure;
+            if (string.Equals(Path.GetFileName(failure.Path), file.FileName, StringComparison.OrdinalIgnoreCase))
+                return failure;
         }
 
-        return false;
+        return null;
     }
 
     private static void ResetProcessingFiles(List<AssemblyFile> files, string? error)

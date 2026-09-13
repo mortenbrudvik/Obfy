@@ -40,7 +40,7 @@ This is “analyze then obfuscate now,” not “wire every future Release build
  output directory + report
 ```
 
-New types live in `Obfy.Core` so CLI and UI share one implementation. `ObfuscationService` keeps the single-file path; it delegates to `ClosedSetProcessor` when the input is a session (solution/project) or when two or more assemblies are processed together.
+New types live in `Obfy.Core` so CLI and UI share one implementation. `ObfuscationService` keeps the single-file path. CLI closed-set runs only for a solution/project session (plus extra dlls on that invocation). UI closed-set runs for 2+ included assemblies **or** session rows (`FromSession`). `obfy App.dll Lib.dll` without a solution still uses per-file `ObfuscateAsync`.
 
 ## Components
 
@@ -67,8 +67,8 @@ Read:
 - `AssemblyName` (fallback: project file name)
 - `UseWPF`, `UseWinForms`, `UseMaui`
 - `PublishAot` / `IsAotCompatible`
-- SDK: `Microsoft.NET.Sdk.Web`, `Microsoft.NET.Sdk.BlazorWebAssembly`, `Microsoft.NET.Sdk.Razor`
-- `IsTestProject`; test SDKs (`MSTest.Sdk`, `Microsoft.NET.Test.Sdk`); `xunit` / `nunit` / `mstest` package references
+- SDK: `Microsoft.NET.Sdk.Web`, `Microsoft.NET.Sdk.BlazorWebAssembly` (Razor SDK is not a distinct hint)
+- `IsTestProject`; test package IDs (`MSTest.Sdk`, `Microsoft.NET.Test.Sdk`, xunit/nunit/MSTest); test-like project names
 - `ProjectReference` items (closed-set graph for UI/CLI plan)
 - Unity hint: `Reference` / `PackageReference` / `HintPath` containing `UnityEngine`
 
@@ -76,10 +76,11 @@ Do not expand wildcards or `$(Property)` except by searching conventional `bin` 
 
 **Skip rules (first match wins)**
 
-1. Test-like → `SkipTest`  
+1. Test-like → `ProjectSkipReason.Test`  
    `IsTestProject`, test SDK/package, or project **file name** (without extension) that equals `Test`, ends with `Tests` / `.Tests` / `.Test` / `.Testing`, or contains `.Tests.`. Do not use a bare `*Test` suffix (`Contest.csproj` is not a test).
-2. No output on disk → `SkipMissing`.
-3. Otherwise → `Include`.
+2. No output on disk → `ProjectSkipReason.MissingOutput` (RID-specific and publish folders are not scanned).
+3. Unreadable project XML → `ProjectSkipReason.LoadFailed`.
+4. Otherwise → `Include`.
 
 **Output discovery**
 
@@ -126,16 +127,16 @@ Always enumerable for CLI stdout and the UI Files list.
 
 Used when:
 
-- The user passed/dropped a solution or project, **or**
-- The UI/CLI is protecting **two or more** assemblies in one run.
+- The user passed/dropped a solution or project (CLI session), **or**
+- The UI is protecting **two or more** included assemblies, or any included row from a session.
 
-A single assembly (plain `obfy App.dll`) stays on today’s `ObfuscationService` path.
+A single assembly (plain `obfy App.dll`) stays on today’s `ObfuscationService` path. CLI `obfy App.dll Lib.dll` is still per-file.
 
-**Load.** Open every included module with one dnlib `ModuleContext` and a resolver that maps in-set assembly names to those modules. Framework and out-of-set references resolve from disk as today. A module that fails to load becomes `SkipLoadFailed`; recompute the closed-set graph so a library whose only consumer dropped is not aggressively renamed.
+**Load.** Open every included module with one dnlib `ModuleContext`. Closed-set rename matches in-set `TypeRef`/`MemberRef` by assembly name and TFM path so two TFMs of the same identity do not share a resolver slot. A module that fails to load is recorded on `ClosedSetResult.LoadFailures` (path + exception message) and omitted; recompute the closed-set graph so a library whose only consumer dropped is not aggressively renamed. Project XML that cannot be read is `ProjectSkipReason.LoadFailed` on the session entry.
 
 **Rename once.** One `NameGenerator` across the session. Per-module `preservePublicApi` from hints. Existing skips still apply: `[Obfuscation]`, exclusion lists, `preserveXaml` heuristics, entry point, external overrides.
 
-Then walk every in-set module for `TypeRef` / `MemberRef` / `MethodSpec` / `TypeSpec` that resolve to a renamed def and update those rows.
+Then walk every in-set module for `TypeRef` / `MemberRef` / `ExportedType` that resolve to a renamed def and update those rows (`MethodSpec` typically follows an updated `MemberRef`).
 
 **Other techniques per module.** After shared rename, each module runs the rest of the pipeline with symbol renaming already applied (do not run `SymbolRenamingObfuscator` a second time). Each module gets a settings clone with its hints (`runtimeProfile`, `preserveXaml`, Unity excludes). `RuntimeProfileGating` stays as it is.
 
@@ -178,14 +179,14 @@ Drop does **not** start obfuscation. Level and output directory stay user-contro
 
 Obfuscate on a solution session (or two or more assemblies) calls `ClosedSetProcessor`. One loose assembly keeps the current per-file path.
 
-If the list is skip-only: Obfuscate disabled; snackbar explains that nothing on disk was found (build Release, drop again).
+If the list is skip-only: Obfuscate is disabled (`HasIncludedFiles` is false); dropping a skip-only solution shows a warning snackbar to build Release and drop again.
 
 ## Failures
 
 | Situation | Result |
 |-----------|--------|
 | All skipped | No write. Reasons listed. CLI exit 2. |
-| Load failure | That entry `SkipLoadFailed`; recompute set; continue if anything remains. |
+| Load failure | Recorded on `ClosedSetResult.LoadFailures`; recompute set; continue if anything remains. CLI prints the cause and exits 1 after writing remaining modules. UI marks those rows Error. |
 | Technique/pipeline error | No output committed. Error names assembly and obfuscator. CLI exit 1. UI: included rows Error. |
 | Cancel | Discard temp output. |
 | Output directory not writable | Fail before any write. |

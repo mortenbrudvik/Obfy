@@ -63,7 +63,9 @@ public interface IObfuscationService
     /// <param name="inputs">Assemblies to load. Load failures are recorded and omitted.</param>
     /// <param name="outputDirectory">Directory that receives committed output on success.</param>
     /// <param name="settings">Session settings cloned per module before hint overlay.</param>
-    /// <param name="forcePreservePublic">Forces library-mode public names on in-set libraries.</param>
+    /// <param name="forcePreservePublic">When true, keep public names on every module (escape hatch).
+    /// When false, in-set libraries referenced by a remaining entry point are renamed; libraries-only
+    /// and unreferenced extras stay library-mode.</param>
     /// <param name="cancellationToken">Cancels the run and discards temp output.</param>
     /// <returns>The result of the closed-set protection run.</returns>
     Task<ClosedSetResult> ObfuscateClosedSetAsync(

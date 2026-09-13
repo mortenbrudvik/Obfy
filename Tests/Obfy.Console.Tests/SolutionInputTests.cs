@@ -120,7 +120,7 @@ public class SolutionInputTests : IDisposable
     }
 
     [Fact]
-    public void Invoke_MissingExtraDll_TestsOnlySolution_DryRun_ReturnsExitCode2()
+    public void Invoke_MissingExtraDll_TestsOnlySolution_DryRun_ReturnsExitCode1()
     {
         var sln = WriteTestsOnlySolution();
         var missing = Path.Combine(_tempDirectory, "NoSuch.dll");
@@ -129,7 +129,7 @@ public class SolutionInputTests : IDisposable
         var exitCode = CommandLineTestHelpers.Invoke(
             command, $"\"{sln}\" \"{missing}\" --dry-run --no-logo", out _);
 
-        exitCode.ShouldBe(2);
+        exitCode.ShouldBe(1);
     }
 
     [Fact]
@@ -158,6 +158,27 @@ public class SolutionInputTests : IDisposable
         exitCode.ShouldBe(0);
         File.Exists(Path.Combine(outputDir, "Lib.dll")).ShouldBeTrue();
         Directory.GetFiles(outputDir, "*.merged*").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Invoke_EmptySln_ReturnsExitCode1()
+    {
+        var sln = Path.Combine(_tempDirectory, "Empty.sln");
+        File.WriteAllText(sln, "Microsoft Visual Studio Solution File, Format Version 12.00");
+        var command = Program.CreateRootCommand();
+
+        var exitCode = CommandLineTestHelpers.Invoke(command, $"\"{sln}\" --dry-run --no-logo", out _);
+
+        exitCode.ShouldBe(1);
+    }
+
+    [Fact]
+    public void FormatLibraryMode_ExtraUnknownUntilLoad_PrintsAfterLoad()
+    {
+        Program.FormatLibraryMode(included: true, hintPreservePublic: false, forcePreservePublic: false, extraUnknownUntilLoad: true)
+            .ShouldBe("After load");
+        Program.FormatLibraryMode(included: true, hintPreservePublic: false, forcePreservePublic: true, extraUnknownUntilLoad: true)
+            .ShouldBe("Yes");
     }
 
     [Fact]

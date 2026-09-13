@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Xml;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -18,10 +19,11 @@ public partial class FilesViewModel : ObservableObject
     private readonly ISettingsService _settingsService;
     private readonly ISolutionAnalyzer? _solutionAnalyzer;
     private readonly ILogger<FilesViewModel>? _logger;
+    private readonly IUserNotificationService? _notifications;
     private bool _suppressPreferenceSave;
 
     /// <summary>
-    /// Gets the collection of files to obfuscate.
+    /// Input rows (included outputs and skipped session projects).
     /// </summary>
     public ObservableCollection<AssemblyFile> Files { get; } = new();
 
@@ -54,12 +56,14 @@ public partial class FilesViewModel : ObservableObject
         IFileDialogService fileDialogService,
         ISettingsService settingsService,
         ISolutionAnalyzer? solutionAnalyzer = null,
-        ILogger<FilesViewModel>? logger = null)
+        ILogger<FilesViewModel>? logger = null,
+        IUserNotificationService? notifications = null)
     {
         _fileDialogService = fileDialogService;
         _settingsService = settingsService;
         _solutionAnalyzer = solutionAnalyzer;
         _logger = logger;
+        _notifications = notifications;
 
         _suppressPreferenceSave = true;
         try
@@ -222,9 +226,13 @@ public partial class FilesViewModel : ObservableObject
                 if (!Files.Any(f => f.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
                     Files.Add(AssemblyFile.FromPath(path));
             }
-            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or XmlException or InvalidOperationException)
             {
                 _logger?.LogWarning(ex, "Skipped adding file {Path}", path);
+                _notifications?.Show(
+                    "Could not open file",
+                    $"{Path.GetFileName(path)}: {ex.Message}",
+                    NotificationSeverity.Error);
             }
         }
     }
@@ -232,14 +240,41 @@ public partial class FilesViewModel : ObservableObject
     private void AddSessionEntries(string path)
     {
         if (_solutionAnalyzer is null)
-            return;
-
-        var session = _solutionAnalyzer.Analyze(path);
-        foreach (var entry in session.Entries)
         {
-            var file = AssemblyFile.FromSessionEntry(entry);
-            if (!Files.Any(f => f.FilePath.Equals(file.FilePath, StringComparison.OrdinalIgnoreCase)))
-                Files.Add(file);
+            _logger?.LogError("Solution analyzer is not configured");
+            _notifications?.Show(
+                "Could not open solution",
+                "Solution analyzer is not configured.",
+                NotificationSeverity.Error);
+            return;
+        }
+
+        try
+        {
+            var session = _solutionAnalyzer.Analyze(path);
+            foreach (var entry in session.Entries)
+            {
+                var file = AssemblyFile.FromSessionEntry(entry);
+                if (!Files.Any(f => f.FilePath.Equals(file.FilePath, StringComparison.OrdinalIgnoreCase)))
+                    Files.Add(file);
+            }
+
+            if (!session.Entries.Any(static e => e.IsIncluded))
+            {
+                _notifications?.Show(
+                    "Nothing to protect",
+                    "No built outputs found. Build Release and drop the solution again.",
+                    NotificationSeverity.Warning);
+            }
+        }
+        catch (Exception ex) when (ex is XmlException or InvalidOperationException or ArgumentException
+            or IOException or UnauthorizedAccessException)
+        {
+            _logger?.LogWarning(ex, "Failed to expand {Path}", path);
+            _notifications?.Show(
+                "Could not open solution",
+                $"{Path.GetFileName(path)}: {ex.Message}",
+                NotificationSeverity.Error);
         }
     }
 
@@ -251,7 +286,7 @@ public partial class FilesViewModel : ObservableObject
             || ext.Equals(".fsproj", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Resets the status of all files to pending.
+    /// Resets non-skipped files to pending (skipped session rows are left unchanged).
     /// </summary>
     public void ResetFileStatus()
     {

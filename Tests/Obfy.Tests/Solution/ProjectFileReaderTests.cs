@@ -93,6 +93,75 @@ public class ProjectFileReaderTests
         }
     }
 
+    [Fact]
+    public void Read_AssemblyNameOverride_UsesPropertyNotFileName()
+    {
+        var path = WriteTempProject("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <AssemblyName>Contoso.App</AssemblyName>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        try
+        {
+            ProjectFileReader.Read(path).AssemblyName.ShouldBe("Contoso.App");
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Read_BlazorWebAssemblySdk_IsBlazorWasm()
+    {
+        var path = WriteTempProject("Client.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        try
+        {
+            var info = ProjectFileReader.Read(path);
+            info.IsBlazorWasm.ShouldBeTrue();
+            info.IsAspNetWeb.ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Read_XunitPackage_NamedApp_IsTest()
+    {
+        var path = WriteTempProject("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="xunit" Version="2.9.0" />
+              </ItemGroup>
+            </Project>
+            """);
+
+        try
+        {
+            ProjectFileReader.Read(path).IsTest.ShouldBeTrue();
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
+
     private static string WriteTempProject(string fileName, string contents)
     {
         var dir = Path.Combine(Path.GetTempPath(), $"obfy-csproj-{Guid.NewGuid():N}");

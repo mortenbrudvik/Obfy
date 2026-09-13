@@ -102,6 +102,30 @@ public class FilesViewModelTests : IDisposable
         return sln;
     }
 
+    private string WriteTestsOnlySolution()
+    {
+        var testsProj = Path.Combine(_tempDirectory, "Foo.Tests", "Foo.Tests.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(testsProj)!);
+        File.WriteAllText(testsProj, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <IsTestProject>true</IsTestProject>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var sln = Path.Combine(_tempDirectory, "Foo.sln");
+        var guid = Guid.NewGuid().ToString("D").ToUpperInvariant();
+        File.WriteAllText(sln, string.Join(Environment.NewLine, new[]
+        {
+            "Microsoft Visual Studio Solution File, Format Version 12.00",
+            "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"Foo.Tests\", \"Foo.Tests\\Foo.Tests.csproj\", \"{" + guid + "}\"",
+            "EndProject"
+        }));
+        return sln;
+    }
+
     #region Initial State Tests
 
     [Fact]
@@ -351,20 +375,21 @@ public class FilesViewModelTests : IDisposable
         {
             ProjectPath = Path.Combine(_tempDirectory, "Native.vcxproj"),
             ProjectName = "Native",
-            SkipReason = SkipReason.SkipUnsupported,
+            SkipReason = ProjectSkipReason.Unsupported,
             SkipMessage = "Unsupported project type '.vcxproj'"
         });
         withMessage.Status.ShouldBe(FileStatus.Skipped);
+        withMessage.FromSession.ShouldBeTrue();
         withMessage.SkipReason.ShouldBe("Unsupported project type '.vcxproj'");
 
         var withoutMessage = AssemblyFile.FromSessionEntry(new ProjectProtectionEntry
         {
             ProjectPath = Path.Combine(_tempDirectory, "Ghost.csproj"),
             ProjectName = "Ghost",
-            SkipReason = SkipReason.SkipMissingProject
+            SkipReason = ProjectSkipReason.MissingProject
         });
         withoutMessage.Status.ShouldBe(FileStatus.Skipped);
-        withoutMessage.SkipReason.ShouldBe(nameof(SkipReason.SkipMissingProject));
+        withoutMessage.SkipReason.ShouldBe(nameof(ProjectSkipReason.MissingProject));
     }
 
     [Fact]
@@ -385,6 +410,7 @@ public class FilesViewModelTests : IDisposable
         app.IsSkipped.ShouldBeFalse();
         app.Status.ShouldBe(FileStatus.Pending);
         app.Hints.ShouldNotBeNull();
+        app.FromSession.ShouldBeTrue();
         app.FilePath.ShouldEndWith(Path.Combine("App", "bin", "Release", "net8.0", "App.dll"));
 
         var tests = viewModel.Files.Single(f => f.IsSkipped);
@@ -393,6 +419,68 @@ public class FilesViewModelTests : IDisposable
         tests.Status.ShouldBe(FileStatus.Skipped);
         tests.SkipReason.ShouldBe("Test project");
         tests.Hints.ShouldNotBeNull();
+        tests.FromSession.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void HandleFileDrop_SkipOnlySolution_ShowsWarning()
+    {
+        var sln = WriteTestsOnlySolution();
+        var notifications = new Mock<IUserNotificationService>();
+        var viewModel = new FilesViewModel(
+            _mockFileDialogService.Object,
+            _mockSettingsService.Object,
+            new SolutionAnalyzer(),
+            notifications: notifications.Object);
+
+        viewModel.HandleFileDrop(new[] { sln });
+
+        viewModel.HasIncludedFiles.ShouldBeFalse();
+        notifications.Verify(
+            n => n.Show(
+                "Nothing to protect",
+                It.Is<string>(m => m.Contains("No built outputs", StringComparison.Ordinal)),
+                NotificationSeverity.Warning),
+            Times.Once);
+    }
+
+    [Fact]
+    public void HandleFileDrop_CorruptProject_ShowsErrorAndDoesNotThrow()
+    {
+        var csproj = Path.Combine(_tempDirectory, "Broken.csproj");
+        File.WriteAllText(csproj, "<not xml");
+        var notifications = new Mock<IUserNotificationService>();
+        var viewModel = new FilesViewModel(
+            _mockFileDialogService.Object,
+            _mockSettingsService.Object,
+            new SolutionAnalyzer(),
+            notifications: notifications.Object);
+
+        Should.NotThrow(() => viewModel.HandleFileDrop(new[] { csproj }));
+
+        viewModel.Files.Count.ShouldBe(1);
+        viewModel.Files[0].IsSkipped.ShouldBeTrue();
+        viewModel.Files[0].SkipReason.ShouldContain("Failed to read project");
+    }
+
+    [Fact]
+    public void ResetFileStatus_LeavesSkippedRowsSkipped()
+    {
+        var dll = CreateTestFile("app.dll");
+        _viewModel.HandleFileDrop(new[] { dll });
+        _viewModel.Files.Add(new AssemblyFile
+        {
+            FilePath = Path.Combine(_tempDirectory, "App.Tests.csproj"),
+            FileName = "App.Tests.csproj",
+            Status = FileStatus.Skipped,
+            SkipReason = "Test project"
+        });
+        _viewModel.Files[0].Status = FileStatus.Success;
+
+        _viewModel.ResetFileStatus();
+
+        _viewModel.Files[0].Status.ShouldBe(FileStatus.Pending);
+        _viewModel.Files.ShouldContain(f => f.FileName == "App.Tests.csproj" && f.Status == FileStatus.Skipped);
     }
 
     [Fact]

@@ -15,7 +15,7 @@ public static class AssemblyOutputLocator
         IReadOnlyList<string> targetFrameworks)
     {
         ArgumentNullException.ThrowIfNull(projectDirectory);
-        ArgumentNullException.ThrowIfNull(assemblyName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(assemblyName);
         ArgumentNullException.ThrowIfNull(targetFrameworks);
 
         var results = new List<string>();

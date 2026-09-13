@@ -89,6 +89,13 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public void ObfuscateCommand_CannotExecute_WhenOnlySkippedRows()
+    {
+        AddSkippedFile("App.Tests.csproj", "Test project");
+        _viewModel.ObfuscateCommand.CanExecute(null).ShouldBeFalse();
+    }
+
+    [Fact]
     public void ObfuscateCommand_CannotExecute_WhenWatermarkEnabledWithoutId()
     {
         AddTestFile();
@@ -444,7 +451,7 @@ public class MainViewModelTests : IDisposable
             {
                 FilePath = "a.dll",
                 FileName = "a.dll",
-                Hints = new ProjectSettingsHints()
+                FromSession = true
             }
         ]).ShouldBeTrue();
     }
@@ -458,7 +465,7 @@ public class MainViewModelTests : IDisposable
             {
                 FilePath = "App.dll",
                 FileName = "App.dll",
-                Hints = new ProjectSettingsHints()
+                FromSession = true
             },
             new AssemblyFile
             {
@@ -547,11 +554,7 @@ public class MainViewModelTests : IDisposable
                 It.IsAny<ObfySettings>(),
                 It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ClosedSetResult
-            {
-                Success = false,
-                ErrorMessage = "closed-set failed"
-            });
+            .ReturnsAsync(ClosedSetResult.Failed("closed-set failed"));
 
         AddTestFile("first.dll");
         AddTestFile("second.dll");
@@ -578,18 +581,16 @@ public class MainViewModelTests : IDisposable
                 It.IsAny<ObfySettings>(),
                 It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ClosedSetResult
-            {
-                Success = true,
-                ModuleResults =
+            .ReturnsAsync(ClosedSetResult.Succeeded(
                 [
                     ObfuscationResult.Successful(
                         new ObfuscationStatistics(),
                         inputPath: firstPath,
                         outputPath: Path.Combine(_tempDirectory, "first.dll"))
                 ],
-                LoadFailures = [secondPath]
-            });
+                [
+                    new ClosedSetLoadFailure { Path = secondPath, Message = "Bad IL" }
+                ]));
         _reportService
             .Setup(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()))
             .Returns(new ObfuscationReport());
@@ -605,8 +606,8 @@ public class MainViewModelTests : IDisposable
         failed.Status.ShouldBe(FileStatus.Error);
         failed.ErrorMessage.ShouldNotBeNullOrWhiteSpace();
         var source = _viewModel.Files.Files.Single(f => f.FileName == "Extra.cs");
-        source.Status.ShouldNotBe(FileStatus.Success);
-        source.Status.ShouldBe(FileStatus.Pending);
+        source.Status.ShouldBe(FileStatus.Skipped);
+        source.SkipReason.ShouldContain("Source files");
         _obfuscationService.Verify(
             s => s.ObfuscateAsync(
                 It.IsAny<string>(),
@@ -638,6 +639,33 @@ public class MainViewModelTests : IDisposable
                 It.IsAny<string>(),
                 It.Is<ObfySettings>(settings => settings.SymbolRenaming.PreservePublicApi),
                 true,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ObfuscateCommand_EmptyOutputDirectory_UsesObfyOutNotInputFolder()
+    {
+        SetupClosedSetSuccess(
+            ObfuscationResult.Successful(new ObfuscationStatistics(), outputPath: Path.Combine(_tempDirectory, "first.dll")),
+            ObfuscationResult.Successful(new ObfuscationStatistics(), outputPath: Path.Combine(_tempDirectory, "second.dll")));
+        _reportService
+            .Setup(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()))
+            .Returns(new ObfuscationReport());
+
+        AddTestFile("first.dll");
+        AddTestFile("second.dll");
+        _viewModel.Files.OutputDirectory = "";
+
+        await _viewModel.ObfuscateCommand.ExecuteAsync(null);
+
+        _obfuscationService.Verify(
+            s => s.ObfuscateClosedSetAsync(
+                It.IsAny<IReadOnlyList<ClosedSetInput>>(),
+                It.Is<string>(dir => dir.EndsWith("obfy-out", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(dir, _tempDirectory, StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<ObfySettings>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -694,12 +722,7 @@ public class MainViewModelTests : IDisposable
                 It.IsAny<ObfySettings>(),
                 It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ClosedSetResult
-            {
-                Success = true,
-                ModuleResults = modules,
-                SymbolMap = symbolMap
-            });
+            .ReturnsAsync(ClosedSetResult.Succeeded(modules, symbolMap: symbolMap));
     }
 
     private void VerifyClosedSetNever()

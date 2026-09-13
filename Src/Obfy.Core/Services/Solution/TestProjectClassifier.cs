@@ -7,8 +7,8 @@ public static class TestProjectClassifier
 {
     /// <summary>
     /// Returns true when <paramref name="projectFileNameWithoutExtension"/> looks like a test project.
-    /// Matching is ordinal-ignore-case: equals <c>Test</c>, ends with <c>Tests</c> / <c>.Test</c> /
-    /// <c>.Testing</c>, or contains <c>.Tests.</c>.
+    /// Matching is ordinal-ignore-case: equals <c>Test</c>, ends with <c>Tests</c> / <c>.Tests</c> /
+    /// <c>.Test</c> / <c>.Testing</c>, or contains <c>.Tests.</c>.
     /// </summary>
     public static bool IsTestProjectName(string projectFileNameWithoutExtension)
     {

@@ -17,7 +17,7 @@ public enum FileStatus
 }
 
 /// <summary>
-/// Represents an assembly file to be obfuscated.
+/// One Files-panel row (assembly, source, or skipped session project).
 /// </summary>
 public partial class AssemblyFile : ObservableObject
 {
@@ -56,6 +56,12 @@ public partial class AssemblyFile : ObservableObject
 
     [ObservableProperty]
     private ProjectSettingsHints? _hints;
+
+    /// <summary>
+    /// True when this row came from a solution/project session expansion.
+    /// </summary>
+    [ObservableProperty]
+    private bool _fromSession;
 
     /// <summary>
     /// Gets whether this file is currently being processed.
@@ -118,7 +124,8 @@ public partial class AssemblyFile : ObservableObject
             FileSize = fileInfo.Exists ? fileInfo.Length : 0,
             Status = entry.IsIncluded ? FileStatus.Pending : FileStatus.Skipped,
             SkipReason = entry.IsIncluded ? null : entry.SkipMessage ?? entry.SkipReason.ToString(),
-            Hints = entry.Hints
+            Hints = entry.Hints,
+            FromSession = true
         };
     }
 }

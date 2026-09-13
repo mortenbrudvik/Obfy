@@ -4,6 +4,8 @@ namespace Obfy.Core.Services.Solution;
 
 /// <summary>
 /// Project metadata read from a SDK-style project file (no MSBuild evaluation).
+/// Raw XML; last-wins in document order. Does not evaluate <c>Condition</c>,
+/// <c>Directory.Build.props</c>, or <c>$(Property)</c>.
 /// </summary>
 public sealed class ProjectFileInfo
 {
@@ -28,7 +30,8 @@ public sealed class ProjectFileInfo
 public static class ProjectFileReader
 {
     /// <summary>
-    /// Parses <paramref name="projectPath"/> with <see cref="XDocument"/>. Property values use last-wins document order.
+    /// Parses <paramref name="projectPath"/> with <see cref="XDocument"/>. Property values use last-wins
+    /// document order. Does not evaluate <c>Condition</c>, <c>Directory.Build.props</c>, or <c>$(Property)</c>.
     /// </summary>
     public static ProjectFileInfo Read(string projectPath)
     {

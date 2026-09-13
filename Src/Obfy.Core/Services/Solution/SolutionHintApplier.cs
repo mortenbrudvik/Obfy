@@ -10,9 +10,23 @@ namespace Obfy.Core.Services.Solution;
 public static class SolutionHintApplier
 {
     /// <summary>
-    /// Applies XAML / runtime / exclusion / public-API hints. Does not overwrite a non-Default
+    /// Clones <paramref name="source"/> and overlays hints. Prefer this over <see cref="Apply"/> so
+    /// callers cannot mutate the original settings bag.
+    /// </summary>
+    public static ObfySettings Overlay(ObfySettings source, ProjectSettingsHints hints, bool forcePreservePublic)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        var clone = source.Clone();
+        Apply(clone, hints, forcePreservePublic);
+        return clone;
+    }
+
+    /// <summary>
+    /// Applies XAML / runtime / exclusion / public-API hints in place. Does not overwrite a non-Default
     /// <see cref="ObfySettings.RuntimeProfile"/>. <paramref name="forcePreservePublic"/> forces
-    /// <see cref="SymbolRenamingSettings.PreservePublicApi"/> to true.
+    /// <see cref="SymbolRenamingSettings.PreservePublicApi"/> to true. When false, public API is
+    /// assigned from <see cref="ProjectSettingsHints.PreservePublicApi"/> (closed-set processors
+    /// may overwrite that again from AssemblyRef).
     /// </summary>
     public static void Apply(ObfySettings settings, ProjectSettingsHints hints, bool forcePreservePublic)
     {

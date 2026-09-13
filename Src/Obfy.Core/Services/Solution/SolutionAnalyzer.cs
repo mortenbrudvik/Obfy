@@ -1,3 +1,4 @@
+using System.Xml;
 using Obfy.Core.Models;
 using Obfy.Core.Models.Solution;
 
@@ -28,6 +29,12 @@ public class SolutionAnalyzer : ISolutionAnalyzer
             || extension.Equals(".slnx", StringComparison.OrdinalIgnoreCase))
         {
             projectRefs = SolutionFileParser.Parse(path);
+            if (projectRefs.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"No Project entries in {path}. Is this a valid .sln/.slnx?");
+            }
+
             baseDirectory = GetDirectory(path);
         }
         else if (SupportedProjectExtensions.Contains(extension))
@@ -48,7 +55,7 @@ public class SolutionAnalyzer : ISolutionAnalyzer
             analyzed.Add(AnalyzeRef(projectRef, baseDirectory));
 
         var included = analyzed
-            .Where(static p => p.SkipReason == Obfy.Core.Models.Solution.SkipReason.None && p.Info is not null)
+            .Where(static p => p.SkipReason == ProjectSkipReason.None && p.Info is not null)
             .ToList();
 
         var hasIncludedExe = included.Any(static p => IsExeOrWinExe(p.Info!.OutputType));
@@ -57,7 +64,7 @@ public class SolutionAnalyzer : ISolutionAnalyzer
         var entries = new List<ProjectProtectionEntry>();
         foreach (var project in analyzed)
         {
-            if (project.SkipReason != Obfy.Core.Models.Solution.SkipReason.None
+            if (project.SkipReason != ProjectSkipReason.None
                 || project.Info is null
                 || project.Outputs.Count == 0)
             {
@@ -73,14 +80,11 @@ public class SolutionAnalyzer : ISolutionAnalyzer
                     ? $"{project.ProjectName} ({GetTfmLabel(output, project.Info)})"
                     : project.ProjectName;
 
-                entries.Add(new ProjectProtectionEntry
-                {
-                    ProjectPath = project.ProjectPath,
-                    ProjectName = name,
-                    OutputPath = output,
-                    SkipReason = Obfy.Core.Models.Solution.SkipReason.None,
-                    Hints = hints
-                });
+                entries.Add(ProjectProtectionEntry.Included(
+                    project.ProjectPath,
+                    name,
+                    output,
+                    hints));
             }
         }
 
@@ -102,7 +106,7 @@ public class SolutionAnalyzer : ISolutionAnalyzer
             {
                 ProjectPath = resolved,
                 ProjectName = projectRef.Name,
-                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipUnsupported,
+                SkipReason = ProjectSkipReason.Unsupported,
                 SkipMessage = string.IsNullOrEmpty(extension)
                     ? "Unsupported project type"
                     : $"Unsupported project type '{extension}'"
@@ -115,12 +119,27 @@ public class SolutionAnalyzer : ISolutionAnalyzer
             {
                 ProjectPath = resolved,
                 ProjectName = projectRef.Name,
-                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipMissingProject,
+                SkipReason = ProjectSkipReason.MissingProject,
                 SkipMessage = "Project file not found"
             };
         }
 
-        var info = ProjectFileReader.Read(resolved);
+        ProjectFileInfo info;
+        try
+        {
+            info = ProjectFileReader.Read(resolved);
+        }
+        catch (Exception ex) when (ex is XmlException or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            return new AnalyzedProject
+            {
+                ProjectPath = resolved,
+                ProjectName = projectRef.Name,
+                SkipReason = ProjectSkipReason.LoadFailed,
+                SkipMessage = $"Failed to read project: {ex.Message}"
+            };
+        }
+
         if (info.IsTest)
         {
             return new AnalyzedProject
@@ -128,7 +147,7 @@ public class SolutionAnalyzer : ISolutionAnalyzer
                 ProjectPath = resolved,
                 ProjectName = projectRef.Name,
                 Info = info,
-                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipTest,
+                SkipReason = ProjectSkipReason.Test,
                 SkipMessage = "Test project"
             };
         }
@@ -142,8 +161,8 @@ public class SolutionAnalyzer : ISolutionAnalyzer
                 ProjectPath = resolved,
                 ProjectName = projectRef.Name,
                 Info = info,
-                SkipReason = Obfy.Core.Models.Solution.SkipReason.SkipMissing,
-                SkipMessage = "No built output in bin/Release or bin/Debug"
+                SkipReason = ProjectSkipReason.MissingOutput,
+                SkipMessage = "No built output in bin/Release or bin/Debug (RID-specific and publish folders are not scanned)"
             };
         }
 
@@ -153,7 +172,7 @@ public class SolutionAnalyzer : ISolutionAnalyzer
             ProjectName = projectRef.Name,
             Info = info,
             Outputs = outputs,
-            SkipReason = Obfy.Core.Models.Solution.SkipReason.None
+            SkipReason = ProjectSkipReason.None
         };
     }
 
@@ -210,13 +229,11 @@ public class SolutionAnalyzer : ISolutionAnalyzer
     }
 
     private static ProjectProtectionEntry ToSkippedEntry(AnalyzedProject project)
-        => new()
-        {
-            ProjectPath = project.ProjectPath,
-            ProjectName = project.ProjectName,
-            SkipReason = project.SkipReason,
-            SkipMessage = project.SkipMessage
-        };
+        => ProjectProtectionEntry.Skipped(
+            project.ProjectPath,
+            project.ProjectName,
+            project.SkipReason == ProjectSkipReason.None ? ProjectSkipReason.MissingOutput : project.SkipReason,
+            project.SkipMessage);
 
     private static bool IsExeOrWinExe(string outputType)
         => outputType.Equals("Exe", StringComparison.OrdinalIgnoreCase)
@@ -254,7 +271,7 @@ public class SolutionAnalyzer : ISolutionAnalyzer
         public required string ProjectName { get; init; }
         public ProjectFileInfo? Info { get; init; }
         public IReadOnlyList<string> Outputs { get; init; } = Array.Empty<string>();
-        public Obfy.Core.Models.Solution.SkipReason SkipReason { get; init; }
+        public ProjectSkipReason SkipReason { get; init; }
         public string? SkipMessage { get; init; }
     }
 }

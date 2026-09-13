@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using dnlib.DotNet;
 using dnlib.DotNet.Writer;
 using Microsoft.Extensions.Logging;
@@ -14,10 +15,19 @@ namespace Obfy.Core.Services;
 public class AssemblyProcessor : IAssemblyProcessor
 {
     private readonly ILogger<AssemblyProcessor> _logger;
+    private readonly IReadOnlyList<IPePostProcessor> _postProcessors;
 
-    public AssemblyProcessor(ILogger<AssemblyProcessor> logger)
+    public AssemblyProcessor(ILogger<AssemblyProcessor> logger, IEnumerable<IPePostProcessor>? postProcessors = null)
     {
         _logger = logger;
+        var resolved = postProcessors is null ? null : postProcessors as ICollection<IPePostProcessor> ?? postProcessors.ToList();
+        _postProcessors = (resolved is null || resolved.Count == 0
+            ?
+            [
+                new MethodEncryptionPePostProcessor(),
+                new AntiTamperPePostProcessor()
+            ]
+            : resolved).OrderBy(p => p.Order).ToList();
     }
 
     /// <inheritdoc/>
@@ -102,10 +112,8 @@ public class AssemblyProcessor : IAssemblyProcessor
             }
 
             context.Module.Write(writePath, writerOptions);
-            if (context.MethodEncryptionMetadata is not null)
-                MethodBodyPeEncryptor.Encrypt(writePath, context.MethodEncryptionMetadata);
-            if (antiTamper)
-                AssemblyHashComputer.PatchIntegrityHash(writePath);
+            foreach (var processor in _postProcessors)
+                processor.Process(writePath, context);
             if (strongNameKey is not null)
                 AssemblySigner.SignInPlace(writePath, strongNameKey);
 

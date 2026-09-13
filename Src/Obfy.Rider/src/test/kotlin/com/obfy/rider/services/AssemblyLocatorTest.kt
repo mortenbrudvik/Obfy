@@ -47,6 +47,22 @@ class AssemblyLocatorTest {
     }
 
     @Test
+    fun findOutputAssembly_releaseOnly_skipsDebug() {
+        val root = File(System.getProperty("java.io.tmpdir"), "obfy-rider-dbg-" + System.nanoTime())
+        try {
+            val debug = File(root, "bin/Debug/net10.0")
+            debug.mkdirs()
+            File(root, "App.csproj").writeText("<Project />")
+            val debugDll = File(debug, "App.dll").apply { writeText("dbg") }
+
+            assertNull(AssemblyLocator.findOutputAssembly(root, "App"))
+            assertEquals(debugDll.canonicalFile, AssemblyLocator.findOutputAssembly(root, "App", releaseOnly = false)?.canonicalFile)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun findOutputAssembly_missingBin_returnsNull() {
         val root = File(System.getProperty("java.io.tmpdir"), "obfy-rider-empty-" + System.nanoTime())
         try {

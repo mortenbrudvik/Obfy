@@ -109,6 +109,27 @@ public class ObfySettingsTests
     }
 
     [Fact]
+    public void ApplyLevel_StandardAfterAggressive_ResetsNonPresetFlags()
+    {
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Aggressive);
+        settings.ControlFlow.Mode = ControlFlowMode.OpaquePredicate;
+        settings.Virtualization.Enabled = true;
+        settings.Packing.Enabled = true;
+        settings.Incremental.Enabled = true;
+
+        settings.Level = ObfuscationLevel.Standard;
+        settings.ApplyLevel();
+
+        settings.ControlFlow.Enabled.ShouldBeFalse();
+        settings.ControlFlow.Mode.ShouldBe(ControlFlowMode.Switch);
+        settings.ControlFlow.Intensity.ShouldBe(50);
+        settings.Virtualization.Enabled.ShouldBeFalse();
+        settings.Packing.Enabled.ShouldBeFalse();
+        settings.Incremental.Enabled.ShouldBeFalse();
+        settings.Protection.MethodEncryption.ShouldBeFalse();
+    }
+
+    [Fact]
     public void ApplyLevel_Custom_DoesNotOverwriteFlags()
     {
         var settings = ObfySettings.ForLevel(ObfuscationLevel.Standard);

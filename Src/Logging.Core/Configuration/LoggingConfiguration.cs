@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using NLog;
 using NLog.Extensions.Logging;
+using NLog.Targets.Wrappers;
 
 namespace Logging.Core.Configuration;
 
@@ -80,8 +81,13 @@ public static class LoggingConfiguration
         config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, debugTarget);
         if (canWriteFiles)
         {
-            config.AddTarget(fileTarget);
-            config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, fileTarget);
+            var asyncFileTarget = new AsyncTargetWrapper(fileTarget)
+            {
+                Name = "asyncFile",
+                OverflowAction = AsyncTargetWrapperOverflowAction.Grow
+            };
+            config.AddTarget(asyncFileTarget);
+            config.AddRule(NLog.LogLevel.Debug, NLog.LogLevel.Fatal, asyncFileTarget);
         }
 
         // Console output only if enabled
@@ -99,5 +105,13 @@ public static class LoggingConfiguration
             builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Debug);
             builder.AddNLog();
         });
+    }
+
+    public static void Flush() => LogManager.Flush();
+
+    public static void Shutdown()
+    {
+        LogManager.Flush();
+        LogManager.Shutdown();
     }
 }

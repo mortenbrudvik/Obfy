@@ -61,7 +61,7 @@ public class ProjectSettingsService : IProjectSettingsService
     public async Task SaveSettingsToDirectoryAsync(string projectDirectory, ObfySettings settings)
     {
         var filePath = GetSettingsFilePath(projectDirectory);
-        string? existing = File.Exists(filePath) ? await ReadFileAsync(filePath) : null;
+        var existing = File.Exists(filePath) ? await ReadFileAsync(filePath) : null;
         var json = ObfySettingsJson.Serialize(settings, existing);
         await WriteFileAsync(filePath, json);
     }
@@ -93,18 +93,27 @@ public class ProjectSettingsService : IProjectSettingsService
 
     public async Task SetPostBuildEnabledAsync(Project project, bool enabled)
     {
-        var settings = await LoadSettingsAsync(project);
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-        if (settings == null)
+        var projectDir = await GetProjectDirectoryAsync(project);
+        if (string.IsNullOrEmpty(projectDir))
         {
-            // Create new settings with defaults
-            var options = ObfyPackage.Options;
-            var level = options?.DefaultLevel ?? ObfuscationLevel.Standard;
-            settings = ObfySettings.ForLevel(level);
+            return;
         }
 
+        var filePath = GetSettingsFilePath(projectDir!);
+        if (File.Exists(filePath))
+        {
+            var json = await ReadFileAsync(filePath);
+            await WriteFileAsync(filePath, ObfySettingsJson.PatchPostBuildEnabled(json, enabled));
+            return;
+        }
+
+        var options = ObfyPackage.Options;
+        var level = options?.DefaultLevel ?? ObfuscationLevel.Standard;
+        var settings = ObfySettings.ForLevel(level);
         settings.PostBuildEnabled = enabled;
-        await SaveSettingsAsync(project, settings);
+        await SaveSettingsToDirectoryAsync(projectDir!, settings);
     }
 
     private static async Task<string?> GetProjectDirectoryAsync(Project project)

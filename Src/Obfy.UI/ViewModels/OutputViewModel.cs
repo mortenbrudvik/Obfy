@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,6 +15,7 @@ public partial class OutputViewModel : ObservableObject
 {
     private readonly IUiDispatcher _dispatcher;
     private readonly IClipboardService _clipboard;
+    private readonly IUserNotificationService _notifications;
 
     /// <summary>
     /// Gets the collection of log entries.
@@ -26,10 +28,14 @@ public partial class OutputViewModel : ObservableObject
     [ObservableProperty]
     private bool _showTimestamps = true;
 
-    public OutputViewModel(IUiDispatcher dispatcher, IClipboardService clipboard)
+    public OutputViewModel(
+        IUiDispatcher dispatcher,
+        IClipboardService clipboard,
+        IUserNotificationService notifications)
     {
         _dispatcher = dispatcher;
         _clipboard = clipboard;
+        _notifications = notifications;
     }
 
     /// <summary>
@@ -97,6 +103,13 @@ public partial class OutputViewModel : ObservableObject
                 sb.AppendLine($"[{log.Level}] {log.Message}");
             }
         }
-        _clipboard.SetText(sb.ToString());
+        try
+        {
+            _clipboard.SetText(sb.ToString());
+        }
+        catch (Exception ex) when (ex is ExternalException or InvalidOperationException)
+        {
+            _notifications.Show("Copy failed", ex.Message, NotificationSeverity.Error);
+        }
     }
 }

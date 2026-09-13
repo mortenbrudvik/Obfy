@@ -156,11 +156,13 @@ internal object PostBuildObfuscator {
 
             outputService.info("Post-build obfuscation starting for $projectName...")
             val assemblyPath = assembly.absolutePath
+            val configFile = java.io.File(dir.path, "obfy.json")
             val result = obfuscationService.obfuscate(
                 assemblyPath,
                 assemblyPath,
                 settings,
-                outputService
+                outputService,
+                configFile.takeIf { it.exists() }?.absolutePath
             )
 
             if (result.success) {

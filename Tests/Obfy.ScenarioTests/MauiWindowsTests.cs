@@ -7,7 +7,7 @@ namespace Obfy.ScenarioTests;
 [Trait("Category", "Platform")]
 public class MauiWindowsTests
 {
-    [PlatformFact("maui")]
+    [PlatformFact(PlatformWorkload.Maui)]
     public async Task MauiWindows_PreserveXaml_ObfuscatesBuiltOutput()
     {
         var dir = Path.Combine(Path.GetTempPath(), "obfy-maui-" + Guid.NewGuid().ToString("N"));

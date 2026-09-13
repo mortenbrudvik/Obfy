@@ -41,6 +41,15 @@ public class ObfuscatorHelpersTests
     }
 
     [Fact]
+    public void IsExcluded_DoesNotSkipObfyCoreModelsNamespace()
+    {
+        var module = new ModuleDefUser("t");
+        var type = new TypeDefUser("Obfy.Core.Models", "UserType", module.CorLibTypes.Object.TypeDefOrRef);
+        ObfuscatorHelpers.IsExcluded(type, new Obfy.Core.Models.ExclusionRules()).ShouldBeFalse();
+        ObfuscatorHelpers.IsRuntimeOrExcluded(type, new Obfy.Core.Models.ExclusionRules()).ShouldBeFalse();
+    }
+
+    [Fact]
     public void LooksLikeXamlBindable_ViewModelSuffix_IsTrue()
     {
         ObfuscatorHelpers.LooksLikeXamlBindable(NewType("MainViewModel")).ShouldBeTrue();
@@ -53,6 +62,7 @@ public class ObfuscatorHelpersTests
     {
         ObfuscatorHelpers.LooksLikeXamlBindable(NewType("DetailsView")).ShouldBeTrue();
         ObfuscatorHelpers.LooksLikeXamlBindable(NewType("MAINVIEW")).ShouldBeTrue();
+        ObfuscatorHelpers.LooksLikeXamlBindable(NewType("BOARDVIEW")).ShouldBeTrue();
         ObfuscatorHelpers.LooksLikeXamlBindable(NewType("Overview")).ShouldBeTrue();
         ObfuscatorHelpers.LooksLikeXamlBindable(NewType("Preview")).ShouldBeTrue();
     }

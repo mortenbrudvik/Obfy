@@ -46,16 +46,18 @@ internal sealed class TogglePostBuildCommand : BaseCommand<TogglePostBuildComman
 
     protected override void BeforeQueryStatus(EventArgs e)
     {
-        ThreadHelper.JoinableTaskFactory.Run(async () =>
+        Command.Visible = true;
+        _ = UpdateCheckedAsync();
+    }
+
+    private async Task UpdateCheckedAsync()
+    {
+        try
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
             var project = await VS.Solutions.GetActiveProjectAsync();
             if (project == null)
-            {
-                Command.Visible = false;
                 return;
-            }
 
             Command.Visible = true;
 
@@ -66,6 +68,10 @@ internal sealed class TogglePostBuildCommand : BaseCommand<TogglePostBuildComman
                 Command.Text = enabled ? "Disable Post-Build Obfuscation" : "Enable Post-Build Obfuscation";
                 Command.Checked = enabled;
             }
-        });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
     }
 }

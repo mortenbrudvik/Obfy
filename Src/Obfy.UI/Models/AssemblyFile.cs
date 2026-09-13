@@ -39,6 +39,8 @@ public partial class AssemblyFile : ObservableObject
     [ObservableProperty]
     private double _progress;
 
+    public override string ToString() => FileName;
+
     [ObservableProperty]
     private string? _errorMessage;
 

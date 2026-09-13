@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Obfy.UI.Models;
 using Obfy.UI.Services;
 
@@ -14,6 +15,7 @@ public partial class FilesViewModel : ObservableObject
 {
     private readonly IFileDialogService _fileDialogService;
     private readonly ISettingsService _settingsService;
+    private readonly ILogger<FilesViewModel>? _logger;
     private bool _suppressPreferenceSave;
 
     /// <summary>
@@ -40,10 +42,14 @@ public partial class FilesViewModel : ObservableObject
     /// </summary>
     public bool HasNoFiles => Files.Count == 0;
 
-    public FilesViewModel(IFileDialogService fileDialogService, ISettingsService settingsService)
+    public FilesViewModel(
+        IFileDialogService fileDialogService,
+        ISettingsService settingsService,
+        ILogger<FilesViewModel>? logger = null)
     {
         _fileDialogService = fileDialogService;
         _settingsService = settingsService;
+        _logger = logger;
 
         _suppressPreferenceSave = true;
         try
@@ -137,8 +143,7 @@ public partial class FilesViewModel : ObservableObject
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                System.Diagnostics.Trace.TraceWarning(
-                    "Could not save output directory preference: {0}", ex.Message);
+                _logger?.LogWarning(ex, "Failed to save UI preferences");
             }
         }
     }
@@ -201,7 +206,7 @@ public partial class FilesViewModel : ObservableObject
             }
             catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
             {
-                System.Diagnostics.Trace.TraceWarning("Skipped '{0}': {1}", path, ex.Message);
+                _logger?.LogWarning(ex, "Skipped adding file {Path}", path);
             }
         }
     }

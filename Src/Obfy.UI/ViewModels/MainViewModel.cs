@@ -26,7 +26,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly ISettingsService _settingsService;
     private readonly IReportService _reportService;
     private readonly IContentDialogService _contentDialogService;
-    private readonly ISnackbarService _snackbarService;
+    private readonly IUserNotificationService _notifications;
     private readonly NotifyCollectionChangedEventHandler _filesChanged;
     private readonly PropertyChangedEventHandler _settingsChanged;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -53,6 +53,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ObfuscateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     private bool _isObfuscating;
 
     [ObservableProperty]
@@ -70,7 +71,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ISettingsService settingsService,
         IReportService reportService,
         IContentDialogService contentDialogService,
-        ISnackbarService snackbarService,
+        IUserNotificationService notifications,
         SettingsViewModel settings,
         FilesViewModel files,
         OutputViewModel output,
@@ -81,7 +82,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _settingsService = settingsService;
         _reportService = reportService;
         _contentDialogService = contentDialogService;
-        _snackbarService = snackbarService;
+        _notifications = notifications;
         Settings = settings;
         Files = files;
         Output = output;
@@ -178,14 +179,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var message = $"Obfuscation finished with errors: {failed} file(s) failed.";
                 Output.Error(message);
                 StatusMessage = "Completed with errors";
-                ShowSnackbar("Completed with errors", message, ControlAppearance.Danger);
+                _notifications.Show("Completed with errors", message, NotificationSeverity.Error);
             }
             else
             {
                 var message = $"Obfuscation completed: {totalStats.TotalTransformations} total transformations in {stopwatch.Elapsed:mm\\:ss\\.fff}";
                 Output.Success(message);
                 StatusMessage = "Obfuscation complete";
-                ShowSnackbar("Obfuscation complete", message, ControlAppearance.Success);
+                _notifications.Show("Obfuscation complete", message, NotificationSeverity.Success);
             }
         }
         catch (OperationCanceledException)
@@ -193,14 +194,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Output.Warning("Obfuscation cancelled by user");
             StatusMessage = "Cancelled";
             ResetProcessingFiles(files, error: null);
-            ShowSnackbar("Cancelled", "Obfuscation cancelled by user", ControlAppearance.Caution);
+            _notifications.Show("Cancelled", "Obfuscation cancelled by user", NotificationSeverity.Warning);
         }
         catch (Exception ex)
         {
             Output.Error($"Obfuscation failed: {ex.Message}");
             StatusMessage = "Error occurred";
             ResetProcessingFiles(files, ex.Message);
-            ShowSnackbar("Obfuscation failed", ex.Message, ControlAppearance.Danger);
+            _notifications.Show("Obfuscation failed", ex.Message, NotificationSeverity.Error);
         }
         finally
         {
@@ -427,7 +428,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
+    private bool CanCancel() => IsObfuscating;
+
+    [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
         _cancellationTokenSource?.Cancel();
@@ -446,12 +449,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var settings = Settings.ToObfySettings();
             await _settingsService.SaveSettingsAsync(settings, filePath);
             Output.Info($"Configuration saved to {filePath}");
-            ShowSnackbar("Configuration saved", filePath, ControlAppearance.Success);
+            _notifications.Show("Configuration saved", filePath, NotificationSeverity.Success);
         }
         catch (Exception ex)
         {
             Output.Error($"Failed to save configuration: {ex.Message}");
-            ShowSnackbar("Save failed", ex.Message, ControlAppearance.Danger);
+            _notifications.Show("Save failed", ex.Message, NotificationSeverity.Error);
         }
     }
 
@@ -469,18 +472,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 Settings.FromObfySettings(settings);
                 Output.Info($"Configuration loaded from {filePath}");
-                ShowSnackbar("Configuration loaded", filePath, ControlAppearance.Success);
+                _notifications.Show("Configuration loaded", filePath, NotificationSeverity.Success);
             }
             else
             {
                 Output.Error($"Failed to load configuration from {filePath}");
-                ShowSnackbar("Load failed", $"Could not read {filePath}", ControlAppearance.Danger);
+                _notifications.Show("Load failed", $"Could not read {filePath}", NotificationSeverity.Error);
             }
         }
         catch (Exception ex)
         {
             Output.Error($"Failed to load configuration: {ex.Message}");
-            ShowSnackbar("Load failed", ex.Message, ControlAppearance.Danger);
+            _notifications.Show("Load failed", ex.Message, NotificationSeverity.Error);
         }
     }
 
@@ -532,39 +535,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return version is null ? "unknown" : $"{version.Major}.{version.Minor}.{version.Build}";
     }
 
-    private void ShowSnackbar(string title, string message, ControlAppearance appearance)
-    {
-        var symbol = appearance switch
-        {
-            ControlAppearance.Danger => SymbolRegular.ErrorCircle24,
-            ControlAppearance.Caution => SymbolRegular.Warning24,
-            _ => SymbolRegular.Checkmark24
-        };
-
-        _snackbarService.Show(
-            title,
-            message,
-            appearance,
-            CreateSnackbarIcon(symbol),
-            TimeSpan.FromSeconds(4));
-    }
-
-    internal static IconElement CreateSnackbarIcon(SymbolRegular symbol)
-        => System.Windows.Application.Current is null ? null! : new SymbolIcon(symbol);
-
     public void Dispose()
     {
         Files.Files.CollectionChanged -= _filesChanged;
         Settings.PropertyChanged -= _settingsChanged;
+        var cts = Interlocked.Exchange(ref _cancellationTokenSource, null);
+        if (cts is null)
+            return;
         try
         {
-            _cancellationTokenSource?.Cancel();
+            cts.Cancel();
         }
         catch (ObjectDisposedException)
         {
+            // Already disposed by a concurrent cancel/complete.
         }
-
-        _cancellationTokenSource?.Dispose();
-        _cancellationTokenSource = null;
+        finally
+        {
+            cts.Dispose();
+        }
     }
 }

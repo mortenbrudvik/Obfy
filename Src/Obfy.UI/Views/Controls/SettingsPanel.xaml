@@ -15,6 +15,8 @@
     </UserControl.Resources>
 
     <StackPanel Margin="12">
+        <ui:TextBlock Text="Obfuscation level" FontWeight="SemiBold" Margin="0,0,0,8"
+                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
         <ComboBox AutomationProperties.AutomationId="LevelSelector"
                   AutomationProperties.Name="Obfuscation level"
                   ItemsSource="{Binding AvailableLevels}"
@@ -34,7 +36,9 @@
         <ui:CardExpander Header="String Encryption" Icon="{ui:SymbolIcon LockClosed24}" IsExpanded="True" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="StringEncryptionToggle"
-                               Content="Enabled" IsChecked="{Binding StringEncryptionEnabled}"/>
+                               Content="String encryption"
+                               AutomationProperties.Name="Enable string encryption"
+                               IsChecked="{Binding StringEncryptionEnabled}"/>
                 <StackPanel Visibility="{Binding StringEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <ui:TextBlock Text="Algorithm" Margin="0,0,0,4"
@@ -55,7 +59,9 @@
         <ui:CardExpander Header="Constant Encryption" Icon="{ui:SymbolIcon NumberSymbol24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ConstantEncryptionToggle"
-                               Content="Enabled" IsChecked="{Binding ConstantEncryptionEnabled}"/>
+                               Content="Constant encryption"
+                               AutomationProperties.Name="Enable constant encryption"
+                               IsChecked="{Binding ConstantEncryptionEnabled}"/>
                 <StackPanel Visibility="{Binding ConstantEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <ui:TextBlock Text="Algorithm" Margin="0,0,0,4"
@@ -89,7 +95,9 @@
         <ui:CardExpander Header="Control Flow" Icon="{ui:SymbolIcon Flowchart24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ControlFlowToggle"
-                               Content="Enabled" IsChecked="{Binding ControlFlowEnabled}"/>
+                               Content="Control flow"
+                               AutomationProperties.Name="Enable control flow obfuscation"
+                               IsChecked="{Binding ControlFlowEnabled}"/>
                 <StackPanel Visibility="{Binding ControlFlowEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <ui:TextBlock Text="Mode" Margin="0,0,0,4"
@@ -109,7 +117,9 @@
         <ui:CardExpander Header="Symbol Renaming" Icon="{ui:SymbolIcon Rename24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="SymbolRenamingToggle"
-                               Content="Enabled" IsChecked="{Binding SymbolRenamingEnabled}"/>
+                               Content="Symbol renaming"
+                               AutomationProperties.Name="Enable symbol renaming"
+                               IsChecked="{Binding SymbolRenamingEnabled}"/>
                 <StackPanel Visibility="{Binding SymbolRenamingEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <ui:TextBlock Text="Naming Mode" Margin="0,0,0,4"
@@ -187,7 +197,9 @@
         <ui:CardExpander Header="Watermark" Icon="{ui:SymbolIcon Tag24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="WatermarkToggle"
-                               Content="Enabled" IsChecked="{Binding WatermarkEnabled}"/>
+                               Content="Watermark"
+                               AutomationProperties.Name="Enable watermark"
+                               IsChecked="{Binding WatermarkEnabled}"/>
                 <StackPanel Visibility="{Binding WatermarkEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <ui:TextBlock Text="Customer / build id" Margin="0,0,0,4"
@@ -204,15 +216,30 @@
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="PackingToggle"
                                Content="Pack managed launcher"
+                               AutomationProperties.Name="Enable managed launcher packing"
                                ToolTip="Writes {name}.launcher.exe (framework-dependent; run with dotnet). Requires an entry point. Not a native packer."
                                IsChecked="{Binding PackingEnabled}"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="IncrementalToggle"
+                               Content="Incremental cache"
+                               AutomationProperties.Name="Enable incremental cache"
+                               ToolTip="Skip re-obfuscation when input and settings are unchanged."
+                               IsChecked="{Binding IncrementalEnabled}"
+                               Margin="0,8,0,0"/>
+                <ui:ToggleSwitch AutomationProperties.AutomationId="VirtualizationToggle"
+                               Content="Virtualize simple methods"
+                               AutomationProperties.Name="Enable limited IL virtualization"
+                               ToolTip="Replaces simple static int methods with a bytecode interpreter. Limited; not a general VM."
+                               IsChecked="{Binding VirtualizationEnabled}"
+                               Margin="0,8,0,0"/>
             </StackPanel>
         </ui:CardExpander>
 
         <ui:CardExpander Header="Strong-Name Signing" Icon="{ui:SymbolIcon Fingerprint24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="SigningToggle"
-                               Content="Enabled" IsChecked="{Binding SigningEnabled}"/>
+                               Content="Strong-name signing"
+                               AutomationProperties.Name="Enable strong-name signing"
+                               IsChecked="{Binding SigningEnabled}"/>
                 <StackPanel Visibility="{Binding SigningEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <ui:TextBlock Text="Key file (.snk / .pfx)" Margin="0,0,0,4"
@@ -234,7 +261,9 @@
         <ui:CardExpander Header="Resource Encryption" Icon="{ui:SymbolIcon Archive24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="ResourceEncryptionToggle"
-                               Content="Enabled" IsChecked="{Binding ResourceEncryptionEnabled}"/>
+                               Content="Resource encryption"
+                               AutomationProperties.Name="Enable resource encryption"
+                               IsChecked="{Binding ResourceEncryptionEnabled}"/>
                 <StackPanel Visibility="{Binding ResourceEncryptionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="0,8,0,0">
                     <ui:TextBlock Text="Algorithm" Margin="0,0,0,4"
@@ -277,7 +306,7 @@
                             <KeyBinding Key="Return" Command="{Binding AddExcludedNamespaceCommand}"/>
                         </ui:TextBox.InputBindings>
                     </ui:TextBox>
-                    <ui:Button Grid.Column="1" Content="Add" Command="{Binding AddExcludedNamespaceCommand}" Margin="8,0,0,0"/>
+                    <ui:Button Grid.Column="1" Content="Add" AutomationProperties.Name="Add excluded namespace" Command="{Binding AddExcludedNamespaceCommand}" Margin="8,0,0,0"/>
                 </Grid>
                 <ItemsControl ItemsSource="{Binding ExcludedNamespaces}" Margin="0,0,0,12">
                     <ItemsControl.ItemTemplate>
@@ -312,7 +341,7 @@
                             <KeyBinding Key="Return" Command="{Binding AddExcludedTypeCommand}"/>
                         </ui:TextBox.InputBindings>
                     </ui:TextBox>
-                    <ui:Button Grid.Column="1" Content="Add" Command="{Binding AddExcludedTypeCommand}" Margin="8,0,0,0"/>
+                    <ui:Button Grid.Column="1" Content="Add" AutomationProperties.Name="Add excluded type" Command="{Binding AddExcludedTypeCommand}" Margin="8,0,0,0"/>
                 </Grid>
                 <ItemsControl ItemsSource="{Binding ExcludedTypes}" Margin="0,0,0,12">
                     <ItemsControl.ItemTemplate>
@@ -347,7 +376,7 @@
                             <KeyBinding Key="Return" Command="{Binding AddExcludedMethodCommand}"/>
                         </ui:TextBox.InputBindings>
                     </ui:TextBox>
-                    <ui:Button Grid.Column="1" Content="Add" Command="{Binding AddExcludedMethodCommand}" Margin="8,0,0,0"/>
+                    <ui:Button Grid.Column="1" Content="Add" AutomationProperties.Name="Add excluded method" Command="{Binding AddExcludedMethodCommand}" Margin="8,0,0,0"/>
                 </Grid>
                 <ItemsControl ItemsSource="{Binding ExcludedMethods}">
                     <ItemsControl.ItemTemplate>

@@ -710,6 +710,21 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void ToObfySettings_ConvertsVirtualizationAndIncremental()
+    {
+        var viewModel = new SettingsViewModel
+        {
+            VirtualizationEnabled = true,
+            IncrementalEnabled = true
+        };
+
+        var settings = viewModel.ToObfySettings();
+
+        settings.Virtualization.Enabled.ShouldBeTrue();
+        settings.Incremental.Enabled.ShouldBeTrue();
+    }
+
+    [Fact]
     public void FromObfySettings_RoundTripsPackingEnabled()
     {
         var settings = new ObfySettings { Packing = { Enabled = true } };
@@ -723,16 +738,19 @@ public class SettingsViewModelTests
     }
 
     [Fact]
-    public void ApplyPreset_Aggressive_DoesNotEnablePacking()
+    public void ApplyPreset_Aggressive_ResetsPackingVirtualizationAndIncremental()
     {
-        var viewModel = new SettingsViewModel { PackingEnabled = true };
+        var viewModel = new SettingsViewModel
+        {
+            PackingEnabled = true,
+            VirtualizationEnabled = true,
+            IncrementalEnabled = true
+        };
         viewModel.ApplyPreset(ObfuscationLevel.Aggressive);
 
-        viewModel.PackingEnabled.ShouldBeTrue();
-
-        viewModel.PackingEnabled = false;
-        viewModel.ApplyPreset(ObfuscationLevel.Aggressive);
         viewModel.PackingEnabled.ShouldBeFalse();
+        viewModel.VirtualizationEnabled.ShouldBeFalse();
+        viewModel.IncrementalEnabled.ShouldBeFalse();
     }
 
     #endregion

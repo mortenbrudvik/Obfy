@@ -38,6 +38,10 @@ public class AppModule : Module
             .As<IClipboardService>()
             .SingleInstance();
 
+        builder.RegisterType<WpfUserNotificationService>()
+            .As<IUserNotificationService>()
+            .SingleInstance();
+
         // Register child ViewModels
         builder.RegisterType<SettingsViewModel>()
             .AsSelf()

@@ -157,25 +157,7 @@ public class DependencyEmbeddingObfuscator : IObfuscator
         var resolve = CreateResolveMethod(module);
         typeDef.Methods.Add(resolve);
 
-        var global = module.GlobalType;
-        if (global == null)
-        {
-            global = new TypeDefUser("", "<Module>", null) { Attributes = TypeAttributes.NotPublic };
-            module.Types.Insert(0, global);
-        }
-
-        var cctor = global.Methods.FirstOrDefault(m => m.IsStaticConstructor);
-        if (cctor == null)
-        {
-            cctor = new MethodDefUser(
-                ".cctor",
-                MethodSig.CreateStatic(module.CorLibTypes.Void),
-                MethodAttributes.Private | MethodAttributes.Static |
-                MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
-            cctor.Body = new CilBody();
-            cctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-            global.Methods.Add(cctor);
-        }
+        var cctor = ObfuscatorHelpers.FindOrCreateModuleInitializer(module);
 
         var domain = new TypeRefUser(module, "System", "AppDomain", module.CorLibTypes.AssemblyRef);
         var handler = new TypeRefUser(module, "System", "ResolveEventHandler", module.CorLibTypes.AssemblyRef);

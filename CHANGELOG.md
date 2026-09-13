@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- VS and Rider save/post-build toggle merge into existing `obfy.json` instead of rewriting a subset (Core-only keys such as virtualization, packing, and exclusions are kept)
+- In-place IDE overwrite copies packing sidecars and `.obfycache`, fails if temp output is missing, stages then replaces the live assembly, and deletes the temp dir in `finally`
+- Incremental cache write I/O errors are a warning, not a failed run; `Obfy.Core` is versioned `1.3.0` so upgrade keys actually change
+- Log copy clipboard failures surface in the UI; CLI unobserved/unhandled exceptions print the full exception and flush NLog
+- Incremental cache keys include the Obfy assembly version so an upgrade is not a false cache hit; a locked or corrupt `.obfycache` is a miss instead of a failed run
+- Pipeline cancellation rethrows `OperationCanceledException` so CLI/UI cancel is not reported as an obfuscator error
+- VS and Rider invoke `obfy -c obfy.json` instead of reconstructing a subset of flags; in-place overwrite writes to a temp file then copies back
+- VS Tools → Options is read via `GetDialogPage`; command visibility no longer blocks the UI thread with `JoinableTaskFactory.Run`
+- Managed launcher loads the embedded assembly from a stream (no `{name}.payload.dll` on disk); anti-tamper skips ALC loads instead of hashing the host, and packing+anti-tamper emits an explicit warning
+- Source directory save preserves relative subfolders; compilation uses trusted platform assemblies
+- `ApplyLevel` resets control-flow mode, virtualization, packing, and incremental so Aggressive leftovers do not leak into Standard/Minimal
+- Enter in text boxes no longer starts obfuscation (`IsDefault` removed; Ctrl+Enter remains)
+- Clipboard copy failures surface in the UI instead of being swallowed
+- Assembly write calls `SimplifyBranches` / `OptimizeBranches` so control-flow on async state machines (Blazor WASM `MoveNext`) no longer fails with “short branch too far”
+- Unity recipe and wizard exclude `UnityEngine` / `Unity` as well as `UnityEngine.*` / `Unity.*` (`*` does not match the namespace itself)
+- CI requests `pull-requests: write` for the sticky coverage comment, skips the comment on fork PRs, and sets `continue-on-error` on that step so a 403 (fork/read-only token) cannot skip the coverage summary or 80% warning
+- CLI config files accept camelCase enum values (`"level": "aggressive"`)
+- `preserveXaml` View/ViewModel suffix match is case-insensitive (`Overview` / `Preview`)
+- Virtualization skips unsigned compares (`cgt.un`, `b*.un`) instead of executing them as signed
+- Dark-theme UI text uses theme foreground brushes so file names, settings, and logs stay readable
+- Disabled toolbar buttons (Obfuscate with no files) keep readable label and border contrast
+- CI `dotnet test` no longer fails 18 FlaUI tests that looked for Debug `ObfyUI.exe` after a Release build; live-window tests are `Category=UI` (opt-in) and the locator prefers the current configuration
+- Packing writes the incremental cache only after a successful launcher emit; cache hits require the launcher files
+- Preview failures no longer fail a successful obfuscation run
+- Packed host awaits async Main and resolves sibling assemblies from the load context (payload stays in-memory)
+- Anti-dump MiniDumpWriteDump patch is skipped unless the process is X86/X64 (ARM64 is no longer written with `0xC3`)
+- Requested watermark/decoy skips are reported as warnings instead of silent success
+- `--watermark-id` with only whitespace is an error instead of a silent no-op
+- External reference proxy skips `constrained.` prefixes (foreach/`using` on structs) so the output stays verifiable
+- Resource encryption hard-skips `Obfy.Embedded.*` even if `excludePatterns` is overwritten
+- UI load/save/run preserves `dependencyEmbedding` instead of dropping it
+- `--proxy-external` help text matches that it enables `--reference-proxy`
+- Rider JVM CI compiles against Rider 2024.3 (`com.jetbrains.rd.protocol.SolutionExtListener`)
+- VS CLI stats parser reads Spectre table rows as well as colon summary lines
+- Anti-tamper `Verify` FailFasts on IO/crypto exceptions, not only hash mismatch
+- `Virtualization.MaxMethods` out of range fails instead of clamping
+
 ### Added
 - CLI `Program.Main` tests for dry-run, missing file, malformed JSON, and unknown `--level`
 - Anti-tamper child-process test that a tampered PE FailFasts (payload does not run)
@@ -14,6 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Source string encryption compile-and-run; merge fail-closed; merge-then-obfuscate; signing wrong PFX / truncated SNK
 - Logging.Core factory/module tests; VS `ObfyCliLocator`; UI `ApplyStartup` command-line apply
 - Coverlet include filter (`coverage.runsettings`); Rider JVM tests on CI; MAUI workload install on the weekly platform job
+- CLI flags `--virtualize` and `--incremental`
+- Desktop UI toggles for virtualization and incremental cache
+- `IPePostProcessor` for PE post-write steps (method IL XOR, integrity hash)
 - Engine-gap tests: virtualization skip/encode, `IncrementalCache.TryHit` invalidation, two-file source rename compile-and-run
 - Tooling tests: VS settings JSON / CLI args / output-assembly locator (no hive), Rider settings + `AssemblyLocator` JVM tests, FlaUI command-line DLL obfuscate path, Settings.Core validation
 - Platform scenario tests: published Blazor WASM `_framework` DLL, NativeAOT obfuscate-then-publish, MAUI Windows (skip without workload)
@@ -48,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional `proxyExternalCalls` / `--proxy-external` to hide selected out-of-module call targets (`--proxy-external` enables `--reference-proxy`)
 - Dependency embedding (`dependencyEmbedding.enabled`) loads sibling referenced DLLs from resources via AssemblyResolve
 - Unity / Blazor / MAUI recipes and wizard presets; `runtimeProfile: BlazorWasm`
-- VS Code extension stub (`Src/Obfy.VSCode`) with `obfy.json` schema, task type, and problem matcher
+- VS Code extension stub (`Src/Obfy.VSCode`) with `obfy.json` schema and problem matcher (no custom task type)
 - Watermark (`watermark.enabled` + `watermark.id`; empty/whitespace `id` is rejected). Type name `WatermarkAttribute` is pinned against renaming; the id is a plaintext CA constructor argument and `Id` field
 - Decoy `ConfusedByAttribute` / `DotfuscatorAttribute` (`protection.antiDecompiler.addDecoyAttributes`, default true when anti-decompiler is on). Names are pinned against renaming. Name-based detector bait; does not block de4dot
 - Anti-dump also overwrites the first byte of in-process `dbghelp!MiniDumpWriteDump` with x86/x64 `ret` (`0xC3`) after an X86/X64 architecture check (Windows; ARM64 is skipped; `VirtualProtect` failure skips the write). External dumpers are unaffected.

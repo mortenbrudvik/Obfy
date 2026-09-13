@@ -186,6 +186,8 @@ public class CommandParsingTests : IDisposable
     [InlineData("--verbose")]
     [InlineData("-v")]
     [InlineData("--no-logo")]
+    [InlineData("--virtualize")]
+    [InlineData("--incremental")]
     public void Parse_BooleanFlags_ParseCorrectly(string flag)
     {
         // Arrange & Act
@@ -652,6 +654,70 @@ public class CommandParsingTests : IDisposable
             watermarkId: "  "));
 
         ex.Message.ShouldContain("--watermark-id");
+    }
+
+    [Fact]
+    public void Parse_VirtualizeOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --virtualize");
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValueForOption(Program.VirtualizeOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Parse_IncrementalOption_SetsTrue()
+    {
+        var parseResult = _rootCommand.Parse($"\"{_testDll}\" --incremental");
+        parseResult.Errors.ShouldBeEmpty();
+        parseResult.GetValueForOption(Program.IncrementalOption).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task BuildSettings_VirtualizeAndIncremental_EnableAndSetCustomLevel()
+    {
+        var settings = await Program.BuildSettingsAsync(
+            configFile: null,
+            level: "standard",
+            stringEncrypt: false,
+            controlFlow: false,
+            rename: false,
+            antiDebug: false,
+            stripMetadata: false,
+            encryptResources: false,
+            preservePublic: false,
+            virtualize: true,
+            incremental: true);
+
+        settings.Virtualization.Enabled.ShouldBeTrue();
+        settings.Incremental.Enabled.ShouldBeTrue();
+        settings.Level.ShouldBe(ObfuscationLevel.Custom);
+    }
+
+    [Fact]
+    public async Task BuildSettings_CamelCaseEnumConfig_Deserializes()
+    {
+        var configPath = Path.Combine(_tempDirectory, "camel.json");
+        File.WriteAllText(configPath, """
+            {
+              "level": "aggressive",
+              "stringEncryption": { "algorithm": "aes256" },
+              "symbolRenaming": { "mode": "sequential" }
+            }
+            """);
+
+        var settings = await Program.BuildSettingsAsync(
+            configFile: new FileInfo(configPath),
+            level: "standard",
+            stringEncrypt: false,
+            controlFlow: false,
+            rename: false,
+            antiDebug: false,
+            stripMetadata: false,
+            encryptResources: false,
+            preservePublic: false);
+
+        settings.StringEncryption.Algorithm.ShouldBe(EncryptionAlgorithm.Aes256);
+        settings.SymbolRenaming.Mode.ShouldBe(NamingMode.Sequential);
     }
 
     [Fact]

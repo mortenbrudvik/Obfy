@@ -37,11 +37,9 @@ public static class ManagedLauncherPacker
                         return 1;
                     }
 
-                    var payloadPath = Path.Combine(
-                        AppContext.BaseDirectory,
-                        Path.GetFileNameWithoutExtension(typeof(PackedHost).Assembly.Location) + ".payload.dll");
-                    using (var file = File.Create(payloadPath))
-                        stream.CopyTo(file);
+                    using var payload = new MemoryStream();
+                    stream.CopyTo(payload);
+                    payload.Position = 0;
 
                     var alc = new AssemblyLoadContext("obfy-packed");
                     alc.Resolving += static (context, name) =>
@@ -55,7 +53,7 @@ public static class ManagedLauncherPacker
                         return File.Exists(probe) ? context.LoadFromAssemblyPath(probe) : null;
                     };
 
-                    var assembly = alc.LoadFromAssemblyPath(payloadPath);
+                    var assembly = alc.LoadFromStream(payload);
                     var entry = assembly.EntryPoint;
                     if (entry == null)
                     {

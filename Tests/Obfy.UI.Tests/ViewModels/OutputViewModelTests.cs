@@ -9,11 +9,12 @@ namespace Obfy.UI.Tests.ViewModels;
 public class OutputViewModelTests
 {
     private readonly Mock<IClipboardService> _clipboard = new();
+    private readonly Mock<IUserNotificationService> _notifications = new();
     private readonly OutputViewModel _viewModel;
 
     public OutputViewModelTests()
     {
-        _viewModel = new OutputViewModel(new InlineUiDispatcher(), _clipboard.Object);
+        _viewModel = new OutputViewModel(new InlineUiDispatcher(), _clipboard.Object, _notifications.Object);
     }
 
     [Fact]
@@ -66,6 +67,19 @@ public class OutputViewModelTests
         _viewModel.CopyLogsCommand.Execute(null);
 
         _clipboard.Verify(c => c.SetText(It.Is<string>(text => text.Contains("[Success]") && text.Contains("done"))), Times.Once);
+    }
+
+    [Fact]
+    public void CopyLogsCommand_WhenClipboardThrows_ShowsErrorNotification()
+    {
+        _clipboard.Setup(c => c.SetText(It.IsAny<string>()))
+            .Throws(new InvalidOperationException("clipboard locked"));
+
+        _viewModel.CopyLogsCommand.Execute(null);
+
+        _notifications.Verify(
+            n => n.Show("Copy failed", "clipboard locked", NotificationSeverity.Error),
+            Times.Once);
     }
 
     private sealed class InlineUiDispatcher : IUiDispatcher

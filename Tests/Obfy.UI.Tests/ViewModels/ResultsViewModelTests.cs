@@ -16,7 +16,7 @@ public class ResultsViewModelTests : IDisposable
     private readonly Mock<IFileDialogService> _dialogs = new();
     private readonly Mock<IReportService> _reports = new();
     private readonly Mock<IClipboardService> _clipboard = new();
-    private readonly Mock<ISnackbarService> _snackbar = new();
+    private readonly Mock<IUserNotificationService> _notifications = new();
     private readonly ResultsViewModel _viewModel;
     private readonly string _tempDirectory;
 
@@ -26,7 +26,7 @@ public class ResultsViewModelTests : IDisposable
             _dialogs.Object,
             _reports.Object,
             _clipboard.Object,
-            _snackbar.Object);
+            _notifications.Object);
 
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"ResultsVMTests_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
@@ -261,15 +261,30 @@ public class ResultsViewModelTests : IDisposable
         _clipboard.Verify(c => c.SetText("Foo -> a"), Times.Once);
     }
 
+    [Fact]
+    public void CopySymbol_WhenClipboardThrows_ShowsErrorNotification()
+    {
+        var node = SymbolTreeNode.Create("Foo", "a", SymbolType.Type);
+        _clipboard.Setup(c => c.SetText(It.IsAny<string>()))
+            .Throws(new InvalidOperationException("clipboard locked"));
+
+        _viewModel.CopySymbolCommand.Execute(node);
+
+        _notifications.Verify(
+            n => n.Show("Copy failed", "clipboard locked", NotificationSeverity.Error),
+            Times.Once);
+    }
+
     private void VerifySnackbar(ControlAppearance appearance, string messagePart)
     {
-        _snackbar.Verify(
+        var severity = appearance == ControlAppearance.Danger
+            ? NotificationSeverity.Error
+            : NotificationSeverity.Success;
+        _notifications.Verify(
             s => s.Show(
                 It.IsAny<string>(),
                 It.Is<string>(m => m.Contains(messagePart, StringComparison.OrdinalIgnoreCase)),
-                appearance,
-                It.IsAny<IconElement?>(),
-                It.IsAny<TimeSpan>()),
+                severity),
             Times.Once);
     }
 }

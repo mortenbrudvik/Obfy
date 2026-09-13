@@ -27,6 +27,32 @@ class ObfySettingsTest {
     }
 
     @Test
+    fun toJson_existingDocument_keepsUnknownCoreKeys() {
+        val existing = """
+            {
+              "virtualization": { "enabled": true },
+              "packing": { "enabled": true },
+              "symbolRenaming": { "enabled": true, "preservePublicApi": true }
+            }
+        """.trimIndent()
+        val json = ObfySettings.forLevel(ObfuscationLevel.Standard).apply {
+            postBuildEnabled = true
+        }.toJson(existing)
+        assertTrue(json.contains("virtualization"))
+        assertTrue(json.contains("packing"))
+        assertTrue(json.contains("preservePublicApi"))
+        assertTrue(json.contains("\"postBuildEnabled\": true"))
+    }
+
+    @Test
+    fun patchPostBuildEnabled_doesNotDropUnknownKeys() {
+        val existing = """{"virtualization":{"enabled":true},"postBuildEnabled":false}"""
+        val patched = ObfySettings.patchPostBuildEnabled(existing, true)
+        assertTrue(patched.contains("virtualization"))
+        assertTrue(patched.contains("\"postBuildEnabled\": true"))
+    }
+
+    @Test
     fun fromJson_legacyFlatRoot_readsBooleans() {
         val json = """{"level":"standard","antiDebug":true,"stringEncryption":false}"""
         val settings = ObfySettings.fromJson(json)

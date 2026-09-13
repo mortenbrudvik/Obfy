@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -6,44 +7,40 @@ using System.Text.RegularExpressions;
 namespace Obfy.VisualStudio.Services;
 
 /// <summary>
-/// Builds <c>obfy</c> CLI arguments and parses summary lines from CLI output.
+/// Builds <c>obfy</c> CLI argv and parses summary lines from CLI output.
 /// </summary>
 public static class CliArgumentBuilder
 {
     private static readonly Regex LastInteger = new(@"-?\d+", RegexOptions.Compiled);
 
-    public static string Build(
+    public static IReadOnlyList<string> Build(
         string assemblyPath,
         string? outputPath,
-        ObfySettings settings,
+        string? configPath,
+        ObfuscationLevel? level = null,
         bool generateSymbolMap = false)
     {
-        var sb = new StringBuilder();
-        sb.Append($"\"{assemblyPath}\"");
+        var args = new List<string> { assemblyPath };
 
         if (!string.IsNullOrEmpty(outputPath))
         {
             var outputDir = Path.GetDirectoryName(Path.GetFullPath(outputPath));
             if (!string.IsNullOrEmpty(outputDir))
-                sb.Append($" -o \"{outputDir}\"");
+            {
+                args.Add("-o");
+                args.Add(outputDir);
+            }
         }
 
-        var level = MatchesPreset(settings) ? settings.Level : ObfuscationLevel.Custom;
-        sb.Append($" -l {level.ToString().ToLowerInvariant()}");
-
-        if (level == ObfuscationLevel.Custom)
+        if (!string.IsNullOrEmpty(configPath))
         {
-            if (!settings.StringEncryption) sb.Append(" --no-string-encryption");
-            if (!settings.SymbolRenaming) sb.Append(" --no-symbol-renaming");
-            if (settings.ControlFlow) sb.Append(" --control-flow");
-            else sb.Append(" --no-control-flow");
-            if (settings.AntiDebug) sb.Append(" --anti-debug");
-            if (settings.AntiDump) sb.Append(" --anti-dump");
-            if (settings.ReferenceProxy) sb.Append(" --reference-proxy");
-            if (settings.AntiTamper) sb.Append(" --anti-tamper");
-            if (settings.AntiDecompiler) sb.Append(" --anti-decompiler");
-            if (settings.ConstantEncryption) sb.Append(" --encrypt-constants");
-            if (settings.ResourceEncryption) sb.Append(" --encrypt-resources");
+            args.Add("-c");
+            args.Add(configPath!);
+        }
+        else if (level is not null)
+        {
+            args.Add("-l");
+            args.Add(level.Value.ToString().ToLowerInvariant());
         }
 
         if (generateSymbolMap)
@@ -57,11 +54,31 @@ public static class CliArgumentBuilder
                     nameof(assemblyPath));
             }
 
-            var mapPath = Path.Combine(assemblyDir, assemblyName + ".map.json");
-            sb.Append($" --map \"{mapPath}\"");
+            args.Add("--map");
+            args.Add(Path.Combine(assemblyDir, assemblyName + ".map.json"));
+        }
+
+        return args;
+    }
+
+    public static string ToCommandLine(IReadOnlyList<string> args)
+    {
+        var sb = new StringBuilder();
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (i > 0)
+                sb.Append(' ');
+            sb.Append(Quote(args[i]));
         }
 
         return sb.ToString();
+    }
+
+    internal static string Quote(string value)
+    {
+        if (value.Length > 0 && value[0] == '-')
+            return value;
+        return "\"" + value.Replace("\"", "\\\"") + "\"";
     }
 
     /// <summary>
@@ -98,24 +115,6 @@ public static class CliArgumentBuilder
             stats.TotalTransformations = stats.StringsEncrypted + stats.SymbolsRenamed;
 
         return stats;
-    }
-
-    private static bool MatchesPreset(ObfySettings settings)
-    {
-        if (settings.Level == ObfuscationLevel.Custom)
-            return false;
-
-        var preset = ObfySettings.ForLevel(settings.Level);
-        return settings.StringEncryption == preset.StringEncryption
-            && settings.SymbolRenaming == preset.SymbolRenaming
-            && settings.ControlFlow == preset.ControlFlow
-            && settings.AntiDebug == preset.AntiDebug
-            && settings.AntiDump == preset.AntiDump
-            && settings.ReferenceProxy == preset.ReferenceProxy
-            && settings.AntiTamper == preset.AntiTamper
-            && settings.AntiDecompiler == preset.AntiDecompiler
-            && settings.ConstantEncryption == preset.ConstantEncryption
-            && settings.ResourceEncryption == preset.ResourceEncryption;
     }
 
     private static string StripMarkup(string line)

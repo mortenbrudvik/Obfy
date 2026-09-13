@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Autofac;
+using Logging.Core.Configuration;
 using Logging.Core.DependencyInjection;
 using Obfy.Console.Wizard;
 using Obfy.Core.DependencyInjection;
@@ -15,8 +16,6 @@ namespace Obfy.Console;
 
 public class Program
 {
-    private static IContainer? _container;
-
     // Expose options and arguments as internal static for testing
     internal static Argument<FileInfo[]> InputArgument { get; private set; } = null!;
     internal static Option<DirectoryInfo?> OutputOption { get; private set; } = null!;
@@ -47,6 +46,8 @@ public class Program
     internal static Option<bool> MergeOption { get; private set; } = null!;
     internal static Option<bool> InternalizeOption { get; private set; } = null!;
     internal static Option<string?> WatermarkIdOption { get; private set; } = null!;
+    internal static Option<bool> VirtualizeOption { get; private set; } = null!;
+    internal static Option<bool> IncrementalOption { get; private set; } = null!;
 
     /// <summary>
     /// Creates the root command with all options and subcommands.
@@ -177,6 +178,14 @@ public class Program
             name: "--watermark-id",
             description: "Enable watermarking and set watermark.id (trimmed; whitespace-only is an error)");
 
+        VirtualizeOption = new Option<bool>(
+            name: "--virtualize",
+            description: "Enable limited IL virtualization for simple static int methods");
+
+        IncrementalOption = new Option<bool>(
+            name: "--incremental",
+            description: "Skip re-obfuscation when input and settings are unchanged");
+
         // Root command
         var rootCommand = new RootCommand("Obfy - C# Obfuscation Tool")
         {
@@ -208,7 +217,9 @@ public class Program
             NoLogoOption,
             MergeOption,
             InternalizeOption,
-            WatermarkIdOption
+            WatermarkIdOption,
+            VirtualizeOption,
+            IncrementalOption
         };
 
         // Config generate command
@@ -266,6 +277,20 @@ public class Program
 
     public static async Task<int> Main(string[] args)
     {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            var text = e.ExceptionObject is Exception ex ? ex.ToString() : e.ExceptionObject?.ToString();
+            System.Console.Error.WriteLine($"Unhandled exception: {text}");
+            LoggingConfiguration.Shutdown();
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            System.Console.Error.WriteLine($"Unobserved task exception: {e.Exception}");
+            LoggingConfiguration.Flush();
+            Environment.ExitCode = 1;
+            e.SetObserved();
+        };
+
         var rootCommand = CreateRootCommand();
 
         // Main handler
@@ -300,6 +325,8 @@ public class Program
             var merge = context.ParseResult.GetValueForOption(MergeOption);
             var internalize = context.ParseResult.GetValueForOption(InternalizeOption);
             var watermarkId = context.ParseResult.GetValueForOption(WatermarkIdOption);
+            var virtualize = context.ParseResult.GetValueForOption(VirtualizeOption);
+            var incremental = context.ParseResult.GetValueForOption(IncrementalOption);
 
             if (!noLogo)
             {
@@ -313,7 +340,7 @@ public class Program
                     antiDebug, stripMetadata, encryptResources, preservePublic,
                     antiTamper, antiDecompiler, noStringEncrypt, noRename,
                     antiDump, referenceProxy, encryptConstants, noControlFlow, encryptMethods, proxyExternal,
-                    watermarkId).ConfigureAwait(false);
+                    watermarkId, virtualize, incremental).ConfigureAwait(false);
 
                 if (merge)
                 {
@@ -361,7 +388,9 @@ public class Program
         bool noControlFlow = false,
         bool encryptMethods = false,
         bool proxyExternal = false,
-        string? watermarkId = null)
+        string? watermarkId = null,
+        bool virtualize = false,
+        bool incremental = false)
     {
         ObfySettings settings;
 
@@ -395,7 +424,7 @@ public class Program
             || encryptResources || preservePublic || antiTamper || antiDecompiler
             || noStringEncrypt || noRename
             || antiDump || referenceProxy || encryptConstants || noControlFlow || encryptMethods || proxyExternal
-            || watermarkRequested;
+            || watermarkRequested || virtualize || incremental;
 
         if (stringEncrypt) settings.StringEncryption.Enabled = true;
         if (noStringEncrypt) settings.StringEncryption.Enabled = false;
@@ -423,6 +452,8 @@ public class Program
             settings.Watermark.Enabled = true;
             settings.Watermark.Id = watermarkId!.Trim();
         }
+        if (virtualize) settings.Virtualization.Enabled = true;
+        if (incremental) settings.Incremental.Enabled = true;
 
         if (anyOverride)
             settings.Level = ObfuscationLevel.Custom;
@@ -450,14 +481,13 @@ public class Program
         bool verbose,
         bool merge = false)
     {
-        // Setup DI container
         var builder = new ContainerBuilder();
         builder.RegisterModule(new LoggingModule("Obfy.Console", enableConsoleOutput: verbose));
         builder.RegisterModule<ObfuscationModule>();
-        _container = builder.Build();
+        await using var container = builder.Build();
 
-        var service = _container.Resolve<IObfuscationService>();
-        var reportService = _container.Resolve<IReportService>();
+        var service = container.Resolve<IObfuscationService>();
+        var reportService = container.Resolve<IReportService>();
 
         var allSymbols = new Dictionary<string, string>();
         var successfulResults = new List<(ObfuscationResult Result, ObfySettings Settings)>();

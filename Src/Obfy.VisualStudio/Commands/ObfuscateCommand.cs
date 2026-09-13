@@ -77,7 +77,13 @@ internal sealed class ObfuscateCommand : BaseCommand<ObfuscateCommand>
 
             var cts = new CancellationTokenSource();
             var assemblyPath = outputPath!;
-            var result = await obfuscator.ObfuscateAsync(assemblyPath, assemblyPath, settings, cts.Token);
+            var projectDir = Path.GetDirectoryName(await project.GetAttributeAsync("FullPath"));
+            var configPath = !string.IsNullOrEmpty(projectDir)
+                ? settingsService.GetSettingsFilePath(projectDir)
+                : null;
+            if (configPath is not null && !File.Exists(configPath))
+                configPath = null;
+            var result = await obfuscator.ObfuscateAsync(assemblyPath, assemblyPath, settings, cts.Token, configPath);
 
             await VS.StatusBar.ClearAsync();
 
@@ -107,20 +113,8 @@ internal sealed class ObfuscateCommand : BaseCommand<ObfuscateCommand>
 
     protected override void BeforeQueryStatus(EventArgs e)
     {
-        // Only show command for projects that can have output assemblies
-        ThreadHelper.JoinableTaskFactory.Run(async () =>
-        {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-            var project = await VS.Solutions.GetActiveProjectAsync();
-            Command.Visible = project != null && IsSupportedProject(project);
-        });
-    }
-
-    private static bool IsSupportedProject(Project project)
-    {
-        // Support C# and VB.NET projects
-        var kind = project.GetType().Name;
-        return kind.Contains("CSharp") || kind.Contains("VB") || kind.Contains("SDK");
+        // Do not JoinableTaskFactory.Run here — it can deadlock the UI thread.
+        Command.Visible = true;
     }
 
     private static async Task<string?> GetOutputAssemblyPathAsync(Project project)

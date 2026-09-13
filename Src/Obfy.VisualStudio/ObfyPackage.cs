@@ -44,12 +44,15 @@ public sealed class ObfyPackage : ToolkitPackage
     /// <summary>
     /// General options page instance
     /// </summary>
+    public static ObfyPackage? Instance { get; private set; }
+
     public static GeneralOptionsPage? Options =>
-        GetGlobalService(typeof(GeneralOptionsPage)) as GeneralOptionsPage;
+        Instance?.GetDialogPage(typeof(GeneralOptionsPage)) as GeneralOptionsPage;
 
     protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
     {
         await base.InitializeAsync(cancellationToken, progress);
+        Instance = this;
 
         // Switch to main thread for UI operations
         await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);

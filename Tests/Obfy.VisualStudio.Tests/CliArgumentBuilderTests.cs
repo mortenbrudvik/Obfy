@@ -6,35 +6,50 @@ namespace Obfy.VisualStudio.Tests;
 public class CliArgumentBuilderTests
 {
     [Fact]
-    public void Build_QuotesPaths_AndIncludesLevel()
+    public void Build_PassesConfigFileAsArgv_WithoutTechniqueFlags()
     {
-        var args = CliArgumentBuilder.Build(@"C:\src\My App.dll", @"C:\out\My App.dll", ObfySettings.ForLevel(ObfuscationLevel.Standard));
-        args.ShouldContain("\"C:\\src\\My App.dll\"");
-        args.ShouldContain("-o \"C:\\out\"");
-        args.ShouldContain("-l standard");
+        var args = CliArgumentBuilder.Build(@"C:\src\My App.dll", @"C:\out\My App.dll", @"C:\src\obfy.json");
+        args.ShouldBe(new[]
+        {
+            @"C:\src\My App.dll",
+            "-o",
+            @"C:\out",
+            "-c",
+            @"C:\src\obfy.json"
+        });
+        args.ShouldNotContain("-l");
         args.ShouldNotContain("--anti-debug");
+
+        var commandLine = CliArgumentBuilder.ToCommandLine(args);
+        commandLine.ShouldContain("\"C:\\src\\My App.dll\"");
+        commandLine.ShouldContain("-c \"C:\\src\\obfy.json\"");
     }
 
     [Fact]
-    public void Build_CustomLevel_EmitsTogglesAndOptionalMap()
+    public void Build_WithoutConfig_FallsBackToLevel()
     {
-        var settings = new ObfySettings
-        {
-            Level = ObfuscationLevel.Custom,
-            StringEncryption = false,
-            SymbolRenaming = false,
-            ControlFlow = true,
-            AntiDump = true,
-            ConstantEncryption = true
-        };
+        var args = CliArgumentBuilder.Build(@"D:\a.dll", null, configPath: null, level: ObfuscationLevel.Standard, generateSymbolMap: true);
+        args.ShouldContain("-l");
+        args.ShouldContain("standard");
+        args.ShouldContain("--map");
+        args.ShouldContain(@"D:\a.map.json");
+        args.ShouldNotContain("-c");
+    }
 
-        var args = CliArgumentBuilder.Build(@"D:\a.dll", null, settings, generateSymbolMap: true);
-        args.ShouldContain("--no-string-encryption");
-        args.ShouldContain("--no-symbol-renaming");
-        args.ShouldContain("--control-flow");
-        args.ShouldContain("--anti-dump");
-        args.ShouldContain("--encrypt-constants");
-        args.ShouldContain("--map \"D:\\a.map.json\"");
+    [Fact]
+    public void Quote_EscapesEmbeddedQuotes()
+    {
+        CliArgumentBuilder.Quote(@"C:\src\My ""App"".dll").ShouldBe("\"C:\\src\\My \\\"App\\\".dll\"");
+    }
+
+    [Theory]
+    [InlineData(@"C:\src\App.csproj", true)]
+    [InlineData(@"C:\src\Lib.vbproj", true)]
+    [InlineData(@"C:\src\Native.vcxproj", false)]
+    [InlineData(null, false)]
+    public void ProjectSupport_IsSupportedProjectPath(string? path, bool expected)
+    {
+        ProjectSupport.IsSupportedProjectPath(path).ShouldBe(expected);
     }
 
     [Fact]
@@ -56,15 +71,5 @@ public class CliArgumentBuilderTests
         var stats = CliArgumentBuilder.ParseStatistics(table);
         stats.StringsEncrypted.ShouldBe(42);
         stats.TotalTransformations.ShouldBe(42);
-    }
-
-    [Fact]
-    public void Build_MismatchedStandardFlags_EmitsCustomLevel()
-    {
-        var settings = ObfySettings.ForLevel(ObfuscationLevel.Standard);
-        settings.AntiDebug = true;
-        var args = CliArgumentBuilder.Build(@"C:\a.dll", @"C:\out\a.dll", settings);
-        args.ShouldContain("-l custom");
-        args.ShouldContain("--anti-debug");
     }
 }

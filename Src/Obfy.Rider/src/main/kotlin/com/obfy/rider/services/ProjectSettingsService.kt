@@ -56,7 +56,8 @@ class ProjectSettingsService(private val project: Project) {
     fun saveSettingsForPath(projectDirPath: String, settings: ObfySettings) {
         try {
             val settingsFile = File(projectDirPath, settingsFileName)
-            settingsFile.writeText(settings.toJson())
+            val existing = if (settingsFile.exists()) settingsFile.readText() else null
+            settingsFile.writeText(settings.toJson(existing))
             logger.info("Saved settings to ${settingsFile.absolutePath}")
         } catch (e: Exception) {
             logger.error("Failed to save obfy.json: ${e.message}")
@@ -74,9 +75,15 @@ class ProjectSettingsService(private val project: Project) {
      * Enable or disable post-build obfuscation for a project
      */
     fun setPostBuildEnabled(projectDir: VirtualFile?, enabled: Boolean) {
-        val settings = loadSettings(projectDir)
+        val dir = projectDir?.path ?: return
+        val settingsFile = File(dir, settingsFileName)
+        if (settingsFile.exists()) {
+            settingsFile.writeText(ObfySettings.patchPostBuildEnabled(settingsFile.readText(), enabled))
+            return
+        }
+        val settings = ObfySettings.default()
         settings.postBuildEnabled = enabled
-        saveSettings(projectDir, settings)
+        saveSettingsForPath(dir, settings)
     }
 
     /**

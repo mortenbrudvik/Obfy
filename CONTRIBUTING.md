@@ -122,7 +122,7 @@ We have six test projects:
 | `Obfy.Console.Tests` | CLI argument parsing, help output | see [docs/Testing.md](docs/Testing.md) |
 | `Obfy.UI.Tests` | ViewModel logic and commands | see [docs/Testing.md](docs/Testing.md) |
 | `Obfy.ScenarioTests` | SDK fixtures (examples, WPF, console, WinForms, MSBuild, Unity) + platform | see [docs/Testing.md](docs/Testing.md) |
-| `Obfy.VisualStudio.Tests` | VS JSON / CLI args / output path (no hive) | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.VisualStudio.Tests` | VS JSON / CLI args / in-place copy / output path (no hive) | see [docs/Testing.md](docs/Testing.md) |
 | `Obfy.UI.AutomationTests` | Locator unit tests + FlaUI live window (`Category=UI`, local) | see [docs/Testing.md](docs/Testing.md) |
 
 ```bash

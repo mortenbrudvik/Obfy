@@ -55,18 +55,10 @@ public class SourceProcessor : ISourceProcessor
 
         _logger.LogDebug("Loaded {Count} source files", syntaxTrees.Count);
 
-        // Create compilation with basic references
-        var references = new[]
-        {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
-            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
-        };
-
         var compilation = CSharpCompilation.Create(
             "ObfuscatedAssembly",
             syntaxTrees,
-            references,
+            CreateRuntimeReferences(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var context = PipelineContext.ForSourceCode(compilation, settings);
@@ -107,20 +99,53 @@ public class SourceProcessor : ISourceProcessor
                 Directory.CreateDirectory(outputPath);
             }
 
+            var inputRoot = Directory.Exists(context.InputPath) ? context.InputPath : null;
             foreach (var tree in context.Compilation.SyntaxTrees)
             {
-                var fileName = Path.GetFileName(tree.FilePath);
-                if (string.IsNullOrEmpty(fileName))
-                {
-                    fileName = $"obfuscated_{Guid.NewGuid():N}.cs";
-                }
-
-                var filePath = Path.Combine(outputPath, fileName);
+                var relative = RelativeSourcePath(tree.FilePath, inputRoot);
+                var filePath = Path.Combine(outputPath, relative);
+                var fileDirectory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(fileDirectory))
+                    Directory.CreateDirectory(fileDirectory);
                 var sourceText = tree.GetRoot(cancellationToken).ToFullString();
                 await File.WriteAllTextAsync(filePath, sourceText, cancellationToken).ConfigureAwait(false);
             }
         }
 
         _logger.LogDebug("Source code saved successfully");
+    }
+
+    private static string RelativeSourcePath(string? treePath, string? inputRoot)
+    {
+        if (string.IsNullOrEmpty(treePath))
+            return $"obfuscated_{Guid.NewGuid():N}.cs";
+
+        if (!string.IsNullOrEmpty(inputRoot))
+        {
+            var relative = Path.GetRelativePath(inputRoot, treePath);
+            if (!relative.StartsWith("..", StringComparison.Ordinal) && relative != treePath)
+                return relative;
+        }
+
+        return Path.GetFileName(treePath);
+    }
+
+    private static IReadOnlyList<MetadataReference> CreateRuntimeReferences()
+    {
+        var tpa = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+        if (!string.IsNullOrEmpty(tpa))
+        {
+            return tpa.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+                .Where(File.Exists)
+                .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
+                .ToList();
+        }
+
+        return
+        [
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
+        ];
     }
 }

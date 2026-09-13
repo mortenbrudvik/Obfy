@@ -28,7 +28,7 @@ object AssemblyLocator {
         return projectFile?.nameWithoutExtension ?: projectDir.name
     }
 
-    fun findOutputAssembly(projectDir: File, projectName: String, releaseOnly: Boolean = false): File? {
+    fun findOutputAssembly(projectDir: File, projectName: String, releaseOnly: Boolean = true): File? {
         val binDir = File(projectDir, "bin")
         if (!binDir.isDirectory) return null
 
@@ -50,7 +50,7 @@ object AssemblyLocator {
         return candidates.maxByOrNull { it.lastModified() }
     }
 
-    fun findOutputAssembly(projectDir: VirtualFile, releaseOnly: Boolean = false): String? {
+    fun findOutputAssembly(projectDir: VirtualFile, releaseOnly: Boolean = true): String? {
         val name = findProjectName(projectDir)
         return findOutputAssembly(File(projectDir.path), name, releaseOnly)?.absolutePath
     }

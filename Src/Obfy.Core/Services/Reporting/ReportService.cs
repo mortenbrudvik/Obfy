@@ -11,20 +11,25 @@ namespace Obfy.Core.Services.Reporting;
 public class ReportService : IReportService
 {
     private readonly ILogger<ReportService> _logger;
-    private readonly HtmlReportGenerator _htmlGenerator;
-    private readonly JsonReportGenerator _jsonGenerator;
+    private readonly IReadOnlyList<IReportGenerator> _generators;
 
     /// <summary>
     /// Creates a new report service.
     /// </summary>
     public ReportService(
         ILogger<ReportService> logger,
-        HtmlReportGenerator htmlGenerator,
-        JsonReportGenerator jsonGenerator)
+        IEnumerable<IReportGenerator> generators)
     {
         _logger = logger;
-        _htmlGenerator = htmlGenerator;
-        _jsonGenerator = jsonGenerator;
+        _generators = generators.ToList();
+    }
+
+    public ReportService(
+        ILogger<ReportService> logger,
+        HtmlReportGenerator htmlGenerator,
+        JsonReportGenerator jsonGenerator)
+        : this(logger, new IReportGenerator[] { htmlGenerator, jsonGenerator })
+    {
     }
 
     /// <inheritdoc/>
@@ -81,12 +86,10 @@ public class ReportService : IReportService
         ReportFormat format,
         CancellationToken cancellationToken = default)
     {
-        IReportGenerator generator = format switch
-        {
-            ReportFormat.Html => _htmlGenerator,
-            ReportFormat.Json => _jsonGenerator,
-            _ => throw new ArgumentException($"Unsupported report format: {format}", nameof(format))
-        };
+        var extension = GetFileExtension(format);
+        var generator = _generators.FirstOrDefault(g =>
+            string.Equals(g.FileExtension, extension, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException($"Unsupported report format: {format}", nameof(format));
 
         await generator.GenerateAsync(report, outputPath, cancellationToken).ConfigureAwait(false);
     }

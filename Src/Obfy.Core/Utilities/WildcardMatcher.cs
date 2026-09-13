@@ -9,6 +9,8 @@ namespace Obfy.Core.Utilities;
 /// </summary>
 public static class WildcardMatcher
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex> Cache = new(StringComparer.Ordinal);
+
     public static bool IsMatch(string? value, string pattern)
     {
         ArgumentNullException.ThrowIfNull(pattern);
@@ -16,7 +18,11 @@ public static class WildcardMatcher
         if (string.IsNullOrEmpty(value))
             return false;
 
-        var regex = "^" + Regex.Escape(pattern).Replace("\\*", ".*").Replace("\\?", ".") + "$";
-        return Regex.IsMatch(value, regex, RegexOptions.IgnoreCase);
+        var regex = Cache.GetOrAdd(pattern, static p =>
+        {
+            var text = "^" + Regex.Escape(p).Replace("\\*", ".*").Replace("\\?", ".") + "$";
+            return new Regex(text, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+        });
+        return regex.IsMatch(value);
     }
 }

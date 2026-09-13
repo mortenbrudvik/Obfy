@@ -47,7 +47,7 @@ public class AntiDumpObfuscator : IObfuscator
             var wipe = antiDumpType.FindMethod("Wipe")
                 ?? throw new InvalidOperationException("Anti-dump wipe method was not injected.");
 
-            var initializer = FindOrCreateModuleInitializer(module);
+            var initializer = ObfuscatorHelpers.FindOrCreateModuleInitializer(module, requireBody: true);
             if (initializer.Body is null)
             {
                 throw new InvalidOperationException(
@@ -397,39 +397,4 @@ public class AntiDumpObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, writeInt32));
     }
 
-    private static MethodDef FindOrCreateModuleInitializer(ModuleDef module)
-    {
-        var globalType = module.GlobalType;
-        if (globalType == null)
-        {
-            globalType = new TypeDefUser("", "<Module>", null)
-            {
-                Attributes = TypeAttributes.NotPublic
-            };
-            module.Types.Insert(0, globalType);
-        }
-
-        var cctor = globalType.Methods.FirstOrDefault(m => m.IsStaticConstructor || m.Name == ".cctor");
-        if (cctor != null)
-        {
-            if (cctor.Body is null)
-            {
-                throw new InvalidOperationException(
-                    "Cannot inject anti-dump: module initializer has no IL body (native or abstract .cctor).");
-            }
-
-            return cctor;
-        }
-
-        cctor = new MethodDefUser(
-            ".cctor",
-            MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Private | MethodAttributes.Static |
-            MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
-        var body = new CilBody();
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-        cctor.Body = body;
-        globalType.Methods.Add(cctor);
-        return cctor;
-    }
 }

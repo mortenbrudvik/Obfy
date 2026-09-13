@@ -5,15 +5,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+    <Version>1.3.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Obfy.Tests" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Settings.Core\Settings.Core.csproj" />
-    <ProjectReference Include="..\Logging.Core\Logging.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

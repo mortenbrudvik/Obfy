@@ -147,22 +147,20 @@ public class ObfuscationPipelineTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WhenCancelled_ReturnsFailed()
+    public async Task ExecuteAsync_WhenCancelled_ThrowsOperationCanceledException()
     {
         var obfuscator = EnabledObfuscator("Slow", 10, ObfuscationResult.Successful(new ObfuscationStatistics()));
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        obfuscator.Setup(o => o.ObfuscateAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
 
         var pipeline = new ObfuscationPipeline([obfuscator.Object], new Mock<ILogger<ObfuscationPipeline>>().Object);
-        var result = await pipeline.ExecuteAsync(new PipelineContext
+        var context = new PipelineContext
         {
             TargetType = TargetType.Assembly,
             Settings = new ObfySettings()
-        }, cts.Token);
+        };
 
-        result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("cancelled");
-        obfuscator.Verify(o => o.ObfuscateAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        await Should.ThrowAsync<OperationCanceledException>(() => pipeline.ExecuteAsync(context));
     }
 
     [Fact]

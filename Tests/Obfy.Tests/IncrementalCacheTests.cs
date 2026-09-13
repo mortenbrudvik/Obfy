@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Obfy.Core.Models;
 using Obfy.Core.Utilities;
 using Shouldly;
@@ -51,6 +54,70 @@ public class IncrementalCacheTests : IDisposable
         var (input, output, settings) = Seed();
         IncrementalCache.Write(input, output, settings);
         settings.Packing.Enabled = true;
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryHit_CacheWrittenWithoutProductVersion_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.Write(input, output, settings);
+        File.ReadAllText(IncrementalCache.CachePath(output)).Trim().Length.ShouldBe(64);
+        File.WriteAllText(IncrementalCache.CachePath(output), "deadbeef");
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryHit_CacheKeyWithoutVersionPrefix_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        var inputBytes = File.ReadAllBytes(input);
+        var jsonBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(settings, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = true
+        }));
+        var payload = new byte[inputBytes.Length + jsonBytes.Length];
+        Buffer.BlockCopy(inputBytes, 0, payload, 0, inputBytes.Length);
+        Buffer.BlockCopy(jsonBytes, 0, payload, inputBytes.Length, jsonBytes.Length);
+        File.WriteAllText(IncrementalCache.CachePath(output), Convert.ToHexString(SHA256.HashData(payload)));
+
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ProductVersion_IsStampedOnCoreAssembly()
+    {
+        var version = typeof(IncrementalCache).Assembly.GetName().Version;
+        version.ShouldNotBeNull();
+        version.ShouldBe(new Version(1, 3, 0, 0));
+    }
+
+    [Fact]
+    public void TryHit_LockedCacheFile_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.Write(input, output, settings);
+        using var _ = new FileStream(
+            IncrementalCache.CachePath(output), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryWrite_LockedCacheFile_ReturnsFalse()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.Write(input, output, settings);
+        using var _ = new FileStream(
+            IncrementalCache.CachePath(output), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryHit_CorruptCacheFile_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        File.WriteAllText(IncrementalCache.CachePath(output), "");
         IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
     }
 

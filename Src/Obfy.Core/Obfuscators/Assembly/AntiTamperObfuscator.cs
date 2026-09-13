@@ -58,7 +58,7 @@ public class AntiTamperObfuscator : IObfuscator
             // Add check to module initializer if configured
             if (settings.CheckModuleInitializer)
             {
-                var moduleInitializer = FindOrCreateModuleInitializer(module);
+                var moduleInitializer = ObfuscatorHelpers.FindOrCreateModuleInitializer(module);
                 if (moduleInitializer != null && InjectVerificationCall(moduleInitializer, antiTamperType))
                 {
                     stats.ProtectionsApplied++;
@@ -77,13 +77,23 @@ public class AntiTamperObfuscator : IObfuscator
             _logger.LogInformation("Applied {Count} anti-tamper protections", stats.ProtectionsApplied);
 
             // Emitted unconditionally: at obfuscation time we cannot know whether the consumer will
-            // publish as single-file. The runtime still skips when Assembly.Location is empty.
+            // publish as single-file. The runtime still skips when Assembly.Location is empty
+            // (single-file) or for packed ALC/LoadFromStream loads (hashing the launcher would false-fail).
             const string singleFileWarning =
                 "Anti-tamper: the integrity check verifies the assembly file on disk and is skipped for " +
-                "single-file / self-contained deployments (Assembly.Location is empty). Ship a file-based " +
-                "deployment for tamper protection to take effect.";
+                "single-file / self-contained deployments (Assembly.Location is empty) and packed ALC/" +
+                "LoadFromStream loads. Ship a file-based, unpacked deployment for tamper protection to take effect.";
             context.Warnings.Add(singleFileWarning);
             _logger.LogWarning("{Warning}", singleFileWarning);
+
+            if (context.Settings.Packing.Enabled)
+            {
+                const string packingWarning =
+                    "Anti-tamper is skipped at runtime for packed ALC/LoadFromStream loads. " +
+                    "The launcher will not verify the embedded payload.";
+                context.Warnings.Add(packingWarning);
+                _logger.LogWarning("{Warning}", packingWarning);
+            }
 
             return Task.FromResult(ObfuscationResult.Successful(stats));
         }
@@ -265,6 +275,8 @@ public class AntiTamperObfuscator : IObfuscator
 
         var getExecutingAssembly = new MemberRefUser(module, "GetExecutingAssembly",
             MethodSig.CreateStatic(new ClassSig(assemblyType)), assemblyType);
+        var getEntryAssembly = new MemberRefUser(module, "GetEntryAssembly",
+            MethodSig.CreateStatic(new ClassSig(assemblyType)), assemblyType);
         var getLocation = new MemberRefUser(module, "get_Location",
             MethodSig.CreateInstance(module.CorLibTypes.String), assemblyType);
         var getProcessPath = new MemberRefUser(module, "get_ProcessPath",
@@ -313,10 +325,25 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, havePath));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, getProcessPath));
+        // Location empty: only fall back to ProcessPath when this assembly is the process
+        // entry (single-file). ALC / LoadFromStream loads are a different assembly than
+        // the host and must skip — hashing the launcher would false-fail.
+        var skipPop = Instruction.Create(OpCodes.Pop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getEntryAssembly));
+        body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, skipPop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, getExecutingAssembly));
+        var processPath = Instruction.Create(OpCodes.Call, getProcessPath);
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, processPath));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+
+        body.Instructions.Add(processPath);
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, havePath));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+        body.Instructions.Add(skipPop);
         body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
 
         body.Instructions.Add(havePath);
@@ -474,40 +501,5 @@ public class AntiTamperObfuscator : IObfuscator
 
         body.UpdateInstructionOffsets();
         return true;
-    }
-
-    private MethodDef? FindOrCreateModuleInitializer(ModuleDef module)
-    {
-        var globalType = module.GlobalType;
-        if (globalType == null)
-        {
-            // Create global type if it doesn't exist
-            globalType = new TypeDefUser("", "<Module>", null);
-            globalType.Attributes = TypeAttributes.NotPublic;
-            module.Types.Insert(0, globalType);
-        }
-
-        // Find existing .cctor
-        var cctor = globalType.Methods.FirstOrDefault(m =>
-            m.IsStaticConstructor || m.Name == ".cctor");
-
-        if (cctor != null)
-            return cctor;
-
-        // Create new .cctor
-        cctor = new MethodDefUser(
-            ".cctor",
-            MethodSig.CreateStatic(module.CorLibTypes.Void),
-            MethodAttributes.Private | MethodAttributes.Static |
-            MethodAttributes.HideBySig | MethodAttributes.SpecialName |
-            MethodAttributes.RTSpecialName);
-
-        var body = new CilBody();
-        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-        cctor.Body = body;
-
-        globalType.Methods.Add(cctor);
-
-        return cctor;
     }
 }

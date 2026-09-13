@@ -13,7 +13,7 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 | Obfy.UI.Tests | 133 | ViewModel unit tests, startup CLI apply, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 25 | 6 locator unit tests (CI) + 19 FlaUI live-window tests (`Category=UI`, local) |
 | Obfy.ScenarioTests | 16 | 13 default SDK fixtures (Unity stub + merge + merge-then-obfuscate) + 3 `Category=Platform` |
-| Obfy.VisualStudio.Tests | 16 | VS settings JSON, CLI args, output-assembly locator, CLI path locator (no VS hive) |
+| Obfy.VisualStudio.Tests | 16 | VS settings JSON, CLI argv, in-place copy, output-assembly locator, CLI path locator (no VS hive) |
 | **Total** | **725** | Default CI (`Category!=UI&Category!=Platform`). Project counts include FlaUI + Platform; Total is the default filter. |
 
 ## Test Stack

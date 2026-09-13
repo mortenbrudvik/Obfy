@@ -65,6 +65,7 @@ public class ObfySettingsJsonTests
         var json = ObfySettingsJson.Serialize(original);
         json.ShouldContain("\"protection\"");
         json.ShouldContain("\"enabled\"");
+        json.ShouldNotContain("preservePublicApi");
 
         var loaded = ObfySettingsJson.Parse(json);
         loaded.Level.ShouldBe(ObfuscationLevel.Minimal);
@@ -74,27 +75,49 @@ public class ObfySettingsJsonTests
     }
 
     [Fact]
-    public void Serialize_PreservesCoreOnlyFields()
+    public void Serialize_ExistingDocument_KeepsUnknownCoreKeys()
     {
         const string existing = """
             {
-              "level": "standard",
+              "level": "custom",
               "runtimeProfile": "NativeAot",
-              "virtualization": { "enabled": true, "maxMethods": 8 },
-              "symbolRenaming": { "enabled": true, "preservePublicApi": true },
-              "exclusions": { "namespaces": ["UnityEngine"] }
+              "virtualization": { "enabled": true },
+              "packing": { "enabled": true },
+              "incremental": { "enabled": true },
+              "exclusions": { "types": [ "Foo" ] },
+              "symbolRenaming": { "enabled": true, "preservePublicApi": true, "preserveXaml": true }
             }
             """;
 
-        var settings = ObfySettings.ForLevel(ObfuscationLevel.Minimal);
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Standard);
+        settings.PostBuildEnabled = true;
         var json = ObfySettingsJson.Serialize(settings, existing);
 
         json.ShouldContain("\"runtimeProfile\"");
         json.ShouldContain("NativeAot");
         json.ShouldContain("\"virtualization\"");
+        json.ShouldContain("\"packing\"");
+        json.ShouldContain("\"incremental\"");
+        json.ShouldContain("\"exclusions\"");
         json.ShouldContain("\"preservePublicApi\": true");
-        json.ShouldContain("UnityEngine");
-        json.ShouldContain("\"level\": \"minimal\"");
+        json.ShouldContain("\"preserveXaml\": true");
+        json.ShouldContain("\"postBuildEnabled\": true");
+        json.ShouldContain("\"level\": \"standard\"");
+    }
+
+    [Fact]
+    public void PatchPostBuildEnabled_DoesNotDropUnknownKeys()
+    {
+        const string existing = """
+            {
+              "virtualization": { "enabled": true },
+              "postBuildEnabled": false
+            }
+            """;
+
+        var patched = ObfySettingsJson.PatchPostBuildEnabled(existing, true);
+        patched.ShouldContain("\"virtualization\"");
+        patched.ShouldContain("\"postBuildEnabled\": true");
     }
 
     [Fact]

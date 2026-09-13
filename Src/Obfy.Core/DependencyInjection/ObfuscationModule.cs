@@ -29,86 +29,86 @@ public class ObfuscationModule : Module
         // Register utilities
         builder.RegisterType<NameGenerator>()
             .As<INameGenerator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         // Register assembly obfuscators
         builder.RegisterType<StringEncryptionObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<ConstantEncryptionObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<ResourceEncryptionObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<SymbolRenamingObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<ControlFlowObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<MetadataRemovalObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<AntiDebugObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<AntiDecompilerObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<AntiTamperObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<AntiDumpObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<ReferenceProxyObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<MethodEncryptionObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<DependencyEmbeddingObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<WatermarkObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<VirtualizationObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         // Register source code obfuscators
         builder.RegisterType<SourceStringEncryptor>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<SourceSymbolRenamer>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<SourceControlFlowObfuscator>()
             .As<IObfuscator>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         // Register pipeline
         builder.RegisterType<ObfuscationPipeline>()
             .As<IObfuscationPipeline>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         // Register assembly merger
         builder.RegisterType<AssemblyMerger>()
@@ -120,12 +120,22 @@ public class ObfuscationModule : Module
             .As<IObfuscationService>()
             .SingleInstance();
 
+        builder.RegisterType<MethodEncryptionPePostProcessor>()
+            .As<IPePostProcessor>()
+            .SingleInstance();
+
+        builder.RegisterType<AntiTamperPePostProcessor>()
+            .As<IPePostProcessor>()
+            .SingleInstance();
+
         // Register report generators
         builder.RegisterType<HtmlReportGenerator>()
+            .As<IReportGenerator>()
             .AsSelf()
             .SingleInstance();
 
         builder.RegisterType<JsonReportGenerator>()
+            .As<IReportGenerator>()
             .AsSelf()
             .SingleInstance();
 

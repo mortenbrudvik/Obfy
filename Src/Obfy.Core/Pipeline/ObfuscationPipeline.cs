@@ -110,7 +110,7 @@ public class ObfuscationPipeline : IObfuscationPipeline
         catch (OperationCanceledException)
         {
             _logger.LogWarning("Pipeline was cancelled");
-            return ObfuscationResult.Failed("Operation was cancelled");
+            throw;
         }
         catch (Exception ex)
         {

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using Autofac;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
 using Obfy.Core.Pipeline;
@@ -17,19 +18,22 @@ public class ObfuscationService : IObfuscationService
     private readonly IObfuscationPipeline _pipeline;
     private readonly IAssemblyMerger _assemblyMerger;
     private readonly ILogger<ObfuscationService> _logger;
+    private readonly ILifetimeScope? _lifetimeScope;
 
     public ObfuscationService(
         IAssemblyProcessor assemblyProcessor,
         ISourceProcessor sourceProcessor,
         IObfuscationPipeline pipeline,
         IAssemblyMerger assemblyMerger,
-        ILogger<ObfuscationService> logger)
+        ILogger<ObfuscationService> logger,
+        ILifetimeScope? lifetimeScope = null)
     {
         _assemblyProcessor = assemblyProcessor;
         _sourceProcessor = sourceProcessor;
         _pipeline = pipeline;
         _assemblyMerger = assemblyMerger;
         _logger = logger;
+        _lifetimeScope = lifetimeScope;
     }
 
     /// <inheritdoc/>
@@ -107,16 +111,24 @@ public class ObfuscationService : IObfuscationService
             foreach (var warning in context.Warnings)
                 _logger.LogWarning("{Warning}", warning);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to load {InputPath}", inputPath);
             return ObfuscationResult.Failed($"Failed to load input: {ex.Message}", ex);
         }
 
+        ILifetimeScope? runScope = null;
+        var pipeline = _pipeline;
+        if (_lifetimeScope is not null)
+        {
+            runScope = _lifetimeScope.BeginLifetimeScope();
+            pipeline = runScope.Resolve<IObfuscationPipeline>();
+        }
+
         try
         {
             // Execute the pipeline
-            var result = await _pipeline.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
+            var result = await pipeline.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
 
             if (!result.Success)
             {
@@ -156,15 +168,18 @@ public class ObfuscationService : IObfuscationService
                         context.Warnings.Add("Packed launcher: " + packedPath);
                         _logger.LogInformation("Packed launcher written to {Launcher}", packedPath);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         _logger.LogError(ex, "Packing failed for {Output}", effectiveOutput);
                         return ObfuscationResult.Failed($"Packing failed: {ex.Message}", ex);
                     }
                 }
 
-                if (settings.Incremental.Enabled && target.TargetType == TargetType.Assembly)
-                    IncrementalCache.Write(inputPath, effectiveOutput, settings);
+                if (settings.Incremental.Enabled && target.TargetType == TargetType.Assembly &&
+                    !IncrementalCache.TryWrite(inputPath, effectiveOutput, settings))
+                {
+                    _logger.LogWarning("Could not write incremental cache for {Output}", effectiveOutput);
+                }
 
                 return ObfuscationResult.Successful(
                     context.Statistics,
@@ -177,7 +192,7 @@ public class ObfuscationService : IObfuscationService
                     warnings: context.Warnings.ToList(),
                     packedLauncherPath: packedPath);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogError(ex, "Failed to save obfuscated output");
                 return ObfuscationResult.Failed($"Failed to save output: {ex.Message}", ex);
@@ -185,6 +200,7 @@ public class ObfuscationService : IObfuscationService
         }
         finally
         {
+            runScope?.Dispose();
             // The loaded module holds native resources. SaveAsync disposes and nulls it on the
             // success path; dispose here too so a pipeline/write failure cannot leak it.
             if (context.Module is IDisposable module)

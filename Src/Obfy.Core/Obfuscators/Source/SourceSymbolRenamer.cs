@@ -189,7 +189,7 @@ public class SourceSymbolRenamer : IObfuscator
 
             return ObfuscationResult.Successful(stats);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Source symbol renaming failed");
             return ObfuscationResult.Failed($"Source symbol renaming failed: {ex.Message}", ex);

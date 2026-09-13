@@ -205,4 +205,4 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 | `NameGenerator` | Generates obfuscated symbol names |
 | `EncryptionHelper` | String encryption utilities |
 | `PipelineContext` | Shared state across obfuscators |
-| `IncrementalCache` | SHA-256 skip when input + settings are unchanged (`{output}.obfycache`) |
+| `IncrementalCache` | SHA-256 of Obfy version + input bytes + settings (`{output}.obfycache`); locked/corrupt cache is a miss |

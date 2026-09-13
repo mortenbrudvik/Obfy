@@ -1,6 +1,6 @@
 # Obfy for Visual Studio Code
 
-Stub extension: JSON schema validation for `obfy.json` and a problem matcher for CLI `Error:` / `⚠` lines. There is no TaskProvider; use a shell task.
+JSON schema validation for `obfy.json` and a problem matcher for CLI `Error:` / `⚠` lines. There is no custom task type; add a shell task as shown below.
 
 ## Setup
 

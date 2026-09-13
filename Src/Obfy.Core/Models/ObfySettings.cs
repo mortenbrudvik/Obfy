@@ -139,79 +139,108 @@ public class ObfySettings
     }
 
     /// <summary>
-    /// Applies the current level preset to all individual settings.
+    /// Applies the preset's protection flags for Minimal/Standard/Aggressive. Custom is a no-op.
+    /// Nested options not listed in the preset (algorithms, naming, exclusions, watermark, …)
+    /// are left as-is.
     /// </summary>
     public void ApplyLevel()
     {
         switch (Level)
         {
-            // Each non-Custom branch assigns this fixed set of flags (enabled bits, intensity,
-            // constant-encryption algorithm, metadata/debug) so *those* values do not leak from a
-            // previously applied level. Other nested settings (control-flow mode, string/resource
-            // algorithms, naming mode, PreservePublicApi, PreserveXaml, junk counts, include/exclude
-            // patterns, RuntimeProfile, Signing, Watermark, DependencyEmbedding, AddDecoyAttributes,
-            // Packing, Incremental, Virtualization)
-            // keep their prior or default values. ProxyExternalCalls is cleared when ReferenceProxy is turned off.
+            // Each non-Custom branch assigns enabled bits, intensity, CF mode → Switch, XOR
+            // constants, metadata/debug, virtualization/packing/incremental off, and clears
+            // ProxyExternalCalls when ReferenceProxy is turned off. Other nested settings
+            // (string/resource algorithms, naming mode, PreservePublicApi, PreserveXaml, junk
+            // counts, include/exclude patterns, RuntimeProfile, Signing, Watermark,
+            // DependencyEmbedding, AddDecoyAttributes) keep their prior or default values.
             case ObfuscationLevel.Minimal:
-                StringEncryption.Enabled = false;
-                ControlFlow.Enabled = false;
-                ControlFlow.Intensity = 50;
-                SymbolRenaming.Enabled = true;
-                Protection.AntiDebug = false;
-                Protection.AntiTamper.Enabled = false;
-                Protection.AntiDecompiler.Enabled = false;
-                Protection.AntiDump = false;
-                Protection.ReferenceProxy = false;
-                Protection.ProxyExternalCalls = false;
-                Protection.MethodEncryption = false;
-                Metadata.RemoveDebugInfo = true;
-                Metadata.RemoveAttributes = false;
-                ResourceEncryption.Enabled = false;
-                ConstantEncryption.Enabled = false;
-                ConstantEncryption.Algorithm = EncryptionAlgorithm.Xor;
+                ApplySharedPresetFlags(
+                    stringEncryption: false,
+                    controlFlow: false,
+                    intensity: 50,
+                    removeAttributes: false,
+                    antiDebug: false,
+                    antiTamper: false,
+                    antiDecompiler: false,
+                    antiDump: false,
+                    referenceProxy: false,
+                    methodEncryption: false,
+                    resourceEncryption: false,
+                    constantEncryption: false);
                 break;
 
             case ObfuscationLevel.Standard:
-                StringEncryption.Enabled = true;
-                ControlFlow.Enabled = false;
-                ControlFlow.Intensity = 50;
-                SymbolRenaming.Enabled = true;
-                Protection.AntiDebug = false;
-                Protection.AntiTamper.Enabled = false;
-                Protection.AntiDecompiler.Enabled = false;
-                Protection.AntiDump = false;
-                Protection.ReferenceProxy = false;
-                Protection.ProxyExternalCalls = false;
-                Protection.MethodEncryption = false;
-                Metadata.RemoveDebugInfo = true;
-                Metadata.RemoveAttributes = true;
-                ResourceEncryption.Enabled = false;
-                ConstantEncryption.Enabled = false;
-                ConstantEncryption.Algorithm = EncryptionAlgorithm.Xor;
+                ApplySharedPresetFlags(
+                    stringEncryption: true,
+                    controlFlow: false,
+                    intensity: 50,
+                    removeAttributes: true,
+                    antiDebug: false,
+                    antiTamper: false,
+                    antiDecompiler: false,
+                    antiDump: false,
+                    referenceProxy: false,
+                    methodEncryption: false,
+                    resourceEncryption: false,
+                    constantEncryption: false);
                 break;
 
             case ObfuscationLevel.Aggressive:
-                StringEncryption.Enabled = true;
-                ControlFlow.Enabled = true;
-                ControlFlow.Intensity = 80;
-                SymbolRenaming.Enabled = true;
-                Protection.AntiDebug = true;
-                Protection.AntiTamper.Enabled = true;
-                Protection.AntiDecompiler.Enabled = true;
-                Protection.AntiDump = true;
-                Protection.ReferenceProxy = true;
-                Protection.MethodEncryption = true;
-                Metadata.RemoveDebugInfo = true;
-                Metadata.RemoveAttributes = true;
-                ResourceEncryption.Enabled = true;
-                ConstantEncryption.Enabled = true;
-                ConstantEncryption.Algorithm = EncryptionAlgorithm.Xor;
+                ApplySharedPresetFlags(
+                    stringEncryption: true,
+                    controlFlow: true,
+                    intensity: 80,
+                    removeAttributes: true,
+                    antiDebug: true,
+                    antiTamper: true,
+                    antiDecompiler: true,
+                    antiDump: true,
+                    referenceProxy: true,
+                    methodEncryption: true,
+                    resourceEncryption: true,
+                    constantEncryption: true);
                 break;
 
             case ObfuscationLevel.Custom:
                 // Use individual settings as-is
                 break;
         }
+    }
+
+    private void ApplySharedPresetFlags(
+        bool stringEncryption,
+        bool controlFlow,
+        int intensity,
+        bool removeAttributes,
+        bool antiDebug,
+        bool antiTamper,
+        bool antiDecompiler,
+        bool antiDump,
+        bool referenceProxy,
+        bool methodEncryption,
+        bool resourceEncryption,
+        bool constantEncryption)
+    {
+        StringEncryption.Enabled = stringEncryption;
+        ControlFlow.Enabled = controlFlow;
+        ControlFlow.Mode = ControlFlowMode.Switch;
+        ControlFlow.Intensity = intensity;
+        SymbolRenaming.Enabled = true;
+        Protection.AntiDebug = antiDebug;
+        Protection.AntiTamper.Enabled = antiTamper;
+        Protection.AntiDecompiler.Enabled = antiDecompiler;
+        Protection.AntiDump = antiDump;
+        Protection.ReferenceProxy = referenceProxy;
+        Protection.ProxyExternalCalls = false;
+        Protection.MethodEncryption = methodEncryption;
+        Metadata.RemoveDebugInfo = true;
+        Metadata.RemoveAttributes = removeAttributes;
+        ResourceEncryption.Enabled = resourceEncryption;
+        ConstantEncryption.Enabled = constantEncryption;
+        ConstantEncryption.Algorithm = EncryptionAlgorithm.Xor;
+        Virtualization.Enabled = false;
+        Packing.Enabled = false;
+        Incremental.Enabled = false;
     }
 
     /// <summary>

@@ -47,7 +47,7 @@ public class ControlFlowObfuscator : IObfuscator
             foreach (var type in module.GetTypes())
             {
                 var isHelper = ObfuscatorHelpers.IsRuntimeHelper(type);
-                if (type.Name == "<Vm>")
+                if (ObfuscatorHelpers.SkipControlFlowFlattening(type))
                     continue;
                 if (!isHelper && !ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.ControlFlow, context.Warnings))
                     continue;

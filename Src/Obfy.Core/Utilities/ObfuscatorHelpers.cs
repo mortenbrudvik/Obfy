@@ -68,6 +68,12 @@ public static class ObfuscatorHelpers
     }
 
     /// <summary>
+    /// Skip CFG flatten on the injected <c>&lt;Vm&gt;</c> interpreter so its body stays linear.
+    /// </summary>
+    public static bool SkipControlFlowFlattening(TypeDef type) =>
+        type.Name == "<Vm>";
+
+    /// <summary>
     /// Detector/lookup attribute names that must survive symbol renaming.
     /// Watermark lives in <c>Obfy.Runtime</c>; decoys are injected in the global namespace.
     /// </summary>
@@ -99,7 +105,7 @@ public static class ObfuscatorHelpers
 
     public static bool IsRuntimeOrExcluded(TypeDef type, ExclusionRules exclusions)
     {
-        if (IsRuntimeHelper(type) || type.Namespace == "Obfy.Core.Models")
+        if (IsRuntimeHelper(type))
             return true;
 
         if (exclusions.Namespaces.Any(n => MatchesPattern(type.Namespace, n)))
@@ -113,9 +119,6 @@ public static class ObfuscatorHelpers
 
     public static bool IsExcluded(TypeDef type, ExclusionRules exclusions)
     {
-        if (type.Namespace == "Obfy.Core.Models")
-            return true;
-
         if (exclusions.Namespaces.Any(n => MatchesPattern(type.Namespace, n)))
             return true;
 
@@ -127,6 +130,46 @@ public static class ObfuscatorHelpers
 
     public static bool MethodMatchesExclusion(MethodDef method, ExclusionRules exclusions) =>
         exclusions.Methods.Any(m => MatchesPattern(method.Name, m));
+
+    /// <summary>
+    /// Returns the module <c>.cctor</c>, creating the global type and initializer if needed.
+    /// When <paramref name="requireBody"/> is true, throws if an existing initializer has no IL.
+    /// </summary>
+    public static MethodDef FindOrCreateModuleInitializer(ModuleDef module, bool requireBody = false)
+    {
+        var globalType = module.GlobalType;
+        if (globalType == null)
+        {
+            globalType = new TypeDefUser("", "<Module>", null)
+            {
+                Attributes = TypeAttributes.NotPublic
+            };
+            module.Types.Insert(0, globalType);
+        }
+
+        var cctor = globalType.Methods.FirstOrDefault(m => m.IsStaticConstructor || m.Name == ".cctor");
+        if (cctor != null)
+        {
+            if (requireBody && cctor.Body is null)
+            {
+                throw new InvalidOperationException(
+                    "Cannot inject runtime helper: module initializer has no IL body (native or abstract .cctor).");
+            }
+
+            return cctor;
+        }
+
+        cctor = new MethodDefUser(
+            ".cctor",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodAttributes.Private | MethodAttributes.Static |
+            MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
+        var body = new CilBody();
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        cctor.Body = body;
+        globalType.Methods.Add(cctor);
+        return cctor;
+    }
 
     public static bool IsComVisibleTrue(IHasCustomAttribute provider)
     {

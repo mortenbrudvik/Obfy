@@ -21,7 +21,7 @@ class ObfySettingsState : PersistentStateComponent<ObfySettingsState.State> {
     data class State(
         var defaultLevel: ObfuscationLevel = ObfuscationLevel.Standard,
         var showOutputWindow: Boolean = true,
-        var releaseOnly: Boolean = false
+        var releaseOnly: Boolean = true
     )
 
     private var myState = State()

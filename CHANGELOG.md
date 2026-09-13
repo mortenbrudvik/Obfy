@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- NuGet packages: Autofac 9.3.2, Microsoft.Extensions.* 10.0.12, NLog 6.2.0, System.CommandLine 2.0.12, Roslyn 5.9.0, ILSpy decompiler 11.0.0, WPF-UI 4.3.0, Spectre.Console 0.57.2, test SDK 18.10.0
+- VS 2022 extension SDK/BuildTools stay on 17.14 (not VSSDK 18)
+
 ### Fixed
 - VS and Rider save/post-build toggle merge into existing `obfy.json` instead of rewriting a subset (Core-only keys such as virtualization, packing, and exclusions are kept)
 - In-place IDE overwrite copies packing sidecars and `.obfycache`, fails if temp output is missing, stages then replaces the live assembly, and deletes the temp dir in `finally`

@@ -13,12 +13,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Autofac" Version="9.0.0" />
+    <PackageReference Include="Autofac" Version="9.3.2" />
     <PackageReference Include="dnlib" Version="4.5.0" />
-    <PackageReference Include="ICSharpCode.Decompiler" Version="10.1.1.8388" />
+    <PackageReference Include="ICSharpCode.Decompiler" Version="11.0.0.9375" />
     <PackageReference Include="ILRepack.NETStandard" Version="2.0.4" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
   </ItemGroup>
 
 </Project>

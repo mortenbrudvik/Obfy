@@ -1,5 +1,3 @@
-using System.CommandLine;
-using System.CommandLine.IO;
 using System.Text.Json;
 using dnlib.DotNet;
 using Obfy.Console;
@@ -24,9 +22,8 @@ public class IntegrationProcessTests : IDisposable
     {
         var outputPath = Path.Combine(_tempDirectory, "test-config.json");
         var rootCommand = Program.CreateRootCommand();
-        var console = new TestConsole();
 
-        var exitCode = await rootCommand.InvokeAsync($"config generate -o {outputPath}", console);
+        var exitCode = await CommandLineTestHelpers.InvokeAsync(rootCommand, $"config generate -o {outputPath}");
 
         exitCode.ShouldBe(0);
         File.Exists(outputPath).ShouldBeTrue();
@@ -46,9 +43,8 @@ public class IntegrationProcessTests : IDisposable
     {
         var outputPath = Path.Combine(_tempDirectory, "minimal-config.json");
         var rootCommand = Program.CreateRootCommand();
-        var console = new TestConsole();
 
-        var exitCode = await rootCommand.InvokeAsync($"config generate -o {outputPath} -l minimal", console);
+        var exitCode = await CommandLineTestHelpers.InvokeAsync(rootCommand, $"config generate -o {outputPath} -l minimal");
 
         exitCode.ShouldBe(0);
         var json = await File.ReadAllTextAsync(outputPath);
@@ -66,9 +62,8 @@ public class IntegrationProcessTests : IDisposable
     {
         var outputPath = Path.Combine(_tempDirectory, "aggressive-config.json");
         var rootCommand = Program.CreateRootCommand();
-        var console = new TestConsole();
 
-        var exitCode = await rootCommand.InvokeAsync($"config generate -o {outputPath} -l aggressive", console);
+        var exitCode = await CommandLineTestHelpers.InvokeAsync(rootCommand, $"config generate -o {outputPath} -l aggressive");
 
         exitCode.ShouldBe(0);
         var json = await File.ReadAllTextAsync(outputPath);
@@ -90,9 +85,8 @@ public class IntegrationProcessTests : IDisposable
     {
         var outputPath = Path.Combine(_tempDirectory, "schema-config.json");
         var rootCommand = Program.CreateRootCommand();
-        var console = new TestConsole();
 
-        var exitCode = await rootCommand.InvokeAsync($"config generate -o {outputPath}", console);
+        var exitCode = await CommandLineTestHelpers.InvokeAsync(rootCommand, $"config generate -o {outputPath}");
 
         exitCode.ShouldBe(0);
         var json = await File.ReadAllTextAsync(outputPath);
@@ -109,10 +103,9 @@ public class IntegrationProcessTests : IDisposable
         Directory.CreateDirectory(outputDir);
 
         var rootCommand = Program.CreateRootCommand();
-        var console = new TestConsole();
-        var exitCode = await rootCommand.InvokeAsync(
-            $"\"{assemblyPath}\" -o \"{outputDir}\" --dry-run --no-logo",
-            console);
+        var exitCode = await CommandLineTestHelpers.InvokeAsync(
+            rootCommand,
+            $"\"{assemblyPath}\" -o \"{outputDir}\" --dry-run --no-logo");
 
         exitCode.ShouldBe(0);
         File.Exists(Path.Combine(outputDir, "DryRunTest.dll")).ShouldBeFalse();
@@ -121,21 +114,21 @@ public class IntegrationProcessTests : IDisposable
     [Fact]
     public async Task Help_ReturnsZeroExitCode()
     {
-        var exitCode = await Program.CreateRootCommand().InvokeAsync("--help", new TestConsole());
+        var exitCode = await CommandLineTestHelpers.InvokeAsync(Program.CreateRootCommand(), "--help");
         exitCode.ShouldBe(0);
     }
 
     [Fact]
     public async Task Version_ReturnsZeroExitCode()
     {
-        var exitCode = await Program.CreateRootCommand().InvokeAsync("--version", new TestConsole());
+        var exitCode = await CommandLineTestHelpers.InvokeAsync(Program.CreateRootCommand(), "--version");
         exitCode.ShouldBe(0);
     }
 
     [Fact]
     public async Task ConfigGenerateHelp_ReturnsZeroExitCode()
     {
-        var exitCode = await Program.CreateRootCommand().InvokeAsync("config generate --help", new TestConsole());
+        var exitCode = await CommandLineTestHelpers.InvokeAsync(Program.CreateRootCommand(), "config generate --help");
         exitCode.ShouldBe(0);
     }
 

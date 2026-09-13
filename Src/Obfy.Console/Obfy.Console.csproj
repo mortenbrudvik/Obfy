@@ -7,8 +7,23 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>obfy</AssemblyName>
 
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>obfy</ToolCommandName>
+    <PackageId>Obfy</PackageId>
     <Version>1.3.0</Version>
+    <Authors>Obfy Contributors</Authors>
+    <Description>Professional .NET obfuscation tool for protecting C# assemblies and source code. Features string encryption, control flow obfuscation, symbol renaming, anti-debug protection, and metadata removal.</Description>
+    <PackageTags>obfuscation;dotnet;csharp;security;protection;dnlib;roslyn</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/mortenbrudvik/Obfy</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/mortenbrudvik/Obfy</PackageProjectUrl>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Obfy.Console.Tests" />

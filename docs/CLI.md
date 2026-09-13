@@ -2,6 +2,8 @@
 
 Complete command-line interface reference for Obfy.
 
+Install the CLI as a .NET tool (`dotnet tool install --global Obfy`) or via the Windows installer. The command is `obfy` in both cases. The tool is framework-dependent and needs .NET 10 on the machine.
+
 ## Synopsis
 
 ```

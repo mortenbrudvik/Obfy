@@ -188,14 +188,14 @@ SmartAssembly does not support UWP. Its “What Can I Obfuscate?” index still 
 | **Visual Studio** | Yes (2022) | Yes | Yes | Yes | Yes | Yes (2005–2022) | — | — | — |
 | **Rider** | Yes | — | — | Yes | — | Yes (2019.1+) | — | — | — |
 | **VS Code** | Stub (schema + matcher) | — | — | — | — | — | — | — | — |
-| **NuGet / `dotnet tool`** | — | Private pkg | Yes | Some pkgs | Ultimate | Yes (smoothest) | Yes | Yes | Yes |
+| **NuGet / `dotnet tool`** | Yes (`Obfy`) | Private pkg | Yes | Some pkgs | Ultimate | Yes (smoothest) | Yes | Yes | Yes |
 | **GitHub Actions** | Yes (dotnet) | Yes | — | Official action | Yes | Yes | Yes | Yes | Official action |
 | **Azure DevOps** | Yes | Yes | Yes | Official task | Yes | Yes | Yes | Yes | Yes |
 | **Mapping file** | Yes | Yes | Yes | Yes | Yes | Encrypted symbols | — | Partial | — |
 | **Source-level (Roslyn)** | Yes | — | — | — | — | — | — | — | — |
 | **Config wizard** | Yes | — | — | — | — | Attribute-first | Attributes | XML | JSON |
 
-Obfy has **no NuGet package and no `dotnet tool`**. That is the largest distribution gap versus Obfuscar, BitMono, Eazfuscator, ArmDot, and Babel Ultimate. Teams that want “add a PackageReference, Release builds are protected” currently pick Eazfuscator or ArmDot, not Obfy.
+Obfy ships as `dotnet tool install --global Obfy` (framework-dependent, .NET 10). That is not an MSBuild PackageReference: teams that want “add a package, Release builds are protected” still pick Eazfuscator or ArmDot. There is no Obfy NuGet that runs inside `dotnet build` without an `Exec` of `obfy`.
 
 Reactor’s **$249 single-developer license excludes build servers**. CI needs the $549 company license.
 
@@ -237,7 +237,7 @@ Reactor’s **$249 single-developer license excludes build servers**. CI needs t
 
 - No general IL VM; no unmanaged packer; no licensing/DRM/RASP
 - Unity / MAUI / Blazor / NativeAOT are recipes, not first-class plugins
-- No NuGet / global tool — harder CI story than Obfuscar, BitMono, Eazfuscator, ArmDot
+- No MSBuild PackageReference — CI uses `dotnet tool install` / `Exec`, not a build task that cannot be skipped
 - GUI, VS extension, and method-IL encryption are Windows-centric
 - Zero public community (0 stars, 0 forks). Unproven on third-party commercial codebases
 - Source mode is a subset: strings, renaming, control flow only
@@ -445,7 +445,7 @@ NDepend’s 2026 pick after testing Dotfuscator, Eazfuscator, Babel, and Obfusca
 | **Method IL encryption** | Yes | — | — | — | Tamper/encrypt | — |
 | **Unity plugin** | Recipe | Community configs | UPM / unitypackage | — | — | — |
 | **Source (Roslyn) mode** | Yes | — | — | — | — | — |
-| **dotnet tool / NuGet** | — | Yes | Yes | — | — | — |
+| **dotnet tool / NuGet** | Yes | Yes | Yes | — | — | — |
 
 ### .NET version support (open source)
 
@@ -521,7 +521,7 @@ Last push 23 August 2023, repository archived, 516 stars. Rename, strings, CF, i
 | **Most used / most stable rename** | Obfuscar | 3.2k stars, millions of NuGet installs, v3 rewrite |
 | **Best Unity story (OSS)** | BitMono | UPM + unitypackage. Obfy is a recipe. |
 | **Best IDE / desktop UX (OSS)** | Obfy | WPF + VS 2022 + Rider. BitMono is CLI/web. |
-| **Best `dotnet tool` / NuGet** | Obfuscar / BitMono | Obfy has neither |
+| **Best `dotnet tool` / NuGet** | Obfuscar / BitMono / Obfy | Obfy is `dotnet tool install -g Obfy`; Obfuscar has more installs |
 | **Best docs for beginners** | Obfuscar (community) and Obfy (product docs) | ConfuserEx wiki is stale |
 | **Do not use on new .NET 10** | ConfuserEx lineage, LoGiC.NET | Framework-era or archived |
 
@@ -566,7 +566,7 @@ Reactor company license is $549 (needed for CI). Eazfuscator site license is $1,
 | Feature | Difficulty | Value | Who has it | Notes |
 |---------|------------|-------|------------|-------|
 | **General code virtualization** | Very high | High | Reactor, Babel Ultimate, Eazfuscator, ArmDot, Agile, DNGuard | Current interpreter is static `int` methods only. This is the protection-ceiling gap. |
-| **NuGet / `dotnet tool`** | Medium | High | Obfuscar, BitMono, Eazfuscator, ArmDot, Babel Ultimate | Largest *distribution* gap. Blocks “one PackageReference” adoption. |
+| **MSBuild PackageReference** | Medium | High | Eazfuscator, ArmDot, Babel Ultimate, BitMono.Integration | Tool install is restored; an in-build task is still a separate product. |
 
 ### Medium value
 
@@ -593,8 +593,8 @@ Aligned with [Roadmap.md](Roadmap.md). Competitive pressure, not a commitment.
 
 ### Near term (adoption, not protection ceiling)
 
-1. **NuGet package + `dotnet tool`** — this is how Obfuscar, BitMono, Eazfuscator, and ArmDot get into CI. Without it Obfy loses “free and easy” to Obfuscar even when Obfy has more techniques.
-2. **Document Linux CI** if the CLI already runs under `dotnet` — or make it a supported host.
+1. **MSBuild PackageReference** — `dotnet tool install` covers CI; an in-graph obfuscate task (Eazfuscator-style) is still missing.
+2. **Document Linux CI** as a supported host now that the tool is a `net10.0` global tool.
 3. **VS Code beyond the stub** (TaskProvider + marketplace), already on the roadmap as DX-03.
 
 ### Medium term (platform)

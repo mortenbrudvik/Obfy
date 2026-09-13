@@ -1,5 +1,7 @@
 # Obfy
 
+[![NuGet](https://img.shields.io/nuget/v/Obfy.svg)](https://www.nuget.org/packages/Obfy/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Obfy.svg)](https://www.nuget.org/packages/Obfy/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/)
 [![CI](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml/badge.svg)](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml)
@@ -23,7 +25,26 @@ These techniques raise the cost of casual reverse engineering. They are **not** 
 
 ## Installation
 
-Download and run the Obfy installer, which adds the `obfy` command to your PATH.
+### .NET tool (CLI, CI, Linux/macOS)
+
+Requires the .NET 10 SDK or runtime.
+
+```bash
+dotnet tool install --global Obfy
+```
+
+Per-repo (commit `.config/dotnet-tools.json` so CI can `dotnet tool restore`):
+
+```bash
+dotnet new tool-manifest
+dotnet tool install Obfy
+```
+
+If both the Windows installer/MSIX and the global tool are installed, both register the `obfy` command. Use one or the other on PATH.
+
+### Windows installer / MSIX
+
+Download and run the Obfy installer, which adds the `obfy` command to your PATH and installs the WPF UI.
 
 You can also build a sideload/Store MSIX locally (this is not a Store listing yet):
 
@@ -261,8 +282,13 @@ Check out the [examples](examples/) folder:
 ### GitHub Actions
 
 ```yaml
+- uses: actions/setup-dotnet@v4
+  with:
+    dotnet-version: '10.x'
 - name: Obfuscate
-  run: obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
+  run: |
+    dotnet tool install --global Obfy
+    obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
 ```
 
 ## Contributing

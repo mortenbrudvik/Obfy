@@ -14,7 +14,11 @@ The `.csproj` file includes an MSBuild target that runs Obfy after each Release 
 
 ## Prerequisites
 
-Ensure Obfy is installed and available in your PATH.
+```bash
+dotnet tool install --global Obfy
+```
+
+Or use the Windows installer so `obfy` is on PATH.
 
 ## Usage
 
@@ -60,6 +64,10 @@ For CI/CD pipelines, add obfy installation:
 ### GitHub Actions
 
 ```yaml
+- uses: actions/setup-dotnet@v4
+  with:
+    dotnet-version: '10.x'
+- run: dotnet tool install --global Obfy
 - name: Build and Obfuscate
   run: dotnet build -c Release
 ```

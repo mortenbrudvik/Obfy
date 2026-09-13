@@ -31,6 +31,15 @@ jobs:
     - name: Test with Coverage
       run: dotnet test --no-build -c Release --filter "Category!=UI&Category!=Platform" --settings coverage.runsettings --collect:"XPlat Code Coverage" --results-directory ./coverage
 
+    - name: Pack .NET tool
+      run: dotnet pack Src/Obfy.Console/Obfy.Console.csproj --no-build -c Release -o ./artifacts
+
+    - name: Upload NuGet package
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-package
+        path: ./artifacts/*.nupkg
+
     - name: Generate Coverage Report
       run: |
         dotnet tool install -g dotnet-reportgenerator-globaltool

@@ -11,9 +11,10 @@ Build, package, and distribute Obfy for release.
 5. Run all tests
 6. Build installer
 7. Build MSIX
-8. Copy installer to OneDrive
-9. Create git tag
-10. Push tag to remote
+8. Pack and push the `Obfy` .NET tool to nuget.org
+9. Copy installer to OneDrive
+10. Create git tag
+11. Push tag to remote
 
 ## Arguments
 
@@ -59,12 +60,18 @@ dotnet test Obfy.sln -c Release
 .\build\build-msix.ps1
 ```
 
-8. Copy the Inno installer to OneDrive:
+8. Pack and push the .NET tool (or rely on `.github/workflows/publish.yml` when the GitHub Release is published; needs `NUGET_API_KEY`):
+```bash
+dotnet pack Src/Obfy.Console/Obfy.Console.csproj -c Release -o ./artifacts
+dotnet nuget push ./artifacts/*.nupkg --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json --skip-duplicate
+```
+
+9. Copy the Inno installer to OneDrive:
 ```powershell
 .\build\copy-to-onedrive.ps1 -Force
 ```
 
-9. If all steps pass, commit and tag:
+10. If all steps pass, commit and tag:
 ```bash
 git add -A
 git commit -m "chore: release v<version>"
@@ -74,7 +81,8 @@ git push && git push --tags
 
 ## Output Locations
 
-- Release binaries: `Src/Obfy.Console/bin/Release/net10.0-windows/`
+- Release binaries: `Src/Obfy.Console/bin/Release/net10.0/`
+- .NET tool nupkg: `artifacts/Obfy.X.Y.Z.nupkg` (or the `-o` folder you pass to `dotnet pack`)
 - Installer: `build/output/ObfySetup-X.Y.Z.exe`
 - MSIX: `build/msix-output/Obfy-X.Y.Z.0-x64.msix`
 - OneDrive: `~/OneDrive/Apps/Obfy/`

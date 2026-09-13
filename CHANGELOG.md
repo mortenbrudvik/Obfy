@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CLI ships as a .NET tool again (`dotnet tool install --global Obfy`); CI packs the nupkg and GitHub Releases push it to nuget.org
+
 ### Changed
 - Competitive analysis rewritten against 2026 vendor pages and GitHub stats (ArmDot/DNGuard/Agile.NET added; LoGiC.NET archived; Obfy positioned as conventional protection, not a general VM)
 - NuGet packages: Autofac 9.3.2, Microsoft.Extensions.* 10.0.12, NLog 6.2.0, System.CommandLine 2.0.12, Roslyn 5.9.0, ILSpy decompiler 11.0.0, WPF-UI 4.3.0, Spectre.Console 0.57.2, test SDK 18.10.0

@@ -448,14 +448,21 @@ By default, the plugin only runs obfuscation for Release builds. Configure this 
 ### GitHub Actions
 
 ```yaml
+- uses: actions/setup-dotnet@v4
+  with:
+    dotnet-version: '10.x'
 - name: Obfuscate
-  run: obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
+  run: |
+    dotnet tool install --global Obfy
+    obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
 ```
 
 ### Azure DevOps
 
 ```yaml
-- script: obfy $(Build.ArtifactStagingDirectory)/*.dll -o $(Build.ArtifactStagingDirectory)/protected/
+- script: |
+    dotnet tool install --global Obfy
+    obfy $(Build.ArtifactStagingDirectory)/*.dll -o $(Build.ArtifactStagingDirectory)/protected/
   displayName: 'Obfuscate assemblies'
 ```
 

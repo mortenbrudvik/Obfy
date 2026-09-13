@@ -66,6 +66,11 @@ dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filte
 # Run CLI
 dotnet run --project Src/Obfy.Console/Obfy.Console.csproj -- --help
 
+# Install as a .NET tool
+dotnet tool install --global Obfy
+# or: dotnet pack Src/Obfy.Console/Obfy.Console.csproj -c Release -o ./artifacts
+#     dotnet tool install --global Obfy --add-source ./artifacts
+
 # Run UI
 dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
 

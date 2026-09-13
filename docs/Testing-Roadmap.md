@@ -20,7 +20,7 @@ Four projects; counts live in [Testing.md](Testing.md) (655 as of 2026-09-13). T
 | SDK projects / solutions | **Missing** | No `.csproj` / `.sln` is built, obfuscated, and run |
 | IDE extensions | **Missing** | VS / Rider / VS Code have no tests |
 
-Phase 0 (`TR-01` / `TR-02`) filters FlaUI out of default `dotnet test` / CI and resolves `ObfyUI.exe` per configuration. `TR-03` is confirming the first green GitHub Actions run after that merge (coverage report + 80% warning). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran.
+Phase 0 (`TR-01` / `TR-02`) filters FlaUI out of default `dotnet test` / CI and resolves `ObfyUI.exe` per configuration. `TR-03` is confirming the first green GitHub Actions run after that merge (coverage report + 80% warning). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran. Later: [CI run 72](https://github.com/mortenbrudvik/Obfy/actions/runs/34750086309) — tests and coverage succeeded, then the sticky PR comment 403 (`Resource not accessible by integration`) skipped the summary and 80% warning.
 
 `examples/` (console, public-API library, MSBuild AfterBuild, Unity/Blazor/MAUI JSON recipes) are manual demos, not fixtures.
 
@@ -59,7 +59,7 @@ Effort is relative to this repo (S ≤ 1 day, M a few days, L a week-plus includ
 |----|------|--------|-------|--------|
 | TR-01 | Trait-filter FlaUI out of default `dotnet test` / CI (`Category=UI` or equivalent). Document local-only run in [Testing.md](Testing.md). | S | High | ✅ Done (`Category=UI` + default `VSTestTestCaseFilter`) |
 | TR-02 | Resolve `ObfyUI.exe` from the current build configuration and TFM, not a hardcoded Debug path. | S | High | ✅ Done (`UiExecutableLocator`) |
-| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | Open — local Release `dotnet test` green; GitHub Actions after merge |
+| TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | Open — coverage comment needs `pull-requests: write`; 403 must not skip the 80% warning |
 
 **Done when:** a Release `dotnet test` of the solution on GitHub Actions passes; coverage summary is posted; FlaUI still runs locally with one documented command (see [Testing.md](Testing.md)).
 
@@ -177,7 +177,7 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 | Job | Filter | When |
 |-----|--------|------|
 | Default (every PR) | exclude `UI`, `Platform` | Always |
-| Coverage | same as default | Always (restore the 80% *warning*, not a hard fail, until scenario tests exist) |
+| Coverage | same as default | Always (80% *warning*, not a hard fail; PR comment is best-effort) |
 | UI | `Category=UI` | Manual / nightly / local |
 | Platform | `Category=Platform` | Nightly or workflow_dispatch; skip if workload missing |
 

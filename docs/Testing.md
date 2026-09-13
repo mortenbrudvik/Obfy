@@ -202,6 +202,6 @@ This prevents race conditions with static properties and shared state during tes
 
 ## Continuous Integration
 
-PRs and pushes to `main` run `.github/workflows/ci.yml`: `dotnet test -c Release` with `Category!=UI&Category!=Platform`. The coverage report and an 80% **warning** (not a hard fail) run when that job succeeds.
+PRs and pushes to `main` run `.github/workflows/ci.yml`: `dotnet test -c Release` with `Category!=UI&Category!=Platform`. The coverage report and an 80% **warning** (not a hard fail) run when tests succeed. The sticky PR coverage comment is best-effort (`continue-on-error`); a 403 must not skip the summary or threshold.
 
 FlaUI (`Category=UI`) is local-only. See [Testing-Roadmap.md](Testing-Roadmap.md) (`TR-01`–`TR-03`, `TR-42`).

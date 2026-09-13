@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- CI requests `pull-requests: write` for the sticky coverage comment, skips the comment on fork PRs, and sets `continue-on-error` on that step so a 403 (fork/read-only token) cannot skip the coverage summary or 80% warning
 - Virtualization skips unsigned compares (`cgt.un`, `b*.un`) instead of executing them as signed
 - Dark-theme UI text uses theme foreground brushes so file names, settings, and logs stay readable
 - Disabled toolbar buttons (Obfuscate with no files) keep readable label and border contrast

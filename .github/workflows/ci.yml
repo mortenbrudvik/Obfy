@@ -9,6 +9,10 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    # Naming any permission zeros the rest; checkout needs contents: read.
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
     - uses: actions/checkout@v4
@@ -38,21 +42,43 @@ jobs:
         name: coverage-report
         path: coverage/report
 
+    # Same-repo PRs only. Fork pull_request tokens stay read-only even when this
+    # job requests write — skip them instead of 403. continue-on-error is a
+    # backstop for Dependabot and other read-only tokens so a comment failure
+    # cannot skip the summary or 80% warning.
     - name: Add Coverage PR Comment
-      if: github.event_name == 'pull_request'
+      id: coverage_comment
+      if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         recreate: true
         path: coverage/report/SummaryGithub.md
 
+    - name: Warn if coverage comment failed
+      if: github.event_name == 'pull_request' && steps.coverage_comment.outcome == 'failure'
+      run: echo "::warning::Coverage PR comment failed (expected on read-only GITHUB_TOKEN). Job summary and 80% warning still run. See 'Add Coverage PR Comment' logs."
+
     - name: Add Coverage to Summary
-      run: cat coverage/report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+      if: success() || failure()
+      run: |
+        if [ -f coverage/report/SummaryGithub.md ]; then
+          cat coverage/report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+        else
+          echo "::warning::Coverage summary missing; tests or report generation likely failed."
+        fi
       shell: bash
 
     - name: Check Coverage Threshold
+      if: success() || failure()
       shell: pwsh
       run: |
-        [xml]$cobertura = Get-Content coverage/report/Cobertura.xml
+        $coberturaPath = "coverage/report/Cobertura.xml"
+        if (-not (Test-Path $coberturaPath)) {
+          Write-Host "::error::Cobertura.xml missing; coverage threshold was not evaluated"
+          exit 1
+        }
+        [xml]$cobertura = Get-Content $coberturaPath
         $rate = [double]$cobertura.coverage.'line-rate'
         $pct = [math]::Round($rate * 100, 2)
         Write-Host "Coverage: $pct%"

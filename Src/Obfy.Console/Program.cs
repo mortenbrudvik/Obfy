@@ -210,7 +210,7 @@ public class Program
 
         VirtualizeOption = new Option<bool>("--virtualize")
         {
-            Description = "Enable limited IL virtualization for simple static int methods"
+            Description = "Enable IL virtualization of eligible methods (no EH/generics/byref/custom structs/ctors; gated off NativeAOT / IL2CPP / Blazor WASM)"
         };
 
         IncrementalOption = new Option<bool>("--incremental")

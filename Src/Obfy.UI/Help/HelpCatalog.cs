@@ -34,7 +34,7 @@ public static class HelpCatalog
         [
             new HelpParagraph("Obfuscation level is Minimal — symbol renaming only; Standard — rename, encrypt strings, strip metadata; Aggressive — all protections at high intensity; or Custom."),
             new HelpParagraph("Choosing Minimal, Standard, or Aggressive fills the expanders so you can see what that preset turned on. Change any setting and Obfuscation level switches to Custom. Custom is how you edit techniques freely; the expanders stay readable on a preset."),
-            new HelpParagraph("Runtime profile is Default, NativeAOT, Unity IL2CPP, or Blazor WebAssembly. NativeAOT, Unity IL2CPP, and Blazor WebAssembly change what Protection can do (Method IL Encryption, Anti-Dump, and embedding are gated; Anti-Debug stays on without kernel32 P/Invoke). Pick the profile that matches how the output will run.")
+            new HelpParagraph("Runtime profile is Default, NativeAOT, Unity IL2CPP, or Blazor WebAssembly. NativeAOT, Unity IL2CPP, and Blazor WebAssembly change what Protection can do (Method IL Encryption, Anti-Dump, embedding, and virtualization are gated; Anti-Debug stays on without kernel32 P/Invoke). Pick the profile that matches how the output will run.")
         ]),
         new HelpTopic(TechniquesId, "Techniques",
         [
@@ -45,7 +45,8 @@ public static class HelpCatalog
             new HelpNamedNote("Protection", "Anti-Debug, Anti-Tamper, Anti-Dump, Anti-Decompiler, Reference Proxy, and Method IL Encryption."),
             new HelpNamedNote("Metadata", "Remove Debug Info, Remove Attributes, and Strip Documentation."),
             new HelpNamedNote("Watermark", "Embeds a Customer / build id. The id is required when Watermark is on."),
-            new HelpNamedNote("Managed launcher", "Pack managed launcher, Incremental cache, and Virtualize simple methods."),
+            new HelpNamedNote("Managed launcher", "Pack managed launcher and Incremental cache."),
+            new HelpNamedNote("Virtualize methods", "Replaces eligible methods with a bytecode interpreter. No EH, generics, byref, custom structs, or constructors. Gated off NativeAOT / IL2CPP / Blazor WASM. Off in every preset. Not confidentiality."),
             new HelpNamedNote("Strong-Name Signing", "Re-signs the output with a Key file (.snk / .pfx)."),
             new HelpNamedNote("Resource Encryption", "Encrypts embedded resources (XOR or AES-256). This is obfuscation, not secrecy."),
             new HelpNamedNote("Assembly Merge", "Merge input assemblies into one output, and optionally Embed referenced DLLs."),

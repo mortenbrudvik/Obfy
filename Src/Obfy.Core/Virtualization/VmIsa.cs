@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 namespace Obfy.Core.Virtualization;
 
 /// <summary>
-/// Internal VM opcodes. These ordinals are not the permuted on-disk bytes.
+/// Internal VM opcodes. On-disk bytes are permuted by <see cref="VmSeed"/>.
 /// </summary>
 public enum VmOp : byte
 {
@@ -25,8 +25,13 @@ public enum VmOp : byte
     Throw = 76, Ret = 77
 }
 
+/// <summary>
+/// Encoded widths for internal VM opcodes. Used to walk a blob before permutation/XOR.
+/// </summary>
 public static class VmIsa
 {
+    public const int MaxEvalStack = 64;
+
     public static int EncodedSize(byte[] blob, int offset)
     {
         ArgumentNullException.ThrowIfNull(blob);
@@ -47,7 +52,18 @@ public static class VmIsa
                 or VmOp.Ldfld or VmOp.Stfld or VmOp.Ldsfld or VmOp.Stsfld
                 or VmOp.Box or VmOp.UnboxAny or VmOp.Castclass or VmOp.Isinst
                 or VmOp.Newarr => 3,
-            _ => 1
+            VmOp.Ldnull or VmOp.Dup or VmOp.Pop
+                or VmOp.Add or VmOp.Sub or VmOp.Mul or VmOp.Div or VmOp.Rem
+                or VmOp.DivUn or VmOp.RemUn or VmOp.And or VmOp.Or or VmOp.Xor
+                or VmOp.Not or VmOp.Neg or VmOp.Shl or VmOp.Shr or VmOp.ShrUn
+                or VmOp.ConvI4 or VmOp.ConvI8 or VmOp.ConvR4 or VmOp.ConvR8
+                or VmOp.ConvU4 or VmOp.ConvU8
+                or VmOp.Ceq or VmOp.Cgt or VmOp.CgtUn or VmOp.Clt or VmOp.CltUn
+                or VmOp.Ldlen
+                or VmOp.LdelemI4 or VmOp.LdelemI8 or VmOp.LdelemR4 or VmOp.LdelemR8 or VmOp.LdelemRef
+                or VmOp.StelemI4 or VmOp.StelemI8 or VmOp.StelemR4 or VmOp.StelemR8 or VmOp.StelemRef
+                or VmOp.Throw or VmOp.Ret => 1,
+            _ => throw new InvalidOperationException($"Unknown VM opcode at offset {offset}: {blob[offset]}.")
         };
 
         if (offset > blob.Length - size)

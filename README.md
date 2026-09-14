@@ -210,6 +210,9 @@ Injects debugger detection, wipes in-memory PE headers (Windows), and verifies a
 ### Anti-Decompiler Protection
 Injects junk types and methods to clutter decompiler output, plus optional decoy ConfusedBy/Dotfuscator attributes.
 
+### Virtualization
+Replaces eligible instance and static methods with a bytecode interpreter (`--virtualize`). Skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded). Per-build opcode permutation and XOR. Gated off NativeAOT / Unity IL2CPP / Blazor WASM; off in every preset. Deterrent, not confidentiality.
+
 ### Method IL Encryption and Reference Proxy
 XOR-encrypts method bodies in the PE (Windows) and hides call targets behind `calli` trampolines.
 

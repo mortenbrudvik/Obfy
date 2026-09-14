@@ -243,6 +243,50 @@ public class VmEncoderTests
     }
 
     [Fact]
+    public void TryEncode_CallToVirtualInstance_Skips()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var virtualMethod = new MethodDefUser(
+            "V",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Virtual);
+        virtualMethod.Body = new CilBody();
+        virtualMethod.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        virtualMethod.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(virtualMethod);
+
+        var caller = new MethodDefUser(
+            "UseBase",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Virtual);
+        caller.Body = new CilBody();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Call, virtualMethod));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(caller);
+
+        VmEncoder.TryEncode(caller, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.VirtualBaseCall);
+    }
+
+    [Fact]
+    public void TryEncode_MaxStackAboveVmLimit_Skips()
+    {
+        EncodeSkip(
+            body =>
+            {
+                body.MaxStack = 65;
+                body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+                body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+            },
+            paramCount: 0).ShouldBe(VmSkipReasons.StackTooDeep);
+    }
+
+    [Fact]
     public void TryEncode_SpanParam_UnresolvedTypeRef_SkipsByRef()
     {
         var module = CreateTestModule();

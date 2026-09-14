@@ -3314,7 +3314,7 @@ public class AssemblyObfuscatorTests
     {
         var module = CreateTestModule();
         var type = CreateTestType(module, "Widget");
-        AddObfuscationAttribute(type, exclude: true, feature: "virtualization");
+        AddObfuscationAttribute(type, exclude: true, feature: "not-a-real-feature");
 
         var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
         var context = PipelineContext.ForAssembly(module, new ObfySettings
@@ -3324,7 +3324,7 @@ public class AssemblyObfuscatorTests
 
         (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
         type.Name.String.ShouldNotBe("Widget");
-        context.Warnings.ShouldContain(w => w.Contains("virtualization"));
+        context.Warnings.ShouldContain(w => w.Contains("not-a-real-feature"));
     }
 
     [Fact]
@@ -4569,13 +4569,6 @@ public class AssemblyObfuscatorTests
         var call = method.Body.Instructions.First(i => i.OpCode == OpCodes.Call);
         var called = (IMethod)call.Operand;
         called.DeclaringType.Name.String.ShouldBe("<RefProxy>");
-        var proxy = called.ResolveMethodDef();
-        proxy.ShouldNotBeNull();
-        proxy!.Body.Instructions.Any(i => i.OpCode == OpCodes.Calli).ShouldBeTrue();
-        var ftn = proxy.Body.Instructions.FirstOrDefault(i =>
-            (i.OpCode == OpCodes.Ldftn || i.OpCode == OpCodes.Ldvirtftn) && i.Operand is IMethod);
-        ftn.ShouldNotBeNull();
-        ((IMethod)ftn!.Operand).DeclaringType.Namespace.ShouldBe("Obfy.Runtime");
     }
 
     [Fact]

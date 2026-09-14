@@ -61,6 +61,10 @@ public class StringEncryptionObfuscator : IObfuscator
             if (decryptMethods.Count == 0)
                 throw new InvalidOperationException("String decryptor was not injected.");
 
+            var skipVirtualized = context.Settings.Virtualization.Enabled
+                ? VirtualizationObfuscator.SelectSet(context)
+                : null;
+
             foreach (var type in module.GetTypes())
             {
                 if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.Strings, context.Warnings))
@@ -72,6 +76,9 @@ public class StringEncryptionObfuscator : IObfuscator
                         continue;
 
                     if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.Strings, context.Warnings))
+                        continue;
+
+                    if (skipVirtualized is not null && skipVirtualized.Contains(method))
                         continue;
 
                     var body = method.Body;

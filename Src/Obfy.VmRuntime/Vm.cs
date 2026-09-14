@@ -282,6 +282,9 @@ public static class Vm
     {
         if (arg == null)
             return O(null!);
+        var type = arg.GetType();
+        if (type.IsEnum)
+            arg = Convert.ChangeType(arg, Enum.GetUnderlyingType(type));
         switch (Type.GetTypeCode(arg.GetType()))
         {
             case TypeCode.Boolean:
@@ -495,11 +498,7 @@ public static class Vm
         var index = ToI4(Pop(ref f));
         var arr = RequireArray(Pop(ref f));
         var elemType = arr.GetType().GetElementType();
-        object boxed;
-        if (elemType == null || !elemType.IsPrimitive)
-            boxed = value.Ref;
-        else
-            boxed = ToClr(value, elemType);
+        object boxed = elemType == null ? value.Ref : ToClr(value, elemType);
         arr.SetValue(boxed, index);
     }
 
@@ -597,7 +596,15 @@ public static class Vm
 
     static object ToClr(VmValue v, Type expected)
     {
-        if (expected == null || !expected.IsPrimitive)
+        if (expected == null)
+            return v.Ref!;
+        if (expected.IsEnum)
+        {
+            if (v.Type == VmType.I8)
+                return Enum.ToObject(expected, v.Bits);
+            return Enum.ToObject(expected, (int)v.Bits);
+        }
+        if (!expected.IsPrimitive)
             return v.Ref!;
         var boxed = BoxReturn(v, expected);
         if (boxed == null)

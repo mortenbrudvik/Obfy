@@ -145,6 +145,45 @@ public class VmRuntimeExecuteTests
     }
 
     [Fact]
+    public void Run_BoxEnum_ReturnsColorRed()
+    {
+        const string src = """
+            public enum Color { Red = 1 }
+            public static class Lib { public static object BoxEnum() => Color.Red; }
+            """;
+        AssertEnum(EncodeImportInvoke(src, "Lib", "BoxEnum"), "Color", "Red", 1);
+    }
+
+    [Fact]
+    public void Run_InstanceAndStaticEnumFields_RoundTrip()
+    {
+        const string src = """
+            public enum Status { Open = 2 }
+            public class Holder {
+                public Status Inst;
+                public static Status Stat;
+                public static object InstanceGo() { var h = new Holder(); h.Inst = Status.Open; return h.Inst; }
+                public static object StaticGo() { Stat = Status.Open; return Stat; }
+            }
+            """;
+        AssertEnum(EncodeImportInvoke(src, "Holder", "InstanceGo"), "Status", "Open", 2);
+        AssertEnum(EncodeImportInvoke(src, "Holder", "StaticGo"), "Status", "Open", 2);
+    }
+
+    [Fact]
+    public void Run_CallEnum_PassesToNonVirtualizedCallee()
+    {
+        const string src = """
+            public enum Color { Red = 1 }
+            public static class Lib {
+                public static int Take(Color c) => (int)c;
+                public static int CallEnum() => Take(Color.Red);
+            }
+            """;
+        EncodeImportInvoke(src, "Lib", "CallEnum").ShouldBe(1);
+    }
+
+    [Fact]
     public void Run_Call_NonVirtualizedHelper()
     {
         EncodeImportInvoke(
@@ -443,6 +482,15 @@ public class VmRuntimeExecuteTests
         body.Instructions.Add(Instruction.Create(OpCodes.Throw));
         body.UpdateInstructionOffsets();
         method.Body = body;
+    }
+
+    private static void AssertEnum(object? value, string typeName, string name, int underlying)
+    {
+        value.ShouldNotBeNull();
+        value!.GetType().Name.ShouldBe(typeName);
+        value.ToString().ShouldBe(name);
+        Convert.ToInt32(value).ShouldBe(underlying);
+        value.ShouldBe(Enum.ToObject(value.GetType(), underlying));
     }
 
     private static MethodDef FindMethod(ModuleDef module, string typeName, string methodName)

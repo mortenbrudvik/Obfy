@@ -258,7 +258,7 @@
     },
     "virtualization": {
       "type": "object",
-      "description": "Replace selected static int methods with a bytecode interpreter (ldc.i4, ldarg, ldloc/stloc, add/sub/mul, ceq/cgt/clt, signed branches; 0-8 int params, <=16 int locals; no EH/generics). Unsigned compares are skipped.",
+      "description": "Replace eligible instance and static methods with a bytecode interpreter (objects, non-generic calls, fields, newobj, ldstr; i4/i8/r4/r8). Skips EH, generic methods/types/calls, byref, custom structs/Nullable<T>, switch, constructors, typeof, interpolators, foreach/using. Per-build opcode permutation and XOR. CoreCLR only; off in every preset. Deterrent, not confidentiality.",
       "additionalProperties": true,
       "properties": {
         "enabled": { "type": "boolean", "default": false },

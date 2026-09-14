@@ -1,6 +1,6 @@
 # Obfy Product Roadmap & Backlog
 
-A strategic development plan. Pipeline protection through 1.3.0 is **shipped**. Remaining work is platform depth, Pre-JIT / other-RID / self-contained packing, and wiring the general IL VM encoder/runtime into `VirtualizationObfuscator` (the shipping pass is still the int-only interpreter).
+A strategic development plan. Pipeline protection through 1.3.0 is **shipped**, including the native win-x64 FDD packing stub and general IL virtualization v1. Remaining work is platform depth, Pre-JIT / other-RID / self-contained packing, and remaining VM surface (EH/generics/byref and Approach B handler generation).
 
 ---
 
@@ -27,7 +27,7 @@ Assembly pipeline (priority order):
 | 20 | Anti-decompiler (junk types, `SuppressIldasm`, decoy attributes) | Shipped |
 | 21 | Watermark (`WatermarkAttribute`) | Shipped |
 | 22 | Anti-tamper (whole-file SHA-256) | Shipped |
-| 24 | Virtualization (simple static int methods only) | Shipped (1.3.0; limited) |
+| 24 | Virtualization (eligible methods; CoreCLR; no EH/generic calls/byref/custom structs) | Shipped (unreleased; general VM v1) |
 | 25 | Method IL encryption (per-method XOR in PE, decrypt at load) | Shipped (1.3.0) |
 | 30 | Control flow (CFG flatten + opaque predicates; helpers included) | Shipped |
 | 40 | Reference proxy (`calli` trampolines; optional external) | Shipped (1.3.0) |
@@ -36,7 +36,7 @@ Assembly pipeline (priority order):
 
 Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` is honored in both modes.
 
-**Still true:** method encryption skips generics and is Windows-only. Anti-dump MiniDump hook is in-process x86/x64 only. Virtualization is not a general IL VM. Packing is a native win-x64 FDD CLR-host stub (not Pre-JIT, not self-contained, not ARM64). Unity / Blazor / MAUI are recipes, not first-class plugins.
+**Still true:** method encryption skips generics and is Windows-only. Anti-dump MiniDump hook is in-process x86/x64 only. Virtualization skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, typeof, interpolators, foreach/using; CoreCLR only; per-build encoding, not a unique generated VM. Packing is a native win-x64 FDD CLR-host stub (not Pre-JIT, not self-contained, not ARM64). Unity / Blazor / MAUI are recipes, not first-class plugins.
 
 ---
 
@@ -74,7 +74,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 | PF-06 | Watermarking | P2 | Low | Low | ✅ Done |
 | PF-18 | Anti-de4dot signatures | P2 | Low | Low | ✅ Done (detector bait; does not block de4dot) |
 | PF-19 | Dumper-hook anti-dump | P3 | High | Medium | ✅ Partial (in-process MiniDumpWriteDump `0xC3` only) |
-| PF-08 | Code virtualization | P3 | Very High | High | ✅ Partial (simple static int methods). Encoder/runtime exist; obfuscator not switched |
+| PF-08 | Code virtualization | P3 | Very High | High | ✅ Done (general VM v1). Remaining: EH/generics/byref and Approach B handler generation |
 | PF-09 | Native code generation | P3 | Very High | Medium | ✅ Done (native win-x64 FDD CLR-host stub). Remaining Future: Pre-JIT / other RIDs / self-contained |
 
 ### Developer experience
@@ -125,7 +125,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 
 ### Next tag (cut Unreleased)
 
-1.3.0 already shipped the pipeline items above. Still Unreleased-on-main: native win-x64 FDD packing stub, general IL VM encoder/runtime (not yet the pipeline obfuscator), Store/OIDC packaging notes. Do not imply a shipped general VM until `VirtualizationObfuscator` is switched off `CreateExecute`.
+1.3.0 already shipped the pipeline items above. Still Unreleased-on-main: native win-x64 FDD packing stub, general IL virtualization v1, Store/OIDC packaging notes.
 
 ### DX-03: VS Code beyond the stub
 
@@ -147,9 +147,9 @@ Engine + SDK fixtures (WPF, console, WinForms, examples, merge, Unity stub) run 
 
 The native win-x64 FDD CLR-host stub is shipped. Remaining Future (do not schedule): Pre-JIT of user methods, win-x86 / ARM64 / ELF hosts, and a self-contained runtime. `packing.rid: portable` still emits the managed launcher.
 
-### PF-08 remaining: general virtualization
+### PF-08 remaining: EH / generics / byref and Approach B
 
-The shipping interpreter handles only simple static `int` arithmetic. `Obfy.VmRuntime`, `VmEncoder`, and `VmImporter` exist on main; remaining work is to switch `VirtualizationObfuscator` off `CreateExecute`. EH, generics, and byref stay out of scope.
+General IL virtualization v1 ships eligible instance and static methods (CoreCLR; per-build permute+XOR). Remaining work is exception handlers, generic methods/types/calls, byref, custom structs/`Nullable<T>`, and Approach B handler generation. Do not grow the opcode set ad hoc.
 
 ### PF-19 remaining: external dumpers
 
@@ -169,7 +169,7 @@ Shipped: resource/constant encryption, reports, WPF UI, anti-tamper, anti-decomp
 
 Shipped in 1.3.0: anti-dump, reference proxy, method IL encryption, runtime-profile gating, managed-launcher packing, incremental cache, limited virtualization, MSIX, and the rest of the 1.3.0 changelog.
 
-Unreleased packing: native win-x64 FDD CLR-host stub (`packing.enabled`; `portable` keeps the managed launcher). Still in the tree and not a product pass: general IL VM encoder/runtime (`VmEncoder` / `Obfy.VmRuntime`). `VirtualizationObfuscator` still injects the int-only interpreter. Store Trusted Publishing / unsigned Store MSIX notes.
+Unreleased packing: native win-x64 FDD CLR-host stub (`packing.enabled`; `portable` keeps the managed launcher). Unreleased virtualization: general IL VM v1 (`VirtualizationObfuscator` calls `Obfy.Runtime.Vm.Run`). Store Trusted Publishing / unsigned Store MSIX notes.
 
 ### Phase 4: Protection hardening ✅ (on main)
 
@@ -199,7 +199,7 @@ PF-11, PF-17, PF-16, UF-03 are implemented.
 
 | Feature | Notes |
 |---------|--------|
-| PF-08 Code virtualization | Switch the obfuscator to the new runtime; EH/generics/byref still out of scope. |
+| PF-08 remaining: EH / generics / byref / Approach B | General VM v1 is done. Remaining: exception handlers, generic methods/types/calls, byref, and Approach B handler generation. |
 | PF-09 Native code generation | Pre-JIT / other RIDs / self-contained (v1 FDD stub is done) |
 
 ---
@@ -208,7 +208,7 @@ PF-11, PF-17, PF-16, UF-03 are implemented.
 
 | Tempting item | Why it waits |
 |---------------|--------------|
-| General code virtualization | Highest protection, highest cost. The int-only interpreter is a spike, not a product VM. |
+| Remaining VM surface (EH/generics/byref, Approach B) | Highest remaining protection cost. v1 already covers typical methods. |
 | Pre-JIT / other-RID packing | Platform-specific, high maintenance. Native FDD stub already exists. |
 | Unity “support” | Wizard exclusions plus a recipe are not support. Test real players next. |
 
@@ -220,7 +220,7 @@ PF-11, PF-17, PF-16, UF-03 are implemented.
 |---------|------------|------|
 | NativeAOT remaining techniques | PF-16 gating (done) | Over-claiming AOT safety. Keep PE tricks gated. |
 | Unity test projects | PF-16 (done) | Reflection-heavy plugins need extra exclusions. |
-| General VM | PF-08 spike | Scope explosion. Do not expand opcodes ad hoc. |
+| Remaining VM surface | PF-08 v1 (done) | Scope explosion. Do not expand opcodes ad hoc. |
 
 ---
 
@@ -232,7 +232,7 @@ PF-11, PF-17, PF-16, UF-03 are implemented.
 | next tag | Decompiler resistance + safe defaults | Decryptors/anti-debug not one-NOP; JSON sample works; AOT/IL2CPP do not get `VirtualProtect` |
 | later | Platform coverage | Unity Development Player + VS Code TaskProvider |
 | v2.0+ | Mid-tier extras | Stronger dump resistance, AOT-safe remaining techniques |
-| v3.0 | Commercial-grade option | Selective virtualization and Pre-JIT packing, if demand holds |
+| v3.0 | Commercial-grade option | Remaining VM surface (EH/generics/byref) and/or Pre-JIT packing, if demand holds |
 
 ---
 
@@ -258,7 +258,7 @@ When shipping a phase, update:
 | VS Code TaskProvider (DX-03) | Yes | Stub already in `Src/Obfy.VSCode` |
 | Unity / MAUI / Blazor test projects | Yes | Recipes exist; need runnable apps |
 | Documentation | Yes | Always |
-| General virtualization (PF-08) | No | Needs architecture |
+| Remaining virtualization (EH/generics/byref, Approach B) | No | Needs architecture |
 | Pre-JIT / other-RID packing (PF-09 remaining) | No | Platform-specific |
 
 ---
@@ -266,8 +266,8 @@ When shipping a phase, update:
 ## Review schedule
 
 - **Per investigation / release:** adjust remaining P1/P2 if breakage data disagrees with this order
-- **Quarterly:** demand check before starting v3.0 general virtualization
-- **Do not** restart competitive-analysis-driven checkbox work (Unity plugin, full VM) ahead of a real test project
+- **Quarterly:** demand check before starting remaining PF-08 surface or a native packer
+- **Do not** restart competitive-analysis-driven checkbox work (Unity plugin, remaining VM surface) ahead of a real test project
 
 ---
 

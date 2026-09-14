@@ -226,9 +226,9 @@
                                IsChecked="{Binding IncrementalEnabled}"
                                Margin="0,8,0,0"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="VirtualizationToggle"
-                               Content="Virtualize simple methods"
-                               AutomationProperties.Name="Enable limited IL virtualization"
-                               ToolTip="Replaces simple static int methods with a bytecode interpreter. Limited; not a general VM."
+                               Content="Virtualize methods"
+                               AutomationProperties.Name="Enable IL virtualization"
+                               ToolTip="Replaces eligible methods with a bytecode interpreter (no EH, generic calls, byref, or custom structs). CoreCLR only; off in every preset. Not confidentiality."
                                IsChecked="{Binding VirtualizationEnabled}"
                                Margin="0,8,0,0"/>
             </StackPanel>

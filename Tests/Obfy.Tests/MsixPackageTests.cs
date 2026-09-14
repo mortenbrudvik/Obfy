@@ -98,7 +98,8 @@ public class MsixPackageTests
         cli.Attribute("Executable")!.Value.ShouldBe("CLI\\obfy.exe");
         cli.Attribute("EntryPoint")!.Value.ShouldBe("Windows.FullTrustApplication");
         var cliVisual = cli.Element(UapNs + "VisualElements").ShouldNotBeNull();
-        cliVisual.Attribute("AppListEntry")!.Value.ShouldBe("none");
+        cliVisual.Attribute("DisplayName")!.Value.ShouldBe("Obfy CLI");
+        cliVisual.Attribute("AppListEntry").ShouldBeNull();
         cliVisual.Attribute("Square150x150Logo")!.Value.ShouldBe("Assets\\Square150x150Logo.png");
         cliVisual.Attribute("Square44x44Logo")!.Value.ShouldBe("Assets\\Square44x44Logo.png");
 

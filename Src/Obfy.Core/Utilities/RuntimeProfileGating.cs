@@ -4,8 +4,8 @@ using Obfy.Core.Pipeline;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// Disables PE/kernel32 protections (method IL encryption, anti-dump) and AssemblyResolve
-/// embedding on NativeAOT, Unity IL2CPP, and Blazor WASM.
+/// Disables PE/kernel32 protections (method IL encryption, anti-dump), AssemblyResolve
+/// embedding, and the managed VM on NativeAOT, Unity IL2CPP, and Blazor WASM.
 /// Anti-debug stays enabled but omits kernel32 P/Invoke (see <c>AntiDebugObfuscator</c>).
 /// <see cref="Apply"/> mutates the working clone of <see cref="ObfySettings"/> (callers are
 /// cloned first by <c>ObfuscationService</c>) and records report warnings.
@@ -13,6 +13,9 @@ namespace Obfy.Core.Utilities;
 public static class RuntimeProfileGating
 {
     public static bool AllowsPeMutation(RuntimeProfile profile) =>
+        profile is RuntimeProfile.Default;
+
+    public static bool AllowsManagedVm(RuntimeProfile profile) =>
         profile is RuntimeProfile.Default;
 
     public static bool AllowsKernel32PInvoke(RuntimeProfile profile) =>
@@ -69,6 +72,13 @@ public static class RuntimeProfileGating
             settings.Packing.Enabled = false;
             context.Warnings.Add(
                 $"Managed launcher packing disabled for {label}: it emits a framework-dependent host that is not used on this runtime.");
+        }
+
+        if (!AllowsManagedVm(settings.RuntimeProfile) && settings.Virtualization.Enabled)
+        {
+            settings.Virtualization.Enabled = false;
+            context.Warnings.Add(
+                $"Virtualization disabled for {label}: the managed VM uses MethodBase.Invoke and is not supported on this runtime.");
         }
     }
 }

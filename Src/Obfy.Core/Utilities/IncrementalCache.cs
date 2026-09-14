@@ -11,7 +11,7 @@ namespace Obfy.Core.Utilities;
 /// </summary>
 public static class IncrementalCache
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    internal static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true

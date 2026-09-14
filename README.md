@@ -1,4 +1,4 @@
-# <img src="docs/images/logo.png" alt="Obfy" width="64" height="64"> Obfy
+# <img src="docs/images/logo.png" alt="Obfy" width="64" height="64" align="absmiddle"> Obfy
 
 [![NuGet](https://img.shields.io/nuget/v/Obfy.svg)](https://www.nuget.org/packages/Obfy/) [![NuGet Downloads](https://img.shields.io/nuget/dt/Obfy.svg)](https://www.nuget.org/packages/Obfy/) [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![.NET](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/) [![CI](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml/badge.svg)](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml)
 

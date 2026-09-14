@@ -19,17 +19,15 @@ if ($dotnetRoot) {
 }
 $packRoot = $packCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 if (-not $packRoot) { throw "Host pack missing. Looked in: $($packCandidates -join '; ')" }
-$pack = Get-ChildItem $packRoot -Directory | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
-if (-not $pack) { throw "No Microsoft.NETCore.App.Host.win-x64 versions found" }
-$native = Join-Path $pack.FullName "runtimes\win-x64\native"
-if (-not (Test-Path (Join-Path $native "nethost.h"))) { throw "nethost.h missing under $native" }
-if (-not (Test-Path (Join-Path $native "hostfxr.h"))) { throw "hostfxr.h missing under $native" }
+$packs = @(Get-ChildItem $packRoot -Directory | Sort-Object { [version]$_.Name } -Descending)
+if ($packs.Count -eq 0) { throw "No Microsoft.NETCore.App.Host.win-x64 versions found" }
 
 $dist = Join-Path $here "dist"
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 $exe = Join-Path $dist "Obfy.NativeHost.exe"
 $rc = Join-Path $here "host.generated.rc"
 $res = Join-Path $here "host.res"
+$implib = Join-Path $here "host.lib"
 $escapedBootstrap = $bootstrap -replace '\\', '\\'
 Set-Content -Path $rc -Value "BOOTSTRAP RCDATA `"$escapedBootstrap`"" -Encoding ascii
 
@@ -49,21 +47,39 @@ function Invoke-WithMsvc([string]$CommandLine) {
         if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found: $vcvars" }
         cmd.exe /c "call `"$vcvars`" && $full"
     }
-    if ($LASTEXITCODE -ne 0) { throw "Native host build failed with exit $LASTEXITCODE" }
 }
 
-# libnethost.lib from current host packs needs MSVC 14.42+ (__std_find_end_2).
-# host.c implements get_hostfxr_path (NETHOST_USE_AS_STATIC) so the stub has no
-# nethost.dll dependency. Headers still come from the host pack.
-$implib = Join-Path $here "host.lib"
-$compile = @(
-    "rc.exe /nologo /fo `"$res`" `"$rc`"",
-    "&& cl.exe /nologo /O2 /Brepro /W3 /WX /DUNICODE /D_UNICODE /I `"$native`"",
-    "host.c /Fe:`"$exe`"",
-    "/link /Brepro /INCREMENTAL:NO /SUBSYSTEM:CONSOLE /IMPLIB:`"$implib`"",
-    "`"$res`" bcrypt.lib advapi32.lib"
-) -join " "
+Invoke-WithMsvc "rc.exe /nologo /fo `"$res`" `"$rc`""
+if ($LASTEXITCODE -ne 0) { throw "rc.exe failed with exit $LASTEXITCODE" }
 
-Invoke-WithMsvc $compile
+# libnethost.lib from 8.0.22+ needs MSVC 14.42+ (__std_find_end_2). Try newest
+# pack first (CI); fall back until static link succeeds (local 14.40 → 8.0.6).
+$builtPack = $null
+foreach ($pack in $packs) {
+    $native = Join-Path $pack.FullName "runtimes\win-x64\native"
+    $nethostLib = Join-Path $native "libnethost.lib"
+    if (-not (Test-Path $nethostLib)) { continue }
+    if (-not (Test-Path (Join-Path $native "nethost.h"))) { continue }
+    if (-not (Test-Path (Join-Path $native "hostfxr.h"))) { continue }
+
+    $compile = @(
+        "cl.exe /nologo /O2 /Brepro /W3 /WX /MT /DUNICODE /D_UNICODE /I `"$native`"",
+        "host.c /Fe:`"$exe`"",
+        "/link /Brepro /INCREMENTAL:NO /SUBSYSTEM:CONSOLE /IMPLIB:`"$implib`"",
+        "`"$res`" bcrypt.lib advapi32.lib `"$nethostLib`""
+    ) -join " "
+
+    Write-Host "Linking libnethost.lib from pack $($pack.Name)"
+    Invoke-WithMsvc $compile
+    if ($LASTEXITCODE -eq 0) {
+        $builtPack = $pack.Name
+        break
+    }
+    Write-Host "Pack $($pack.Name) failed to link (exit $LASTEXITCODE); trying an older host pack."
+}
+
+if (-not $builtPack) {
+    throw "Failed to statically link libnethost.lib from any Microsoft.NETCore.App.Host.win-x64 pack"
+}
 if (-not (Test-Path $exe)) { throw "Native host exe missing: $exe" }
-Write-Host "Built $exe"
+Write-Host "Built $exe (pack $builtPack, static libnethost)"

@@ -27,7 +27,7 @@ Assembly pipeline (priority order):
 | 20 | Anti-decompiler (junk types, `SuppressIldasm`, decoy attributes) | Shipped |
 | 21 | Watermark (`WatermarkAttribute`) | Shipped |
 | 22 | Anti-tamper (whole-file SHA-256) | Shipped |
-| 24 | Virtualization (eligible methods; CoreCLR; no EH/generic calls/byref/custom structs) | Shipped (unreleased; general VM v1) |
+| 24 | Virtualization (eligible methods; gated off NativeAOT / IL2CPP / Blazor WASM; no EH/generics/byref/custom structs/ctors) | Shipped (unreleased; general VM v1) |
 | 25 | Method IL encryption (per-method XOR in PE, decrypt at load) | Shipped (unreleased) |
 | 30 | Control flow (CFG flatten + opaque predicates; helpers included) | Shipped |
 | 40 | Reference proxy (`calli` trampolines; optional external) | Shipped (unreleased) |
@@ -36,7 +36,7 @@ Assembly pipeline (priority order):
 
 Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` is honored in both modes.
 
-**Still true:** method encryption skips generics and is Windows-only. Anti-dump MiniDump hook is in-process x86/x64 only. Virtualization skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, typeof, interpolators, foreach/using; CoreCLR only; per-build encoding, not a unique generated VM. Packing is a managed FDD launcher, not native. Unity / Blazor / MAUI are recipes, not first-class plugins.
+**Still true:** method encryption skips generics and is Windows-only. Anti-dump MiniDump hook is in-process x86/x64 only. Virtualization skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, typeof (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach; gated off NativeAOT / IL2CPP / Blazor WASM; per-build encoding, not a unique generated VM. Packing is a managed FDD launcher, not native. Unity / Blazor / MAUI are recipes, not first-class plugins.
 
 ---
 

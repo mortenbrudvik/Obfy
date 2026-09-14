@@ -75,6 +75,12 @@ public static class VmEncoder
             return false;
         }
 
+        if (body.MaxStack > VmIsa.MaxEvalStack)
+        {
+            skipReason = VmSkipReasons.StackTooDeep;
+            return false;
+        }
+
         if (IsForbiddenByRef(method.MethodSig?.RetType))
         {
             skipReason = VmSkipReasons.ByRef;
@@ -451,6 +457,10 @@ public static class VmEncoder
             return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
         if (instr.Operand is not IMethod called)
             return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
+        if (called.MethodSig is null)
+            return Fail(VmSkipReasons.InvalidBytecode, out skipReason);
+        if (!isCallvirt && IsVirtualInstance(called))
+            return Fail(VmSkipReasons.VirtualBaseCall, out skipReason);
 
         var argc = ParameterCount(called);
         if (argc > 255)
@@ -497,8 +507,10 @@ public static class VmEncoder
             return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
         if (IsValueType(ctor.DeclaringType))
             return Fail(VmSkipReasons.ValuetypeNewobj, out skipReason);
+        if (ctor.MethodSig is null)
+            return Fail(VmSkipReasons.InvalidBytecode, out skipReason);
 
-        pop = ctor.MethodSig?.Params.Count ?? 0;
+        pop = ctor.MethodSig.Params.Count;
         push = 1;
         op = VmOp.Newobj;
         buffer.Add((byte)VmOp.Newobj);
@@ -989,13 +1001,22 @@ public static class VmEncoder
         return type is TypeSpec spec && spec.TypeSig is GenericInstSig generic && generic.GenericType.IsValueType;
     }
 
+    private static bool IsVirtualInstance(IMethod called)
+    {
+        if (called.MethodSig is { HasThis: false })
+            return false;
+        var resolved = called.ResolveMethodDef();
+        if (resolved is null)
+            return false;
+        return resolved.IsVirtual && !resolved.IsFinal && !resolved.IsStatic;
+    }
+
     private static int ParameterCount(IMethod method)
     {
         if (method is MethodDef def)
             return def.Parameters.Count;
-        var sig = method.MethodSig;
-        if (sig is null)
-            return 0;
+        var sig = method.MethodSig
+            ?? throw new InvalidOperationException("Method signature is required.");
         var count = sig.Params.Count;
         if (sig.HasThis && !sig.ExplicitThis)
             count++;

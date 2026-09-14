@@ -19,7 +19,7 @@ public static class VmSeed
     public static byte[] Compute(PipelineContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        if (!string.IsNullOrEmpty(context.InputPath) && File.Exists(context.InputPath))
+        if (!string.IsNullOrEmpty(context.InputPath))
             return Convert.FromHexString(IncrementalCache.ComputeKey(context.InputPath, context.Settings));
 
         var module = context.RequireModule();

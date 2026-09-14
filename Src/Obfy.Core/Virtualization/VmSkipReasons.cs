@@ -14,4 +14,6 @@ public static class VmSkipReasons
     public const string StackHeightMismatch = "stack height mismatch";
     public const string IndexOutOfRange = "index out of range";
     public const string InvalidBytecode = "invalid bytecode";
+    public const string StackTooDeep = "eval stack exceeds VM limit";
+    public const string VirtualBaseCall = "non-virtual call to virtual method";
 }

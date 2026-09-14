@@ -10,9 +10,9 @@ namespace Obfy.Core.Obfuscators.Assembly;
 /// <summary>
 /// Replaces eligible instance and static methods with a stub that calls the imported
 /// <c>Obfy.Runtime.Vm.Run</c> interpreter. Skips EH, generic methods/types/calls, byref,
-/// custom structs, and <c>Nullable{T}</c>. CoreCLR only. Selection, encoding, seed XOR,
-/// and import are delegated to <see cref="VmEncoder"/>, <see cref="VmSeed"/>, and
-/// <see cref="VmImporter"/>.
+/// custom structs, <c>Nullable{T}</c>, and constructors. Gated off NativeAOT / Unity IL2CPP /
+/// Blazor WASM. Selection, encoding, seed XOR, and import are delegated to
+/// <see cref="VmEncoder"/>, <see cref="VmSeed"/>, and <see cref="VmImporter"/>.
 /// </summary>
 public class VirtualizationObfuscator : IObfuscator
 {
@@ -46,6 +46,7 @@ public class VirtualizationObfuscator : IObfuscator
             var selectedSet = selected.ToHashSet();
             var throwaway = new VmMemberTables();
             var eligible = 0;
+            var overflowNames = new List<string>();
             foreach (var method in candidates)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -58,16 +59,28 @@ public class VirtualizationObfuscator : IObfuscator
                 if (VmEncoder.TryEncode(method, EmptyIds, throwaway, out _, out var skipReason))
                 {
                     eligible++;
+                    if (overflowNames.Count < 10)
+                        overflowNames.Add(method.FullName);
                     continue;
                 }
 
-                context.SkippedItems.Add(SkippedItem.UnsupportedMethod(method.FullName, skipReason ?? "unsupported opcode"));
+                if (skipReason is VmSkipReasons.NoBody or VmSkipReasons.Constructor)
+                {
+                    _logger.LogDebug("Virtualization skipped {Method}: {Reason}", method.FullName, skipReason);
+                    continue;
+                }
+
+                context.SkippedItems.Add(SkippedItem.UnsupportedMethod(
+                    method.FullName, skipReason ?? VmSkipReasons.UnsupportedOpcode));
                 _logger.LogDebug("Virtualization skipped {Method}: {Reason}", method.FullName, skipReason);
             }
 
             if (eligible > max)
             {
-                var warning = $"Virtualization: maxMethods={max} reached; further eligible methods were skipped.";
+                var extra = overflowNames.Count == 0
+                    ? string.Empty
+                    : " Not virtualized (first 10): " + string.Join(", ", overflowNames) + ".";
+                var warning = $"Virtualization: maxMethods={max} reached; further eligible methods were skipped.{extra}";
                 context.Warnings.Add(warning);
                 _logger.LogWarning("{Warning}", warning);
             }
@@ -88,23 +101,11 @@ public class VirtualizationObfuscator : IObfuscator
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!VmEncoder.TryEncode(method, ids, tables, out var code, out var reason))
                 {
-                    context.SkippedItems.Add(SkippedItem.UnsupportedMethod(method.FullName, reason ?? "unsupported opcode"));
-                    _logger.LogDebug(
-                        "Virtualization selected {Method} then failed encode: {Reason}",
-                        method.FullName,
-                        reason);
-                    continue;
+                    return Task.FromResult(ObfuscationResult.Failed(
+                        $"Virtualization failed: '{method.FullName}' was selected then failed encode ({reason ?? "unknown"})."));
                 }
 
                 encoded.Add((method, code));
-            }
-
-            if (encoded.Count == 0)
-            {
-                const string unused = "Virtualization was enabled but no eligible methods were encoded.";
-                context.Warnings.Add(unused);
-                _logger.LogWarning("{Warning}", unused);
-                return Task.FromResult(ObfuscationResult.Successful(stats));
             }
 
             var blob = Concat(encoded);

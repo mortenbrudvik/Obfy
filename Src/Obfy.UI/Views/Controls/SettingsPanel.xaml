@@ -228,7 +228,7 @@
                 <ui:ToggleSwitch AutomationProperties.AutomationId="VirtualizationToggle"
                                Content="Virtualize methods"
                                AutomationProperties.Name="Enable IL virtualization"
-                               ToolTip="Replaces eligible methods with a bytecode interpreter (no EH, generic calls, byref, or custom structs). CoreCLR only; off in every preset. Not confidentiality."
+                               ToolTip="Replaces eligible methods with a bytecode interpreter (no EH, generics, byref, custom structs, or constructors). Gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset. Not confidentiality."
                                IsChecked="{Binding VirtualizationEnabled}"
                                Margin="0,8,0,0"/>
             </StackPanel>

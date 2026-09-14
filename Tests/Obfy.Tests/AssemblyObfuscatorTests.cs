@@ -4548,7 +4548,7 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
-    public async Task ReferenceProxy_DoesNotProxyCallsToRuntimeHelpers()
+    public async Task ReferenceProxy_ProxiesCallsToRuntimeHelpers()
     {
         var module = CreateTestModule();
         var type = CreateTestType(module, "Greeter", isPublic: true);
@@ -4568,8 +4568,7 @@ public class AssemblyObfuscatorTests
 
         var call = method.Body.Instructions.First(i => i.OpCode == OpCodes.Call);
         var called = (IMethod)call.Operand;
-        called.DeclaringType.Name.String.ShouldNotBe("<RefProxy>");
-        called.DeclaringType.Namespace.ShouldBe("Obfy.Runtime");
+        called.DeclaringType.Name.String.ShouldBe("<RefProxy>");
     }
 
     [Fact]

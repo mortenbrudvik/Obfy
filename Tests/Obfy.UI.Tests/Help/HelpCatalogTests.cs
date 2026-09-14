@@ -35,6 +35,7 @@ public class HelpCatalogTests
         "Metadata",
         "Watermark",
         "Managed launcher",
+        "Virtualize methods",
         "Strong-Name Signing",
         "Resource Encryption",
         "Assembly Merge",
@@ -114,7 +115,7 @@ public class HelpCatalogTests
     }
 
     [Fact]
-    public void Techniques_HasTwelveExpanderHeadings()
+    public void Techniques_HasThirteenExpanderHeadings()
     {
         var headings = Topic(HelpCatalog.TechniquesId).Blocks.OfType<HelpNamedNote>()
             .Select(n => n.Heading)
@@ -123,12 +124,21 @@ public class HelpCatalogTests
     }
 
     [Fact]
-    public void Techniques_ManagedLauncher_SaysVirtualizeMethods()
+    public void Techniques_VirtualizeMethods_DocumentsLimits()
+    {
+        var note = Topic(HelpCatalog.TechniquesId).Blocks.OfType<HelpNamedNote>()
+            .Single(n => n.Heading == "Virtualize methods");
+        note.Text.ShouldContain("bytecode interpreter");
+        note.Text.ShouldContain("Not confidentiality");
+        note.Text.ShouldNotContain("Virtualize simple methods");
+    }
+
+    [Fact]
+    public void Techniques_ManagedLauncher_DoesNotMentionVirtualize()
     {
         var note = Topic(HelpCatalog.TechniquesId).Blocks.OfType<HelpNamedNote>()
             .Single(n => n.Heading == "Managed launcher");
-        note.Text.ShouldContain("Virtualize methods");
-        note.Text.ShouldNotContain("Virtualize simple methods");
+        note.Text.ShouldNotContain("Virtualize");
     }
 
     private static HelpTopic Topic(string id) =>

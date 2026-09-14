@@ -239,7 +239,7 @@ public static class Vm
             }
         }
 
-        return null!;
+        throw Fault("missing ret");
     }
 
     internal static void Init(
@@ -252,14 +252,36 @@ public static class Vm
         Type[] types,
         Type[] returnTypes)
     {
-        _code = code ?? throw new ArgumentNullException(nameof(code));
-        _starts = starts ?? throw new ArgumentNullException(nameof(starts));
-        _opMap = opMap ?? throw new ArgumentNullException(nameof(opMap));
-        _xorKey = xorKey ?? throw new ArgumentNullException(nameof(xorKey));
-        _methods = methods ?? throw new ArgumentNullException(nameof(methods));
-        _fields = fields ?? throw new ArgumentNullException(nameof(fields));
-        _types = types ?? throw new ArgumentNullException(nameof(types));
-        _returnTypes = returnTypes ?? throw new ArgumentNullException(nameof(returnTypes));
+        if (code == null) throw new ArgumentNullException(nameof(code));
+        if (starts == null) throw new ArgumentNullException(nameof(starts));
+        if (opMap == null) throw new ArgumentNullException(nameof(opMap));
+        if (xorKey == null) throw new ArgumentNullException(nameof(xorKey));
+        if (methods == null) throw new ArgumentNullException(nameof(methods));
+        if (fields == null) throw new ArgumentNullException(nameof(fields));
+        if (types == null) throw new ArgumentNullException(nameof(types));
+        if (returnTypes == null) throw new ArgumentNullException(nameof(returnTypes));
+        if (xorKey.Length != 8)
+            throw new ArgumentException("xorKey must be 8 bytes.", nameof(xorKey));
+        if (opMap.Length != 256)
+            throw new ArgumentException("opMap must be 256 bytes.", nameof(opMap));
+        if (returnTypes.Length != starts.Length)
+            throw new ArgumentException("returnTypes length must match starts.", nameof(returnTypes));
+        for (var i = 0; i < starts.Length; i++)
+        {
+            if (starts[i] < 0 || starts[i] > code.Length)
+                throw new ArgumentException("starts are out of range.", nameof(starts));
+            if (i > 0 && starts[i] <= starts[i - 1])
+                throw new ArgumentException("starts must be strictly increasing.", nameof(starts));
+        }
+
+        _code = code;
+        _starts = starts;
+        _opMap = opMap;
+        _xorKey = xorKey;
+        _methods = methods;
+        _fields = fields;
+        _types = types;
+        _returnTypes = returnTypes;
     }
 
     static Frame CreateFrame(int id, object[] args)
@@ -388,7 +410,12 @@ public static class Vm
         var args = PopArgs(ref f, method.GetParameters());
         object target = null!;
         if (!method.IsStatic)
+        {
             target = ToClr(Pop(ref f), method.DeclaringType!);
+            if (target == null)
+                throw new NullReferenceException();
+        }
+
         var result = Invoke(method, target, args);
         var info = method as MethodInfo;
         if (info == null || info.ReturnType == typeof(void))
@@ -498,8 +525,9 @@ public static class Vm
         var index = ToI4(Pop(ref f));
         var arr = RequireArray(Pop(ref f));
         var elemType = arr.GetType().GetElementType();
-        object boxed = elemType == null ? value.Ref : ToClr(value, elemType);
-        arr.SetValue(boxed, index);
+        if (elemType == null)
+            throw Fault("type mismatch");
+        arr.SetValue(ToClr(value, elemType), index);
     }
 
     static void DoThrow(ref Frame f)
@@ -513,6 +541,8 @@ public static class Vm
 
     static Array RequireArray(VmValue v)
     {
+        if (v.Type == VmType.O && v.Ref == null)
+            throw new NullReferenceException();
         var arr = v.Ref as Array;
         if (v.Type != VmType.O || arr == null)
             throw Fault("type mismatch");
@@ -524,7 +554,12 @@ public static class Vm
         var field = ReadField(ref f);
         object receiver = null!;
         if (!isStatic)
+        {
             receiver = ToClr(Pop(ref f), field.DeclaringType!);
+            if (receiver == null)
+                throw new NullReferenceException();
+        }
+
         Push(ref f, UnboxArg(field.GetValue(receiver)!));
     }
 
@@ -534,7 +569,12 @@ public static class Vm
         var value = ToClr(Pop(ref f), field.FieldType);
         object receiver = null!;
         if (!isStatic)
+        {
             receiver = ToClr(Pop(ref f), field.DeclaringType!);
+            if (receiver == null)
+                throw new NullReferenceException();
+        }
+
         field.SetValue(receiver, value);
     }
 
@@ -592,20 +632,30 @@ public static class Vm
         {
             throw ex.InnerException ?? ex;
         }
+        catch (TargetException)
+        {
+            throw new NullReferenceException();
+        }
     }
 
     static object ToClr(VmValue v, Type expected)
     {
         if (expected == null)
-            return v.Ref!;
+            throw Fault("invalid type");
         if (expected.IsEnum)
         {
+            if (v.Type is not (VmType.I4 or VmType.I8))
+                throw Fault("type mismatch");
             if (v.Type == VmType.I8)
                 return Enum.ToObject(expected, v.Bits);
             return Enum.ToObject(expected, (int)v.Bits);
         }
         if (!expected.IsPrimitive)
+        {
+            if (v.Type != VmType.O)
+                throw Fault("type mismatch");
             return v.Ref!;
+        }
         var boxed = BoxReturn(v, expected);
         if (boxed == null)
             throw Fault("type mismatch");
@@ -637,7 +687,7 @@ public static class Vm
     static byte ReadU8(ref Frame f)
     {
         var ip = f.Ip;
-        if ((uint)ip >= (uint)_code.Length)
+        if (ip < _starts[f.MethodId] || ip >= MethodEnd(f.MethodId))
             throw Fault("unexpected end of code");
         var b = (byte)(_code[ip] ^ XorAt(ip));
         f.Ip = ip + 1;
@@ -673,7 +723,7 @@ public static class Vm
         var bytes = new byte[len];
         for (var i = 0; i < len; i++)
             bytes[i] = ReadU8(ref f);
-        return Encoding.UTF8.GetString(bytes);
+        return string.Intern(Encoding.UTF8.GetString(bytes));
     }
 
     static void Push(ref Frame f, VmValue v)
@@ -797,11 +847,7 @@ public static class Vm
         if (l.Type != r.Type)
             throw Fault("type mismatch");
         if (unsigned)
-        {
-            if (l.Type == VmType.I4)
-                return (uint)(int)l.Bits > (uint)(int)r.Bits;
-            return (ulong)l.Bits > (ulong)r.Bits;
-        }
+            return GreaterUnsigned(l, r);
 
         switch (l.Type)
         {
@@ -823,11 +869,7 @@ public static class Vm
         if (l.Type != r.Type)
             throw Fault("type mismatch");
         if (unsigned)
-        {
-            if (l.Type == VmType.I4)
-                return (uint)(int)l.Bits < (uint)(int)r.Bits;
-            return (ulong)l.Bits < (ulong)r.Bits;
-        }
+            return LessUnsigned(l, r);
 
         switch (l.Type)
         {
@@ -839,6 +881,60 @@ public static class Vm
                 return ToR4(l) < ToR4(r);
             case VmType.R8:
                 return ToR8(l) < ToR8(r);
+            default:
+                throw Fault("type mismatch");
+        }
+    }
+
+    static bool GreaterUnsigned(VmValue l, VmValue r)
+    {
+        switch (l.Type)
+        {
+            case VmType.I4:
+                return (uint)(int)l.Bits > (uint)(int)r.Bits;
+            case VmType.I8:
+                return (ulong)l.Bits > (ulong)r.Bits;
+            case VmType.R4:
+            {
+                var lf = ToR4(l);
+                var rf = ToR4(r);
+                return lf > rf || float.IsNaN(lf) || float.IsNaN(rf);
+            }
+            case VmType.R8:
+            {
+                var lf = ToR8(l);
+                var rf = ToR8(r);
+                return lf > rf || double.IsNaN(lf) || double.IsNaN(rf);
+            }
+            case VmType.O:
+                return l.Ref != null && r.Ref == null;
+            default:
+                throw Fault("type mismatch");
+        }
+    }
+
+    static bool LessUnsigned(VmValue l, VmValue r)
+    {
+        switch (l.Type)
+        {
+            case VmType.I4:
+                return (uint)(int)l.Bits < (uint)(int)r.Bits;
+            case VmType.I8:
+                return (ulong)l.Bits < (ulong)r.Bits;
+            case VmType.R4:
+            {
+                var lf = ToR4(l);
+                var rf = ToR4(r);
+                return lf < rf || float.IsNaN(lf) || float.IsNaN(rf);
+            }
+            case VmType.R8:
+            {
+                var lf = ToR8(l);
+                var rf = ToR8(r);
+                return lf < rf || double.IsNaN(lf) || double.IsNaN(rf);
+            }
+            case VmType.O:
+                return l.Ref == null && r.Ref != null;
             default:
                 throw Fault("type mismatch");
         }

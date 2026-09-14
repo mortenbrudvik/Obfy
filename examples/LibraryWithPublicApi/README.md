@@ -43,13 +43,15 @@ obfy bin/Release/net10.0/LibraryWithPublicApi.dll -c obfy.json -o bin/Release/ne
 
 ## Configuration Highlights
 
+`preservePublicApi` keeps public names. `stripDocumentation: false` keeps XML docs; `removeAttributes: false` keeps custom attributes (not XML docs). See `obfy.json` in this folder:
+
 ```json
 {
   "symbolRenaming": {
-    "preservePublicApi": true  // Key setting!
+    "preservePublicApi": true
   },
   "metadata": {
-    "removeAttributes": false,  // Keep XML docs for public API
+    "removeAttributes": false,
     "stripDocumentation": false
   }
 }

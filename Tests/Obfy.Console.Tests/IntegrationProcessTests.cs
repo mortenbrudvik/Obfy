@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using dnlib.DotNet;
 using Obfy.Console;
 using Obfy.Core.Models;
@@ -29,13 +30,13 @@ public class IntegrationProcessTests : IDisposable
         File.Exists(outputPath).ShouldBeTrue();
         var json = await File.ReadAllTextAsync(outputPath);
         json.ShouldNotBeNullOrEmpty();
-        var settings = JsonSerializer.Deserialize<ObfySettings>(json, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
+        var settings = JsonSerializer.Deserialize<ObfySettings>(json, GeneratedConfigJsonOptions());
         settings.ShouldNotBeNull();
         settings!.Packing.Enabled.ShouldBeFalse();
         json.ShouldContain("\"packing\"");
+        json.ShouldContain("\"level\": \"Standard\"");
+        json.ShouldContain("\"algorithm\": \"Aes256\"");
+        json.ShouldNotContain("\"keyFile\": null");
     }
 
     [Fact]
@@ -48,13 +49,11 @@ public class IntegrationProcessTests : IDisposable
 
         exitCode.ShouldBe(0);
         var json = await File.ReadAllTextAsync(outputPath);
-        var settings = JsonSerializer.Deserialize<ObfySettings>(json, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
+        var settings = JsonSerializer.Deserialize<ObfySettings>(json, GeneratedConfigJsonOptions());
         settings.ShouldNotBeNull();
         settings!.StringEncryption.Enabled.ShouldBeFalse();
         settings.ControlFlow.Enabled.ShouldBeFalse();
+        json.ShouldContain("\"level\": \"Minimal\"");
     }
 
     [Fact]
@@ -67,10 +66,7 @@ public class IntegrationProcessTests : IDisposable
 
         exitCode.ShouldBe(0);
         var json = await File.ReadAllTextAsync(outputPath);
-        var settings = JsonSerializer.Deserialize<ObfySettings>(json, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
+        var settings = JsonSerializer.Deserialize<ObfySettings>(json, GeneratedConfigJsonOptions());
         settings.ShouldNotBeNull();
         settings!.StringEncryption.Enabled.ShouldBeTrue();
         settings.ControlFlow.Enabled.ShouldBeTrue();
@@ -78,6 +74,7 @@ public class IntegrationProcessTests : IDisposable
         settings.Protection.AntiDump.ShouldBeTrue();
         settings.Protection.ReferenceProxy.ShouldBeTrue();
         settings.ConstantEncryption.Enabled.ShouldBeTrue();
+        json.ShouldContain("\"level\": \"Aggressive\"");
     }
 
     [Fact]
@@ -93,6 +90,23 @@ public class IntegrationProcessTests : IDisposable
         using var document = JsonDocument.Parse(json);
         document.RootElement.TryGetProperty("$schema", out var schema).ShouldBeTrue();
         schema.GetString().ShouldBe("https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json");
+    }
+
+    [Fact]
+    public async Task ConfigGenerate_WritesPascalCaseEnums_AndOmitsNullSigningPaths()
+    {
+        var outputPath = Path.Combine(_tempDirectory, "enums-config.json");
+        var exitCode = await CommandLineTestHelpers.InvokeAsync(
+            Program.CreateRootCommand(), $"config generate -o {outputPath}");
+
+        exitCode.ShouldBe(0);
+        var json = await File.ReadAllTextAsync(outputPath);
+        json.ShouldContain("\"level\": \"Standard\"");
+        json.ShouldContain("\"runtimeProfile\": \"Default\"");
+        json.ShouldContain("\"mode\": \"Switch\"");
+        json.ShouldNotContain("\"level\": 1");
+        json.ShouldNotContain("\"keyFile\": null");
+        json.ShouldNotContain("\"passwordEnvironmentVariable\": null");
     }
 
     [Fact]
@@ -185,4 +199,10 @@ public class IntegrationProcessTests : IDisposable
         using var outModule = ModuleDefMD.Load(outputPath);
         outModule.Types.Any(t => t.Name == "TestClass").ShouldBeFalse();
     }
+
+    private static JsonSerializerOptions GeneratedConfigJsonOptions() => new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() }
+    };
 }

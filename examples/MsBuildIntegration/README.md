@@ -49,13 +49,15 @@ MSBuild version ...
 
 ## Configuration
 
-This example uses aggressive protection:
+This example’s `obfy.json` is a **custom** file (`-c` does not re-apply the Aggressive preset). It sets `"level": "aggressive"` as a label, then only:
 
-- **String Encryption**: AES-256 with minimum 2-character strings
-- **Control Flow**: Switch dispatcher at 50% intensity
-- **Symbol Renaming**: Unreadable characters
-- **Anti-Debug**: Debugger detection enabled
-- **Metadata Removal**: All debug info stripped
+- String encryption (AES-256, min length 2)
+- Control flow Switch at intensity **50** (product Aggressive is 80)
+- Unreadable symbol renaming
+- Anti-debug
+- Metadata removal
+
+It does **not** turn on anti-tamper, anti-dump, anti-decompiler, reference proxy, method encryption, resource encryption, or constant encryption.
 
 ## CI/CD Integration
 

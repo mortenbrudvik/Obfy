@@ -42,10 +42,10 @@ Thank you for your interest in contributing to Obfy! This document provides guid
 
    ```bash
    cd Src/Obfy.Rider
-   ./gradlew.bat build
+   ./gradlew.bat build   # Unix: ./gradlew build
    ```
 
-   The plugin ZIP will be created at `build/distributions/Obfy.Rider-1.0.1.zip`.
+   The plugin ZIP is `Src/Obfy.Rider/build/distributions/Obfy.Rider-1.0.1.zip` (`pluginVersion` in `gradle.properties` is independent of product `version.json`).
 
 ## Project Structure
 
@@ -149,7 +149,7 @@ When adding new features:
 - ViewModel changes → Add tests to `Obfy.UI.Tests`
 - Core obfuscation → Add tests to `Obfy.Tests`
 
-See [docs/Testing.md](docs/Testing.md) for how to run tests, and [docs/Testing-Roadmap.md](docs/Testing-Roadmap.md) for planned scenario coverage.
+See [docs/Testing.md](docs/Testing.md) for how to run tests. Scenario fixtures live in `Obfy.ScenarioTests`; remaining platform/IDE gaps are in [docs/Testing-Roadmap.md](docs/Testing-Roadmap.md).
 
 ## Pull Request Process
 

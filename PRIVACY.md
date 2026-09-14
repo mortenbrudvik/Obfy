@@ -24,7 +24,7 @@ Obfy stores the following **locally** so the app can remember your preferences a
 | Data | Typical location | Purpose |
 |------|------------------|---------|
 | UI preferences (last output folder, symbol-map option) | `%APPDATA%\Obfy\ui-preferences.json` | Remember desktop-app choices |
-| Settings you save (`obfy.json`) | A path you choose, or `%APPDATA%\Obfy\obfy.json` | Persist obfuscation configuration |
+| Settings you save (`obfy.json`) | A path you choose (`obfy config generate` / Save Configuration default to the current folder) | Persist obfuscation configuration |
 | Diagnostic logs | `%LOCALAPPDATA%\Obfy\Logs\` | Record errors and run details (may include file paths) |
 | Optional incremental cache | Next to an output you generate (`*.obfycache`) | Skip unchanged work on later runs |
 | Output you request | Folders you choose | Obfuscated assemblies, optional symbol maps, HTML reports |

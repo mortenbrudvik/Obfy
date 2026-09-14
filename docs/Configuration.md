@@ -29,9 +29,13 @@ Complete JSON configuration schema for Obfy.
 }
 ```
 
-Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](../schemas/obfy.schema.json) so editors can validate and autocomplete. Extra properties such as `$schema` are ignored when loading.
+Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](../schemas/obfy.schema.json) so editors can validate and autocomplete. Extra properties such as `$schema` are ignored when loading. `obfy config generate` writes PascalCase enum names (`"level": "Standard"`, `"algorithm": "Aes256"`) and omits null signing paths.
+
+A `-c` file is authoritative: `level` in the file is not re-applied as a preset. Copy the Minimal/Standard/Aggressive snippets only if you also include the flags you care about (or generate with `obfy config generate -l …`).
 
 ## Complete Schema
+
+The following block is a grammar of keys and enum values, not a valid `obfy.json` (do not copy the `"minimal | standard | …"` unions). Example files further down are valid JSON.
 
 ```json
 {
@@ -190,7 +194,7 @@ Symbol renaming only - fastest with least protection.
   "controlFlow": { "enabled": false },
   "symbolRenaming": { "enabled": true },
   "protection": { "antiDebug": false },
-  "metadata": { "removeDebugInfo": true }
+  "metadata": { "removeDebugInfo": true, "removeAttributes": false }
 }
 ```
 
@@ -211,7 +215,7 @@ Balanced protection with string encryption and symbol renaming.
 
 ### Aggressive
 
-Maximum protection with all techniques enabled.
+Most protections on (intensity 80). Does not enable watermark, packing, incremental, virtualization, embedding, or `proxyExternalCalls`.
 
 ```json
 {
@@ -405,6 +409,14 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `searchDirectories` | string[] | `[]` | Additional directories to search for dependencies |
 | `excludePatterns` | string[] | `[]` | Assembly patterns to exclude from merging (e.g., `System.*`) |
 
+**Use Cases:**
+
+| Scenario | Configuration |
+|----------|---------------|
+| Merge app + libraries | `"enabled": true, "internalize": true` |
+| Keep public APIs exposed | `"enabled": true, "internalize": false` |
+| Exclude framework assemblies | `"excludePatterns": ["System.*", "Microsoft.*"]` |
+
 ### dependencyEmbedding
 
 | Property | Type | Default | Description |
@@ -419,9 +431,8 @@ Disabled automatically on `NativeAot`, `UnityIl2Cpp`, and `BlazorWasm`. Only fil
 
 | Scenario | Configuration |
 |----------|---------------|
-| Merge app + libraries | `"enabled": true, "internalize": true` |
-| Keep public APIs exposed | `"enabled": true, "internalize": false` |
-| Exclude framework assemblies | `"excludePatterns": ["System.*", "Microsoft.*"]` |
+| Embed sibling libraries | `"enabled": true` |
+| Skip satellite assemblies | `"excludePatterns": ["*.resources.dll"]` (the default) |
 
 ### inclusions
 
@@ -466,7 +477,7 @@ Opt-in; not flipped by level presets. CLI: `--watermark-id`. Settings panel has 
 |-------|--------|
 | `Default` | All protections as configured |
 | `NativeAot` | Disables method encryption, anti-dump, and dependency embedding; anti-debug omits kernel32 P/Invoke. Emits report warnings. |
-| `UnityIl2Cpp` | Same gating; Unity wizard also excludes `UnityEngine.*` and `Unity.*` |
+| `UnityIl2Cpp` | Same gating; Unity wizard also excludes `UnityEngine`, `UnityEngine.*`, `Unity`, and `Unity.*` |
 | `BlazorWasm` | Same gating for Blazor WebAssembly (no `AppDomain.AssemblyResolve` / `VirtualProtect`); anti-debug omits kernel32 P/Invoke. |
 
 ### signing
@@ -483,18 +494,18 @@ Signing runs after PE patches (method-IL XOR, anti-tamper hash) by refreshing th
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `enabled` | bool | `false` | Skip re-obfuscation when the input file and settings JSON are unchanged |
+| `enabled` | bool | `false` | Skip re-obfuscation when the Obfy version, input file, and settings JSON are unchanged |
 
-Cache file: `{outputPath}.obfycache` (SHA-256 of input bytes + serialized settings). A hit requires the output file to exist. If packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. Written only after a successful write. Off in every preset. Config-only (no CLI flag).
+Cache file: `{outputPath}.obfycache` (SHA-256 of Obfy assembly version + input bytes + serialized settings). A version bump is a miss. A hit requires the output file to exist. If packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. Written only after a successful write. Off in every preset. CLI: `--incremental` turns `enabled` on; cache path and packing extras stay in the config.
 
 ### virtualization
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `enabled` | bool | `false` | Replace eligible simple static `int` methods with a bytecode interpreter stub |
-| `maxMethods` | int | `32` | Maximum methods to virtualize (1–256) |
+| `maxMethods` | int | `32` | Maximum methods to virtualize (1–256). Out of range fails the run (does not clamp) |
 
-Eligible methods: `static`, non-generic, no exception handlers, `int` return and `int` parameters, body limited to `ldc.i4` / `ldarg` / `add` / `sub` / `mul` / `ret`. This is **not** a general IL virtualizer. Off in every preset. Config-only.
+Eligible methods: `static`, non-generic, no exception handlers, `int` return and `int` parameters, ≤8 parameters, ≤16 int-sized locals. Body may include `ldc.i4`, `ldarg`, `ldloc`/`stloc`, `add`/`sub`/`mul`, `ceq`/`cgt`/`clt`, `ret`, and signed branches (`br`/`brtrue`/`brfalse`/`blt`/`bgt`/`ble`/`bge`/`beq`/`bne`). Unsigned compares are skipped so original IL is kept. This is **not** a general IL virtualizer. Off in every preset. CLI: `--virtualize` turns `enabled` on; `maxMethods` stays in the config.
 
 ### packing
 
@@ -531,13 +542,20 @@ See [Packing (managed launcher)](#packing-managed-launcher) below. Config-only.
 
 ### Web API with Serialization
 
-JSON/XML property attributes are excluded from renaming by default. Add extra serializer attributes if needed:
+JSON/XML property attributes are excluded from renaming by default. A provided `attributes` array **replaces** the constructor defaults (it does not merge). Include the defaults plus extras:
 
 ```json
 {
   "level": "standard",
   "exclusions": {
     "attributes": [
+      "SerializableAttribute",
+      "DataContractAttribute",
+      "DataMemberAttribute",
+      "JsonPropertyNameAttribute",
+      "JsonPropertyAttribute",
+      "XmlElementAttribute",
+      "XmlAttributeAttribute",
       "ProtoMemberAttribute"
     ]
   }
@@ -598,7 +616,7 @@ JSON/XML property attributes are excluded from renaming by default. Add extra se
 
 ## Virtualization (IL interpreter)
 
-`virtualization.enabled` is **off** in every preset. When true, Obfy replaces selected **static `int` methods** with a bytecode interpreter stub.
+`virtualization.enabled` is **off** in every preset. CLI `--virtualize` turns it on. When true, Obfy replaces selected **static `int` methods** with a bytecode interpreter stub.
 
 Supported IL: `ldc.i4`, `ldarg`, `ldloc`/`stloc` (≤16 int-sized locals), `add`/`sub`/`mul`, `ceq`/`cgt`/`clt`, `ret`, and signed branches (`br`/`brtrue`/`brfalse`/`blt`/`bgt`/`ble`/`bge`/`beq`/`bne`). At most 8 `int` parameters; no exception handlers or generics.
 
@@ -627,6 +645,8 @@ obfy config generate -l aggressive -o obfy-aggressive.json
 # Generate minimal configuration
 obfy config generate -l minimal -o obfy-minimal.json
 ```
+
+Generated files use PascalCase enum names (`"Standard"`, `"Aes256"`, `"Switch"`) and omit null `signing.keyFile` / `passwordEnvironmentVariable`. They include the fully resolved flags for the requested level.
 
 Generated files include a `$schema` property pointing at `https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json` for editor validation.
 

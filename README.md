@@ -1,11 +1,13 @@
-# Obfy
+# <img src="docs/images/logo.png" alt="Obfy" width="64" height="64"> Obfy
 
-[![NuGet](https://img.shields.io/nuget/v/Obfy.svg)](https://www.nuget.org/packages/Obfy/)
-[![NuGet Downloads](https://img.shields.io/nuget/dt/Obfy.svg)](https://www.nuget.org/packages/Obfy/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![.NET](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/)
-[![CI](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml/badge.svg)](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml)
-[![Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-Get%20it-blue.svg)](https://apps.microsoft.com/detail/9NNLPK835QM4)
+[![NuGet](https://img.shields.io/nuget/v/Obfy.svg)](https://www.nuget.org/packages/Obfy/) [![NuGet Downloads](https://img.shields.io/nuget/dt/Obfy.svg)](https://www.nuget.org/packages/Obfy/) [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![.NET](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/) [![CI](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml/badge.svg)](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml)
+
+<a href="https://apps.microsoft.com/detail/9NNLPK835QM4">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/en-us%20light.svg">
+    <img alt="Get it from Microsoft" src="https://get.microsoft.com/images/en-us%20dark.svg" width="200">
+  </picture>
+</a>
 
 **Professional .NET obfuscation tool for protecting C# assemblies and source code.**
 
@@ -26,6 +28,25 @@ These techniques raise the cost of casual reverse engineering. They are **not** 
 
 ## Installation
 
+### Windows installer / MSIX
+
+<a href="https://apps.microsoft.com/detail/9NNLPK835QM4">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/en-us%20light.svg">
+    <img alt="Get it from Microsoft" src="https://get.microsoft.com/images/en-us%20dark.svg" width="200">
+  </picture>
+</a>
+
+Free download for Windows. The Store package installs the WPF UI and adds the `obfy` command to your PATH.
+
+You can also build a sideload/Store MSIX locally:
+
+```powershell
+.\build\build-msix.ps1
+```
+
+See `package/README.md` for sideload, certificate trust, and Partner Center identity steps. Privacy policy: [PRIVACY.md](PRIVACY.md).
+
 ### .NET tool (CLI, CI, Linux/macOS)
 
 Requires the .NET 10 SDK or runtime.
@@ -42,20 +63,6 @@ dotnet tool install Obfy
 ```
 
 If both the Windows installer/MSIX and the global tool are installed, both register the `obfy` command. Use one or the other on PATH.
-
-### Windows installer / MSIX
-
-**[Get Obfy on the Microsoft Store](https://apps.microsoft.com/detail/9NNLPK835QM4)** — free download for Windows.
-
-Download and run the Obfy installer, which adds the `obfy` command to your PATH and installs the WPF UI.
-
-You can also build a sideload/Store MSIX locally:
-
-```powershell
-.\build\build-msix.ps1
-```
-
-See `package/README.md` for sideload, certificate trust, and Partner Center identity steps. Privacy policy: [PRIVACY.md](PRIVACY.md).
 
 ## Quick Start
 

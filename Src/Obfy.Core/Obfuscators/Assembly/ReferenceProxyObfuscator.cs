@@ -54,9 +54,8 @@ public class ReferenceProxyObfuscator : IObfuscator
             {
                 if (type == proxyType)
                     continue;
-                // Keep helper internals as direct calls: a trampoline in <RefProxy> cannot ldftn
-                // a private helper (MethodAccessException / unverifiable). User call sites still
-                // proxy assembly-visible helper entry points. User private methods are still proxied.
+                // Do not rewrite calls inside helper types. CanProxy also rejects helper
+                // targets so injected Run/decryptor entry points stay direct.
                 if (ObfuscatorHelpers.IsRuntimeHelper(type))
                     continue;
                 if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.All, context.Warnings))
@@ -82,7 +81,7 @@ public class ReferenceProxyObfuscator : IObfuscator
                             continue;
                         if (instr.Operand is not IMethod called)
                             continue;
-                        if (!CanProxy(called, module, context.Settings.Protection.ProxyExternalCalls))
+                        if (!CanProxy(called, module, context))
                             continue;
 
                         var key = called.FullName + "|" + instr.OpCode.Code;
@@ -123,7 +122,7 @@ public class ReferenceProxyObfuscator : IObfuscator
         }
     }
 
-    private static bool CanProxy(IMethod called, ModuleDef module, bool proxyExternal)
+    private static bool CanProxy(IMethod called, ModuleDef module, PipelineContext context)
     {
         if (called.Name == ".ctor" || called.Name == ".cctor")
             return false;
@@ -139,10 +138,16 @@ public class ReferenceProxyObfuscator : IObfuscator
             return false;
 
         var resolved = called.ResolveMethodDef();
+        var declaringType = resolved?.DeclaringType ?? called.DeclaringType.ResolveTypeDef();
+        if (declaringType is not null &&
+            (context.InjectedHelperMap.ContainsKey(declaringType) ||
+             ObfuscatorHelpers.IsRuntimeHelper(declaringType)))
+            return false;
+
         var inModule = resolved != null && resolved.Module == module;
         if (!inModule)
         {
-            if (!proxyExternal)
+            if (!context.Settings.Protection.ProxyExternalCalls)
                 return false;
             return !IsUnsafeExternal(called);
         }

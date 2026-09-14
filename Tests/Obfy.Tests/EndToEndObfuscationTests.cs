@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using Autofac;
@@ -209,22 +210,22 @@ public class EndToEndObfuscationTests
         return path;
     }
 
-    private static bool CallsExecute(MethodDef method) =>
+    private static bool CallsRun(MethodDef method) =>
         method.Body.Instructions.Any(i =>
-            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "Execute");
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "Run");
 
     private static void AssertVmStub(ModuleDef module, string typeName, string methodName)
     {
         var method = module.Types.First(t => t.Name == typeName).FindMethod(methodName);
         method.ShouldNotBeNull();
-        CallsExecute(method!).ShouldBeTrue($"{typeName}.{methodName} should call Execute");
+        CallsRun(method!).ShouldBeTrue($"{typeName}.{methodName} should call Run");
     }
 
     private static void AssertNotVmStub(ModuleDef module, string typeName, string methodName)
     {
         var method = module.Types.First(t => t.Name == typeName).FindMethod(methodName);
         method.ShouldNotBeNull();
-        CallsExecute(method!).ShouldBeFalse($"{typeName}.{methodName} should not call Execute");
+        CallsRun(method!).ShouldBeFalse($"{typeName}.{methodName} should not call Run");
     }
 
     private static object? LoadAndInvoke(string assemblyPath, string typeName, string methodName, params object[] args)
@@ -235,15 +236,29 @@ public class EndToEndObfuscationTests
             var asm = alc.LoadFromAssemblyPath(assemblyPath);
             var type = asm.GetType(typeName);
             type.ShouldNotBeNull();
-            var method = type!.GetMethod(methodName);
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic |
+                                       BindingFlags.Static | BindingFlags.Instance;
+            var method = type!.GetMethod(methodName, flags);
             method.ShouldNotBeNull();
-            return method!.Invoke(null, args.Length == 0 ? null : args);
+            object? target = null;
+            if (!method!.IsStatic)
+                target = Activator.CreateInstance(type);
+            return method.Invoke(target, args.Length == 0 ? null : args);
         }
         finally
         {
             alc.Unload();
         }
     }
+
+    private static ObfySettings FullPipelineVmSettings() => new()
+    {
+        Level = ObfuscationLevel.Custom,
+        StringEncryption = { Enabled = true, MinStringLength = 3 },
+        ControlFlow = { Enabled = true },
+        SymbolRenaming = { Enabled = true, PreservePublicApi = true },
+        Virtualization = { Enabled = true }
+    };
 
     [Fact]
     public async Task Incremental_ReusesCachedOutput()
@@ -314,7 +329,12 @@ public class EndToEndObfuscationTests
             result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
 
             using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
-                loaded.Types.ShouldContain(t => t.Name == "<Vm>");
+            {
+                loaded.Types.ShouldContain(t => t.Name == "Vm");
+                AssertVmStub(loaded, "Lib", "Add");
+                var add = loaded.Types.First(t => t.Name == "Lib").FindMethod("Add");
+                add!.Body.Instructions.ShouldNotContain(i => i.OpCode == OpCodes.Add);
+            }
 
             LoadAndInvoke(output, "Lib", "Add", 2, 3).ShouldBe(5);
         }
@@ -399,7 +419,7 @@ public class EndToEndObfuscationTests
 
             using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
             {
-                loaded.Types.ShouldContain(t => t.Name == "<Vm>");
+                loaded.Types.ShouldContain(t => t.Name == "Vm");
                 AssertVmStub(loaded, "Lib", "Scale");
                 AssertVmStub(loaded, "Lib", "Mix");
                 AssertVmStub(loaded, "Lib", "Five");
@@ -411,7 +431,7 @@ public class EndToEndObfuscationTests
                 AssertVmStub(loaded, "Lib", "Ge");
                 AssertVmStub(loaded, "Lib", "Ne");
                 AssertVmStub(loaded, "Lib", "Const");
-                AssertNotVmStub(loaded, "Lib", "Div");
+                AssertVmStub(loaded, "Lib", "Div");
             }
 
             LoadAndInvoke(output, "Lib", "Scale", 2, 3).ShouldBe(9);
@@ -490,6 +510,128 @@ public class EndToEndObfuscationTests
             LoadAndInvoke(output, "Lib", "IfZero", 0).ShouldBe(1);
             LoadAndInvoke(output, "Lib", "IfZero", 4).ShouldBe(0);
             LoadAndInvoke(output, "Lib", "IfZero", -1).ShouldBe(0);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Virtualization_RunsInstanceAndLdstrOnRealAssembly()
+    {
+        const string source = """
+            public class Box
+            {
+                public int Go() => 7;
+                public static string Hi() => "hi";
+                public static bool Flag() => true;
+                public static uint Id(uint x) => x;
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-vm-inst-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "VmInstLib");
+            var output = Path.Combine(dir, "VmInstLib.obf.dll");
+            var service = CreateService();
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Virtualization = { Enabled = true }
+            };
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
+            {
+                loaded.Types.ShouldContain(t => t.Name == "Vm");
+                AssertVmStub(loaded, "Box", "Go");
+                AssertVmStub(loaded, "Box", "Hi");
+                AssertVmStub(loaded, "Box", "Flag");
+                AssertVmStub(loaded, "Box", "Id");
+            }
+
+            LoadAndInvoke(output, "Box", "Go").ShouldBe(7);
+            LoadAndInvoke(output, "Box", "Hi").ShouldBe("hi");
+            LoadAndInvoke(output, "Box", "Flag").ShouldBe(true);
+            LoadAndInvoke(output, "Box", "Id", 7u).ShouldBe(7u);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Virtualization_FullPipeline_RunsEncodedMethod()
+    {
+        const string source = "public static class Lib { public static int Add(int a, int b) => a + b; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-vm-full-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "VmFullLib");
+            var output = Path.Combine(dir, "VmFullLib.obf.dll");
+            var result = await CreateService().ObfuscateAsync(input, output, FullPipelineVmSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            LoadAndInvoke(output, "Lib", "Add", 2, 3).ShouldBe(5);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Virtualization_FullPipeline_StringLongerThanMinStringLength_ReturnsHello()
+    {
+        const string source = "public static class Lib { public static string Hi() => \"hello\"; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-vm-hello-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "VmHelloLib");
+            var output = Path.Combine(dir, "VmHelloLib.obf.dll");
+            var result = await CreateService().ObfuscateAsync(input, output, FullPipelineVmSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            LoadAndInvoke(output, "Lib", "Hi").ShouldBe("hello");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Virtualization_NativeAotProfile_LeavesBody()
+    {
+        const string source = "public static class Lib { public static int Add(int a, int b) => a + b; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-vm-aot-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "VmAotLib");
+            var output = Path.Combine(dir, "VmAotLib.obf.dll");
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                RuntimeProfile = RuntimeProfile.NativeAot,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Virtualization = { Enabled = true }
+            };
+
+            var result = await CreateService().ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            using var loaded = ModuleDefMD.Load(File.ReadAllBytes(output));
+            AssertNotVmStub(loaded, "Lib", "Add");
+            loaded.Types.ShouldNotContain(t => t.Name == "Vm");
         }
         finally
         {

@@ -58,13 +58,13 @@
       Id="ObfyCLI"
       Executable="CLI\obfy.exe"
       EntryPoint="Windows.FullTrustApplication">
+      <!-- AppListEntry=none triggers Partner Center headless-app rejection without HeadlessAppBypass. -->
       <uap:VisualElements
         DisplayName="Obfy CLI"
         Description="Obfy command-line interface"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png"
-        AppListEntry="none">
+        Square44x44Logo="Assets\Square44x44Logo.png">
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
       <Extensions>

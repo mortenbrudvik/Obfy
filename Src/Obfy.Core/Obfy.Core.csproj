@@ -21,4 +21,13 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Obfy.VmRuntime\Obfy.VmRuntime.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>EmbeddedResource</OutputItemType>
+      <LogicalName>Obfy.VmRuntime.dll</LogicalName>
+    </ProjectReference>
+  </ItemGroup>
+
 </Project>
+

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using Autofac;
@@ -99,6 +100,14 @@ public class EndToEndObfuscationTests
     }
 
     private static ObfySettings PackingSettings() => new()
+    {
+        Level = ObfuscationLevel.Custom,
+        StringEncryption = { Enabled = false },
+        SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+        Packing = { Enabled = true, Rid = "portable" }
+    };
+
+    private static ObfySettings NativePackingSettings() => new()
     {
         Level = ObfuscationLevel.Custom,
         StringEncryption = { Enabled = false },
@@ -721,6 +730,66 @@ public class EndToEndObfuscationTests
             result.Success.ShouldBeTrue(result.ErrorMessage);
             result.Warnings.ShouldContain(w => w.Contains("Packing skipped"));
             result.PackedLauncherPath.ShouldBeNull();
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_UnknownRid_FailsBeforeWrite()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-rid-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "RidApp");
+            var output = Path.Combine(dir, "RidApp.obf.exe");
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Packing = { Enabled = true, Rid = "linux-x64" }
+            };
+
+            var result = await CreateService().ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeFalse();
+            result.ErrorMessage.ShouldNotBeNull();
+            result.ErrorMessage.ShouldContain("Invalid settings");
+            result.ErrorMessage.ShouldContain("rid");
+            File.Exists(output).ShouldBeFalse();
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_DefaultRid_WritesNativeHostAndNoLauncher()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeApp");
+            var output = Path.Combine(dir, "NativeApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.PackedLauncherPath.ShouldBe(output);
+            result.Warnings.ShouldContain(w => w.Contains("Packed native host:"));
+            File.Exists(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBeFalse();
+            File.Exists(NativePacker.RuntimeConfigPathFor(output)).ShouldBeTrue();
+
+            var bytes = File.ReadAllBytes(output);
+            using (var pe = new PEReader(new MemoryStream(bytes)))
+            {
+                pe.PEHeaders.CorHeader.ShouldBeNull();
+            }
         }
         finally
         {

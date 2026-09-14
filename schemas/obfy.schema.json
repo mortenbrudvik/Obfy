@@ -240,13 +240,19 @@
     },
     "packing": {
       "type": "object",
-      "description": "Emit a sibling framework-dependent managed launcher that embeds the obfuscated assembly and invokes its entry point. Requires an entry point. Output is {name}.launcher.exe plus .runtimeconfig.json (run with dotnet).",
+      "description": "Default win-x64 replaces the obfuscated PE with a native CLR-host stub and sibling .runtimeconfig.json. Set rid to portable for the managed {name}.launcher.exe escape hatch. Requires an entry point.",
       "additionalProperties": true,
       "properties": {
         "enabled": {
           "type": "boolean",
           "default": false,
-          "description": "When true, fail the run if the assembly has no entry point; write {name}.launcher.exe and .runtimeconfig.json beside the obfuscated output."
+          "description": "When true, fail the run if the assembly has no entry point. win-x64 replaces the managed PE with a native host; portable writes {name}.launcher.exe and .runtimeconfig.json beside the obfuscated output."
+        },
+        "rid": {
+          "type": "string",
+          "enum": ["win-x64", "portable"],
+          "default": "win-x64",
+          "description": "win-x64 emits a native CLR-host stub that replaces the managed PE. portable keeps the managed {name}.launcher.exe beside the obfuscated assembly."
         }
       }
     },

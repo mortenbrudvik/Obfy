@@ -76,9 +76,8 @@ public class ObfySettings
     public VirtualizationSettings Virtualization { get; init; } = new();
 
     /// <summary>
-    /// After save, emit a sibling framework-dependent managed launcher
-    /// (<c>{name}.launcher.exe</c> + <c>.runtimeconfig.json</c>) that embeds the obfuscated assembly
-    /// and invokes its entry point. Requires an entry point; not a native packer.
+    /// After save, emit a native win-x64 host that replaces the managed PE (default
+    /// <c>packing.rid</c>), or a portable sibling <c>{name}.launcher.exe</c>. Requires an entry point.
     /// </summary>
     public PackingSettings Packing { get; init; } = new();
 
@@ -267,6 +266,9 @@ public class ObfySettings
         ValidateObject(Signing);
         ValidateObject(Watermark);
         ValidateObject(Virtualization);
+        ValidateObject(Packing);
+        if (Packing.Enabled && !Packing.IsNativeWin64 && !Packing.IsPortable)
+            throw new ValidationException("packing.rid must be win-x64 or portable.");
 
         Inclusions.Namespaces ??= new();
         Inclusions.Types ??= new();
@@ -772,13 +774,23 @@ public class VirtualizationSettings
 }
 
 /// <summary>
-/// Produce a sibling framework-dependent managed launcher that embeds the obfuscated assembly
-/// and invokes its entry point. Requires an entry point; a missing entry point fails the run
-/// after the obfuscated file has already been written. Not a native packer.
+/// After save, emit a native win-x64 host (default) that replaces the managed PE, or a portable
+/// sibling framework-dependent managed launcher. Requires an entry point; a missing entry point
+/// fails the run after the obfuscated file has already been written.
 /// </summary>
 public class PackingSettings
 {
     public bool Enabled { get; set; }
+    public string Rid { get; set; } = "win-x64";
+
+    [JsonIgnore]
+    public bool IsNativeWin64 =>
+        string.IsNullOrWhiteSpace(Rid) ||
+        Rid.Equals("win-x64", StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public bool IsPortable =>
+        Rid != null && Rid.Equals("portable", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>

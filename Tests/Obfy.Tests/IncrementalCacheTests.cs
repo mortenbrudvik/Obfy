@@ -52,8 +52,37 @@ public class IncrementalCacheTests : IDisposable
     public void TryHit_PackingEnabledWithoutLauncher_IsFalse()
     {
         var (input, output, settings) = Seed();
-        IncrementalCache.Write(input, output, settings);
         settings.Packing.Enabled = true;
+        IncrementalCache.Write(input, output, settings);
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryHit_PackingWinX64WithoutRuntimeConfig_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        settings.Packing.Enabled = true;
+        IncrementalCache.Write(input, output, settings);
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryHit_PackingWinX64WithRuntimeConfig_IsTrue()
+    {
+        var (input, output, settings) = Seed();
+        settings.Packing.Enabled = true;
+        IncrementalCache.Write(input, output, settings);
+        File.WriteAllText(NativePacker.RuntimeConfigPathFor(output), "{}");
+        IncrementalCache.TryHit(input, output, settings).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void TryHit_PackingPortableWithoutLauncher_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        settings.Packing.Enabled = true;
+        settings.Packing.Rid = "portable";
+        IncrementalCache.Write(input, output, settings);
         IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
     }
 

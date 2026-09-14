@@ -68,7 +68,7 @@ public static class RuntimeProfileGating
         {
             settings.Packing.Enabled = false;
             context.Warnings.Add(
-                $"Managed launcher packing disabled for {label}: it emits a framework-dependent host that is not used on this runtime.");
+                $"Native packing disabled for {label}: it emits a framework-dependent host that is not used on this runtime.");
         }
     }
 }

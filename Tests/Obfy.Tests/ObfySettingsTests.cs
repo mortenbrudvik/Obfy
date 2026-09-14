@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Obfy.Core.Models;
 using Shouldly;
 
@@ -357,6 +358,29 @@ public class ObfySettingsTests
 
         clone.Packing.Enabled.ShouldBeTrue();
         clone.Packing.ShouldNotBeSameAs(original.Packing);
+    }
+
+    [Fact]
+    public void Validate_PackingEnabledUnknownRid_Throws()
+    {
+        var settings = new ObfySettings { Packing = { Enabled = true, Rid = "linux-x64" } };
+        Should.Throw<ValidationException>(() => settings.Validate())
+            .Message.ShouldContain("rid");
+    }
+
+    [Fact]
+    public void Clone_KeepsPackingRid()
+    {
+        var original = new ObfySettings { Packing = { Enabled = true, Rid = "portable" } };
+        var clone = original.Clone();
+        clone.Packing.Rid.ShouldBe("portable");
+    }
+
+    [Fact]
+    public void Validate_PackingEnabledNullRid_TreatedAsWinX64()
+    {
+        var settings = new ObfySettings { Packing = { Enabled = true, Rid = null! } };
+        settings.Validate(); // must not throw
     }
 
     [Fact]

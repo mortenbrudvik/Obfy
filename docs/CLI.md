@@ -32,9 +32,9 @@ obfy <input>... [options]
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
-| `--output <dir>` | `-o` | Output directory for obfuscated files | Same as input for assemblies/source; `{solutionDir}/obfy-out` when a solution/project is used and `-o` is omitted |
-| `--config <file>` | `-c` | Path to JSON configuration file | None |
-| `--level <level>` | `-l` | Obfuscation level: `minimal`, `standard`, `aggressive`, `custom` | `standard` |
+| `--output <dir>` | `-o` | Output directory for obfuscated files | Single file: sibling `{name}.obfuscated{ext}`. `--merge` without `-o`: sibling `{name}.merged{ext}`. Solution/project or two+ loose assemblies: `{dir}/obfy-out/` |
+| `--config <file>` | `-c` | Path to JSON configuration file. Technique flags in the file are used as-is; `--level` is ignored when `-c` is set, and `level` inside the file is not re-applied as a preset (`obfy config generate -l …` writes fully resolved flags) | None |
+| `--level <level>` | `-l` | Obfuscation level: `minimal`, `standard`, `aggressive`, `custom`. Applied only when `-c` is omitted | `standard` |
 | `--string-encrypt` | | Enable string encryption | Off |
 | `--control-flow` | | Enable control flow obfuscation | Off |
 | `--rename` | | Enable symbol renaming | Off |
@@ -46,7 +46,7 @@ obfy <input>... [options]
 | `--virtualize` | | Enable limited IL virtualization for simple static int methods | Off |
 | `--incremental` | | Skip re-obfuscation when input and settings are unchanged | Off |
 | `--reference-proxy` | | Enable reference proxy | Off |
-| `--proxy-external` | | Also proxy selected out-of-module calls (enables `--reference-proxy`; skips compiler/interop/pointer signatures) | Off |
+| `--proxy-external` | | Also proxy selected out-of-module calls (enables `--reference-proxy`; skips compiler/interop/pointer/value-type/generic/vararg/ctor signatures) | Off |
 | `--encrypt-methods` | | Encrypt method IL in the PE image (Windows) | Off |
 | `--no-string-encryption` | | Disable string encryption | Off |
 | `--no-symbol-renaming` | | Disable symbol renaming | Off |
@@ -56,7 +56,7 @@ obfy <input>... [options]
 | `--encrypt-constants` | | Enable constant encryption | Off |
 | `--preserve-public` | | Preserve public API names (also forces library-mode on a closed set) | Off |
 | `--merge` | | Merge all input assemblies into one before obfuscating | Off |
-| `--internalize` | | Make merged types internal (improves obfuscation) | On |
+| `--internalize` | | With `--merge` only: make merged types internal. `--internalize false` keeps them public. A config `internalize: false` is overwritten when `--merge` is also passed | On (when merging) |
 | `--map <file>` | | Output symbol mapping to file | None |
 | `--report <file>` | | Generate obfuscation report (HTML or JSON based on extension) | None |
 | `--dry-run` | | Analyze only, don't write output | Off |
@@ -65,7 +65,7 @@ obfy <input>... [options]
 | `--version` | | Show version information | |
 | `--help` | `-h`, `-?` | Show help | |
 
-**Config-only (no CLI flags):** `packing.enabled`, `signing`, `runtimeProfile`, `dependencyEmbedding`, `symbolRenaming.preserveXaml`, `inclusions`, `watermark` (except `--watermark-id`), and nested anti-decompiler junk counts. Set these in `obfy.json`. `--virtualize` and `--incremental` turn those features on; full nested knobs still live in the config file.
+**Config-only (no CLI flags):** `packing.enabled`, `signing`, `runtimeProfile`, `dependencyEmbedding`, `symbolRenaming.preserveXaml`, `inclusions`, `watermark` (except `--watermark-id`), nested anti-decompiler junk counts, encryption algorithms, control-flow mode/intensity, naming mode, `metadata.removeAttributes`, and `metadata.stripDocumentation`. `--strip-metadata` only sets `removeDebugInfo`. `--virtualize` and `--incremental` turn those features on; `maxMethods` and cache behavior stay in the config file.
 
 ### config generate
 
@@ -99,8 +99,10 @@ obfy config wizard [options]
 
 **Modes:**
 
-- **Quick Mode** (`--quick`): Asks only about application type and protection level
-- **Advanced Mode** (default): Steps through all configuration options interactively
+Without `--quick`, the wizard asks Quick vs Advanced (Quick is listed first as recommended). `--quick` skips that prompt.
+
+- **Quick Mode** (`--quick`): Application type and protection level
+- **Advanced Mode**: Steps through all configuration options interactively
 
 **Use Case Presets:**
 
@@ -108,13 +110,13 @@ The wizard applies sensible defaults based on your application type:
 
 | Use Case | Recommendation |
 |----------|----------------|
-| Desktop Application | Standard protection |
+| Desktop Application | Standard protection; `preserveXaml` |
 | Console Application | Standard protection |
-| Class Library / NuGet | Minimal protection, preserves public API |
-| Web Application (ASP.NET) | Standard protection, excludes route attributes |
-| Blazor WebAssembly | Standard protection, `runtimeProfile: BlazorWasm` |
-| MAUI / Mobile | Standard protection, preserves XAML names |
-| Game (Unity) | Standard protection, `runtimeProfile: UnityIl2Cpp`, excludes Unity namespaces |
+| Class Library / NuGet Package | Minimal protection; preserves public API |
+| Web Application (ASP.NET) | Standard protection; excludes Route, ApiController, HttpGet/Post/Put/Delete |
+| Blazor WebAssembly | Standard protection; `runtimeProfile: BlazorWasm` |
+| MAUI / Mobile | Standard protection; `preserveXaml` |
+| Game (Unity) | Standard protection; `runtimeProfile: UnityIl2Cpp`; excludes `UnityEngine`, `UnityEngine.*`, `Unity`, `Unity.*` |
 
 ## Examples
 
@@ -194,7 +196,7 @@ obfy config wizard -o myproject.json
 # Enable specific protections
 obfy MyApp.dll --string-encrypt --rename -o output/
 
-# Enable all CLI protection flags (Aggressive also turns these on; intensity/junk counts still come from config)
+# Aggressive CLI set (omits opt-in --proxy-external, --watermark-id, --virtualize, --incremental)
 obfy MyApp.dll --string-encrypt --control-flow --rename --anti-debug --anti-tamper --anti-decompiler --anti-dump --reference-proxy --encrypt-methods --strip-metadata --encrypt-resources --encrypt-constants -o output/
 
 # Enable renaming but preserve public API
@@ -255,7 +257,7 @@ obfy MyApp.dll -v -o output/
 - `--merge` on a session with fewer than two included assemblies warns and continues as a closed set.
 - Load failures omit that module, print the path and cause, write the remaining set, and exit 1.
 
-`obfy App.dll Lib.dll` without a solution still uses the per-file path.
+`obfy App.dll Lib.dll` without a solution/project is still a closed set (same rename consistency as a solution drop). `--merge` still merges. Without `-o`, output is `{first-assembly-dir}/obfy-out/`.
 
 ## Exit Codes
 
@@ -271,7 +273,8 @@ Obfy stores configuration and logs in the following locations:
 
 | Type | Path |
 |------|------|
-| Settings | `ApplicationData/Obfy/obfy.json` (`%APPDATA%\Obfy\obfy.json` on Windows) |
+| Obfuscation settings | The `-c` / `obfy config generate` file you choose (`obfy.json` in the current directory by default). Not auto-loaded from AppData |
+| UI preferences | `%APPDATA%\Obfy\ui-preferences.json` (last output folder, symbol-map option) |
 | Logs | `LocalApplicationData/Obfy/Logs/` (`%LOCALAPPDATA%\Obfy\Logs\` on Windows) |
 
 The WPF UI, method IL encryption (`VirtualProtect`), and anti-dump MiniDump hook are Windows-only. The CLI can obfuscate assemblies on any OS; PE-level Windows protections warn or no-op off-Windows.

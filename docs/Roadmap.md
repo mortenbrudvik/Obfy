@@ -1,6 +1,6 @@
 # Obfy Product Roadmap & Backlog
 
-A strategic development plan. Protection hardening that was scoped as v1.4–v1.5 (helpers, anti-debug scatter, per-method XOR keys, `[Obfuscation]`, JSON/XAML defaults, runtime-profile gating) is **on main** (Unreleased relative to the 1.3.0 tag). Remaining work is platform depth, a real native packer, and whether to grow the limited IL interpreter into a general VM.
+A strategic development plan. Pipeline protection through 1.3.0 is **shipped**. Remaining work is platform depth, a real native packer, and wiring the general IL VM encoder/runtime into `VirtualizationObfuscator` (the shipping pass is still the int-only interpreter).
 
 ---
 
@@ -18,19 +18,19 @@ Assembly pipeline (priority order):
 
 | Priority | Technique | Status |
 |----------|-----------|--------|
-| 8 | Dependency embedding (`Obfy.Embedded.*` + AssemblyResolve) | Shipped (unreleased) |
+| 8 | Dependency embedding (`Obfy.Embedded.*` + AssemblyResolve) | Shipped (1.3.0) |
 | 10 | String encryption (AES-256 / XOR, index XOR, resource strings) | Shipped |
 | 11 | Constant encryption | Shipped |
 | 15 | Resource encryption | Shipped |
 | 18 | Anti-debug (`IsAttached`, `IsLogging`, kernel32, scatter, timing) | Shipped |
-| 19 | Anti-dump (PE wipe + in-process MiniDump hook, Windows x86/x64) | Shipped (unreleased) |
+| 19 | Anti-dump (PE wipe + in-process MiniDump hook, Windows x86/x64) | Shipped (1.3.0) |
 | 20 | Anti-decompiler (junk types, `SuppressIldasm`, decoy attributes) | Shipped |
 | 21 | Watermark (`WatermarkAttribute`) | Shipped |
 | 22 | Anti-tamper (whole-file SHA-256) | Shipped |
-| 24 | Virtualization (simple static int methods only) | Shipped (unreleased; limited) |
-| 25 | Method IL encryption (per-method XOR in PE, decrypt at load) | Shipped (unreleased) |
+| 24 | Virtualization (simple static int methods only) | Shipped (1.3.0; limited) |
+| 25 | Method IL encryption (per-method XOR in PE, decrypt at load) | Shipped (1.3.0) |
 | 30 | Control flow (CFG flatten + opaque predicates; helpers included) | Shipped |
-| 40 | Reference proxy (`calli` trampolines; optional external) | Shipped (unreleased) |
+| 40 | Reference proxy (`calli` trampolines; optional external) | Shipped (1.3.0) |
 | 50 | Symbol renaming (types, methods, fields, properties, events, namespaces) | Shipped |
 | 90 | Metadata removal | Shipped |
 
@@ -44,7 +44,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 
 | Priority | Definition | Target |
 |----------|------------|--------|
-| **P0** | Next release — remaining unreleased-on-main cut | next tag after 1.3.0 |
+| **P0** | Next release — general VM wiring and remaining Unreleased notes | next tag after 1.3.0 |
 | **P1** | Near-term — platform recipes → tested support | following minor |
 | **P2** | Mid-term — tooling expansion | later minor |
 | **P3** | Later — advanced / high-cost protection | v2.0+ |
@@ -74,7 +74,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 | PF-06 | Watermarking | P2 | Low | Low | ✅ Done |
 | PF-18 | Anti-de4dot signatures | P2 | Low | Low | ✅ Done (detector bait; does not block de4dot) |
 | PF-19 | Dumper-hook anti-dump | P3 | High | Medium | ✅ Partial (in-process MiniDumpWriteDump `0xC3` only) |
-| PF-08 | Code virtualization | P3 | Very High | High | ✅ Partial (simple static int methods). General VM remains Future |
+| PF-08 | Code virtualization | P3 | Very High | High | ✅ Partial (simple static int methods). Encoder/runtime exist; obfuscator not switched |
 | PF-09 | Native code generation | P3 | Very High | Medium | ✅ Partial (managed FDD launcher; native packer remaining) |
 
 ### Developer experience
@@ -115,7 +115,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 | QT-02 | ViewModel unit tests | P2 | Medium | Medium | ✅ Done |
 | QT-03 | Code coverage CI | P2 | Low | Medium | Partial — workflow + 80% warning exist; [TR-03](Testing-Roadmap.md) confirms they run on GitHub Actions |
 | QT-04 | UI automation tests | P3 | High | Low | ✅ Done (local FlaUI; `Category=UI`, skipped in CI) |
-| QT-05 | Aggressive pipeline e2e (compile → run) | P0 | Medium | High | ✅ Done (unreleased) |
+| QT-05 | Aggressive pipeline e2e (compile → run) | P0 | Medium | High | ✅ Done (1.3.0) |
 | QT-06 | Decompiler-resistance fixtures | P0 | Medium | High | ✅ Done |
 | QT-07 | Scenario / SDK project tests | P1 | Medium | High | ✅ Done (Phases 1–5 — [Testing-Roadmap.md](Testing-Roadmap.md)) |
 
@@ -125,7 +125,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 
 ### Next tag (cut Unreleased)
 
-Ship the work already on main: anti-dump, method encryption, reference proxy, helper hardening, `[Obfuscation]`, runtime profiles, packing, incremental cache, limited virtualization, MSIX. Update the 1.3.0 tag’s changelog into a dated release.
+1.3.0 already shipped the pipeline items above. Still Unreleased-on-main: general IL VM encoder/runtime (not yet the pipeline obfuscator), Store/OIDC packaging notes. Do not imply a shipped general VM until `VirtualizationObfuscator` is switched off `CreateExecute`.
 
 ### DX-03: VS Code beyond the stub
 
@@ -149,7 +149,7 @@ The managed `{name}.launcher.exe` is not native code generation. A Windows nativ
 
 ### PF-08 remaining: general virtualization
 
-The current interpreter handles only simple static `int` arithmetic. A custom VM for arbitrary IL is still a research spike, then a design — not a drive-by expansion of `maxMethods`.
+The shipping interpreter handles only simple static `int` arithmetic. `Obfy.VmRuntime`, `VmEncoder`, and `VmImporter` exist on main; remaining work is to switch `VirtualizationObfuscator` off `CreateExecute`. EH, generics, and byref stay out of scope.
 
 ### PF-19 remaining: external dumpers
 
@@ -167,20 +167,9 @@ Shipped: resource/constant encryption, reports, WPF UI, anti-tamper, anti-decomp
 
 ### Unreleased on main (next tag)
 
-Already in the tree; not yet cut as a release:
+Shipped in 1.3.0: anti-dump, reference proxy, method IL encryption, runtime-profile gating, packing, incremental cache, limited virtualization, MSIX, and the rest of the 1.3.0 changelog.
 
-- Anti-dump PE-header wipe and in-process MiniDump hook
-- In-module `calli` reference proxies and optional external proxies
-- Method IL encryption (per-method keys)
-- Native `IsDebuggerPresent` / scatter / timing anti-debug
-- CFG flattening, random dispatcher states, TickCount opaque predicates
-- Event / namespace renaming; XOR-encoded string decrypt indices; three decrypt entry points
-- Control flow and proxies on runtime helpers
-- `[Obfuscation]` + inclusions; JSON/XML/COM/XAML defaults
-- `runtimeProfile` gating; signing; dependency embedding; watermark; decoy attributes
-- Incremental cache; managed launcher; limited virtualization
-- Unity / Blazor / MAUI recipes; VS Code stub; MSIX
-- Aggressive compile → obfuscate → load → run tests; decompiler-resistance fixtures
+Still in the tree and not a product pass: general IL VM encoder/runtime (`VmEncoder` / `Obfy.VmRuntime`). `VirtualizationObfuscator` still injects the int-only interpreter. Store Trusted Publishing / unsigned Store MSIX notes.
 
 ### Phase 4: Protection hardening ✅ (on main)
 
@@ -210,7 +199,7 @@ PF-11, PF-17, PF-16, UF-03 are implemented.
 
 | Feature | Notes |
 |---------|--------|
-| PF-08 Code virtualization | Research spike → design → implementation. Selective methods only. Grow or replace the current int-only interpreter. |
+| PF-08 Code virtualization | Switch the obfuscator to the new runtime; EH/generics/byref still out of scope. |
 | PF-09 Native code generation | Windows launcher first |
 
 ---

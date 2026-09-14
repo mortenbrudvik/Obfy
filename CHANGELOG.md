@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- WIP general IL VM encoder/runtime (`Init`/`Import` take `returnTypes`; `VmIsa.EncodedSize` matches locked widths; encoder skips generic-instantiation members and unresolved valuetype params; importer uses two-arg `GetMethodFromHandle` / `GetFieldFromHandle`). The pipeline still uses the int-only `VirtualizationObfuscator` interpreter; `Obfy.VmRuntime.Vm.Run` is not wired
+
 ### Fixed
 - Platform MAUI scenario no longer times out on first-run `dotnet new maui` (180s; weekly job timeout 45 minutes)
 - Store MSIX no longer sets `AppListEntry=none` on the CLI entry (Partner Center rejects that as a headless app)
-- General IL VM: `Init`/`Import` take `returnTypes`; `VmIsa.EncodedSize` matches locked widths; encoder skips generic-instantiation members (`List<int>.Add`) and unresolved valuetype params; importer uses two-arg `GetMethodFromHandle` / `GetFieldFromHandle` so generic tokens cannot poison `Vm.cctor`
+- `obfy config generate` writes PascalCase string enums and omits null signing paths so the file matches `schemas/obfy.schema.json`
 
 ### Changed
 - CI runs `Obfy.Console.Tests` on Ubuntu so the cross-platform CLI claim is exercised every PR
@@ -18,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Release NuGet publish uses Trusted Publishing (OIDC) instead of a long-lived API key
 - Microsoft Store identity is in `package/store-identity.json`; `.\build\build-msix.ps1 -Store` packs an unsigned Store MSIX; privacy policy is `PRIVACY.md`
 - README shows the Obfy logo and the official Microsoft Store badge instead of a small shields.io pill
+- Documentation: install paths (Store, GitHub Setup.exe, VS VSIX and Rider zip from source), CLI `-o` / closed-set / `-c` vs `-l`, virtualization ISA, privacy settings location, test counts, roadmap 1.3.0 status
 
 ## [1.3.0] - 2026-09-13
 
@@ -148,7 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI `dotnet test` no longer fails 18 FlaUI tests that looked for Debug `ObfyUI.exe` after a Release build; live-window tests are `Category=UI` (opt-in) and the locator prefers the current configuration
 - Packing writes the incremental cache only after a successful launcher emit; cache hits require the launcher files
 - Preview failures no longer fail a successful obfuscation run
-- Packed host awaits async Main, resolves sibling assemblies, and extracts the payload to disk so anti-tamper can hash it
+- Packed host awaits async Main and resolves sibling assemblies from the load context (payload stays in-memory)
 - Anti-dump MiniDumpWriteDump patch is skipped unless the process is X86/X64 (ARM64 is no longer written with `0xC3`)
 - Requested watermark/decoy skips are reported as warnings instead of silent success
 - `--watermark-id` with only whitespace is an error instead of a silent no-op

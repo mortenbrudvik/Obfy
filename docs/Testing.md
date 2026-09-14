@@ -9,13 +9,13 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 | Project | Tests | Coverage |
 |---------|-------|----------|
 | Obfy.Tests | 574 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures, schema contract, and Settings.Core validation of `ObfySettings` |
-| Obfy.Console.Tests | 159 | CLI parsing (`IntegrationParseTests`), `Program.Main` process tests, wizard file write |
-| Obfy.UI.Tests | 179 | ViewModel unit tests, startup CLI apply, and XAML contrast/theme checks |
+| Obfy.Console.Tests | 160 | CLI parsing (`CommandParsingTests`, `SolutionInputTests`), `Program.Main` process tests, wizard file write |
+| Obfy.UI.Tests | 179 | ViewModel unit tests, Help catalog, startup CLI apply, and XAML contrast/theme checks |
 | Obfy.UI.AutomationTests | 29 | 6 locator unit tests (CI) + 23 FlaUI live-window tests (`Category=UI`, local) |
 | Obfy.ScenarioTests | 16 | 13 default SDK fixtures (Unity stub + merge + merge-then-obfuscate) + 3 `Category=Platform` |
-| Obfy.VisualStudio.Tests | 26 | VS settings JSON, CLI argv, in-place copy, output-assembly locator, CLI path locator (no VS hive) |
+| Obfy.VisualStudio.Tests | 26 | VS settings JSON, settings dialog ViewModel, CLI argv, in-place copy, output-assembly locator, CLI path locator (no VS hive) |
 | Obfy.Rider (Gradle) | 17 | JVM unit tests for settings, CLI argv, assembly locator (CI job `rider-tests`) |
-| **Total** | **957** | Default CI (`Category!=UI&Category!=Platform`): 574+159+179+6+13+26. Project counts include FlaUI + Platform; Total is the default filter (excludes FlaUI, Platform, and Rider). Counts are xUnit cases (`[Theory]` expansions included). |
+| **Total** | **958** | Default CI (`Category!=UI&Category!=Platform`): 574+160+179+6+13+26. Project counts include FlaUI + Platform; Total is the default filter (excludes FlaUI, Platform, and Rider). Counts are xUnit cases (`[Theory]` expansions included). |
 
 ## Test Stack
 
@@ -92,14 +92,16 @@ Location: `Tests/Obfy.Tests/`
 
 Tests the command-line interface:
 
-| Category | Tests | Description |
-|----------|-------|-------------|
-| CommandParsingTests | 72 | CLI options and arguments (parse) |
-| HelpOutputTests | 15 | Help text verification |
-| ErrorHandlingTests | 14 | Error scenarios |
-| WizardDefaultsTests | 8 | Use-case wizard defaults (Unity, Desktop, Blazor, MAUI, library, ASP.NET, public API) plus writing `obfy.json` |
-| IntegrationParseTests | 3 | CLI parse without invoking `Program.Main` |
-| IntegrationProcessTests | 12 | `Program.Main` for generate, dry-run, missing file, bad JSON, unknown level |
+| Category | Description |
+|----------|-------------|
+| CommandParsingTests | CLI options and arguments (parse) |
+| SolutionInputTests | Solution/project and loose two-DLL closed-set |
+| HelpOutputTests | Help text verification |
+| ErrorHandlingTests | Error scenarios |
+| WizardDefaultsTests | Use-case wizard defaults (Unity, Desktop, Blazor, MAUI, library, ASP.NET, public API) plus writing `obfy.json` |
+| IntegrationParseTests | CLI parse without invoking `Program.Main` |
+| IntegrationProcessTests | `Program.Main` for generate, dry-run, missing file, bad JSON, unknown level |
+| DotnetToolPackTests | Packed `Obfy` nupkg / tool layout |
 
 Key patterns:
 
@@ -109,17 +111,21 @@ Key patterns:
 
 Location: `Tests/Obfy.Console.Tests/`
 
-### Obfy.UI.Tests (ViewModels)
+### Obfy.UI.Tests (ViewModels and XAML)
 
-Tests the WPF UI ViewModels:
+Tests the WPF UI ViewModels and related XAML:
 
-| ViewModel | Tests | Description |
-|-----------|-------|-------------|
+| Area | Description |
+|------|-------------|
 | SettingsViewModel | presets, conversions, exclusions, ApplyLevel parity |
 | FilesViewModel | file management, drop filters, commands |
 | MainViewModel | obfuscate/cancel, merge, snackbars, batch report |
 | ResultsViewModel | tree grouping, search, export, copy |
+| OutputViewModel | log lines and copy |
+| HelpViewModel / HelpCatalog | in-app Help topics |
+| StartupCommandLine | CLI args applied at UI launch |
 | Converters | visibility, enum descriptions, status/kind icons |
+| XAML | contrast/theme checks, Help dialog content |
 
 Key patterns:
 
@@ -136,6 +142,7 @@ Launches `ObfyUI.exe` and drives the live window (`Category=UI`, not in default 
 
 - Launch and chrome (toolbar, files, settings, output, status)
 - About ContentDialog (in-window overlay, not a separate window)
+- Help ContentDialog and F1
 - Settings toggles, Protection and Assembly Merge expanders
 - Add Files opens the native picker (Escape cancels)
 
@@ -149,7 +156,7 @@ Location: `Tests/Obfy.UI.AutomationTests/`
 
 ### Obfy.VisualStudio.Tests
 
-Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBuilder`, `OutputAssemblyLocator`, `ObfyCliLocator`). Linked from `Src/Obfy.VisualStudio/Services` so CI does not load the VSIX SDK.
+Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBuilder`, `OutputAssemblyLocator`, `ObfyCliLocator`, `SettingsDialogViewModel`). Linked from `Src/Obfy.VisualStudio/Services` so CI does not load the VSIX SDK.
 
 Location: `Tests/Obfy.VisualStudio.Tests/`
 

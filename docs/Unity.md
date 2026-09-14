@@ -10,7 +10,7 @@ Set `runtimeProfile` to `UnityIl2Cpp` (the wizard Game/Unity preset does this). 
 - Anti-dump PE wipe
 - Dependency embedding (`AssemblyResolve`)
 
-**Safe to keep:** symbol renaming (with `UnityEngine` / `UnityEngine.*` / `Unity` / `Unity.*` exclusions), string/constant encryption, control flow, reference proxy (in-module). Anti-debug also injects `kernel32!IsDebuggerPresent`; leave it off for IL2CPP unless you have confirmed the player still runs.
+**Safe to keep:** symbol renaming (with `UnityEngine` / `UnityEngine.*` / `Unity` / `Unity.*` exclusions), string/constant encryption, control flow, reference proxy (in-module). `UnityIl2Cpp` omits `kernel32` P/Invoke from anti-debug; managed `Debugger` / TickCount checks can still run. Leave anti-debug off for IL2CPP unless you have confirmed the player still runs. Anti-tamper and opt-in virtualization are not gated by this profile.
 
 ## Config
 

@@ -245,7 +245,7 @@ Enabled in the Aggressive preset (`protection.methodEncryption`).
 
 **Limits (not a confidentiality guarantee):**
 
-- Windows only (`kernel32!VirtualProtect`). Decrypt failures are swallowed so module load still succeeds, but encrypted bodies are **not** restored — invoking them will fail. Non-Windows / NativeAOT / IL2CPP are unsupported.
+- Windows only (`kernel32!VirtualProtect`). Missing `kernel32` (`DllNotFoundException` / `EntryPointNotFoundException`) is swallowed: the module loads, encrypted bodies stay ciphertext, and invoking them fails. `VirtualProtect` present but returning false is `Environment.FailFast`. Non-Windows / NativeAOT / IL2CPP / Blazor WASM are unsupported (restricted `runtimeProfile`s disable the pass).
 - Generic methods and methods on generic types are skipped (shared IL / instantiations). When a large share of candidates are generic, the run warns.
 - Distinct nonzero XOR keys when there are 255 or fewer methods; further methods reuse a key. Zero keys are not applied. Keys still live in the PE; this only stops a single-byte dump from recovering every body.
 
@@ -266,8 +266,11 @@ Replaces a small set of **simple static `int` methods** with a bytecode interpre
 **Eligible methods** (everything else is skipped):
 
 - `static`, non-generic, no exception handlers
-- Return `int`; parameters are `int` only
-- Body limited to `ldc.i4`, `ldarg`, `add`, `sub`, `mul`, and `ret`
+- Return `int`; parameters are `int` only; at most 8 parameters; at most 16 int-sized locals
+- Body may include `ldc.i4`, `ldarg`, `ldloc`/`stloc`, `add`/`sub`/`mul`, `ceq`/`cgt`/`clt`, `ret`, and signed branches (`br`/`brtrue`/`brfalse`/`blt`/`bgt`/`ble`/`bge`/`beq`/`bne`, short forms included)
+- Unsigned compares (`cgt.un`, `blt.un`, …) skip the method so original IL is kept
+
+The shipping interpreter is injected as `Obfy.Runtime.<Vm>.Execute`. A general VM runtime in `Obfy.VmRuntime` is not wired into this pass.
 
 **Settings:**
 
@@ -280,7 +283,7 @@ Replaces a small set of **simple static `int` methods** with a bytecode interpre
 }
 ```
 
-Off in every level preset. `maxMethods` is clamped to 1–256 (default 32). Config-only (no CLI flag). Runs at priority 24, before method IL encryption.
+Off in every level preset. `maxMethods` must be 1–256 (default 32); out of range fails the run. CLI: `--virtualize`. Runs at priority 24, before method IL encryption.
 
 ---
 
@@ -426,12 +429,14 @@ public class _‌‌‍‏‌
 | Namespaces | Yes | Public namespaces kept when `preservePublicApi` |
 | Local Variables | No | IL doesn't preserve local names |
 
-**Automatically Preserved:**
-- Constructors (`.ctor`, `.cctor`)
-- Entry point method
-- Virtual methods with overrides
+**Automatically Preserved (renaming):**
+- Constructors (`.ctor`, `.cctor`) — also skipped by control-flow flatten
+- Module entry point (not every method named `Main`)
 - Interface implementations
-- Compiler-generated members
+- `virtual` public/family methods on an **unsealed** type (even with no overrides)
+- `SpecialName` / `RuntimeSpecialName` members (property accessors, ctors)
+
+Compiler-generated types (async state machines, display classes, lambdas) are **not** automatically preserved.
 
 **Settings:**
 
@@ -628,7 +633,7 @@ Verifies assembly integrity at runtime by computing and comparing cryptographic 
    - Patches the placeholder with the actual hash
 
 2. At runtime:
-   - Reads the assembly file from disk (`Assembly.Location`, then `Environment.ProcessPath`)
+   - Reads the assembly file from disk (`Assembly.Location`). `Environment.ProcessPath` is used only when `GetEntryAssembly() == GetExecutingAssembly()` (single-file). Packed ALC / `LoadFromStream` loads skip hashing the launcher.
    - Recomputes the whole-file hash with the hash slot zeroed
    - Compares with the stored expected hash
    - Calls `Environment.FailFast` if the hash is missing or mismatches (IO/crypto failures in `Verify` also FailFast). Memory-only / empty-path loads still skip the check.
@@ -653,10 +658,11 @@ The injected helper does **not** use dnlib at runtime. It reads the assembly fil
 static void Verify()
 {
     var path = Assembly.GetExecutingAssembly().Location;
+    if (string.IsNullOrEmpty(path)
+        && Assembly.GetEntryAssembly() == Assembly.GetExecutingAssembly())
+        path = Environment.ProcessPath;  // single-file only
     if (string.IsNullOrEmpty(path))
-        path = Environment.ProcessPath;  // .NET 6+ fallback
-    if (string.IsNullOrEmpty(path))
-        return;  // in-memory / empty-path loads skip the check
+        return;  // in-memory / packed ALC loads skip the check
 
     var bytes = File.ReadAllBytes(path);
     var offset = FindHashOffset(bytes);  // magic marker in the PE
@@ -710,11 +716,9 @@ Removes debugging information and unnecessary attributes from the assembly.
 - Sequence points
 - Local variable names
 - Document references
+- `DebuggableAttribute` (this pass, not `removeAttributes`)
 
 **Attributes (when `removeAttributes: true`):**
-- `DebuggableAttribute`
-- `CompilationRelaxationsAttribute`
-- `RuntimeCompatibilityAttribute`
 - `CompilerGeneratedAttribute`
 - `NullableAttribute`, `NullableContextAttribute`
 - `DebuggerNonUserCodeAttribute`
@@ -826,7 +830,7 @@ Transforms control flow structures in source code.
 
 ## Post-processing: incremental cache
 
-`incremental.enabled` (config-only, off in every preset) skips re-obfuscation when the Obfy version, input bytes, and serialized settings have not changed. The cache file is `{outputPath}.obfycache` and stores a SHA-256 of those inputs. A hit also requires the output file to exist; if packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. A locked or corrupt cache is a miss. The cache is written only after a successful write (including a successful launcher emit when packing is on).
+`incremental.enabled` (off in every preset; CLI `--incremental`) skips re-obfuscation when the Obfy version, input bytes, and serialized settings have not changed. The cache file is `{outputPath}.obfycache` and stores a SHA-256 of those inputs. A hit also requires the output file to exist; if packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. A locked or corrupt cache is a miss. The cache is written only after a successful write (including a successful launcher emit when packing is on).
 
 ## Post-processing: managed launcher
 

@@ -39,6 +39,8 @@ These techniques raise the cost of casual reverse engineering. They are **not** 
 
 Free download for Windows. The Store package installs the WPF UI and adds the `obfy` command to your PATH.
 
+Direct download (no Store): [ObfySetup-1.3.0.exe](https://github.com/mortenbrudvik/Obfy/releases/latest) from GitHub Releases.
+
 You can also build a sideload/Store MSIX locally:
 
 ```powershell
@@ -75,7 +77,7 @@ obfy MyApp.dll -o output/
 # Obfuscate a solution as a closed set
 obfy MyApp.sln -o out/
 
-# Aggressive protection for maximum security
+# Aggressive protection (stronger; test thoroughly)
 obfy MyApp.dll -l aggressive -o output/
 
 # Using a configuration file
@@ -108,8 +110,9 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -- MyApp.dll -o output/
 **Features:**
 - Three-panel layout (Settings, Files, Output)
 - Drag-and-drop assemblies, source files, or a solution/project (expands into included outputs and skipped rows)
-- Closed-set protection when two or more assemblies are listed, or when files came from a solution session (the Merge checkbox still wins)
+- Closed-set protection when two or more *included* assemblies are listed, or when files came from a solution/project session (the Merge toggle still wins)
 - Level presets with expandable advanced settings
+- In-app Help (toolbar Help and F1)
 - Real-time progress and color-coded output
 - Results visualization with symbol map export
 
@@ -117,32 +120,40 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -- MyApp.dll -o output/
 
 ### Visual Studio Extension
 
-For Visual Studio 2022 users, Obfy provides seamless IDE integration:
+For Visual Studio 2022 users, Obfy provides IDE integration from source (not on Marketplace or GitHub Releases yet):
+
+```bash
+dotnet build Src/Obfy.VisualStudio/Obfy.VisualStudio.csproj -c Release
+```
+
+Then in Visual Studio: Extensions → Manage Extensions → Install from VSIX, and pick the `.vsix` under `Src/Obfy.VisualStudio/bin/Release/`.
 
 **Features:**
 - Right-click project → **Obfuscate** to protect your output assembly
-- Toggle **Post-Build Obfuscation** for automatic protection on each build
-- **Obfy Settings** dialog with level presets (Minimal/Standard/Aggressive)
+- **Enable / Disable Post-Build Obfuscation** for automatic protection on each build
+- **Obfy Settings** dialog with level presets (Minimal/Standard/Aggressive/Custom)
 - Per-project configuration stored in `obfy.json`
 - Output window integration for real-time progress
 - Tools → Options → Obfy for global defaults
 
 ### JetBrains Rider Extension
 
-For JetBrains Rider users, Obfy provides seamless IDE integration:
+For JetBrains Rider users, Obfy provides IDE integration from a local Gradle build (the plugin is versioned independently of the 1.3.0 product; it is not attached to GitHub Releases). Requires JDK 21:
+
+```bash
+cd Src/Obfy.Rider
+./gradlew.bat build   # Unix: ./gradlew build
+```
+
+The zip is `Src/Obfy.Rider/build/distributions/Obfy.Rider-1.0.1.zip`. In Rider: Settings → Plugins → Gear icon → Install Plugin from Disk.
 
 **Features:**
 - Right-click project → **Obfy** → **Obfuscate** to protect your output assembly
-- Toggle **Post-Build Obfuscation** for automatic protection on each build
+- **Enable / Disable Post-Build Obfuscation** for automatic protection on each build
 - **Settings** dialog with level presets (Minimal/Standard/Aggressive/Custom)
 - Per-project configuration stored in `obfy.json`
 - Tool window integration for real-time progress
 - Settings → Tools → Obfy for global defaults
-
-**Installation:**
-1. Download `Obfy.Rider-1.0.1.zip` from releases
-2. In Rider: Settings → Plugins → Gear icon → Install Plugin from Disk
-3. Select the ZIP file and restart Rider
 
 ### Visual Studio Code (stub)
 
@@ -236,7 +247,7 @@ Create an `obfy.json` configuration file:
 
 ```json
 {
-  "level": "standard",
+  "level": "custom",
   "stringEncryption": {
     "enabled": true,
     "algorithm": "Aes256"
@@ -254,6 +265,8 @@ Create an `obfy.json` configuration file:
   }
 }
 ```
+
+A `-c` file is used as-is (`level` inside it is not re-applied as a preset). Use `obfy config generate -l standard` when you want a fully resolved Standard file.
 
 ## Examples
 
@@ -289,7 +302,7 @@ Check out the [examples](examples/) folder:
 
 ```xml
 <Target Name="Obfuscate" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
-  <Exec Command="obfy $(TargetPath) -c obfy.json -o $(TargetDir)" />
+  <Exec Command="obfy &quot;$(TargetPath)&quot; -c obfy.json -o &quot;$(TargetDir)&quot;" />
 </Target>
 ```
 

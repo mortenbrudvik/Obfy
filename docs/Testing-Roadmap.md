@@ -54,7 +54,7 @@ Effort is relative to this repo (S ≤ 1 day, M a few days, L a week-plus includ
 
 ## Phase 0 — Make CI honest (P0)
 
-`TR-01` and `TR-02` landed. Remaining: confirm a green `main` job with coverage artifact, step summary, and 80% warning. Same-repo PRs post a best-effort sticky comment; `main` never does.
+Phase 0 is done (`TR-01`–`TR-03`). Default CI is green on `main` with a coverage artifact, job summary, and 80% warning. Same-repo PRs post a best-effort sticky comment; `main` never does.
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
@@ -186,7 +186,7 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 | UI | `Category=UI` | Local only (no nightly workflow) |
 | Platform | `Category=Platform` | `.github/workflows/platform.yml` (weekly Monday + `workflow_dispatch`); MAUI skips if the workload is missing |
 
-`Obfy.ScenarioTests` runs in the default job once fixtures are small (WPF + examples). If TR-10 exceeds ~2 minutes, split it to a `Category=Scenario` job that still runs on every PR.
+`Obfy.ScenarioTests` (minus `Category=Platform`) runs in the default job. There is no separate `Category=Scenario` job.
 
 ---
 

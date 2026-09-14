@@ -209,7 +209,7 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 
 ## Data Storage
 
-- Settings: `%APPDATA%\Obfy\obfy.json`
+- Settings: user-chosen `obfy.json` (`obfy config generate` / Save Configuration); UI prefs at `%APPDATA%\Obfy\ui-preferences.json`
 - Logs: `%LOCALAPPDATA%\Obfy\Logs\`
 
 ## Code Reuse

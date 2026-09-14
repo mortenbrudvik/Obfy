@@ -4,7 +4,7 @@ Exclusion rules, best practices, and troubleshooting for Obfy.
 
 ## `[Obfuscation]` attribute
 
-Obfy honors `System.Reflection.ObfuscationAttribute` on types and members for **assembly** obfuscation (renaming, control flow, strings, constants, plus `Feature=all` for method encryption, reference proxy, and anti-debug). Source obfuscators honor the same attribute for renaming, strings, and control flow.
+Obfy honors `System.Reflection.ObfuscationAttribute` on types and members for **assembly** obfuscation (renaming, control flow, strings, constants, plus `Feature=all` for method encryption, reference proxy, anti-debug, and virtualization). Source obfuscators honor the same attribute for renaming, strings, and control flow.
 
 ```csharp
 [Obfuscation(Exclude = true)]
@@ -45,7 +45,7 @@ Exclude entire namespaces or namespace hierarchies.
 
 **Pattern Syntax:**
 - `MyApp.Api` - Exact namespace match
-- `MyApp.Api.*` - Namespace and all children
+- `MyApp.Api.*` - Child namespaces (`MyApp.Api.Foo`); does **not** match `MyApp.Api` itself
 - `*Models*` - Any namespace containing "Models"
 
 ### Type Patterns
@@ -120,13 +120,13 @@ Set `symbolRenaming.preserveXaml` (Desktop wizard / Settings panel) to keep publ
 
 ### Automatic Exclusions
 
-These are always excluded regardless of settings:
+These apply to **symbol renaming** (constructors are also skipped by control-flow flatten). String and constant encryption still visit constructors and `Main`.
 
 - **Runtime namespace**: `Obfy.Runtime.*`
 - **Constructors**: `.ctor`, `.cctor`
-- **Entry points**: `Main` method
-- **Virtual overrides**: Methods overriding base class
-- **Interface implementations**: Methods implementing interfaces
+- **Module entry point** (not every method named `Main`)
+- **Virtual public/family methods** on an unsealed type
+- **Interface implementations**
 - **Literal fields**: `const` fields
 
 ## Preserving Public API
@@ -163,11 +163,13 @@ obfy MyApp.dll -o output/ --map symbols.json
 
 ```json
 {
-  "MyNamespace.MyClass": "_a",
-  "MyNamespace.MyClass.MyMethod": "_b",
-  "MyNamespace.MyClass._privateField": "_c"
+  "Type:MyNamespace.MyClass": "_a",
+  "Method:MyNamespace.MyClass.MyMethod": "_b",
+  "Field:MyNamespace.MyClass._privateField": "_c"
 }
 ```
+
+Keys are prefixed `Type:`, `Method:`, `Field:`, `Property:`, `Event:`, or `Namespace:`.
 
 **Uses:**
 - Decode stack traces from production

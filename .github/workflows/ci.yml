@@ -22,6 +22,16 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Build native packer host
+      shell: pwsh
+      run: pwsh -File Src/Obfy.NativeHost/build.ps1
+
+    - name: Native host dist is current
+      run: git diff --exit-code -- Src/Obfy.NativeHost/dist
+
     - name: Restore dependencies
       run: dotnet restore
 

@@ -12,10 +12,10 @@ A clear and concise description of the bug.
 
 ## Environment
 
-- **Obfy Version**: [e.g., 1.0.3]
+- **Obfy Version**: [e.g., 1.3.0]
 - **OS**: [e.g., Windows 11, Ubuntu 22.04]
-- **.NET Version**: [e.g., .NET 8.0]
-- **Target Framework**: [e.g., net8.0]
+- **.NET Version**: [e.g., .NET 10.0]
+- **Target Framework**: [e.g., net10.0]
 
 ## Steps to Reproduce
 

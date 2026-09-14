@@ -212,12 +212,12 @@
             </StackPanel>
         </ui:CardExpander>
 
-        <ui:CardExpander Header="Managed launcher" Icon="{ui:SymbolIcon Window24}" Margin="0,0,0,8">
+        <ui:CardExpander Header="Packing" Icon="{ui:SymbolIcon Window24}" Margin="0,0,0,8">
             <StackPanel Margin="16,8">
                 <ui:ToggleSwitch AutomationProperties.AutomationId="PackingToggle"
-                               Content="Pack managed launcher"
-                               AutomationProperties.Name="Enable managed launcher packing"
-                               ToolTip="Writes {name}.launcher.exe (framework-dependent; run with dotnet). Requires an entry point. Not a native packer."
+                               Content="Pack as native Windows host"
+                               AutomationProperties.Name="Enable native Windows packing"
+                               ToolTip="Pack as a native Windows host (win-x64). Set packing.rid to portable for the managed launcher."
                                IsChecked="{Binding PackingEnabled}"/>
                 <ui:ToggleSwitch AutomationProperties.AutomationId="IncrementalToggle"
                                Content="Incremental cache"

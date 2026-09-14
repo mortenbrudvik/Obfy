@@ -161,7 +161,7 @@ The items that were listed as opportunistic holes. TR-52 stays IL-only (PF-19).
 | ID | Work | Status |
 |----|------|--------|
 | TR-50 | Virtualization: skip ineligible IL unchanged; encode `ldc.i4`/`ldarg`/`add`/`sub`/`mul`/`ret`; succeed when nothing is eligible | ✅ Done (`VirtualizationObfuscatorTests`) |
-| TR-51 | `IncrementalCache.TryHit`: settings change and input-byte change invalidate; packing without launcher is a miss | ✅ Done (`IncrementalCacheTests`) |
+| TR-51 | `IncrementalCache.TryHit`: settings change and input-byte change invalidate; packing without runtimeconfig (win-x64) or launcher (portable) is a miss | ✅ Done (`IncrementalCacheTests`) |
 | TR-52 | Anti-dump runtime MiniDump | Left as IL-only (see PF-19) |
 | TR-53 | Two `.cs` files, rename across files, recompile and run | ✅ Done (`SourceDirectory_TwoFiles_RenameAcrossFiles_RecompilesAndRuns`) |
 

@@ -23,7 +23,7 @@ Complete JSON configuration schema for Obfy.
   "runtimeProfile": "Default",
   "signing": { "enabled": false, "keyFile": "", "passwordEnvironmentVariable": "" },
   "incremental": { "enabled": false },
-  "packing": { "enabled": false },
+  "packing": { "enabled": false, "rid": "win-x64" },
   "virtualization": { "enabled": false, "maxMethods": 32 },
   "postBuildEnabled": false
 }
@@ -169,7 +169,8 @@ The following block is a grammar of keys and enum values, not a valid `obfy.json
   },
 
   "packing": {
-    "enabled": false
+    "enabled": false,
+    "rid": "win-x64"
   },
 
   "virtualization": {
@@ -496,7 +497,7 @@ Signing runs after PE patches (method-IL XOR, anti-tamper hash) by refreshing th
 |----------|------|---------|-------------|
 | `enabled` | bool | `false` | Skip re-obfuscation when the Obfy version, input file, and settings JSON are unchanged |
 
-Cache file: `{outputPath}.obfycache` (SHA-256 of Obfy assembly version + input bytes + serialized settings). A version bump is a miss. A hit requires the output file to exist. If packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. Written only after a successful write. Off in every preset. CLI: `--incremental` turns `enabled` on; cache path and packing extras stay in the config.
+Cache file: `{outputPath}.obfycache` (SHA-256 of Obfy assembly version + input bytes + serialized settings). A version bump is a miss. A hit requires the output file to exist. If packing is on, a hit also requires `{name}.runtimeconfig.json` (win-x64) or the managed `{name}.launcher.exe` plus its `.runtimeconfig.json` (portable). Written only after a successful write. Off in every preset. CLI: `--incremental` turns `enabled` on; cache path and packing extras stay in the config.
 
 ### virtualization
 
@@ -509,7 +510,12 @@ Eligible methods: `static`, non-generic, no exception handlers, `int` return and
 
 ### packing
 
-See [Packing (managed launcher)](#packing-managed-launcher) below. Config-only.
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `enabled` | bool | `false` | After save, pack the output. Off in every preset. Config-only (no `--pack`). |
+| `rid` | string | `win-x64` | `win-x64` replaces the obfuscated PE with a native CLR-host stub. `portable` writes the managed `{name}.launcher.exe` beside the PE. Unknown values fail the run. |
+
+See [Packing (native win-x64 host)](#packing-native-win-x64-host) below. Config-only.
 
 ## Example Configurations
 
@@ -622,16 +628,28 @@ Supported IL: `ldc.i4`, `ldarg`, `ldloc`/`stloc` (≤16 int-sized locals), `add`
 
 Unsigned compares (`cgt.un`, `blt.un`, …) are **skipped** so original IL is kept — encoding them as signed would miscompile `if (a != 0)` for negatives. Methods that cannot be encoded stay native and are reported as skipped. A warning is emitted when the feature is on but nothing was encoded, or when `maxMethods` truncates the set.
 
-## Packing (managed launcher)
+## Packing (native win-x64 host)
 
-`packing.enabled` is a delivery option, not a protection level. It is **off** in every preset.
+`packing.enabled` is a delivery option, not a protection level. It is **off** in every preset. Config-only; there is no `--pack` flag.
 
-When true, Obfy writes a sibling framework-dependent host next to the obfuscated assembly:
+**Breaking:** `packing.enabled` now emits a native win-x64 host that replaces the obfuscated PE. Set `packing.rid` to `portable` for the previous managed `{name}.launcher.exe`.
+
+When `enabled` is true and `rid` is `win-x64` (the default):
+
+- The file at the output path is an unmanaged PE (no CLR directory).
+- User IL is AES-256 ciphertext in an overlay; the host decrypts in memory and runs via `hostfxr`.
+- There is no sibling `{name}.launcher.exe` and no second managed PE of the user assembly.
+- A sibling `{name}.runtimeconfig.json` is written. The machine needs `Microsoft.NETCore.App` (framework-dependent).
+
+When `rid` is `portable`:
 
 - `{name}.launcher.exe` — managed console app (run with `dotnet`)
 - `{name}.launcher.runtimeconfig.json`
+- The original obfuscated file is not replaced.
 
-The host embeds the obfuscated assembly and invokes its entry point. The original obfuscated file is not replaced. Packing requires an entry point; class libraries fail the run with `Packing failed: ...`. Source inputs skip packing with a warning. Not a native/unmanaged packer.
+Packing requires an entry point; class libraries fail the run with `Packing failed: ...`. Source inputs skip packing with a warning. NativeAOT / Unity IL2CPP / Blazor WASM turn packing off with a warning.
+
+Not Pre-JIT, not self-contained, not ARM64. Packing hides the managed PE on disk; the decryption key is in the overlay. Anyone who runs or inspects the EXE can recover IL. This is obfuscation, not confidentiality.
 
 ## Generating Configuration Files
 

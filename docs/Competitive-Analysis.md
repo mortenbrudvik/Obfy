@@ -4,7 +4,7 @@ A sourced comparison of Obfy against commercial and open-source .NET obfuscators
 
 ## How to read this document
 
-Obfuscation is a deterrent, not confidentiality. String, constant, resource, and method-IL “encryption” embed the key in the output. Virtualization embeds an interpreter. Anyone who runs or inspects the assembly can recover plaintext. Do not ship real secrets (keys, tokens, credentials) inside an assembly and rely on any tool on this page to keep them secret.
+Obfuscation is a deterrent, not confidentiality. String, constant, resource, and method-IL “encryption” embed the key in the output. Virtualization embeds an interpreter. Packing hides the managed PE on disk; the decryption key is in the overlay. Anyone who runs or inspects the assembly (or packed EXE) can recover plaintext. Do not ship real secrets (keys, tokens, credentials) inside an assembly and rely on any tool on this page to keep them secret.
 
 **Legend**
 
@@ -23,19 +23,19 @@ GitHub stars, last-push dates, and prices were checked on 13 September 2026.
 
 ## Executive Summary
 
-Obfy is a new (first public commit 31 December 2025), MIT-licensed .NET obfuscator with a CLI, Fluent WPF UI, Visual Studio 2022 extension, Rider plugin, and a dual pipeline: **dnlib assembly obfuscation** plus **Roslyn source obfuscation**. Among free tools it is the broadest *conventional* protection stack (rename, strings, constants, resources, control flow, anti-debug/dump/tamper/decompiler, method-IL XOR, merge, embed, watermark, reports). It is not a general IL virtualizer, not a native packer, and not a licensing/RASP product.
+Obfy is a new (first public commit 31 December 2025), MIT-licensed .NET obfuscator with a CLI, Fluent WPF UI, Visual Studio 2022 extension, Rider plugin, and a dual pipeline: **dnlib assembly obfuscation** plus **Roslyn source obfuscation**. Among free tools it is the broadest *conventional* protection stack (rename, strings, constants, resources, control flow, anti-debug/dump/tamper/decompiler, method-IL XOR, merge, embed, watermark, reports) plus a **win-x64 FDD native packing stub**. It is not a general IL virtualizer and not a licensing/RASP product. Native packing is a framework-dependent CLR-host stub (not Pre-JIT, not self-contained, not ARM64).
 
 **Positioning that still holds**
 
 - **Vs free tools:** Broader technique set than Obfuscar (rename-first) and LoGiC.NET (archived). Different trade than BitMono (anti-decompiler / Unity / plugins vs Obfy’s control-flow + constants + resources + source mode + desktop/IDE UX).
-- **Vs budget commercial ($249–$499):** Matches the *everyday* layer (rename, strings, CF, anti-debug/tamper). Does **not** match .NET Reactor, ArmDot, Babel Ultimate, or Eazfuscator on general code virtualization, native packing, or built-in licensing.
+- **Vs budget commercial ($249–$499):** Matches the *everyday* layer (rename, strings, CF, anti-debug/tamper). Native packing is a win-x64 FDD CLR-host stub, not Pre-JIT. Does **not** match .NET Reactor, ArmDot, Babel Ultimate, or Eazfuscator on general code virtualization or built-in licensing.
 - **Vs enterprise (Dotfuscator, SmartAssembly):** Covers static obfuscation needs; lacks RASP, crash analytics, quote-based support SLAs, and (for Dotfuscator) Overload Induction / configurable runtime response.
 
 **What changed since the previous revision of this file**
 
 - .NET 10 is no longer an Obfy differentiator. Reactor, Babel, Eazfuscator, SmartAssembly, ArmDot, Obfuscar, and BitMono all document .NET 10. Dotfuscator 7.5.0 (22 Dec 2025) added it; 7.8.0 (27 Jul 2026) added Blazor. Eazfuscator 2026.2 has preliminary .NET 11; SmartAssembly 8.4.9 has .NET 11 preview.
 - ArmDot, DNGuard HVM, Agile.NET, and Spices.Net belong in the commercial set. LoGiC.NET is archived. JIEJIE.NET is GPL-2.0 with 887 stars, not MIT/~100. ConfuserEx upstream is 3.8k stars (archived); mkaring/ConfuserEx is the large Framework-era fork.
-- The previous “~90% of typical needs” line overstated virtualization and native packing. Those remain real commercial gaps.
+- Native packing / native EXE is now **Yes** with the FDD stub footnote. Code virtualization stays **Partial** (`VirtualizationObfuscator` still has `CreateExecute`; PR #23 is not on this branch). Licensing/RASP remain commercial gaps. Do not write that Obfy covers Reactor.
 
 ---
 
@@ -99,7 +99,7 @@ Obfuscar’s “string hiding” is reversible XOR; its own docs warn against us
 | Feature | Obfy | Dotfuscator Pro | SmartAssembly | .NET Reactor | Babel | Eazfuscator | ArmDot |
 |---------|:----:|:---------------:|:-------------:|:------------:|:-----:|:-----------:|:------:|
 | **Code virtualization** | Partial | — | — | Yes | Ultimate | Yes | Yes |
-| **Native packing / native EXE** | Partial | — | — | Yes | — | — | App virt. (Windows, BoxedApp) |
+| **Native packing / native EXE** | Yes | — | — | Yes | — | — | App virt. (Windows, BoxedApp) |
 | **MSIL / method encryption** | Yes | — | — | NecroBit | Ultimate | via VM | via VM |
 | **Anti-debug** | Yes | Yes (RASP) | — | Yes | Yes | — | Implicit via VM |
 | **Anti-tamper** | Yes | Yes (RASP) | Pro | Yes | Yes | — | Experimental |
@@ -112,7 +112,7 @@ Obfuscar’s “string hiding” is reversible XOR; its own docs warn against us
 **Obfy limits (do not collapse these to “Yes” in marketing copy)**
 
 - **Virtualization:** bytecode interpreter for selected **static `int` methods** only (`ldc.i4`, `ldarg`, `ldloc`/`stloc`, add/sub/mul, `ceq`/`cgt`/`clt`, signed branches; ≤8 params / ≤16 locals; no EH/generics; unsigned compares skipped). Not a general IL VM.
-- **Native “generation”:** managed framework-dependent `{name}.launcher.exe`. Not an unmanaged packer, not Reactor’s native x86 stub + Pre-JIT.
+- **Native packing:** win-x64 framework-dependent CLR-host stub; `packing.rid: portable` keeps the managed launcher. Not Pre-JIT, not self-contained, not ARM64. Packing hides the managed PE on disk; the decryption key is in the overlay. Anyone who runs or inspects the EXE can recover IL. Not confidentiality.
 - **Method IL encryption:** per-method XOR in the PE, Windows, skips generics.
 - **Anti-dump:** PE-header wipe plus in-process `0xC3` patch of `dbghelp!MiniDumpWriteDump` on Windows x86/x64. ARM64 skipped. Gated off NativeAOT / IL2CPP / Blazor WASM. External dumpers are unaffected.
 - **Anti-de4dot:** decoy ConfusedBy/Dotfuscator attributes (name-based detector bait), not a de4dot block.
@@ -572,7 +572,7 @@ Reactor company license is $549 (needed for CI). Eazfuscator site license is $1,
 
 | Feature | Difficulty | Value | Who has it | Notes |
 |---------|------------|-------|------------|-------|
-| **Native / unmanaged packer** | Very high | Medium | Reactor (native EXE + Pre-JIT), ArmDot (BoxedApp), DNGuard | Managed `{name}.launcher.exe` is not this. |
+| **Pre-JIT / other RIDs / self-contained packing** | Very high | Medium | Reactor (native EXE + Pre-JIT), ArmDot (BoxedApp), DNGuard | PF-09 v1 is a win-x64 FDD CLR-host stub. Remaining native-code generation stays Future. |
 | **First-class Unity Editor / UPM** | Medium | Medium | BitMono (UPM), Eazfuscator, Reactor, ArmDot | Recipe + `UnityIl2Cpp` profile exist. |
 | **Linux/macOS as a supported host** | Medium | Medium | Obfuscar, BitMono, ArmDot, Babel Ultimate, Eazfuscator 2026, Dotfuscator CLI | GUI/VS/method-IL are Windows. CLI via `dotnet` is unadvertised. |
 | **XAML-aware renaming (WPF/MAUI)** | Medium | Medium | Dotfuscator, Eazfuscator | Obfy has `preserveXaml` defaults, not a XAML rewriter. |
@@ -606,7 +606,7 @@ Aligned with [Roadmap.md](Roadmap.md). Competitive pressure, not a commitment.
 ### Long term (protection ceiling)
 
 7. **General IL virtualization** — only if demand is clear; Eazfuscator/Reactor/ArmDot already own this commercially, and Agile’s VM has a public devirtualizer. A weak VM is worse than none.
-8. **Native packer** — same caveat. The managed launcher is enough to document as packing; an unmanaged host is a different product.
+8. **Pre-JIT / other RIDs / self-contained packing** — PF-09 v1 (native FDD stub) is done. Remaining native-code generation stays Future. Do not start until demand is clear.
 
 Do not chase licensing, crash reporting, or RASP. Those are adjacent products (Reactor/ArmDot, SmartAssembly, Dotfuscator).
 
@@ -639,11 +639,11 @@ The 2026 .NET obfuscator market has three honest tiers:
 2. **Conventional protection (free or cheap):** Obfy (free), BitMono (free, decompiler-hostile), Eazfuscator ($399), Babel Enterprise (€350). Rename + strings + CF + some anti-*. This is what most applications actually need.
 3. **Virtualization / packing / licensing (paid):** .NET Reactor is the independent-review default. ArmDot if the tool must run on Linux. Babel Ultimate for a managed VM on Linux CI. Dotfuscator if you buy RASP and a vendor that Microsoft already ships. SmartAssembly if you buy crash reporting.
 
-Obfy sits in tier 2, at tier-1 price, with better IDE/desktop UX than any other OSS tool and a broader conventional technique list than Obfuscar or BitMono. It does not sit in tier 3. Saying it “covers 90% of commercial features” hid that fact.
+Obfy now ships a native win-x64 FDD packing stub. Code virtualization stays Partial until `VirtualizationObfuscator` is switched off `CreateExecute` (PR #23). It is a managed-VM + native-stub tier-3 tool on CoreCLR/Windows **only when both cells are Yes**. Today packing is Yes and virtualization is Partial. Still not licensing/RASP. Do not write that it covers Reactor.
 
 **Use Obfy** when you want MIT-licensed, documented, modern-.NET obfuscation with a UI and IDE plugins, and your threat model is casual reverse engineering.
 
-**Do not use Obfy (alone)** when you need a general VM, a native packer, ISV licensing, RASP, or a Unity Editor workflow — buy Reactor/ArmDot/Eazfuscator or add BitMono for Unity.
+**Do not use Obfy (alone)** when you need a general VM, Pre-JIT or self-contained packing, ISV licensing, RASP, or a Unity Editor workflow — buy Reactor/ArmDot/Eazfuscator or add BitMono for Unity.
 
 ---
 
@@ -687,7 +687,7 @@ Checked 13 September 2026 unless a page carries its own date.
 ### Obfy product docs (this repo)
 
 - [Techniques.md](Techniques.md) — what each Obfy pass actually does
-- [Roadmap.md](Roadmap.md) — shipped vs remaining VM / native packer / platform tests
+- [Roadmap.md](Roadmap.md) — shipped vs remaining VM / Pre-JIT packing / platform tests
 - [Platforms.md](Platforms.md) — runtime profiles
 
 ---

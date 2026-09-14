@@ -34,7 +34,7 @@ public class HelpCatalogTests
         "Protection",
         "Metadata",
         "Watermark",
-        "Managed launcher",
+        "Native packer (win-x64)",
         "Strong-Name Signing",
         "Resource Encryption",
         "Assembly Merge",
@@ -120,6 +120,15 @@ public class HelpCatalogTests
             .Select(n => n.Heading)
             .ToList();
         headings.ShouldBe(TechniqueHeadings);
+    }
+
+    [Fact]
+    public void NativePacker_Note_MatchesLockedCopy()
+    {
+        var note = Topic(HelpCatalog.TechniquesId).Blocks.OfType<HelpNamedNote>()
+            .Single(n => n.Heading == "Native packer (win-x64)");
+        note.Text.ShouldBe(
+            "Replaces the output with a native Windows host (framework-dependent). Set packing.rid to portable for the managed launcher.");
     }
 
     private static HelpTopic Topic(string id) =>

@@ -1,6 +1,6 @@
 # Obfy Product Roadmap & Backlog
 
-A strategic development plan. Pipeline protection through 1.3.0 is **shipped**. Remaining work is platform depth, a real native packer, and wiring the general IL VM encoder/runtime into `VirtualizationObfuscator` (the shipping pass is still the int-only interpreter).
+A strategic development plan. Pipeline protection through 1.3.0 is **shipped**. Remaining work is platform depth, Pre-JIT / other-RID / self-contained packing, and wiring the general IL VM encoder/runtime into `VirtualizationObfuscator` (the shipping pass is still the int-only interpreter).
 
 ---
 
@@ -36,7 +36,7 @@ Assembly pipeline (priority order):
 
 Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` is honored in both modes.
 
-**Still true:** method encryption skips generics and is Windows-only. Anti-dump MiniDump hook is in-process x86/x64 only. Virtualization is not a general IL VM. Packing is a managed FDD launcher, not native. Unity / Blazor / MAUI are recipes, not first-class plugins.
+**Still true:** method encryption skips generics and is Windows-only. Anti-dump MiniDump hook is in-process x86/x64 only. Virtualization is not a general IL VM. Packing is a native win-x64 FDD CLR-host stub (not Pre-JIT, not self-contained, not ARM64). Unity / Blazor / MAUI are recipes, not first-class plugins.
 
 ---
 
@@ -75,7 +75,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 | PF-18 | Anti-de4dot signatures | P2 | Low | Low | ✅ Done (detector bait; does not block de4dot) |
 | PF-19 | Dumper-hook anti-dump | P3 | High | Medium | ✅ Partial (in-process MiniDumpWriteDump `0xC3` only) |
 | PF-08 | Code virtualization | P3 | Very High | High | ✅ Partial (simple static int methods). Encoder/runtime exist; obfuscator not switched |
-| PF-09 | Native code generation | P3 | Very High | Medium | ✅ Partial (managed FDD launcher; native packer remaining) |
+| PF-09 | Native code generation | P3 | Very High | Medium | ✅ Done (native win-x64 FDD CLR-host stub). Remaining Future: Pre-JIT / other RIDs / self-contained |
 
 ### Developer experience
 
@@ -125,7 +125,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 
 ### Next tag (cut Unreleased)
 
-1.3.0 already shipped the pipeline items above. Still Unreleased-on-main: general IL VM encoder/runtime (not yet the pipeline obfuscator), Store/OIDC packaging notes. Do not imply a shipped general VM until `VirtualizationObfuscator` is switched off `CreateExecute`.
+1.3.0 already shipped the pipeline items above. Still Unreleased-on-main: native win-x64 FDD packing stub, general IL VM encoder/runtime (not yet the pipeline obfuscator), Store/OIDC packaging notes. Do not imply a shipped general VM until `VirtualizationObfuscator` is switched off `CreateExecute`.
 
 ### DX-03: VS Code beyond the stub
 
@@ -143,9 +143,9 @@ Engine + SDK fixtures (WPF, console, WinForms, examples, merge, Unity stub) run 
 
 `runtimeProfile: NativeAot` already disables `VirtualProtect` / anti-dump / AssemblyResolve. `NativeAotTests` obfuscates then `PublishAot`s and runs the exe (strings + run). Remaining: assert control-flow / in-module proxies on that native output.
 
-### PF-09 remaining: native packer
+### PF-09 remaining: Pre-JIT / other RIDs / self-contained
 
-The managed `{name}.launcher.exe` is not native code generation. A Windows native host is still the commercial differentiator; do not start until demand is clear.
+The native win-x64 FDD CLR-host stub is shipped. Remaining Future (do not schedule): Pre-JIT of user methods, win-x86 / ARM64 / ELF hosts, and a self-contained runtime. `packing.rid: portable` still emits the managed launcher.
 
 ### PF-08 remaining: general virtualization
 
@@ -167,9 +167,9 @@ Shipped: resource/constant encryption, reports, WPF UI, anti-tamper, anti-decomp
 
 ### Unreleased on main (next tag)
 
-Shipped in 1.3.0: anti-dump, reference proxy, method IL encryption, runtime-profile gating, packing, incremental cache, limited virtualization, MSIX, and the rest of the 1.3.0 changelog.
+Shipped in 1.3.0: anti-dump, reference proxy, method IL encryption, runtime-profile gating, managed-launcher packing, incremental cache, limited virtualization, MSIX, and the rest of the 1.3.0 changelog.
 
-Still in the tree and not a product pass: general IL VM encoder/runtime (`VmEncoder` / `Obfy.VmRuntime`). `VirtualizationObfuscator` still injects the int-only interpreter. Store Trusted Publishing / unsigned Store MSIX notes.
+Unreleased packing: native win-x64 FDD CLR-host stub (`packing.enabled`; `portable` keeps the managed launcher). Still in the tree and not a product pass: general IL VM encoder/runtime (`VmEncoder` / `Obfy.VmRuntime`). `VirtualizationObfuscator` still injects the int-only interpreter. Store Trusted Publishing / unsigned Store MSIX notes.
 
 ### Phase 4: Protection hardening ✅ (on main)
 
@@ -200,7 +200,7 @@ PF-11, PF-17, PF-16, UF-03 are implemented.
 | Feature | Notes |
 |---------|--------|
 | PF-08 Code virtualization | Switch the obfuscator to the new runtime; EH/generics/byref still out of scope. |
-| PF-09 Native code generation | Windows launcher first |
+| PF-09 Native code generation | Pre-JIT / other RIDs / self-contained (v1 FDD stub is done) |
 
 ---
 
@@ -209,7 +209,7 @@ PF-11, PF-17, PF-16, UF-03 are implemented.
 | Tempting item | Why it waits |
 |---------------|--------------|
 | General code virtualization | Highest protection, highest cost. The int-only interpreter is a spike, not a product VM. |
-| Native packer | Platform-specific, high maintenance. Managed FDD launcher already exists. |
+| Pre-JIT / other-RID packing | Platform-specific, high maintenance. Native FDD stub already exists. |
 | Unity “support” | Wizard exclusions plus a recipe are not support. Test real players next. |
 
 ---
@@ -232,7 +232,7 @@ PF-11, PF-17, PF-16, UF-03 are implemented.
 | next tag | Decompiler resistance + safe defaults | Decryptors/anti-debug not one-NOP; JSON sample works; AOT/IL2CPP do not get `VirtualProtect` |
 | later | Platform coverage | Unity Development Player + VS Code TaskProvider |
 | v2.0+ | Mid-tier extras | Stronger dump resistance, AOT-safe remaining techniques |
-| v3.0 | Commercial-grade option | Selective virtualization, if demand holds |
+| v3.0 | Commercial-grade option | Selective virtualization and Pre-JIT packing, if demand holds |
 
 ---
 
@@ -259,7 +259,7 @@ When shipping a phase, update:
 | Unity / MAUI / Blazor test projects | Yes | Recipes exist; need runnable apps |
 | Documentation | Yes | Always |
 | General virtualization (PF-08) | No | Needs architecture |
-| Native packer (PF-09) | No | Platform-specific |
+| Pre-JIT / other-RID packing (PF-09 remaining) | No | Platform-specific |
 
 ---
 

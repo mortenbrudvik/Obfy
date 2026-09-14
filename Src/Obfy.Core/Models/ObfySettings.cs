@@ -774,13 +774,23 @@ public class VirtualizationSettings
 }
 
 /// <summary>
-/// After save, emit a native win-x64 host (default) that replaces the managed PE, or a portable
-/// sibling framework-dependent managed launcher. Requires an entry point; a missing entry point
-/// fails the run after the obfuscated file has already been written.
+/// After save, emit a native win-x64 framework-dependent CLR-host stub that replaces the managed
+/// PE (default), or a portable sibling managed launcher. Not Pre-JIT, not self-contained, not ARM64.
+/// Requires an entry point; a missing entry point fails the run after the obfuscated file has
+/// already been written.
 /// </summary>
 public class PackingSettings
 {
+    /// <summary>
+    /// When true, pack after save. Default <see cref="Rid"/> is <c>win-x64</c> (native host
+    /// replacing the PE). Off in every preset.
+    /// </summary>
     public bool Enabled { get; set; }
+
+    /// <summary>
+    /// Target RID: <c>win-x64</c> (default native host) or <c>portable</c> (managed
+    /// <c>{name}.launcher.exe</c>). Unknown values fail validation when packing is enabled.
+    /// </summary>
     public string Rid { get; set; } = "win-x64";
 
     [JsonIgnore]

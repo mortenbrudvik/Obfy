@@ -7,10 +7,11 @@ using Microsoft.CodeAnalysis.Emit;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// Compiles a framework-dependent managed console host that embeds the obfuscated assembly as a
-/// manifest resource and invokes its entry point via <see cref="System.Runtime.Loader.AssemblyLoadContext"/>.
-/// Not a native/unmanaged packer. Run with <c>dotnet {name}.launcher.exe</c> next to the generated
-/// <c>.runtimeconfig.json</c>. The original obfuscated assembly is left in place.
+/// Portable packing path only (<c>packing.rid: portable</c>). Compiles a framework-dependent
+/// managed console host that embeds the obfuscated assembly as a manifest resource and invokes
+/// its entry point via <see cref="System.Runtime.Loader.AssemblyLoadContext"/>. Run with
+/// <c>dotnet {name}.launcher.exe</c> next to the generated <c>.runtimeconfig.json</c>. The
+/// original obfuscated assembly is left in place. Default packing is the native win-x64 host.
 /// </summary>
 public static class ManagedLauncherPacker
 {

@@ -17,10 +17,20 @@ $packCandidates = @(
 if ($dotnetRoot) {
     $packCandidates = @((Join-Path $dotnetRoot "packs\Microsoft.NETCore.App.Host.win-x64")) + $packCandidates
 }
-$packRoot = $packCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-if (-not $packRoot) { throw "Host pack missing. Looked in: $($packCandidates -join '; ')" }
-$packs = @(Get-ChildItem $packRoot -Directory | Sort-Object { [version]$_.Name } -Descending)
-if ($packs.Count -eq 0) { throw "No Microsoft.NETCore.App.Host.win-x64 versions found" }
+# Pin 8.0.6: later host packs need MSVC 14.42+ (__std_find_end_2) and would churn CI dist.
+$packVersion = "8.0.6"
+$pack = $null
+foreach ($root in $packCandidates) {
+    if (-not $root -or -not (Test-Path $root)) { continue }
+    $candidate = Join-Path $root $packVersion
+    if (Test-Path $candidate) {
+        $pack = Get-Item $candidate
+        break
+    }
+}
+if (-not $pack) {
+    throw "Microsoft.NETCore.App.Host.win-x64 $packVersion missing. Looked in: $($packCandidates -join '; ')"
+}
 
 $dist = Join-Path $here "dist"
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
@@ -52,34 +62,23 @@ function Invoke-WithMsvc([string]$CommandLine) {
 Invoke-WithMsvc "rc.exe /nologo /fo `"$res`" `"$rc`""
 if ($LASTEXITCODE -ne 0) { throw "rc.exe failed with exit $LASTEXITCODE" }
 
-# libnethost.lib from 8.0.22+ needs MSVC 14.42+ (__std_find_end_2). Try newest
-# pack first (CI); fall back until static link succeeds (local 14.40 → 8.0.6).
-$builtPack = $null
-foreach ($pack in $packs) {
-    $native = Join-Path $pack.FullName "runtimes\win-x64\native"
-    $nethostLib = Join-Path $native "libnethost.lib"
-    if (-not (Test-Path $nethostLib)) { continue }
-    if (-not (Test-Path (Join-Path $native "nethost.h"))) { continue }
-    if (-not (Test-Path (Join-Path $native "hostfxr.h"))) { continue }
+$native = Join-Path $pack.FullName "runtimes\win-x64\native"
+$nethostLib = Join-Path $native "libnethost.lib"
+if (-not (Test-Path $nethostLib)) { throw "libnethost.lib missing: $nethostLib" }
+if (-not (Test-Path (Join-Path $native "nethost.h"))) { throw "nethost.h missing under $native" }
+if (-not (Test-Path (Join-Path $native "hostfxr.h"))) { throw "hostfxr.h missing under $native" }
 
-    $compile = @(
-        "cl.exe /nologo /O2 /Brepro /W3 /WX /MT /DUNICODE /D_UNICODE /I `"$native`"",
-        "host.c /Fe:`"$exe`"",
-        "/link /Brepro /INCREMENTAL:NO /SUBSYSTEM:CONSOLE /IMPLIB:`"$implib`"",
-        "`"$res`" bcrypt.lib advapi32.lib `"$nethostLib`""
-    ) -join " "
+$compile = @(
+    "cl.exe /nologo /O2 /Brepro /W3 /WX /MT /DUNICODE /D_UNICODE /I `"$native`"",
+    "host.c /Fe:`"$exe`"",
+    "/link /Brepro /INCREMENTAL:NO /SUBSYSTEM:CONSOLE /IMPLIB:`"$implib`"",
+    "`"$res`" bcrypt.lib advapi32.lib `"$nethostLib`""
+) -join " "
 
-    Write-Host "Linking libnethost.lib from pack $($pack.Name)"
-    Invoke-WithMsvc $compile
-    if ($LASTEXITCODE -eq 0) {
-        $builtPack = $pack.Name
-        break
-    }
-    Write-Host "Pack $($pack.Name) failed to link (exit $LASTEXITCODE); trying an older host pack."
-}
-
-if (-not $builtPack) {
-    throw "Failed to statically link libnethost.lib from any Microsoft.NETCore.App.Host.win-x64 pack"
+Write-Host "Linking libnethost.lib from pack $($pack.Name)"
+Invoke-WithMsvc $compile
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to statically link libnethost.lib from Microsoft.NETCore.App.Host.win-x64 $($pack.Name) (exit $LASTEXITCODE)"
 }
 if (-not (Test-Path $exe)) { throw "Native host exe missing: $exe" }
-Write-Host "Built $exe (pack $builtPack, static libnethost)"
+Write-Host "Built $exe (pack $($pack.Name), static libnethost)"

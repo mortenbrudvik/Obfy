@@ -252,7 +252,11 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
 
     rc = init_fn(cfg, &params, &ctx);
     if (rc < 0 || ctx == NULL)
+    {
+        if (ctx != NULL)
+            close_fn(ctx);
         return host_failed("Packed host failed: runtime not found.");
+    }
 
     /* Component hosting does not set the app base to the EXE directory. */
     if (set_prop_fn(ctx, L"APP_CONTEXT_BASE_DIRECTORY", app_base) != 0)

@@ -756,6 +756,20 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void FromObfySettings_RoundTripsPackingRidPortable()
+    {
+        var settings = new ObfySettings { Packing = { Enabled = true, Rid = "portable" } };
+
+        var viewModel = new SettingsViewModel();
+        viewModel.FromObfySettings(settings);
+        var roundTripped = viewModel.ToObfySettings();
+
+        viewModel.PackingEnabled.ShouldBeTrue();
+        roundTripped.Packing.Enabled.ShouldBeTrue();
+        roundTripped.Packing.Rid.ShouldBe("portable");
+    }
+
+    [Fact]
     public void ApplyPreset_Aggressive_ResetsPackingVirtualizationAndIncremental()
     {
         var viewModel = new SettingsViewModel

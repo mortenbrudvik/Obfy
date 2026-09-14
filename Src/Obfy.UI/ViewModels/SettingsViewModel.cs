@@ -77,6 +77,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _packingEnabled = false;
 
+    private string _packingRid = "win-x64";
+
     [ObservableProperty]
     private bool _virtualizationEnabled = false;
 
@@ -501,7 +503,7 @@ public partial class SettingsViewModel : ObservableObject
                     ? null
                     : SigningPasswordEnvironmentVariable
             },
-            Packing = new PackingSettings { Enabled = PackingEnabled },
+            Packing = new PackingSettings { Enabled = PackingEnabled, Rid = _packingRid },
             Virtualization = new VirtualizationSettings { Enabled = VirtualizationEnabled },
             Incremental = new IncrementalSettings { Enabled = IncrementalEnabled }
         };
@@ -620,6 +622,7 @@ public partial class SettingsViewModel : ObservableObject
         SigningKeyFile = settings.Signing.KeyFile ?? string.Empty;
         SigningPasswordEnvironmentVariable = settings.Signing.PasswordEnvironmentVariable ?? string.Empty;
         PackingEnabled = settings.Packing.Enabled;
+        _packingRid = settings.Packing.Rid;
         VirtualizationEnabled = settings.Virtualization.Enabled;
         IncrementalEnabled = settings.Incremental.Enabled;
         }

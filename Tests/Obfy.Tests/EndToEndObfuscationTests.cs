@@ -132,9 +132,11 @@ public class EndToEndObfuscationTests
             start.WorkingDirectory = workingDirectory;
         using var process = System.Diagnostics.Process.Start(start);
         process.ShouldNotBeNull();
-        process!.StandardOutput.ReadToEndAsync().GetAwaiter().GetResult();
-        var stderr = process.StandardError.ReadToEndAsync().GetAwaiter().GetResult();
-        process.WaitForExit(15000).ShouldBeTrue("native host timed out: " + stderr);
+        var stdoutTask = process!.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        process.WaitForExit(15000).ShouldBeTrue("native host timed out");
+        stderrTask.GetAwaiter().GetResult();
+        stdoutTask.GetAwaiter().GetResult();
         return process.ExitCode;
     }
 

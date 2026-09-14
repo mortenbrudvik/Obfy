@@ -35,6 +35,7 @@ public class HelpCatalogTests
         "Metadata",
         "Watermark",
         "Native packer (win-x64)",
+        "Virtualize methods",
         "Strong-Name Signing",
         "Resource Encryption",
         "Assembly Merge",
@@ -114,7 +115,7 @@ public class HelpCatalogTests
     }
 
     [Fact]
-    public void Techniques_HasTwelveExpanderHeadings()
+    public void Techniques_HasThirteenExpanderHeadings()
     {
         var headings = Topic(HelpCatalog.TechniquesId).Blocks.OfType<HelpNamedNote>()
             .Select(n => n.Heading)
@@ -129,6 +130,17 @@ public class HelpCatalogTests
             .Single(n => n.Heading == "Native packer (win-x64)");
         note.Text.ShouldBe(
             "Replaces the output with a native Windows host (framework-dependent). The overlay holds the AES-256-CBC key. Set packing.rid to portable for the managed launcher.");
+        note.Text.ShouldNotContain("Virtualize");
+    }
+
+    [Fact]
+    public void Techniques_VirtualizeMethods_DocumentsLimits()
+    {
+        var note = Topic(HelpCatalog.TechniquesId).Blocks.OfType<HelpNamedNote>()
+            .Single(n => n.Heading == "Virtualize methods");
+        note.Text.ShouldContain("bytecode interpreter");
+        note.Text.ShouldContain("Not confidentiality");
+        note.Text.ShouldNotContain("Virtualize simple methods");
     }
 
     private static HelpTopic Topic(string id) =>

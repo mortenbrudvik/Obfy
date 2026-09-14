@@ -23,17 +23,17 @@ GitHub stars and last-push dates were rechecked on 15 September 2026. Shop price
 
 ## Executive Summary
 
-Obfy is a new (first public commit 31 December 2025), MIT-licensed .NET obfuscator with a CLI, Fluent WPF UI, Visual Studio 2022 extension, Rider plugin, Microsoft Store listing, and a dual pipeline: **dnlib assembly obfuscation** plus **Roslyn source obfuscation**. Among free tools it is the broadest protection stack (rename, strings, constants, resources, control flow, anti-debug/dump/tamper/decompiler, method-IL XOR, merge, closed-set / solution rename, embed, watermark, reports, a managed IL virtualizer, and a **win-x64 FDD native packing stub**). It meets the **managed-VM** protection-ceiling bar (Babel-class). Native packing is a framework-dependent CLR-host stub (not Pre-JIT, not self-contained, not ARM64). Closed-set / solution runs pack each entry-point output. It is not a licensing/RASP product.
+Obfy is a new (first public commit 31 December 2025), MIT-licensed .NET obfuscator with a CLI, Fluent WPF UI, Visual Studio 2022 extension, Rider plugin, Microsoft Store listing, and a dual pipeline: **dnlib assembly obfuscation** plus **Roslyn source obfuscation**. Among free tools it is the broadest protection stack (rename, strings, constants, resources, control flow, anti-debug/dump/tamper/decompiler, method-IL XOR, merge, closed-set / solution rename, embed, watermark, reports, a managed IL virtualizer, and a **win-x64 FDD native packing stub**). It has a **managed-VM** (Babel-class interpreter, not Babel Ultimate coverage). Native packing is a framework-dependent CLR-host stub (not Pre-JIT, not self-contained, not ARM64). Closed-set / solution runs pack each entry-point output. It is not a licensing/RASP product.
 
 **Positioning that still holds**
 
 - **Vs free tools:** Broader technique set than Obfuscar (rename-first) and LoGiC.NET (archived). Different trade than BitMono (anti-decompiler / Unity / plugins vs Obfy’s control-flow + constants + resources + source mode + closed-set + desktop/IDE / Store UX).
-- **Vs budget commercial ($249–$499):** Matches the *everyday* layer (rename, strings, CF, anti-debug/tamper) and meets Babel Ultimate on **managed** IL virtualization (see limits). Native packing is a win-x64 FDD CLR-host stub, not Pre-JIT. Does **not** match .NET Reactor or ArmDot on unique generated VMs or built-in licensing. Do not treat this as covering Reactor.
+- **Vs budget commercial ($249–$499):** Matches the *everyday* layer (rename, strings, CF, anti-debug/tamper) and offers a managed IL virtualizer (see limits; **Partial**, not Babel Ultimate EH/generics/byref). Native packing is a win-x64 FDD CLR-host stub, not Pre-JIT. Does **not** match .NET Reactor or ArmDot on unique generated VMs or built-in licensing. Do not treat this as covering Reactor.
 - **Vs enterprise (Dotfuscator, SmartAssembly):** Covers static obfuscation needs; lacks RASP, crash analytics, quote-based support SLAs, and (for Dotfuscator) Overload Induction / configurable runtime response.
 
 **What changed since the previous revision of this file**
 
-- Native packing / native EXE stays **Yes** (win-x64 FDD stub). Closed-set / solution runs pack each entry-point output. Code virtualization is now **Yes** with the eligibility limits footnote (Babel-class managed VM; does not cover Reactor). Licensing/RASP remain commercial gaps. Do not write that Obfy covers Reactor.
+- Native packing / native EXE stays **Yes** (win-x64 FDD stub). Closed-set / solution runs pack each entry-point output. Code virtualization is **Partial** with the eligibility limits footnote (Babel-class managed VM; does not cover Reactor or Babel Ultimate EH/generics/byref). Licensing/RASP remain commercial gaps. Do not write that Obfy covers Reactor.
 - Closed-set / solution obfuscation (1.3.0) is now in the integration matrix. Microsoft Store is a first-class Windows install path. Linux CLI is CI-tested (`linux-cli` on Ubuntu), not “theoretical.”
 - MSBuild and Azure DevOps cells for Obfy are **Partial** (`Exec` / script, not a PackageReference or official task). BitMono no longer listed as having a `dotnet tool` that Obfy lacks.
 - GitHub: Obfy 1 star / 0 forks, last push 15 Sep 2026. Obfuscar last push 14 Sep 2026. Shop prices were not re-sampled.
@@ -99,7 +99,7 @@ Obfuscar’s “string hiding” is reversible XOR; its own docs warn against us
 
 | Feature | Obfy | Dotfuscator Pro | SmartAssembly | .NET Reactor | Babel | Eazfuscator | ArmDot |
 |---------|:----:|:---------------:|:-------------:|:------------:|:-----:|:-----------:|:------:|
-| **Code virtualization** | Yes | — | — | Yes | Ultimate | Yes | Yes |
+| **Code virtualization** | Partial | — | — | Yes | Ultimate | Yes | Yes |
 | **Native packing / native EXE** | Yes | — | — | Yes | — | — | App virt. (Windows, BoxedApp) |
 | **MSIL / method encryption** | Yes | — | — | NecroBit | Ultimate | via VM | via VM |
 | **Anti-debug** | Yes | Yes (RASP) | — | Yes | Yes | — | Implicit via VM |
@@ -112,7 +112,7 @@ Obfuscar’s “string hiding” is reversible XOR; its own docs warn against us
 
 **Obfy limits (do not collapse these to “Yes” in marketing copy)**
 
-- **Virtualization:** managed bytecode interpreter for eligible instance and static methods (objects, non-generic calls, fields, `newobj`, `ldstr`; i4/i8/r4/r8). Skips EH, generic methods/types/**calls**, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof`, interpolators, foreach/using. Per-build opcode permutation + XOR (not a unique generated VM). CoreCLR only; off in NativeAOT / IL2CPP / Blazor WASM and off in every preset. Deterrent, not confidentiality. Not a unique generated VM.
+- **Virtualization:** managed bytecode interpreter for eligible instance and static methods (objects, non-generic calls, fields, `newobj`, `ldstr`; i4/i8/r4/r8). Skips EH, generic methods/types/**calls**, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded). Per-build opcode permutation + XOR (not a unique generated VM). Gated off NativeAOT / IL2CPP / Blazor WASM and off in every preset. Deterrent, not confidentiality.
 - **Native packing:** win-x64 framework-dependent CLR-host stub; `packing.rid: portable` keeps the managed launcher. Closed-set / solution runs pack each entry-point output. Not Pre-JIT, not self-contained, not ARM64. Packing hides the managed PE on disk; the decryption key is in the overlay. Anyone who runs or inspects the EXE can recover IL. Not confidentiality.
 - **Method IL encryption:** per-method XOR in the PE, Windows, skips generics.
 - **Anti-dump:** PE-header wipe plus in-process `0xC3` patch of `dbghelp!MiniDumpWriteDump` on Windows x86/x64. ARM64 skipped. Gated off NativeAOT / IL2CPP / Blazor WASM. External dumpers are unaffected.
@@ -243,7 +243,7 @@ Reactor’s **$249 single-developer license excludes build servers**. CI needs t
 
 **Weaknesses**
 
-- Virtualization skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, typeof, interpolators, foreach/using; CoreCLR only; per-build encoding, not a unique generated VM. Native packing is a win-x64 FDD stub, not Pre-JIT or self-contained. No licensing/DRM/RASP
+- Virtualization skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, typeof (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach; gated off NativeAOT / IL2CPP / Blazor WASM; per-build encoding, not a unique generated VM. Native packing is a win-x64 FDD stub, not Pre-JIT or self-contained. No licensing/DRM/RASP
 - Unity / MAUI / Blazor / NativeAOT are recipes, not first-class plugins
 - No MSBuild PackageReference — CI uses `dotnet tool install` / `Exec`, not a build task that cannot be skipped
 - GUI, VS extension, method-IL encryption, and native packing are Windows-centric. CLI is CI-tested on Ubuntu
@@ -648,7 +648,7 @@ The 2026 .NET obfuscator market has three honest tiers:
 2. **Conventional protection (free or cheap):** Obfy (free), BitMono (free, decompiler-hostile), Eazfuscator ($399), Babel Enterprise (€350). Rename + strings + CF + some anti-*. This is what most applications actually need.
 3. **Virtualization / packing / licensing (paid):** .NET Reactor is the independent-review default. ArmDot if the tool must run on Linux. Babel Ultimate for a managed VM on Linux CI. Dotfuscator if you buy RASP and a vendor that Microsoft already ships. SmartAssembly if you buy crash reporting.
 
-Obfy now ships a native win-x64 FDD packing stub (closed-set entry points included) and a **managed-VM** (Babel-class) for eligible methods. Packing is Yes; virtualization is Yes with the skip-set footnote. Still not licensing/RASP, Pre-JIT, or a unique generated VM. Do not write that it covers Reactor.
+Obfy now ships a native win-x64 FDD packing stub (closed-set entry points included) and a **managed-VM** (Babel-class) for eligible methods. Packing is Yes; virtualization is Partial with the skip-set footnote. Still not licensing/RASP, Pre-JIT, or a unique generated VM. Do not write that it covers Reactor.
 
 **Use Obfy** when you want MIT-licensed, documented, modern-.NET obfuscation with a UI and IDE plugins, and your threat model is casual reverse engineering.
 

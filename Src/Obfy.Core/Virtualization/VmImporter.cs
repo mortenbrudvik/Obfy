@@ -188,7 +188,8 @@ public static class VmImporter
         Dictionary<IDnlibDef, IDnlibDef> map)
     {
         if (origin.Body is null)
-            return;
+            throw new InvalidOperationException(
+                $"Virtualization failed: embedded method '{origin.FullName}' has no body.");
 
         var body = origin.Body;
         var newBody = new CilBody
@@ -285,6 +286,9 @@ public static class VmImporter
             case IField field:
                 return importer.Import(field);
             default:
+                if (operand is IMemberRef or IType)
+                    throw new InvalidOperationException(
+                        $"Virtualization failed: unsupported operand type {operand.GetType().FullName} while copying VM IL.");
                 return operand;
         }
     }

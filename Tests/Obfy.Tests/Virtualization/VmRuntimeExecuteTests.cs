@@ -137,6 +137,159 @@ public class VmRuntimeExecuteTests
     }
 
     [Fact]
+    public void Run_IsString_UsesCgtUnOnRefs()
+    {
+        const string src = "public static class Lib { public static bool IsStr(object o) => o is string; }";
+        EncodeImportInvoke(src, "Lib", "IsStr", "hi").ShouldBe(true);
+        EncodeImportInvoke(src, "Lib", "IsStr", new object()).ShouldBe(false);
+        EncodeImportInvoke(src, "Lib", "IsStr", new object[] { null! }).ShouldBe(false);
+    }
+
+    [Fact]
+    public void Run_NotNullExpression_ReturnsTrueForObject()
+    {
+        const string src = "public static class Lib { public static bool NotNull(object o) => o != null; }";
+        EncodeImportInvoke(src, "Lib", "NotNull", "x").ShouldBe(true);
+        EncodeImportInvoke(src, "Lib", "NotNull", new object[] { null! }).ShouldBe(false);
+    }
+
+    [Fact]
+    public void Run_BaseCall_IsNotEncoded()
+    {
+        const string src = """
+            public class A { public virtual int V() => 1; }
+            public class B : A { public override int V() => base.V() + 1; }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), "obfy-vm-src-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(src, dir, "VmExecLib", OptimizationLevel.Debug);
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var method = FindMethod(module, "B", "V");
+            VmEncoder.TryEncode(method, new Dictionary<MethodDef, int>(), new VmMemberTables(), out _, out var skipReason)
+                .ShouldBeFalse();
+            skipReason.ShouldBe(VmSkipReasons.VirtualBaseCall);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public void Run_NullInstanceCall_ThrowsNullReferenceException()
+    {
+        const string src = "public static class Lib { public static int Len(string s) => s.Length; }";
+        Should.Throw<NullReferenceException>(() =>
+            EncodeImportInvoke(src, "Lib", "Len", new object[] { null! }));
+    }
+
+    [Fact]
+    public void Run_NullArrayLength_ThrowsNullReferenceException()
+    {
+        const string src = "public static class Lib { public static int Len(int[] a) => a.Length; }";
+        Should.Throw<NullReferenceException>(() =>
+            EncodeImportInvoke(src, "Lib", "Len", new object[] { null! }));
+    }
+
+    [Fact]
+    public void Run_Ldstr_InternsEqualLiterals()
+    {
+        const string src = """
+            public static class Lib {
+                public static bool Same() {
+                    object a = "hi";
+                    object b = "hi";
+                    return a == b;
+                }
+            }
+            """;
+        EncodeImportInvoke(src, "Lib", "Same").ShouldBe(true);
+    }
+
+    [Fact]
+    public void Run_FloatAdd_ReturnsSum()
+    {
+        EncodeImportInvoke(
+            "public static class Lib { public static float Add(float a, float b) => a + b; }",
+            "Lib", "Add", 1.5f, 2.5f).ShouldBe(4f);
+    }
+
+    [Fact]
+    public void Run_BitwiseAndShiftNot()
+    {
+        EncodeImportInvoke(
+            "public static class Lib { public static int And(int a, int b) => a & b; }",
+            "Lib", "And", 6, 3).ShouldBe(2);
+        EncodeImportInvoke(
+            "public static class Lib { public static int Not(int a) => ~a; }",
+            "Lib", "Not", 0).ShouldBe(-1);
+        EncodeImportInvoke(
+            "public static class Lib { public static int Shl(int a, int n) => a << n; }",
+            "Lib", "Shl", 1, 3).ShouldBe(8);
+    }
+
+    [Fact]
+    public void Run_VoidReturn_SetsStaticField()
+    {
+        const string src = """
+            public static class Lib {
+                public static int N;
+                public static void Set(int n) { N = n; }
+            }
+            """;
+        EncodeImportInvoke(src, "Lib", "Set", assembly =>
+        {
+            var type = VmExecuteHarness.GetType(assembly, "Lib");
+            var set = type.GetMethod("Set")
+                ?? throw new InvalidOperationException("Method 'Lib.Set' was not found.");
+            set.Invoke(null, new object[] { 5 });
+            return type.GetField("N")!.GetValue(null);
+        }).ShouldBe(5);
+    }
+
+    [Fact]
+    public void Run_CastclassAndIsinst()
+    {
+        const string src = """
+            public class Box {}
+            public static class Lib {
+                public static Box AsBox(object o) => o as Box;
+                public static Box Cast(object o) => (Box)o;
+            }
+            """;
+        EncodeImportInvoke(src, "Lib", "AsBox", assembly =>
+        {
+            var box = VmExecuteHarness.CreateInstance(assembly, "Box");
+            var asBox = VmExecuteHarness.GetType(assembly, "Lib").GetMethod("AsBox")
+                ?? throw new InvalidOperationException("Method 'Lib.AsBox' was not found.");
+            asBox.Invoke(null, new[] { box }).ShouldBe(box);
+            asBox.Invoke(null, new object[] { "x" }).ShouldBeNull();
+            var cast = VmExecuteHarness.GetType(assembly, "Lib").GetMethod("Cast")
+                ?? throw new InvalidOperationException("Method 'Lib.Cast' was not found.");
+            Should.Throw<TargetInvocationException>(() => cast.Invoke(null, new object[] { "x" }))
+                .InnerException.ShouldBeOfType<InvalidCastException>();
+            return 1;
+        }).ShouldBe(1);
+    }
+
+    [Fact]
+    public void Run_StringArray_RoundTrip()
+    {
+        const string src = """
+            public static class Lib {
+                public static string Go() {
+                    var a = new string[1];
+                    a[0] = "x";
+                    return a[0];
+                }
+            }
+            """;
+        EncodeImportInvoke(src, "Lib", "Go").ShouldBe("x");
+    }
+
+    [Fact]
     public void Run_StaticField_GetSet()
     {
         EncodeImportInvoke(
@@ -233,6 +386,19 @@ public class VmRuntimeExecuteTests
             }
             """;
         EncodeImportInvokeBoth(src, "Lib", "Outer", poisonCalleeStub: true, 3).ShouldBe(8);
+    }
+
+    [Fact]
+    public void Run_CallVm_ApplyThenStillMultiplies()
+    {
+        const string src = """
+            public static class Lib {
+                public static int Inner(int x) => x + 1;
+                public static int Outer(int x) => Inner(x) * 2;
+            }
+            """;
+        EncodeImportInvokeBoth(src, "Lib", "Outer", poisonCalleeStub: false, applySeed: true, 3)
+            .ShouldBe(8);
     }
 
     [Fact]
@@ -382,6 +548,15 @@ public class VmRuntimeExecuteTests
         string typeName,
         string entryMethod,
         bool poisonCalleeStub,
+        params object[] args) =>
+        EncodeImportInvokeBoth(source, typeName, entryMethod, poisonCalleeStub, applySeed: false, args);
+
+    private static object? EncodeImportInvokeBoth(
+        string source,
+        string typeName,
+        string entryMethod,
+        bool poisonCalleeStub,
+        bool applySeed,
         params object[] args)
     {
         var dir = Path.Combine(Path.GetTempPath(), "obfy-vm-src-" + Guid.NewGuid().ToString("N"));
@@ -433,13 +608,25 @@ public class VmRuntimeExecuteTests
             }
 
             var identity = Enumerable.Range(0, 256).Select(i => (byte)i).ToArray();
+            var opMap = identity;
+            var xorKey = new byte[8];
+            if (applySeed)
+            {
+                var seed = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+                opMap = VmSeed.CreateOpMap(seed);
+                xorKey = VmSeed.CreateXorKey(seed);
+                opMap.SequenceEqual(identity).ShouldBeFalse();
+                xorKey.SequenceEqual(new byte[8]).ShouldBeFalse();
+                VmSeed.Apply(code, opMap, xorKey);
+            }
+
             var context = PipelineContext.ForAssembly(module, new ObfySettings());
             var vmType = VmImporter.Import(
                 context,
                 code,
                 starts,
-                opMap: identity,
-                xorKey: new byte[8],
+                opMap: opMap,
+                xorKey: xorKey,
                 methods: tables.Methods,
                 fields: tables.Fields,
                 types: tables.Types,

@@ -614,6 +614,8 @@ public class EndToEndObfuscationTests
             var output = Path.Combine(dir, "VmFullLib.obf.dll");
             var result = await CreateService().ObfuscateAsync(input, output, FullPipelineVmSettings());
             result.Success.ShouldBeTrue(result.ErrorMessage);
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
+                AssertVmStub(loaded, "Lib", "Add");
             LoadAndInvoke(output, "Lib", "Add", 2, 3).ShouldBe(5);
         }
         finally
@@ -634,7 +636,66 @@ public class EndToEndObfuscationTests
             var output = Path.Combine(dir, "VmHelloLib.obf.dll");
             var result = await CreateService().ObfuscateAsync(input, output, FullPipelineVmSettings());
             result.Success.ShouldBeTrue(result.ErrorMessage);
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
+                AssertVmStub(loaded, "Lib", "Hi");
             LoadAndInvoke(output, "Lib", "Hi").ShouldBe("hello");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Virtualization_FullPipeline_InstanceFieldRoundTrip()
+    {
+        const string source = """
+            public class Box {
+                public int N;
+                public static int Go(int n) { var b = new Box(); b.N = n; return b.N; }
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-vm-field-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "VmFieldLib");
+            var output = Path.Combine(dir, "VmFieldLib.obf.dll");
+            var result = await CreateService().ObfuscateAsync(input, output, FullPipelineVmSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
+                AssertVmStub(loaded, "Box", "Go");
+            LoadAndInvoke(output, "Box", "Go", 9).ShouldBe(9);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task Virtualization_FullPipeline_CallVmOuterInner()
+    {
+        const string source = """
+            public static class Lib {
+                public static int Inner(int x) => x + 1;
+                public static int Outer(int x) => Inner(x) * 2;
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-vm-callvm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "VmCallLib");
+            var output = Path.Combine(dir, "VmCallLib.obf.dll");
+            var result = await CreateService().ObfuscateAsync(input, output, FullPipelineVmSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(output)))
+            {
+                AssertVmStub(loaded, "Lib", "Inner");
+                AssertVmStub(loaded, "Lib", "Outer");
+            }
+            LoadAndInvoke(output, "Lib", "Outer", 3).ShouldBe(8);
         }
         finally
         {

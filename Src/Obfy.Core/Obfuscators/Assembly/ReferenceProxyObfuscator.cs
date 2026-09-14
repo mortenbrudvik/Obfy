@@ -54,8 +54,9 @@ public class ReferenceProxyObfuscator : IObfuscator
             {
                 if (type == proxyType)
                     continue;
-                // Do not rewrite calls inside helper types. CanProxy also rejects helper
-                // targets so injected Run/decryptor entry points stay direct.
+                // Do not rewrite calls inside helper types. CanProxy also rejects Vm.Run/Init
+                // so the interpreter entry stays a direct call; other helper entry points
+                // (decryptors) remain proxyable from user IL.
                 if (ObfuscatorHelpers.IsRuntimeHelper(type))
                     continue;
                 if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.All, context.Warnings))
@@ -140,8 +141,8 @@ public class ReferenceProxyObfuscator : IObfuscator
         var resolved = called.ResolveMethodDef();
         var declaringType = resolved?.DeclaringType ?? called.DeclaringType.ResolveTypeDef();
         if (declaringType is not null &&
-            (context.InjectedHelperMap.ContainsKey(declaringType) ||
-             ObfuscatorHelpers.IsRuntimeHelper(declaringType)))
+            declaringType.Name == "Vm" &&
+            (declaringType.Namespace == "Obfy.Runtime" || ObfuscatorHelpers.IsRuntimeHelper(declaringType)))
             return false;
 
         var inModule = resolved != null && resolved.Module == module;

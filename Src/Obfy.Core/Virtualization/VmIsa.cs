@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 namespace Obfy.Core.Virtualization;
 
 /// <summary>
-/// Internal VM opcodes. These ordinals are not the permuted on-disk bytes.
+/// Internal VM opcodes. On-disk bytes are permuted by <see cref="VmSeed"/>.
 /// </summary>
 public enum VmOp : byte
 {
@@ -30,6 +30,8 @@ public enum VmOp : byte
 /// </summary>
 public static class VmIsa
 {
+    public const int MaxEvalStack = 64;
+
     public static int EncodedSize(byte[] blob, int offset)
     {
         ArgumentNullException.ThrowIfNull(blob);

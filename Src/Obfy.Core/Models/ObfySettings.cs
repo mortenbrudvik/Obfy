@@ -762,8 +762,9 @@ public class IncrementalSettings
 
 /// <summary>
 /// Selective IL virtualization of eligible instance and static methods
-/// (no EH, generic methods/types/calls, byref, custom structs, or Nullable{T};
-/// CoreCLR only). Per-build opcode permutation and XOR. Off in every preset.
+/// (no EH, generic methods/types/calls, byref, custom structs, Nullable{T},
+/// or constructors). Gated off NativeAOT / Unity IL2CPP / Blazor WASM.
+/// Per-build opcode permutation and XOR. Off in every preset.
 /// Deterrent, not confidentiality.
 /// </summary>
 public class VirtualizationSettings

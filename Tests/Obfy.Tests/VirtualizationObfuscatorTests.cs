@@ -188,8 +188,32 @@ public class VirtualizationObfuscatorTests
         result.Statistics.ProtectionsApplied.ShouldBe(1);
         CallsRun(first).ShouldBeTrue();
         CallsRun(second).ShouldBeFalse();
-        context.Warnings.ShouldContain(w => w.Contains("maxMethods=1"));
+        context.Warnings.ShouldContain(w => w.Contains("maxMethods=1") && w.Contains("B"));
         context.SkippedItems.ShouldNotContain(s => s.ItemName.Contains("B"));
+    }
+
+    [Fact]
+    public async Task Virtualization_DoesNotReportConstructorsAsSkippedItems()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        CreateAdd(type, "Add");
+        var ctor = new MethodDefUser(
+            ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
+        ctor.Body = new CilBody();
+        ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(ctor);
+
+        var context = PipelineContext.ForAssembly(module, VmSettings());
+        var result = await new VirtualizationObfuscator(new Mock<ILogger<VirtualizationObfuscator>>().Object)
+            .ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        context.SkippedItems.ShouldNotContain(s => s.Details == VmSkipReasons.Constructor);
+        context.SkippedItems.ShouldNotContain(s => s.Details == VmSkipReasons.NoBody);
     }
 
     [Fact]
@@ -219,6 +243,24 @@ public class VirtualizationObfuscatorTests
         var skip = CreateAdd(type, "SkipMe");
         var keep = CreateAdd(type, "KeepMe");
         AddObfuscationAttribute(skip, exclude: true, feature: "virtualization");
+
+        var result = await RunAsync(module);
+
+        result.Success.ShouldBeTrue();
+        CallsRun(skip).ShouldBeFalse();
+        CallsRun(keep).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("vm")]
+    [InlineData("virtualize")]
+    public async Task Virtualization_HonorsObfuscationFeatureAliases(string feature)
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var skip = CreateAdd(type, "SkipMe");
+        var keep = CreateAdd(type, "KeepMe");
+        AddObfuscationAttribute(skip, exclude: true, feature: feature);
 
         var result = await RunAsync(module);
 
@@ -356,6 +398,25 @@ public class VirtualizationObfuscatorTests
 
         hi.Body.Instructions.ShouldContain(i =>
             i.OpCode == OpCodes.Ldstr && (string)i.Operand! == "hello");
+    }
+
+    [Fact]
+    public async Task ConstantEncryption_SkipsVirtualizationSelectSet()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var method = CreateInt32Method(type, "Const", 0);
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4, 42));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        var settings = VmSettings();
+        settings.ConstantEncryption.Enabled = true;
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        (await new ConstantEncryptionObfuscator(new Mock<ILogger<ConstantEncryptionObfuscator>>().Object)
+            .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+        method.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldc_I4 && Equals(i.Operand, 42))
+            .ShouldBeTrue("selected method should keep ldc.i4 42");
     }
 
     private static async Task<ObfuscationResult> RunAsync(ModuleDef module)

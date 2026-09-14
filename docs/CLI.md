@@ -43,7 +43,7 @@ obfy <input>... [options]
 | `--anti-decompiler` | | Enable anti-decompiler protection | Off |
 | `--anti-dump` | | Enable anti-dump (PE wipe + in-process MiniDump hook, Windows) | Off |
 | `--watermark-id <id>` | | Enable watermarking and set `watermark.id` (trimmed; whitespace-only is an error) | Off |
-| `--virtualize` | | Enable IL virtualization of eligible methods (no EH/generic calls/byref/custom structs; CoreCLR only) | Off |
+| `--virtualize` | | Enable IL virtualization of eligible methods (no EH/generics/byref/custom structs/ctors; gated off NativeAOT / IL2CPP / Blazor WASM) | Off |
 | `--incremental` | | Skip re-obfuscation when input and settings are unchanged | Off |
 | `--reference-proxy` | | Enable reference proxy | Off |
 | `--proxy-external` | | Also proxy selected out-of-module calls (enables `--reference-proxy`; skips compiler/interop/pointer/value-type/generic/vararg/ctor signatures) | Off |

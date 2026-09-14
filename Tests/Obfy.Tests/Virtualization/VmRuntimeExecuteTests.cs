@@ -1,3 +1,4 @@
+using System.Reflection;
 using dnlib.DotNet;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -105,19 +106,100 @@ public class VmRuntimeExecuteTests
             "Lib", "IfZero", new object[] { 4 }, OptimizationLevel.Release).ShouldBe(0);
     }
 
+    [Fact]
+    public void Run_NewobjAndInstanceField()
+    {
+        const string src = """
+            public class Box {
+                public int N;
+                public static int Go(int n) { var b = new Box(); b.N = n; return b.N; }
+            }
+            """;
+        EncodeImportInvoke(src, "Box", "Go", 9).ShouldBe(9);
+    }
+
+    [Fact]
+    public void Run_Callvirt_UsesVirtualDispatch()
+    {
+        const string src = """
+            public class A { public virtual int V() => 1; }
+            public class B : A { public override int V() => 2; }
+            public static class Lib { public static int Hit(A a) => a.V(); }
+            """;
+        EncodeImportInvoke(src, "Lib", "Hit", assembly =>
+        {
+            var instance = VmExecuteHarness.CreateInstance(assembly, "B");
+            var hit = VmExecuteHarness.GetType(assembly, "Lib").GetMethod("Hit")
+                ?? throw new InvalidOperationException("Method 'Lib.Hit' was not found.");
+            return hit.Invoke(null, new[] { instance });
+        }).ShouldBe(2);
+    }
+
+    [Fact]
+    public void Run_StaticField_GetSet()
+    {
+        EncodeImportInvoke(
+            "public static class Lib { public static int N; public static int Go(int n) { N = n; return N; } }",
+            "Lib", "Go", 11).ShouldBe(11);
+    }
+
+    [Fact]
+    public void Run_Call_NonVirtualizedHelper()
+    {
+        EncodeImportInvoke(
+            "public static class Lib { public static string Join(string a, string b) => string.Concat(a, b); }",
+            "Lib", "Join", "ab", "cd").ShouldBe("abcd");
+    }
+
+    [Fact]
+    public void Run_InstanceThis_GetN()
+    {
+        const string src = """
+            public class Box {
+                public int N;
+                public int GetN() => N;
+            }
+            """;
+        EncodeImportInvoke(src, "Box", "GetN", assembly =>
+        {
+            var boxType = VmExecuteHarness.GetType(assembly, "Box");
+            var instance = VmExecuteHarness.CreateInstance(assembly, "Box");
+            boxType.GetField("N")!.SetValue(instance, 4);
+            var getN = boxType.GetMethod("GetN")
+                ?? throw new InvalidOperationException("Method 'Box.GetN' was not found.");
+            return getN.Invoke(instance, null);
+        }).ShouldBe(4);
+    }
+
     private static object? EncodeImportInvoke(
         string source,
         string typeName,
         string methodName,
         params object[] args) =>
-        EncodeImportInvoke(source, typeName, methodName, args, OptimizationLevel.Debug);
+        EncodeImportInvoke(source, typeName, methodName, args, OptimizationLevel.Debug, invoke: null);
 
     private static object? EncodeImportInvoke(
         string source,
         string typeName,
         string methodName,
         object[] args,
-        OptimizationLevel optimization)
+        OptimizationLevel optimization) =>
+        EncodeImportInvoke(source, typeName, methodName, args, optimization, invoke: null);
+
+    private static object? EncodeImportInvoke(
+        string source,
+        string typeName,
+        string methodName,
+        Func<Assembly, object?> invoke) =>
+        EncodeImportInvoke(source, typeName, methodName, Array.Empty<object>(), OptimizationLevel.Debug, invoke);
+
+    private static object? EncodeImportInvoke(
+        string source,
+        string typeName,
+        string methodName,
+        object[] args,
+        OptimizationLevel optimization,
+        Func<Assembly, object?>? invoke)
     {
         var dir = Path.Combine(Path.GetTempPath(), "obfy-vm-src-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -147,6 +229,8 @@ public class VmRuntimeExecuteTests
             var run = vmType.FindMethod("Run");
             run.ShouldNotBeNull();
             VmImporter.WriteStub(method, run!, id: 0);
+            if (invoke is not null)
+                return VmExecuteHarness.Invoke(module, invoke);
             return VmExecuteHarness.Invoke(module, typeName, methodName, args);
         }
         finally

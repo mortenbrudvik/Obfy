@@ -170,6 +170,25 @@ public static class Vm
                 case 51: // BgeUn
                     BinBranch(ref f, !Less(PopPair(ref f, out var bgeuR), bgeuR, unsigned: true));
                     break;
+                case 52: // Newobj
+                    NewObj(ref f);
+                    break;
+                case 53: // Call
+                case 54: // Callvirt
+                    Call(ref f);
+                    break;
+                case 56: // Ldfld
+                    LdFld(ref f, isStatic: false);
+                    break;
+                case 57: // Stfld
+                    StFld(ref f, isStatic: false);
+                    break;
+                case 58: // Ldsfld
+                    LdFld(ref f, isStatic: true);
+                    break;
+                case 59: // Stsfld
+                    StFld(ref f, isStatic: true);
+                    break;
                 case 77: // Ret
                 {
                     var boxed = DoRet(ref frames, ref depth, out var done);
@@ -313,6 +332,101 @@ public static class Vm
             Push(ref frames[depth], value);
         done = false;
         return null!;
+    }
+
+    static void NewObj(ref Frame f)
+    {
+        var method = ReadMethod(ref f);
+        var args = PopArgs(ref f, method.GetParameters());
+        Push(ref f, UnboxArg(Invoke(method, null!, args)));
+    }
+
+    static void Call(ref Frame f)
+    {
+        var method = ReadMethod(ref f);
+        var args = PopArgs(ref f, method.GetParameters());
+        object target = null!;
+        if (!method.IsStatic)
+            target = ToClr(Pop(ref f), method.DeclaringType!);
+        var result = Invoke(method, target, args);
+        var info = method as MethodInfo;
+        if (info == null || info.ReturnType == typeof(void))
+            return;
+        Push(ref f, UnboxArg(result!));
+    }
+
+    static void LdFld(ref Frame f, bool isStatic)
+    {
+        var field = ReadField(ref f);
+        object receiver = null!;
+        if (!isStatic)
+            receiver = ToClr(Pop(ref f), field.DeclaringType!);
+        Push(ref f, UnboxArg(field.GetValue(receiver)!));
+    }
+
+    static void StFld(ref Frame f, bool isStatic)
+    {
+        var field = ReadField(ref f);
+        var value = ToClr(Pop(ref f), field.FieldType);
+        object receiver = null!;
+        if (!isStatic)
+            receiver = ToClr(Pop(ref f), field.DeclaringType!);
+        field.SetValue(receiver, value);
+    }
+
+    static object[] PopArgs(ref Frame f, ParameterInfo[] parameters)
+    {
+        var args = new object[parameters.Length];
+        for (var i = parameters.Length - 1; i >= 0; i--)
+            args[i] = ToClr(Pop(ref f), parameters[i].ParameterType!);
+        return args;
+    }
+
+    static MethodBase ReadMethod(ref Frame f)
+    {
+        var index = ReadU16(ref f);
+        if ((uint)index >= (uint)_methods.Length)
+            throw Fault("invalid method");
+        var method = _methods[index];
+        if (method == null)
+            throw Fault("invalid method");
+        return method;
+    }
+
+    static FieldInfo ReadField(ref Frame f)
+    {
+        var index = ReadU16(ref f);
+        if ((uint)index >= (uint)_fields.Length)
+            throw Fault("invalid field");
+        var field = _fields[index];
+        if (field == null)
+            throw Fault("invalid field");
+        return field;
+    }
+
+    static object Invoke(MethodBase method, object target, object[] args)
+    {
+        try
+        {
+            var ctor = method as ConstructorInfo;
+            if (ctor != null)
+                return ctor.Invoke(args)!;
+            return method.Invoke(target, args)!;
+        }
+        catch (TargetInvocationException ex)
+        {
+            throw ex.InnerException ?? ex;
+        }
+    }
+
+    static object ToClr(VmValue v, Type expected)
+    {
+        if (expected == null || !expected.IsPrimitive)
+            return v.Ref!;
+        var boxed = BoxReturn(v, expected);
+        if (boxed == null)
+            throw Fault("type mismatch");
+        return Convert.ChangeType(boxed, expected)!;
     }
 
     static byte Fetch(ref Frame f)

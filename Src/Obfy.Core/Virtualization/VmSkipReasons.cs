@@ -7,7 +7,7 @@ public static class VmSkipReasons
     public const string Generic = "generic";
     public const string ExceptionHandlers = "exception handlers";
     public const string ByRef = "byref";
-    public const string NonPrimitiveValuetypeLocal = "non-primitive valuetype local";
+    public const string NonPrimitiveValuetype = "non-primitive valuetype";
     public const string UnsupportedOpcode = "unsupported opcode";
     public const string ValuetypeNewobj = "valuetype newobj";
     public const string Switch = "switch";

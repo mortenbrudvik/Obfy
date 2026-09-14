@@ -38,96 +38,44 @@ public static class VmIsa
         if ((uint)offset >= (uint)blob.Length)
             throw new ArgumentOutOfRangeException(nameof(offset));
 
-        switch ((VmOp)blob[offset])
+        var size = (VmOp)blob[offset] switch
         {
-            case VmOp.Ldstr:
-                if (offset + 3 > blob.Length)
-                    throw new ArgumentOutOfRangeException(nameof(offset));
-                return 3 + BinaryPrimitives.ReadUInt16LittleEndian(blob.AsSpan(offset + 1));
-            case VmOp.CallVm:
-                return 4;
-            case VmOp.Br:
-            case VmOp.Brtrue:
-            case VmOp.Brfalse:
-            case VmOp.Beq:
-            case VmOp.Bne:
-            case VmOp.Blt:
-            case VmOp.Ble:
-            case VmOp.Bgt:
-            case VmOp.Bge:
-            case VmOp.BltUn:
-            case VmOp.BleUn:
-            case VmOp.BgtUn:
-            case VmOp.BgeUn:
-            case VmOp.Newobj:
-            case VmOp.Call:
-            case VmOp.Callvirt:
-            case VmOp.Ldfld:
-            case VmOp.Stfld:
-            case VmOp.Ldsfld:
-            case VmOp.Stsfld:
-            case VmOp.Box:
-            case VmOp.UnboxAny:
-            case VmOp.Castclass:
-            case VmOp.Isinst:
-            case VmOp.Newarr:
-                return 3;
-            case VmOp.LdcI8:
-            case VmOp.LdcR8:
-                return 9;
-            case VmOp.LdcI4:
-            case VmOp.LdcR4:
-                return 5;
-            case VmOp.Ldarg:
-            case VmOp.Starg:
-            case VmOp.Ldloc:
-            case VmOp.Stloc:
-                return 2;
-            case VmOp.Ldnull:
-            case VmOp.Dup:
-            case VmOp.Pop:
-            case VmOp.Add:
-            case VmOp.Sub:
-            case VmOp.Mul:
-            case VmOp.Div:
-            case VmOp.Rem:
-            case VmOp.DivUn:
-            case VmOp.RemUn:
-            case VmOp.And:
-            case VmOp.Or:
-            case VmOp.Xor:
-            case VmOp.Not:
-            case VmOp.Neg:
-            case VmOp.Shl:
-            case VmOp.Shr:
-            case VmOp.ShrUn:
-            case VmOp.ConvI4:
-            case VmOp.ConvI8:
-            case VmOp.ConvR4:
-            case VmOp.ConvR8:
-            case VmOp.ConvU4:
-            case VmOp.ConvU8:
-            case VmOp.Ceq:
-            case VmOp.Cgt:
-            case VmOp.CgtUn:
-            case VmOp.Clt:
-            case VmOp.CltUn:
-            case VmOp.Ldlen:
-            case VmOp.LdelemI4:
-            case VmOp.LdelemI8:
-            case VmOp.LdelemR4:
-            case VmOp.LdelemR8:
-            case VmOp.LdelemRef:
-            case VmOp.StelemI4:
-            case VmOp.StelemI8:
-            case VmOp.StelemR4:
-            case VmOp.StelemR8:
-            case VmOp.StelemRef:
-            case VmOp.Throw:
-            case VmOp.Ret:
-                return 1;
-            default:
-                throw new InvalidOperationException($"Unknown VM opcode at offset {offset}: {blob[offset]}.");
-        }
+            VmOp.Ldarg or VmOp.Starg or VmOp.Ldloc or VmOp.Stloc => 2,
+            VmOp.LdcI4 or VmOp.LdcR4 => 5,
+            VmOp.LdcI8 or VmOp.LdcR8 => 9,
+            VmOp.Ldstr => LdstrSize(blob, offset),
+            VmOp.CallVm => 4,
+            VmOp.Br or VmOp.Brtrue or VmOp.Brfalse or VmOp.Beq or VmOp.Bne
+                or VmOp.Blt or VmOp.Ble or VmOp.Bgt or VmOp.Bge
+                or VmOp.BltUn or VmOp.BleUn or VmOp.BgtUn or VmOp.BgeUn
+                or VmOp.Newobj or VmOp.Call or VmOp.Callvirt
+                or VmOp.Ldfld or VmOp.Stfld or VmOp.Ldsfld or VmOp.Stsfld
+                or VmOp.Box or VmOp.UnboxAny or VmOp.Castclass or VmOp.Isinst
+                or VmOp.Newarr => 3,
+            VmOp.Ldnull or VmOp.Dup or VmOp.Pop
+                or VmOp.Add or VmOp.Sub or VmOp.Mul or VmOp.Div or VmOp.Rem
+                or VmOp.DivUn or VmOp.RemUn or VmOp.And or VmOp.Or or VmOp.Xor
+                or VmOp.Not or VmOp.Neg or VmOp.Shl or VmOp.Shr or VmOp.ShrUn
+                or VmOp.ConvI4 or VmOp.ConvI8 or VmOp.ConvR4 or VmOp.ConvR8
+                or VmOp.ConvU4 or VmOp.ConvU8
+                or VmOp.Ceq or VmOp.Cgt or VmOp.CgtUn or VmOp.Clt or VmOp.CltUn
+                or VmOp.Ldlen
+                or VmOp.LdelemI4 or VmOp.LdelemI8 or VmOp.LdelemR4 or VmOp.LdelemR8 or VmOp.LdelemRef
+                or VmOp.StelemI4 or VmOp.StelemI8 or VmOp.StelemR4 or VmOp.StelemR8 or VmOp.StelemRef
+                or VmOp.Throw or VmOp.Ret => 1,
+            _ => throw new InvalidOperationException($"Unknown VM opcode at offset {offset}: {blob[offset]}.")
+        };
+
+        if (offset > blob.Length - size)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        return size;
+    }
+
+    private static int LdstrSize(byte[] blob, int offset)
+    {
+        if (blob.Length - offset < 3)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        var utf8Length = BinaryPrimitives.ReadUInt16LittleEndian(blob.AsSpan(offset + 1));
+        return checked(3 + utf8Length);
     }
 }

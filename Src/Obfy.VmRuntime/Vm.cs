@@ -10,14 +10,14 @@ public static class Vm
     const int StackSlots = 64;
     const int InitialFrames = 4;
 
-    static byte[] _code = new byte[0];
-    static int[] _starts = new int[0];
-    static byte[] _opMap = new byte[0];
-    static byte[] _xorKey = new byte[0];
-    static MethodBase[] _methods = new MethodBase[0];
-    static FieldInfo[] _fields = new FieldInfo[0];
-    static Type[] _types = new Type[0];
-    static Type[] _returnTypes = new Type[0];
+    static byte[] _code = Array.Empty<byte>();
+    static int[] _starts = Array.Empty<int>();
+    static byte[] _opMap = Array.Empty<byte>();
+    static byte[] _xorKey = Array.Empty<byte>();
+    static MethodBase[] _methods = Array.Empty<MethodBase>();
+    static FieldInfo[] _fields = Array.Empty<FieldInfo>();
+    static Type[] _types = Array.Empty<Type>();
+    static Type[] _returnTypes = Array.Empty<Type>();
 
     enum VmType : byte { I4, I8, R4, R8, O }
 

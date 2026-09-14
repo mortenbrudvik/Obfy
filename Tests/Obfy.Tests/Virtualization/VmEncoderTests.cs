@@ -96,6 +96,28 @@ public class VmEncoderTests
         code[0].ShouldBe((byte)VmOp.CallVm);
         BitConverter.ToUInt16(code, 1).ShouldBe((ushort)7);
         code[3].ShouldBe((byte)1);
+        VmIsa.EncodedSize(code, 0).ShouldBe(4);
+    }
+
+    [Fact]
+    public void EncodedSize_LdstrAndCallVm_MatchesLockedWidths()
+    {
+        var ldstr = Encode(
+            body =>
+            {
+                body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "hi"));
+                body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+            },
+            paramCount: 0);
+        VmIsa.EncodedSize(ldstr.Code, 0).ShouldBe(5);
+        VmIsa.EncodedSize(ldstr.Code, 5).ShouldBe(1);
+
+        var ldcI8 = new byte[] { (byte)VmOp.LdcI8, 1, 0, 0, 0, 0, 0, 0, 0 };
+        VmIsa.EncodedSize(ldcI8, 0).ShouldBe(9);
+        VmIsa.EncodedSize([(byte)VmOp.Ldarg, 0], 0).ShouldBe(2);
+        VmIsa.EncodedSize([(byte)VmOp.LdcI4, 1, 0, 0, 0], 0).ShouldBe(5);
+        VmIsa.EncodedSize([(byte)VmOp.Call, 0, 0], 0).ShouldBe(3);
+        VmIsa.EncodedSize([(byte)VmOp.Add], 0).ShouldBe(1);
     }
 
     [Fact]
@@ -306,7 +328,7 @@ public class VmEncoderTests
 
         VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
             .ShouldBeFalse();
-        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetypeLocal);
+        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetype);
     }
 
     [Fact]
@@ -326,7 +348,7 @@ public class VmEncoderTests
 
         VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
             .ShouldBeFalse();
-        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetypeLocal);
+        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetype);
     }
 
     [Fact]
@@ -346,7 +368,7 @@ public class VmEncoderTests
 
         VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
             .ShouldBeFalse();
-        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetypeLocal);
+        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetype);
     }
 
     [Fact]
@@ -366,7 +388,7 @@ public class VmEncoderTests
 
         VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
             .ShouldBeFalse();
-        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetypeLocal);
+        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetype);
     }
 
     [Fact]
@@ -388,7 +410,99 @@ public class VmEncoderTests
 
         VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
             .ShouldBeFalse();
-        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetypeLocal);
+        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetype);
+    }
+
+    [Fact]
+    public void TryEncode_GenericCall_ListAdd_Skips()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var listType = new TypeRefUser(module, "System.Collections.Generic", "List`1", module.CorLibTypes.AssemblyRef);
+        var listInt = new TypeSpecUser(new GenericInstSig(new ClassSig(listType), module.CorLibTypes.Int32));
+        var add = new MemberRefUser(
+            module,
+            "Add",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.Int32),
+            listInt);
+        var method = CreateInt32Method(type, "Caller", 0);
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, add));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.UnsupportedOpcode);
+    }
+
+    [Fact]
+    public void TryEncode_GenericCall_ArrayEmpty_Skips()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var arrayType = new TypeRefUser(module, "System", "Array", module.CorLibTypes.AssemblyRef);
+        var empty = new MemberRefUser(
+            module,
+            "Empty",
+            MethodSig.CreateStaticGeneric(1, new SZArraySig(new GenericMVar(0))),
+            arrayType);
+        var spec = new MethodSpecUser(empty, new GenericInstMethodSig(module.CorLibTypes.Int32));
+        var method = CreateInt32Method(type, "Caller", 0);
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Call, spec));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.UnsupportedOpcode);
+    }
+
+    [Fact]
+    public void TryEncode_GenericNewobj_ListInt_Skips()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var listType = new TypeRefUser(module, "System.Collections.Generic", "List`1", module.CorLibTypes.AssemblyRef);
+        var listInt = new TypeSpecUser(new GenericInstSig(new ClassSig(listType), module.CorLibTypes.Int32));
+        var ctor = new MemberRefUser(
+            module,
+            ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void),
+            listInt);
+        var method = CreateInt32Method(type, "Make", 0);
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Newobj, ctor));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.UnsupportedOpcode);
+    }
+
+    [Fact]
+    public void TryEncode_UnresolvedValueTypeParam_SkipsByRef()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var other = new AssemblyRefUser("OtherLib", new Version(1, 0, 0, 0));
+        var extStruct = new TypeRefUser(module, "OtherNs", "Blob", other);
+        extStruct.ResolveTypeDef().ShouldBeNull();
+        var method = new MethodDefUser(
+            "TakesBlob",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, new ValueTypeSig(extStruct)),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
+
+        VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.ByRef);
     }
 
     [Fact]

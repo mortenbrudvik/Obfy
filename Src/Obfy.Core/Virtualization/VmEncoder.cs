@@ -89,7 +89,7 @@ public static class VmEncoder
 
         if (IsNonPrimitiveValueType(method.MethodSig?.RetType))
         {
-            skipReason = VmSkipReasons.NonPrimitiveValuetypeLocal;
+            skipReason = VmSkipReasons.NonPrimitiveValuetype;
             return false;
         }
 
@@ -103,7 +103,7 @@ public static class VmEncoder
 
             if (IsNonPrimitiveValueType(param.Type))
             {
-                skipReason = VmSkipReasons.NonPrimitiveValuetypeLocal;
+                skipReason = VmSkipReasons.NonPrimitiveValuetype;
                 return false;
             }
         }
@@ -118,7 +118,7 @@ public static class VmEncoder
 
             if (IsNonPrimitiveValueType(local.Type))
             {
-                skipReason = VmSkipReasons.NonPrimitiveValuetypeLocal;
+                skipReason = VmSkipReasons.NonPrimitiveValuetype;
                 return false;
             }
         }
@@ -453,9 +453,7 @@ public static class VmEncoder
         skipReason = null;
         op = default;
 
-        if (instr.Operand is MethodSpec)
-            return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
-        if (instr.Operand is not IMethod called)
+        if (instr.Operand is not IMethod called || IsUnsupportedGenericMember(called))
             return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
         if (called.MethodSig is null)
             return Fail(VmSkipReasons.InvalidBytecode, out skipReason);
@@ -501,9 +499,7 @@ public static class VmEncoder
         skipReason = null;
         op = default;
 
-        if (instr.Operand is MethodSpec)
-            return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
-        if (instr.Operand is not IMethod ctor)
+        if (instr.Operand is not IMethod ctor || IsUnsupportedGenericMember(ctor))
             return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
         if (IsValueType(ctor.DeclaringType))
             return Fail(VmSkipReasons.ValuetypeNewobj, out skipReason);
@@ -534,7 +530,7 @@ public static class VmEncoder
         push = pushCount;
         skipReason = null;
         op = opcode;
-        if (instr.Operand is not IField field)
+        if (instr.Operand is not IField field || IsUnsupportedGenericMember(field))
             return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
         buffer.Add((byte)opcode);
         WriteU16(buffer, tables.AddField(field));
@@ -902,6 +898,42 @@ public static class VmEncoder
         }
     }
 
+    private static bool IsUnsupportedGenericMember(IMemberRef member)
+    {
+        if (member is MethodSpec)
+            return true;
+        if (member is IMethod method && method.MethodSig is { GenParamCount: > 0 })
+            return true;
+        return IsGenericInstantiation(member.DeclaringType);
+    }
+
+    private static bool IsGenericInstantiation(ITypeDefOrRef? type)
+    {
+        while (type is not null)
+        {
+            if (type is TypeSpec spec)
+            {
+                var sig = spec.TypeSig?.RemovePinnedAndModifiers();
+                if (sig is GenericInstSig)
+                    return true;
+                if (sig is TypeDefOrRefSig tdr)
+                {
+                    type = tdr.TypeDefOrRef;
+                    continue;
+                }
+
+                return false;
+            }
+
+            if (type is TypeDef td)
+                return td.HasGenericParameters;
+
+            return type.NumberOfGenericParameters > 0;
+        }
+
+        return false;
+    }
+
     private static bool IsForbiddenByRef(TypeSig? sig)
     {
         sig = sig?.RemovePinnedAndModifiers();
@@ -924,10 +956,19 @@ public static class VmEncoder
             return true;
 
         if (sig is GenericInstSig generic)
-            return IsByRefLike(generic.GenericType.TypeDefOrRef);
+        {
+            return IsByRefLikeName(generic.GenericType.TypeName)
+                || IsByRefLikeFullName(generic.GenericType.FullName)
+                || IsByRefLike(generic.GenericType.TypeDefOrRef);
+        }
 
         if (sig is TypeDefOrRefSig tdr)
-            return IsByRefLike(tdr.TypeDefOrRef);
+        {
+            if (IsByRefLike(tdr.TypeDefOrRef))
+                return true;
+            return tdr.ElementType is ElementType.ValueType
+                && tdr.TypeDefOrRef.ResolveTypeDef() is null;
+        }
 
         return false;
     }

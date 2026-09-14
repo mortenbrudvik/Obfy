@@ -1,5 +1,6 @@
 using System.Reflection;
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Obfy.Core.Models;
@@ -171,6 +172,55 @@ public class VmRuntimeExecuteTests
         }).ShouldBe(4);
     }
 
+    [Fact]
+    public void Run_CallVm_StaticACallsStaticB()
+    {
+        const string src = """
+            public static class Lib {
+                public static int Inner(int x) => x + 1;
+                public static int Outer(int x) => Inner(x) * 2;
+            }
+            """;
+        EncodeImportInvokeBoth(src, "Lib", "Outer", poisonCalleeStub: false, 3).ShouldBe(8);
+    }
+
+    [Fact]
+    public void Run_CallVm_DoesNotEnterStubForCallee()
+    {
+        const string src = """
+            public static class Lib {
+                public static int Inner(int x) => x + 1;
+                public static int Outer(int x) => Inner(x) * 2;
+            }
+            """;
+        EncodeImportInvokeBoth(src, "Lib", "Outer", poisonCalleeStub: true, 3).ShouldBe(8);
+    }
+
+    [Fact]
+    public void Run_ArrayBoxCastThrow()
+    {
+        const string src = """
+            public static class Lib {
+                public static int Go() {
+                    var a = new int[2];
+                    a[1] = 4;
+                    object o = 5;
+                    int n = (int)o;
+                    return a[1] + n;
+                }
+            }
+            """;
+        EncodeImportInvoke(src, "Lib", "Go").ShouldBe(9);
+    }
+
+    [Fact]
+    public void Run_Throw_Propagates()
+    {
+        const string src = "public static class Lib { public static int Boom() { throw new System.InvalidOperationException(\"x\"); } }";
+        Should.Throw<InvalidOperationException>(() => EncodeImportInvoke(src, "Lib", "Boom"))
+            .Message.ShouldBe("x");
+    }
+
     private static object? EncodeImportInvoke(
         string source,
         string typeName,
@@ -237,6 +287,113 @@ public class VmRuntimeExecuteTests
         {
             try { Directory.Delete(dir, true); } catch { /* ignore */ }
         }
+    }
+
+    private static object? EncodeImportInvokeBoth(
+        string source,
+        string typeName,
+        string entryMethod,
+        bool poisonCalleeStub,
+        params object[] args)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "obfy-vm-src-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "VmExecLib", OptimizationLevel.Debug);
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var type = module.Types.FirstOrDefault(t => t.Name == typeName);
+            type.ShouldNotBeNull($"type '{typeName}' was not found");
+            var selected = VmEncoder.Select(type!.Methods, maxMethods: 256);
+            selected.Count.ShouldBeGreaterThanOrEqualTo(2);
+
+            var ids = new Dictionary<MethodDef, int>();
+            for (var i = 0; i < selected.Count; i++)
+                ids[selected[i]] = i;
+
+            var tables = new VmMemberTables();
+            var blobs = new byte[selected.Count][];
+            var starts = new int[selected.Count];
+            var returnTypes = new ITypeDefOrRef[selected.Count];
+            var offset = 0;
+            for (var i = 0; i < selected.Count; i++)
+            {
+                VmEncoder.TryEncode(selected[i], ids, tables, out blobs[i], out var skipReason)
+                    .ShouldBeTrue($"expected encode of '{selected[i].Name}' to succeed, skipReason={skipReason}");
+                skipReason.ShouldBeNull();
+                starts[i] = offset;
+                offset += blobs[i].Length;
+                returnTypes[i] = selected[i].MethodSig.RetType.ToTypeDefOrRef();
+            }
+
+            var entryIndex = -1;
+            for (var i = 0; i < selected.Count; i++)
+            {
+                if (selected[i].Name == entryMethod)
+                    entryIndex = i;
+            }
+
+            entryIndex.ShouldBeGreaterThanOrEqualTo(0, $"entry method '{entryMethod}' was not selected");
+            blobs[entryIndex].ShouldContain((byte)VmOp.CallVm);
+
+            var code = new byte[offset];
+            offset = 0;
+            for (var i = 0; i < blobs.Length; i++)
+            {
+                Buffer.BlockCopy(blobs[i], 0, code, offset, blobs[i].Length);
+                offset += blobs[i].Length;
+            }
+
+            var identity = Enumerable.Range(0, 256).Select(i => (byte)i).ToArray();
+            var context = PipelineContext.ForAssembly(module, new ObfySettings());
+            var vmType = VmImporter.Import(
+                context,
+                code,
+                starts,
+                opMap: identity,
+                xorKey: new byte[8],
+                methods: tables.Methods,
+                fields: tables.Fields,
+                types: tables.Types,
+                returnTypes: returnTypes);
+            var run = vmType.FindMethod("Run");
+            run.ShouldNotBeNull();
+            for (var i = 0; i < selected.Count; i++)
+                VmImporter.WriteStub(selected[i], run!, id: i);
+
+            if (poisonCalleeStub)
+            {
+                foreach (var method in selected)
+                {
+                    if (method.Name != entryMethod)
+                        ReplaceStubWithThrow(method);
+                }
+            }
+
+            return VmExecuteHarness.Invoke(module, typeName, entryMethod, args);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    private static void ReplaceStubWithThrow(MethodDef method)
+    {
+        var module = method.Module
+            ?? throw new InvalidOperationException("Poison stub method has no module.");
+        var ex = new TypeRefUser(module, "System", "InvalidOperationException", module.CorLibTypes.AssemblyRef);
+        var ctor = new MemberRefUser(
+            module,
+            ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.String),
+            ex);
+        var body = new CilBody { MaxStack = 8 };
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldstr, "Inner stub invoked"));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newobj, ctor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Throw));
+        body.UpdateInstructionOffsets();
+        method.Body = body;
     }
 
     private static MethodDef FindMethod(ModuleDef module, string typeName, string methodName)

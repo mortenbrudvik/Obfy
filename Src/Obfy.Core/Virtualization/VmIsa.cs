@@ -25,6 +25,9 @@ public enum VmOp : byte
     Throw = 76, Ret = 77
 }
 
+/// <summary>
+/// Encoded widths for internal VM opcodes. Used to walk a blob before permutation/XOR.
+/// </summary>
 public static class VmIsa
 {
     public static int EncodedSize(byte[] blob, int offset)

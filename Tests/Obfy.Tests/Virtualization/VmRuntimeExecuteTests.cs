@@ -221,6 +221,33 @@ public class VmRuntimeExecuteTests
             .Message.ShouldBe("x");
     }
 
+    [Fact]
+    public void Apply_ThenRun_StillAdds()
+    {
+        EncodeImportInvoke(
+            "public static class Lib { public static int Add(int a, int b) => a + b; }",
+            "Lib", "Add", new object[] { 2, 3 }, OptimizationLevel.Debug, invoke: null, applySeed: true)
+            .ShouldBe(5);
+    }
+
+    [Fact]
+    public void Apply_ThenRun_StillReturnsHi()
+    {
+        EncodeImportInvoke(
+            "public static class Lib { public static string Hi() => \"hi\"; }",
+            "Lib", "Hi", Array.Empty<object>(), OptimizationLevel.Debug, invoke: null, applySeed: true)
+            .ShouldBe("hi");
+    }
+
+    [Fact]
+    public void Apply_ThenRun_StillBranches()
+    {
+        EncodeImportInvoke(
+            "public static class Lib { public static int Pick(int a, int b) => a < b ? 1 : 0; }",
+            "Lib", "Pick", new object[] { 1, 2 }, OptimizationLevel.Debug, invoke: null, applySeed: true)
+            .ShouldBe(1);
+    }
+
     private static object? EncodeImportInvoke(
         string source,
         string typeName,
@@ -249,7 +276,17 @@ public class VmRuntimeExecuteTests
         string methodName,
         object[] args,
         OptimizationLevel optimization,
-        Func<Assembly, object?>? invoke)
+        Func<Assembly, object?>? invoke) =>
+        EncodeImportInvoke(source, typeName, methodName, args, optimization, invoke, applySeed: false);
+
+    private static object? EncodeImportInvoke(
+        string source,
+        string typeName,
+        string methodName,
+        object[] args,
+        OptimizationLevel optimization,
+        Func<Assembly, object?>? invoke,
+        bool applySeed)
     {
         var dir = Path.Combine(Path.GetTempPath(), "obfy-vm-src-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -264,14 +301,26 @@ public class VmRuntimeExecuteTests
             skipReason.ShouldBeNull();
 
             var identity = Enumerable.Range(0, 256).Select(i => (byte)i).ToArray();
+            var opMap = identity;
+            var xorKey = new byte[8];
+            if (applySeed)
+            {
+                var seed = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+                opMap = VmSeed.CreateOpMap(seed);
+                xorKey = VmSeed.CreateXorKey(seed);
+                opMap.SequenceEqual(identity).ShouldBeFalse();
+                xorKey.SequenceEqual(new byte[8]).ShouldBeFalse();
+                VmSeed.Apply(code, opMap, xorKey);
+            }
+
             var retType = method.MethodSig.RetType.ToTypeDefOrRef();
             var context = PipelineContext.ForAssembly(module, new ObfySettings());
             var vmType = VmImporter.Import(
                 context,
                 code,
                 starts: new[] { 0 },
-                opMap: identity,
-                xorKey: new byte[8],
+                opMap: opMap,
+                xorKey: xorKey,
                 methods: tables.Methods,
                 fields: tables.Fields,
                 types: tables.Types,

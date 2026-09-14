@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/)
 [![CI](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml/badge.svg)](https://github.com/mortenbrudvik/Obfy/actions/workflows/ci.yml)
+[![Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-Get%20it-blue.svg)](https://apps.microsoft.com/detail/9NNLPK835QM4)
 
 **Professional .NET obfuscation tool for protecting C# assemblies and source code.**
 
@@ -44,9 +45,11 @@ If both the Windows installer/MSIX and the global tool are installed, both regis
 
 ### Windows installer / MSIX
 
+**[Get Obfy on the Microsoft Store](https://apps.microsoft.com/detail/9NNLPK835QM4)** — free download for Windows.
+
 Download and run the Obfy installer, which adds the `obfy` command to your PATH and installs the WPF UI.
 
-You can also build a sideload/Store MSIX locally (this is not a Store listing yet):
+You can also build a sideload/Store MSIX locally:
 
 ```powershell
 .\build\build-msix.ps1

@@ -17,7 +17,7 @@ Obfy applies techniques in a specific order (priority):
 | 20 | Anti-Decompiler | Junk types, SuppressIldasm, decoy ConfusedBy/Dotfuscator attributes |
 | 21 | Watermark | Assembly-level pinned WatermarkAttribute |
 | 22 | Anti-Tamper | Verify assembly integrity |
-| 24 | Virtualization | Replace selected simple static int methods with a bytecode interpreter |
+| 24 | Virtualization | Replace eligible methods with a bytecode interpreter (CoreCLR; no EH/generic calls/byref/custom structs) |
 | 25 | Method Encryption | XOR method IL in the PE (Windows) |
 | 30 | Control Flow | Flatten control flow |
 | 40 | Reference Proxy | Hide call targets behind proxies |
@@ -261,13 +261,32 @@ Enabled in the Aggressive preset (`protection.methodEncryption`).
 
 ### Virtualization
 
-Replaces a small set of **simple static `int` methods** with a bytecode interpreter stub. This is not commercial-grade code virtualization (no custom VM for arbitrary IL).
+Replaces eligible **instance and static** methods with a stub that calls an imported bytecode interpreter (`Obfy.Runtime.Vm.Run`). Enable with `--virtualize`, the desktop **Virtualize methods** toggle, or `virtualization.enabled`. Off in every level preset (Minimal, Standard, Aggressive). Runs at priority 24, before method IL encryption.
 
-**Eligible methods** (everything else is skipped):
+This is a **deterrent, not confidentiality**. The interpreter, opcode map, and XOR key are embedded in the output. Anyone who runs or inspects the assembly can recover the original logic.
 
-- `static`, non-generic, no exception handlers
-- Return `int`; parameters are `int` only
-- Body limited to `ldc.i4`, `ldarg`, `add`, `sub`, `mul`, and `ret`
+**Encoded IL** (typical methods):
+
+- Instance and static methods
+- Objects, non-generic calls, fields, `newobj`, `ldstr`
+- Integer and floating arithmetic: i4 / i8 / r4 / r8
+- Locals, arguments, signed and unsigned compares, branches
+
+**Skipped** (original IL is kept):
+
+- Exception handlers
+- Generic methods, generic types, and generic **calls** (`MethodSpec`)
+- Byref parameters
+- Custom structs and `Nullable<T>` (parameter, return, or local)
+- `switch`
+- Constructors
+- `typeof`
+- String interpolators
+- `foreach` / `using`
+
+Per-build opcode permutation and XOR of the bytecode blob (from the incremental-cache key). This is not a unique generated VM per run. CoreCLR only: NativeAOT / Unity IL2CPP / Blazor WASM gate the feature off with a warning.
+
+When virtualization is enabled, string encryption (priority 10) and constant encryption (priority 11) skip the selected methods so `ldstr` / `ldc.*` still reach the encoder. Those literals then live in the XOR blob instead of going through the decryptor.
 
 **Settings:**
 
@@ -280,7 +299,7 @@ Replaces a small set of **simple static `int` methods** with a bytecode interpre
 }
 ```
 
-Off in every level preset. `maxMethods` is clamped to 1–256 (default 32). Config-only (no CLI flag). Runs at priority 24, before method IL encryption.
+Off in every level preset. `maxMethods` is 1–256 (default 32); out of range fails the run. Enable with `--virtualize`. Not a native packer.
 
 ---
 

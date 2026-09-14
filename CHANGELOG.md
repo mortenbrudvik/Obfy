@@ -7,12 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- Store MSIX no longer sets `AppListEntry=none` on the CLI entry (Partner Center rejects that as a headless app)
+### Added
+- General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof`, interpolators, foreach/using; per-build opcode permutation + XOR; CoreCLR only; off in every preset; deterrent, not confidentiality
 
 ### Changed
+- `--virtualize` help: `Enable IL virtualization of eligible methods (no EH/generic calls/byref/custom structs; CoreCLR only)`
+- Desktop toggle label `Virtualize methods` (was `Virtualize simple methods`)
+- Competitive analysis: code virtualization **Yes** with the eligibility limits footnote (Babel-class managed VM; does not cover Reactor)
 - GitHub Release NuGet publish uses Trusted Publishing (OIDC) instead of a long-lived API key
 - Microsoft Store identity is in `package/store-identity.json`; `.\build\build-msix.ps1 -Store` packs an unsigned Store MSIX; privacy policy is `PRIVACY.md`
+
+### Fixed
+- Store MSIX no longer sets `AppListEntry=none` on the CLI entry (Partner Center rejects that as a headless app)
 
 ## [1.3.0] - 2026-09-13
 

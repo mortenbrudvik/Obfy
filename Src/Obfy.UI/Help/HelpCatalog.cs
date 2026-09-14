@@ -45,7 +45,7 @@ public static class HelpCatalog
             new HelpNamedNote("Protection", "Anti-Debug, Anti-Tamper, Anti-Dump, Anti-Decompiler, Reference Proxy, and Method IL Encryption."),
             new HelpNamedNote("Metadata", "Remove Debug Info, Remove Attributes, and Strip Documentation."),
             new HelpNamedNote("Watermark", "Embeds a Customer / build id. The id is required when Watermark is on."),
-            new HelpNamedNote("Managed launcher", "Pack managed launcher, Incremental cache, and Virtualize simple methods."),
+            new HelpNamedNote("Managed launcher", "Pack managed launcher, Incremental cache, and Virtualize methods."),
             new HelpNamedNote("Strong-Name Signing", "Re-signs the output with a Key file (.snk / .pfx)."),
             new HelpNamedNote("Resource Encryption", "Encrypts embedded resources (XOR or AES-256). This is obfuscation, not secrecy."),
             new HelpNamedNote("Assembly Merge", "Merge input assemblies into one output, and optionally Embed referenced DLLs."),

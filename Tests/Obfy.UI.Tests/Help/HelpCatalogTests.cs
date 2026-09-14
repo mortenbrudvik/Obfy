@@ -122,6 +122,15 @@ public class HelpCatalogTests
         headings.ShouldBe(TechniqueHeadings);
     }
 
+    [Fact]
+    public void Techniques_ManagedLauncher_SaysVirtualizeMethods()
+    {
+        var note = Topic(HelpCatalog.TechniquesId).Blocks.OfType<HelpNamedNote>()
+            .Single(n => n.Heading == "Managed launcher");
+        note.Text.ShouldContain("Virtualize methods");
+        note.Text.ShouldNotContain("Virtualize simple methods");
+    }
+
     private static HelpTopic Topic(string id) =>
         HelpCatalog.Create().Single(t => t.Id == id);
 

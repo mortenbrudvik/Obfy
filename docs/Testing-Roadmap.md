@@ -160,7 +160,7 @@ The items that were listed as opportunistic holes. TR-52 stays IL-only (PF-19).
 
 | ID | Work | Status |
 |----|------|--------|
-| TR-50 | Virtualization: skip ineligible IL unchanged; encode `ldc.i4`/`ldarg`/`add`/`sub`/`mul`/`ret`; succeed when nothing is eligible | ✅ Done (`VirtualizationObfuscatorTests`) |
+| TR-50 | Virtualization: skip ineligible IL (EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, typeof, interpolators, foreach/using); encode typical instance/static methods (i4/i8/r4/r8, objects, non-generic calls, fields, newobj, ldstr); succeed when nothing is eligible | ✅ Done (`VirtualizationObfuscatorTests`) |
 | TR-51 | `IncrementalCache.TryHit`: settings change and input-byte change invalidate; packing without launcher is a miss | ✅ Done (`IncrementalCacheTests`) |
 | TR-52 | Anti-dump runtime MiniDump | Left as IL-only (see PF-19) |
 | TR-53 | Two `.cs` files, rename across files, recompile and run | ✅ Done (`SourceDirectory_TwoFiles_RenameAcrossFiles_RecompilesAndRuns`) |
@@ -193,7 +193,7 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 - Replacing dnlib unit tests with SDK projects
 - Combinatorial TFM matrix (`net48` × `net8` × `net10`) without a demonstrated bug
 - Automating ProcDump / external anti-dump (PF-19)
-- A general virtualization VM test suite (PF-08) before the VM exists
+- Remaining VM surface tests (EH/generics/byref, Approach B) before that work exists
 - Growing FlaUI page-object coverage of every settings toggle
 - Claiming Unity / MAUI / Blazor / AOT support from wizard-default tests alone
 

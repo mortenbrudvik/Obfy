@@ -8,9 +8,11 @@ using Obfy.Core.Virtualization;
 namespace Obfy.Core.Obfuscators.Assembly;
 
 /// <summary>
-/// Replaces eligible methods with a stub that calls the imported <c>Obfy.Runtime.Vm.Run</c>
-/// interpreter. Selection, encoding, seed XOR, and import are delegated to
-/// <see cref="VmEncoder"/>, <see cref="VmSeed"/>, and <see cref="VmImporter"/>.
+/// Replaces eligible instance and static methods with a stub that calls the imported
+/// <c>Obfy.Runtime.Vm.Run</c> interpreter. Skips EH, generic methods/types/calls, byref,
+/// custom structs, and <c>Nullable{T}</c>. CoreCLR only. Selection, encoding, seed XOR,
+/// and import are delegated to <see cref="VmEncoder"/>, <see cref="VmSeed"/>, and
+/// <see cref="VmImporter"/>.
 /// </summary>
 public class VirtualizationObfuscator : IObfuscator
 {

@@ -25,7 +25,8 @@ public class VmImporterTests
             xorKey: new byte[8],
             methods: Array.Empty<IMethod>(),
             fields: Array.Empty<IField>(),
-            types: Array.Empty<ITypeDefOrRef>());
+            types: Array.Empty<ITypeDefOrRef>(),
+            returnTypes: Array.Empty<ITypeDefOrRef>());
 
         type.FullName.ShouldBe("Obfy.Runtime.Vm");
         type.FindMethod("Run").ShouldNotBeNull();

@@ -23,7 +23,8 @@ public static class VmImporter
         byte[] xorKey,
         IReadOnlyList<IMethod> methods,
         IReadOnlyList<IField> fields,
-        IReadOnlyList<ITypeDefOrRef> types)
+        IReadOnlyList<ITypeDefOrRef> types,
+        IReadOnlyList<ITypeDefOrRef> returnTypes)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(code);
@@ -33,11 +34,12 @@ public static class VmImporter
         ArgumentNullException.ThrowIfNull(methods);
         ArgumentNullException.ThrowIfNull(fields);
         ArgumentNullException.ThrowIfNull(types);
+        ArgumentNullException.ThrowIfNull(returnTypes);
 
         var dest = context.RequireModule();
         var vmType = CopyVmType(dest);
         RetargetCorlib(vmType, dest);
-        ReplaceCctor(vmType, dest, code, starts, opMap, xorKey, methods, fields, types);
+        ReplaceCctor(vmType, dest, code, starts, opMap, xorKey, methods, fields, types, returnTypes);
         RuntimeInjection.Register(context, vmType, new RuntimeHelperOptions
         {
             FlattenControlFlow = true,
@@ -45,6 +47,51 @@ public static class VmImporter
             EncryptIl = false
         });
         return vmType;
+    }
+
+    public static void WriteStub(MethodDef method, MethodDef run, int id)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+        ArgumentNullException.ThrowIfNull(run);
+        var module = method.Module
+            ?? throw new InvalidOperationException("Virtualization failed: stub method has no module.");
+        var argc = method.Parameters.Count;
+        var body = new CilBody { MaxStack = 8 };
+        body.Instructions.Add(Instruction.CreateLdcI4(id));
+        body.Instructions.Add(Instruction.CreateLdcI4(argc));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Object.ToTypeDefOrRef()));
+        for (var i = 0; i < argc; i++)
+        {
+            var param = method.Parameters[i];
+            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+            body.Instructions.Add(Instruction.CreateLdcI4(i));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg, param));
+            var paramType = param.Type.RemovePinnedAndModifiers();
+            if (paramType is not null && paramType.IsValueType)
+                body.Instructions.Add(Instruction.Create(OpCodes.Box, paramType.ToTypeDefOrRef()));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
+        }
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, run));
+        var ret = method.MethodSig?.RetType.RemovePinnedAndModifiers();
+        if (ret is null || ret.ElementType == ElementType.Void)
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        }
+        else if (ret.IsValueType)
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Unbox_Any, ret.ToTypeDefOrRef()));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        }
+        else
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Castclass, ret.ToTypeDefOrRef()));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        }
+
+        body.UpdateInstructionOffsets();
+        method.Body = body;
     }
 
     private static TypeDef CopyVmType(ModuleDef dest)
@@ -379,7 +426,8 @@ public static class VmImporter
         byte[] xorKey,
         IReadOnlyList<IMethod> methods,
         IReadOnlyList<IField> fields,
-        IReadOnlyList<ITypeDefOrRef> types)
+        IReadOnlyList<ITypeDefOrRef> types,
+        IReadOnlyList<ITypeDefOrRef> returnTypes)
     {
         var existing = vmType.FindStaticConstructor();
         if (existing is not null)
@@ -448,6 +496,11 @@ public static class VmImporter
         EmitTokenArray(body, types.Count, typeType, i =>
         {
             body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, types[i]));
+            body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
+        });
+        EmitTokenArray(body, returnTypes.Count, typeType, i =>
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, returnTypes[i]));
             body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
         });
         body.Instructions.Add(Instruction.Create(OpCodes.Call, init));

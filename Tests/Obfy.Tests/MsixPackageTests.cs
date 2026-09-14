@@ -17,6 +17,7 @@ public class MsixPackageTests
     private static readonly string AssetsDir = Path.Combine(RepoRoot, "package", "Assets");
     private static readonly string VersionPath = Path.Combine(RepoRoot, "version.json");
     private static readonly string BuildScriptPath = Path.Combine(RepoRoot, "build", "build-msix.ps1");
+    private static readonly string StoreIdentityPath = Path.Combine(RepoRoot, "package", "store-identity.json");
     private static readonly string AssetGeneratorPath = Path.Combine(RepoRoot, "build", "generate-msix-assets.ps1");
     private static readonly string UiProjectPath = Path.Combine(RepoRoot, "Src", "Obfy.UI", "Obfy.UI.csproj");
     private static readonly string ConsoleProjectPath = Path.Combine(RepoRoot, "Src", "Obfy.Console", "Obfy.Console.csproj");
@@ -163,6 +164,28 @@ public class MsixPackageTests
             .Attribute("Executable")!.Value.ShouldBe("ObfyUI.exe");
         applications.Single(a => a.Attribute("Id")?.Value == "ObfyCLI")
             .Attribute("Executable")!.Value.ShouldBe("CLI\\obfy.exe");
+    }
+
+    [Fact]
+    public void StoreIdentityJson_HasPartnerCenterFields()
+    {
+        File.Exists(StoreIdentityPath).ShouldBeTrue($"Expected Store identity at {StoreIdentityPath}");
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(StoreIdentityPath));
+        var root = doc.RootElement;
+        root.GetProperty("name").GetString().ShouldBe("MortenBrudvik.Obfy");
+        root.GetProperty("publisher").GetString().ShouldBe("CN=E6ED6F6D-88CB-42AC-BED3-B0FA24EC28DD");
+        root.GetProperty("publisherDisplayName").GetString().ShouldBe("Morten Brudvik");
+        root.GetProperty("productId").GetString().ShouldBe("9NNLPK835QM4");
+    }
+
+    [Fact]
+    public void BuildScript_StoreSwitchReadsIdentityFile()
+    {
+        var script = ReadBuildScript();
+        script.ShouldContain("[switch]$Store");
+        script.ShouldContain("package\\store-identity.json");
+        script.ShouldContain("required with -Store");
     }
 
     [Fact]

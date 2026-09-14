@@ -52,7 +52,7 @@ You can also build a sideload/Store MSIX locally (this is not a Store listing ye
 .\build\build-msix.ps1
 ```
 
-See `package/README.md` for sideload, certificate trust, and Partner Center identity steps.
+See `package/README.md` for sideload, certificate trust, and Partner Center identity steps. Privacy policy: [PRIVACY.md](PRIVACY.md).
 
 ## Quick Start
 

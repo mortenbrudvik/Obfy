@@ -40,16 +40,49 @@ Use `-Name` matching the identity you packed if you overrode the default.
 
 ## Microsoft Store
 
-1. Create a Partner Center developer account and reserve the name **Obfy** (or another available title).
-2. Copy the Store **Package/Identity name** and **Publisher** (`CN=...`) from Partner Center.
-3. Rebuild with those values (signing is optional — Microsoft re-signs):
+Reserved name **Obfy**. Identity lives in `package/store-identity.json` (do not put these values in the committed `AppxManifest.xml` — tests pin the sideload identity).
+
+| Field | Value |
+|-------|--------|
+| Identity Name | `MortenBrudvik.Obfy` |
+| Publisher | `CN=E6ED6F6D-88CB-42AC-BED3-B0FA24EC28DD` |
+| Publisher display | Morten Brudvik |
+| Product ID | `9NNLPK835QM4` |
+
+Rebuild with Partner Center identity. Signing is optional — Microsoft re-signs Store uploads:
 
 ```powershell
-.\build\build-msix.ps1 -Name "<StoreIdentityName>" -Publisher "CN=<StorePublisherId>" -PublisherDisplayName "<Publisher display name>" -SkipSign
+.\build\build-msix.ps1 -Store
 ```
 
-4. Upload `build/msix-output/Obfy-*.msix` on the submission Packages page. A CA-trusted cert is not required for MSIX Store uploads.
-5. Provide a privacy policy URL (required for Win32/Desktop Bridge), screenshots, IARC age rating, and notes for certification: this is a developer obfuscator; include a sample DLL and expected output.
-6. `runFullTrust` is a restricted capability — the first Store submission needs a justification (full-trust Win32 WPF + CLI).
+Equivalent explicit flags:
+
+```powershell
+.\build\build-msix.ps1 -Name "MortenBrudvik.Obfy" -Publisher "CN=E6ED6F6D-88CB-42AC-BED3-B0FA24EC28DD" -PublisherDisplayName "Morten Brudvik" -SkipSign
+```
+
+Upload `build/msix-output/Obfy-*.msix` on the submission Packages page. A CA-trusted cert is not required for MSIX Store uploads.
+
+Privacy policy URL: https://github.com/mortenbrudvik/Obfy/blob/main/PRIVACY.md  
+Gist mirror (same text): https://gist.github.com/mortenbrudvik/2c9647e32d8ac32a7f1bda844923bb9a
+
+`runFullTrust` is a restricted capability — the first Store submission needs a justification (full-trust Win32 WPF + CLI). Paste-ready notes are in [Certification](#certification).
 
 Do not change `Identity Name` or `Publisher` after the first Store submission except to the Partner Center values. Default sideload identity (`Obfy.Obfy` / `CN=Obfy`) is not uploadable as a Store package.
+
+## Certification
+
+**Restricted capability (`runFullTrust`):** Full-trust Win32 WPF desktop app plus CLI. Needs unrestricted file I/O to read and write user-selected assemblies, and an App Execution Alias (`obfy.exe`). Not a sandbox UWP app.
+
+**Notes for certification:**
+
+Obfy is a developer obfuscation tool. It rewrites .NET assemblies the tester selects; it is not malware, a packer dropper, or an anti-virus product.
+
+How to test:
+
+1. Launch Obfy from Start.
+2. Add `examples/BasicConsoleApp` output (build that project, or any small .NET DLL) and set an empty output folder.
+3. Click Obfuscate. Expect a success log and an obfuscated DLL in the output folder.
+4. Optional: open a terminal and run `obfy --help` (App Execution Alias).
+
+Expected: the UI stays responsive, output is a loadable .NET assembly, no network calls, no elevation prompt.

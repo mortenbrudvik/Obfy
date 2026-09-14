@@ -74,8 +74,11 @@ dotnet tool install --global Obfy
 # Run UI
 dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
 
-# Build MSIX (Store / sideload)
+# Build MSIX (sideload identity)
 .\build\build-msix.ps1
+
+# Build unsigned Store MSIX (Partner Center identity from package/store-identity.json)
+.\build\build-msix.ps1 -Store
 ```
 
 ## CLI Usage
@@ -178,6 +181,8 @@ Uses Autofac with module-based registration (`ObfuscationModule`).
 | `Obfy.UI/ViewModels/MainViewModel.cs` | UI orchestration and obfuscation logic |
 | `Obfy.UI/ViewModels/SettingsViewModel.cs` | UI settings binding to ObfySettings |
 | `package/AppxManifest.xml` | MSIX identity, full-trust capability, CLI alias |
+| `package/store-identity.json` | Partner Center Name / Publisher / Product ID for `-Store` packs |
+| `PRIVACY.md` | Privacy policy for Microsoft Store listing |
 | `build/build-msix.ps1` | Store/sideload MSIX pack pipeline |
 | `build/generate-msix-assets.ps1` | 100% scale Store logo and splash assets |
 

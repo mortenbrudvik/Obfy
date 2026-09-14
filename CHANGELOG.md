@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - GitHub Release NuGet publish uses Trusted Publishing (OIDC) instead of a long-lived API key
+- Microsoft Store identity is in `package/store-identity.json`; `.\build\build-msix.ps1 -Store` packs an unsigned Store MSIX; privacy policy is `PRIVACY.md`
 
 ## [1.3.0] - 2026-09-13
 

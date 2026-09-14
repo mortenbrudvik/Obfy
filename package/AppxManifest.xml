@@ -12,7 +12,8 @@
     version.json / script parameters. Keep committed Version in sync with
     version.json (major.minor.patch.0) so tests pass.
     After reserving the app name in Partner Center, rebuild with:
-      .\build\build-msix.ps1 -Name <StoreIdentityName> -Publisher "<StorePublisher>" -PublisherDisplayName "<Publisher display name>"
+      .\build\build-msix.ps1 -Store
+    Identity values: package/store-identity.json. Do not commit Store Name/Publisher here.
   -->
   <Identity
     Name="Obfy.Obfy"

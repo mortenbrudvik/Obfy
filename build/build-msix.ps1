@@ -2,14 +2,16 @@
 # Requires the Windows SDK (MakeAppx, MakePri, SignTool).
 #
 # Default identity is local/sideload (Subject = -Publisher, default CN=Obfy).
-# For Store, pass Partner Center -Name / -Publisher / -PublisherDisplayName;
-# Microsoft re-signs the upload. Unlike the Inno installer, this payload is not
-# self-obfuscated — Store malware scan and Defender often flag packers.
+# For Store, pass -Store (reads package/store-identity.json and implies -SkipSign)
+# or Partner Center -Name / -Publisher / -PublisherDisplayName; Microsoft re-signs
+# the upload. Unlike the Inno installer, this payload is not self-obfuscated —
+# Store malware scan and Defender often flag packers.
 
 param(
     [string]$Name = "Obfy.Obfy",
     [string]$Publisher = "CN=Obfy",
     [string]$PublisherDisplayName = "Obfy",
+    [switch]$Store,
     [switch]$SkipPublish,
     [switch]$SkipSign,
     [switch]$SkipPri,
@@ -34,6 +36,31 @@ $RequiredAssets = @(
     "Wide310x150Logo.png",
     "SplashScreen.png"
 )
+
+if ($Store) {
+    $storeIdentityPath = Join-Path $ProjectRoot "package\store-identity.json"
+    if (-not (Test-Path $storeIdentityPath)) {
+        throw "package/store-identity.json not found (required with -Store)."
+    }
+
+    $storeIdentity = Get-Content $storeIdentityPath -Raw | ConvertFrom-Json
+    foreach ($required in @("name", "publisher", "publisherDisplayName")) {
+        if (-not $storeIdentity.$required) {
+            throw "package/store-identity.json missing '$required'"
+        }
+    }
+
+    if (-not $PSBoundParameters.ContainsKey("Name")) {
+        $Name = [string]$storeIdentity.name
+    }
+    if (-not $PSBoundParameters.ContainsKey("Publisher")) {
+        $Publisher = [string]$storeIdentity.publisher
+    }
+    if (-not $PSBoundParameters.ContainsKey("PublisherDisplayName")) {
+        $PublisherDisplayName = [string]$storeIdentity.publisherDisplayName
+    }
+    $SkipSign = $true
+}
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Obfy MSIX Build" -ForegroundColor Cyan

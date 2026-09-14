@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Microsoft Store identity is in `package/store-identity.json`; `.\build\build-msix.ps1 -Store` packs an unsigned Store MSIX; privacy policy is `PRIVACY.md`
 
 ### Fixed
+- VM `ToClr` boxes and stores enums from I4/I8 bits (`Enum.ToObject`) instead of a null `Ref`
 - Store MSIX no longer sets `AppListEntry=none` on the CLI entry (Partner Center rejects that as a headless app)
 
 ## [1.3.0] - 2026-09-13

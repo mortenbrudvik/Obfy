@@ -6,7 +6,6 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>Obfy.Runtime</RootNamespace>
     <AssemblyName>Obfy.VmRuntime</AssemblyName>
-    <!-- Fields are assigned in Init and read by the interpreter in a later task. -->
-    <NoWarn>$(NoWarn);CS0414;CS8618</NoWarn>
+    <NoWarn>$(NoWarn);CS0414</NoWarn>
   </PropertyGroup>
 </Project>

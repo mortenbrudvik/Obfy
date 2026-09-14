@@ -5,13 +5,14 @@ namespace Obfy.Runtime;
 
 public static class Vm
 {
-    static byte[] _code;
-    static int[] _starts;
-    static byte[] _opMap;
-    static byte[] _xorKey;
-    static MethodBase[] _methods;
-    static FieldInfo[] _fields;
-    static Type[] _types;
+    static byte[] _code = Array.Empty<byte>();
+    static int[] _starts = Array.Empty<int>();
+    static byte[] _opMap = Array.Empty<byte>();
+    static byte[] _xorKey = Array.Empty<byte>();
+    static MethodBase[] _methods = Array.Empty<MethodBase>();
+    static FieldInfo[] _fields = Array.Empty<FieldInfo>();
+    static Type[] _types = Array.Empty<Type>();
+    static Type[] _returnTypes = Array.Empty<Type>();
 
     public static object Run(int id, object[] args)
     {
@@ -25,7 +26,8 @@ public static class Vm
         byte[] xorKey,
         MethodBase[] methods,
         FieldInfo[] fields,
-        Type[] types)
+        Type[] types,
+        Type[] returnTypes)
     {
         _code = code ?? throw new ArgumentNullException(nameof(code));
         _starts = starts ?? throw new ArgumentNullException(nameof(starts));
@@ -34,5 +36,6 @@ public static class Vm
         _methods = methods ?? throw new ArgumentNullException(nameof(methods));
         _fields = fields ?? throw new ArgumentNullException(nameof(fields));
         _types = types ?? throw new ArgumentNullException(nameof(types));
+        _returnTypes = returnTypes ?? throw new ArgumentNullException(nameof(returnTypes));
     }
 }

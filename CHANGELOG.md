@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Store MSIX no longer sets `AppListEntry=none` on the CLI entry (Partner Center rejects that as a headless app)
+- General IL VM: `Init`/`Import` take `returnTypes`; `VmIsa.EncodedSize` matches locked widths; encoder skips generic-instantiation members (`List<int>.Add`) and unresolved valuetype params; importer uses two-arg `GetMethodFromHandle` / `GetFieldFromHandle` so generic tokens cannot poison `Vm.cctor`
 
 ### Changed
 - GitHub Release NuGet publish uses Trusted Publishing (OIDC) instead of a long-lived API key

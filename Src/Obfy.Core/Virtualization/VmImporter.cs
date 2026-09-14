@@ -23,7 +23,8 @@ public static class VmImporter
         byte[] xorKey,
         IReadOnlyList<IMethod> methods,
         IReadOnlyList<IField> fields,
-        IReadOnlyList<ITypeDefOrRef> types)
+        IReadOnlyList<ITypeDefOrRef> types,
+        IReadOnlyList<ITypeDefOrRef> returnTypes)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(code);
@@ -33,11 +34,12 @@ public static class VmImporter
         ArgumentNullException.ThrowIfNull(methods);
         ArgumentNullException.ThrowIfNull(fields);
         ArgumentNullException.ThrowIfNull(types);
+        ArgumentNullException.ThrowIfNull(returnTypes);
 
         var dest = context.RequireModule();
         var vmType = CopyVmType(dest);
         RetargetCorlib(vmType, dest);
-        ReplaceCctor(vmType, dest, code, starts, opMap, xorKey, methods, fields, types);
+        ReplaceCctor(vmType, dest, code, starts, opMap, xorKey, methods, fields, types, returnTypes);
         RuntimeInjection.Register(context, vmType, new RuntimeHelperOptions
         {
             FlattenControlFlow = true,
@@ -379,7 +381,8 @@ public static class VmImporter
         byte[] xorKey,
         IReadOnlyList<IMethod> methods,
         IReadOnlyList<IField> fields,
-        IReadOnlyList<ITypeDefOrRef> types)
+        IReadOnlyList<ITypeDefOrRef> types,
+        IReadOnlyList<ITypeDefOrRef> returnTypes)
     {
         var existing = vmType.FindStaticConstructor();
         if (existing is not null)
@@ -401,19 +404,22 @@ public static class VmImporter
         var methodBase = CorlibRef(dest, "System.Reflection", "MethodBase");
         var fieldInfo = CorlibRef(dest, "System.Reflection", "FieldInfo");
         var typeType = CorlibRef(dest, "System", "Type");
+        var runtimeTypeHandle = new ValueTypeSig(CorlibRef(dest, "System", "RuntimeTypeHandle"));
         var getMethodFromHandle = new MemberRefUser(
             dest,
             "GetMethodFromHandle",
             MethodSig.CreateStatic(
                 new ClassSig(methodBase),
-                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeMethodHandle"))),
+                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeMethodHandle")),
+                runtimeTypeHandle),
             methodBase);
         var getFieldFromHandle = new MemberRefUser(
             dest,
             "GetFieldFromHandle",
             MethodSig.CreateStatic(
                 new ClassSig(fieldInfo),
-                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeFieldHandle"))),
+                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeFieldHandle")),
+                runtimeTypeHandle),
             fieldInfo);
         var getTypeFromHandle = new MemberRefUser(
             dest,
@@ -437,17 +443,26 @@ public static class VmImporter
         EmitByteArray(body, dest, vmType, xorKey, initArray, "rva_xorKey");
         EmitTokenArray(body, methods.Count, methodBase, i =>
         {
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, methods[i]));
+            var method = methods[i];
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, method));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, DeclaringType(method)));
             body.Instructions.Add(Instruction.Create(OpCodes.Call, getMethodFromHandle));
         });
         EmitTokenArray(body, fields.Count, fieldInfo, i =>
         {
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, fields[i]));
+            var field = fields[i];
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, field));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, DeclaringType(field)));
             body.Instructions.Add(Instruction.Create(OpCodes.Call, getFieldFromHandle));
         });
         EmitTokenArray(body, types.Count, typeType, i =>
         {
             body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, types[i]));
+            body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
+        });
+        EmitTokenArray(body, returnTypes.Count, typeType, i =>
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, returnTypes[i]));
             body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
         });
         body.Instructions.Add(Instruction.Create(OpCodes.Call, init));
@@ -546,6 +561,11 @@ public static class VmImporter
         vmType.Fields.Add(field);
         return field;
     }
+
+    private static ITypeDefOrRef DeclaringType(IMemberRef member) =>
+        member.DeclaringType
+        ?? throw new InvalidOperationException(
+            $"Virtualization failed: '{member.FullName}' has no declaring type for Get*FromHandle.");
 
     private static TypeRef CorlibRef(ModuleDef dest, string ns, string name) =>
         dest.CorLibTypes.GetTypeRef(ns, name);

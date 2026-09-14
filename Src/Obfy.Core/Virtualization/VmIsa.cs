@@ -1,7 +1,9 @@
+using System.Buffers.Binary;
+
 namespace Obfy.Core.Virtualization;
 
 /// <summary>
-/// Internal VM opcodes. These numbers are not the on-disk bytes (Task 6 permutes those).
+/// Internal VM opcodes. These ordinals are not the permuted on-disk bytes.
 /// </summary>
 public enum VmOp : byte
 {
@@ -21,4 +23,43 @@ public enum VmOp : byte
     LdelemI4 = 66, LdelemI8 = 67, LdelemR4 = 68, LdelemR8 = 69, LdelemRef = 70,
     StelemI4 = 71, StelemI8 = 72, StelemR4 = 73, StelemR8 = 74, StelemRef = 75,
     Throw = 76, Ret = 77
+}
+
+public static class VmIsa
+{
+    public static int EncodedSize(byte[] blob, int offset)
+    {
+        ArgumentNullException.ThrowIfNull(blob);
+        if ((uint)offset >= (uint)blob.Length)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+
+        var size = (VmOp)blob[offset] switch
+        {
+            VmOp.Ldarg or VmOp.Starg or VmOp.Ldloc or VmOp.Stloc => 2,
+            VmOp.LdcI4 or VmOp.LdcR4 => 5,
+            VmOp.LdcI8 or VmOp.LdcR8 => 9,
+            VmOp.Ldstr => LdstrSize(blob, offset),
+            VmOp.CallVm => 4,
+            VmOp.Br or VmOp.Brtrue or VmOp.Brfalse or VmOp.Beq or VmOp.Bne
+                or VmOp.Blt or VmOp.Ble or VmOp.Bgt or VmOp.Bge
+                or VmOp.BltUn or VmOp.BleUn or VmOp.BgtUn or VmOp.BgeUn
+                or VmOp.Newobj or VmOp.Call or VmOp.Callvirt
+                or VmOp.Ldfld or VmOp.Stfld or VmOp.Ldsfld or VmOp.Stsfld
+                or VmOp.Box or VmOp.UnboxAny or VmOp.Castclass or VmOp.Isinst
+                or VmOp.Newarr => 3,
+            _ => 1
+        };
+
+        if (offset > blob.Length - size)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        return size;
+    }
+
+    private static int LdstrSize(byte[] blob, int offset)
+    {
+        if (blob.Length - offset < 3)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        var utf8Length = BinaryPrimitives.ReadUInt16LittleEndian(blob.AsSpan(offset + 1));
+        return checked(3 + utf8Length);
+    }
 }

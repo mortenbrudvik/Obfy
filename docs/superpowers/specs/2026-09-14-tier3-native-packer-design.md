@@ -1,7 +1,7 @@
 # Tier 3 protection ceiling: native Windows packer
 
 **Date:** 2026-09-14  
-**Status:** Draft pending user review  
+**Status:** Locked after review  
 **Product:** Obfy packing post-save (`Obfy.Core`)  
 **Surfaces:** Core engine, packing settings/UI copy, incremental cache, docs  
 **Not in this spec:** VM v2 (EH/generics/byref), Pre-JIT, self-contained runtime, licensing/RASP, x86/ARM64 stubs, MSBuild PackageReference

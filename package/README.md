@@ -30,7 +30,7 @@ For a local try-out without trusting the `.msix`, register the unpacked layout (
 .\build\build-msix.ps1 -Install
 ```
 
-That maps Start Menu **Obfy** and the `obfy` App Execution Alias at the files under `build/msix-layout`. Uninstall before deleting the layout:
+That maps Start Menu **Obfy** and **Obfy CLI**, plus the `obfy` App Execution Alias, at the files under `build/msix-layout`. The CLI is listed (not `AppListEntry=none`) because Partner Center rejects headless apps without HeadlessAppBypass. Uninstall before deleting the layout:
 
 ```powershell
 Get-AppxPackage -Name Obfy.Obfy | Remove-AppxPackage

@@ -177,6 +177,9 @@ public static class Vm
                 case 54: // Callvirt
                     Call(ref f);
                     break;
+                case 55: // CallVm
+                    CallVm(ref frames, ref depth);
+                    break;
                 case 56: // Ldfld
                     LdFld(ref f, isStatic: false);
                     break;
@@ -188,6 +191,41 @@ public static class Vm
                     break;
                 case 59: // Stsfld
                     StFld(ref f, isStatic: true);
+                    break;
+                case 60: // Box
+                    Box(ref f);
+                    break;
+                case 61: // UnboxAny
+                    UnboxAny(ref f);
+                    break;
+                case 62: // Castclass
+                    CastObj(ref f, throwOnFail: true);
+                    break;
+                case 63: // Isinst
+                    CastObj(ref f, throwOnFail: false);
+                    break;
+                case 64: // Newarr
+                    Newarr(ref f);
+                    break;
+                case 65: // Ldlen
+                    Ldlen(ref f);
+                    break;
+                case 66: // LdelemI4
+                case 67: // LdelemI8
+                case 68: // LdelemR4
+                case 69: // LdelemR8
+                case 70: // LdelemRef
+                    Ldelem(ref f);
+                    break;
+                case 71: // StelemI4
+                case 72: // StelemI8
+                case 73: // StelemR4
+                case 74: // StelemR8
+                case 75: // StelemRef
+                    Stelem(ref f);
+                    break;
+                case 76: // Throw
+                    DoThrow(ref f);
                     break;
                 case 77: // Ret
                 {
@@ -355,6 +393,133 @@ public static class Vm
         Push(ref f, UnboxArg(result!));
     }
 
+    static void CallVm(ref Frame[] frames, ref int depth)
+    {
+        ref var f = ref frames[depth];
+        var id = ReadU16(ref f);
+        var argc = ReadU8(ref f);
+        if (id < 0 || id >= _starts.Length)
+            throw Fault("invalid method id");
+        var args = new VmValue[argc];
+        for (var i = argc - 1; i >= 0; i--)
+            args[i] = Pop(ref f);
+
+        var next = depth + 1;
+        if (next >= frames.Length)
+        {
+            var grown = new Frame[frames.Length * 2];
+            Array.Copy(frames, grown, frames.Length);
+            frames = grown;
+        }
+
+        frames[next] = new Frame
+        {
+            MethodId = id,
+            Ip = _starts[id],
+            Args = args,
+            Locals = new VmValue[LocalSlots],
+            Stack = new VmValue[StackSlots],
+            Sp = 0
+        };
+        depth = next;
+    }
+
+    static void Box(ref Frame f)
+    {
+        var type = ReadType(ref f);
+        var v = Pop(ref f);
+        Push(ref f, O(type.IsValueType ? ToClr(v, type) : v.Ref!));
+    }
+
+    static void UnboxAny(ref Frame f)
+    {
+        var type = ReadType(ref f);
+        var v = Pop(ref f);
+        if (v.Type != VmType.O)
+            throw Fault("type mismatch");
+        if (type.IsValueType)
+        {
+            if (v.Ref == null)
+                throw new NullReferenceException();
+            if (!type.IsInstanceOfType(v.Ref))
+                throw new InvalidCastException();
+            Push(ref f, UnboxArg(v.Ref));
+            return;
+        }
+
+        Push(ref f, O(CastRef(v.Ref, type, throwOnFail: true)));
+    }
+
+    static void CastObj(ref Frame f, bool throwOnFail)
+    {
+        var type = ReadType(ref f);
+        var v = Pop(ref f);
+        if (v.Type != VmType.O)
+            throw Fault("type mismatch");
+        Push(ref f, O(CastRef(v.Ref, type, throwOnFail)));
+    }
+
+    static object CastRef(object obj, Type type, bool throwOnFail)
+    {
+        if (obj == null)
+            return null!;
+        if (type.IsInstanceOfType(obj))
+            return obj;
+        if (throwOnFail)
+            throw new InvalidCastException();
+        return null!;
+    }
+
+    static void Newarr(ref Frame f)
+    {
+        var type = ReadType(ref f);
+        var len = ToI4(Pop(ref f));
+        Push(ref f, O(Array.CreateInstance(type, len)));
+    }
+
+    static void Ldlen(ref Frame f)
+    {
+        Push(ref f, I4(RequireArray(Pop(ref f)).Length));
+    }
+
+    static void Ldelem(ref Frame f)
+    {
+        var index = ToI4(Pop(ref f));
+        var arr = RequireArray(Pop(ref f));
+        Push(ref f, UnboxArg(arr.GetValue(index)!));
+    }
+
+    static void Stelem(ref Frame f)
+    {
+        var value = Pop(ref f);
+        var index = ToI4(Pop(ref f));
+        var arr = RequireArray(Pop(ref f));
+        var elemType = arr.GetType().GetElementType();
+        object boxed;
+        if (elemType == null || !elemType.IsPrimitive)
+            boxed = value.Ref;
+        else
+            boxed = ToClr(value, elemType);
+        arr.SetValue(boxed, index);
+    }
+
+    static void DoThrow(ref Frame f)
+    {
+        var v = Pop(ref f);
+        var ex = v.Ref as Exception;
+        if (v.Type != VmType.O || ex == null)
+            throw Fault("type mismatch");
+        throw ex;
+    }
+
+    static Array RequireArray(VmValue v)
+    {
+        var arr = v.Ref as Array;
+        if (v.Type != VmType.O || arr == null)
+            throw Fault("type mismatch");
+        return arr;
+    }
+
     static void LdFld(ref Frame f, bool isStatic)
     {
         var field = ReadField(ref f);
@@ -402,6 +567,17 @@ public static class Vm
         if (field == null)
             throw Fault("invalid field");
         return field;
+    }
+
+    static Type ReadType(ref Frame f)
+    {
+        var index = ReadU16(ref f);
+        if ((uint)index >= (uint)_types.Length)
+            throw Fault("invalid type");
+        var type = _types[index];
+        if (type == null)
+            throw Fault("invalid type");
+        return type;
     }
 
     static object Invoke(MethodBase method, object target, object[] args)

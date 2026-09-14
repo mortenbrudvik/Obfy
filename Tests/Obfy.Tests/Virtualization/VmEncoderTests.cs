@@ -221,6 +221,28 @@ public class VmEncoderTests
     }
 
     [Fact]
+    public void TryEncode_SpanParam_UnresolvedTypeRef_SkipsByRef()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var spanRef = new TypeRefUser(module, "System", "Span`1", module.CorLibTypes.AssemblyRef);
+        spanRef.ResolveTypeDef().ShouldBeNull();
+        var spanInt = new GenericInstSig(new ValueTypeSig(spanRef), module.CorLibTypes.Int32);
+        var method = new MethodDefUser(
+            "TakesSpan",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, spanInt),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
+
+        VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.ByRef);
+    }
+
+    [Fact]
     public void TryEncode_CustomStructLocal_Skips()
     {
         var module = CreateTestModule();
@@ -237,6 +259,88 @@ public class VmEncoderTests
         method.Body.Variables.Add(new Local(new ValueTypeSig(structType)));
         method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
         method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetypeLocal);
+    }
+
+    [Fact]
+    public void TryEncode_CustomStructParam_Static_Skips()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var structType = CreateCustomStruct(module, "Point");
+        var method = new MethodDefUser(
+            "TakesPoint",
+            MethodSig.CreateStatic(module.CorLibTypes.Void, new ValueTypeSig(structType)),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
+
+        VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetypeLocal);
+    }
+
+    [Fact]
+    public void TryEncode_CustomStructParam_Instance_Skips()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var structType = CreateCustomStruct(module, "Point");
+        var method = new MethodDefUser(
+            "TakesPoint",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, new ValueTypeSig(structType)),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public);
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
+
+        VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetypeLocal);
+    }
+
+    [Fact]
+    public void TryEncode_CustomStructReturn_Skips()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var structType = CreateCustomStruct(module, "Point");
+        var method = new MethodDefUser(
+            "MakePoint",
+            MethodSig.CreateStatic(new ValueTypeSig(structType)),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
+
+        VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetypeLocal);
+    }
+
+    [Fact]
+    public void TryEncode_NullableIntReturn_Skips()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var nullableRef = new TypeRefUser(module, "System", "Nullable`1", module.CorLibTypes.AssemblyRef);
+        var nullableInt = new GenericInstSig(new ValueTypeSig(nullableRef), module.CorLibTypes.Int32);
+        var method = new MethodDefUser(
+            "Bar",
+            MethodSig.CreateStatic(nullableInt, module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
 
         VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason)
             .ShouldBeFalse();
@@ -665,6 +769,19 @@ public class VmEncoderTests
         };
         module.Types.Add(typeDef);
         return typeDef;
+    }
+
+    private static TypeDef CreateCustomStruct(ModuleDef module, string name)
+    {
+        var structType = new TypeDefUser(
+            name,
+            new TypeRefUser(module, "System", "ValueType", module.CorLibTypes.AssemblyRef))
+        {
+            Attributes = TypeAttributes.Public | TypeAttributes.Sealed |
+                         TypeAttributes.SequentialLayout | TypeAttributes.BeforeFieldInit
+        };
+        module.Types.Add(structType);
+        return structType;
     }
 
     private static MethodDef CreateInt32Method(TypeDef type, string name, int paramCount)

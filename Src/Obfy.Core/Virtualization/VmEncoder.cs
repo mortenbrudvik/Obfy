@@ -81,11 +81,23 @@ public static class VmEncoder
             return false;
         }
 
+        if (IsNonPrimitiveValueType(method.MethodSig?.RetType))
+        {
+            skipReason = VmSkipReasons.NonPrimitiveValuetypeLocal;
+            return false;
+        }
+
         foreach (var param in method.Parameters)
         {
             if (IsForbiddenByRef(param.Type))
             {
                 skipReason = VmSkipReasons.ByRef;
+                return false;
+            }
+
+            if (IsNonPrimitiveValueType(param.Type))
+            {
+                skipReason = VmSkipReasons.NonPrimitiveValuetypeLocal;
                 return false;
             }
         }
@@ -98,7 +110,7 @@ public static class VmEncoder
                 return false;
             }
 
-            if (IsNonPrimitiveValueTypeLocal(local.Type))
+            if (IsNonPrimitiveValueType(local.Type))
             {
                 skipReason = VmSkipReasons.NonPrimitiveValuetypeLocal;
                 return false;
@@ -890,12 +902,40 @@ public static class VmEncoder
 
     private static bool IsByRefLike(TypeSig sig)
     {
-        TypeDef? type = sig switch
+        sig = sig.RemovePinnedAndModifiers();
+        if (sig is null)
+            return false;
+
+        // Match on the sig itself so GenericInst (System.Span`1<T>) is caught even
+        // when GenericType.TypeDefOrRef is a TypeSpec with an empty Name.
+        if (IsByRefLikeName(sig.TypeName) || IsByRefLikeFullName(sig.FullName))
+            return true;
+
+        if (sig is GenericInstSig generic)
+            return IsByRefLike(generic.GenericType.TypeDefOrRef);
+
+        if (sig is TypeDefOrRefSig tdr)
+            return IsByRefLike(tdr.TypeDefOrRef);
+
+        return false;
+    }
+
+    private static bool IsByRefLike(ITypeDefOrRef? typeRef)
+    {
+        if (typeRef is null)
+            return false;
+
+        if (typeRef is TypeSpec spec)
         {
-            TypeDefOrRefSig tdr => tdr.TypeDefOrRef.ResolveTypeDef(),
-            GenericInstSig generic => generic.GenericType.TypeDefOrRef.ResolveTypeDef(),
-            _ => null
-        };
+            var inner = spec.TypeSig?.RemovePinnedAndModifiers();
+            return inner is not null && IsByRefLike(inner);
+        }
+
+        if (IsByRefLikeName(UTF8String.ToSystemStringOrEmpty(typeRef.Name)) ||
+            IsByRefLikeFullName(typeRef.FullName))
+            return true;
+
+        var type = typeRef.ResolveTypeDef();
         if (type is null)
             return false;
         foreach (var attr in type.CustomAttributes)
@@ -907,10 +947,20 @@ public static class VmEncoder
         return false;
     }
 
-    private static bool IsNonPrimitiveValueTypeLocal(TypeSig? sig)
+    private static bool IsByRefLikeName(string? name) =>
+        name is "Span`1" or "ReadOnlySpan`1";
+
+    private static bool IsByRefLikeFullName(string? fullName) =>
+        fullName is not null &&
+        (fullName.StartsWith("System.Span`1", StringComparison.Ordinal) ||
+         fullName.StartsWith("System.ReadOnlySpan`1", StringComparison.Ordinal));
+
+    private static bool IsNonPrimitiveValueType(TypeSig? sig)
     {
         sig = sig?.RemovePinnedAndModifiers();
         if (sig is null)
+            return false;
+        if (sig.ElementType is ElementType.Void)
             return false;
         if (IsPrimitiveFamily(sig.ElementType))
             return false;

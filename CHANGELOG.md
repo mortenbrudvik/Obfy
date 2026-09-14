@@ -8,10 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Platform MAUI scenario no longer times out on first-run `dotnet new maui` (180s; weekly job timeout 45 minutes)
 - Store MSIX no longer sets `AppListEntry=none` on the CLI entry (Partner Center rejects that as a headless app)
 - General IL VM: `Init`/`Import` take `returnTypes`; `VmIsa.EncodedSize` matches locked widths; encoder skips generic-instantiation members (`List<int>.Add`) and unresolved valuetype params; importer uses two-arg `GetMethodFromHandle` / `GetFieldFromHandle` so generic tokens cannot poison `Vm.cctor`
 
 ### Changed
+- CI runs `Obfy.Console.Tests` on Ubuntu so the cross-platform CLI claim is exercised every PR
+- Coverage include list adds `Obfy.VmRuntime`; incremental-cache tests no longer pin assembly version `1.3.0.0`
 - GitHub Release NuGet publish uses Trusted Publishing (OIDC) instead of a long-lived API key
 - Microsoft Store identity is in `package/store-identity.json`; `.\build\build-msix.ps1 -Store` packs an unsigned Store MSIX; privacy policy is `PRIVACY.md`
 - README shows the Obfy logo and the official Microsoft Store badge instead of a small shields.io pill

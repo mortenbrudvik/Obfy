@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Obfy.Core.Models;
 using Settings.Core;
 using Settings.Core.Validation;
 using Shouldly;
@@ -79,6 +80,23 @@ public class SettingsValidatorTests
             if (File.Exists(path))
                 File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void IsValid_DefaultObfySettings_IsTrue()
+    {
+        SettingsValidator.IsValid(new ObfySettings()).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void TryValidate_ObfySettingsOutOfRangeIntensity_IsFalse()
+    {
+        var results = new List<ValidationResult>();
+        var settings = new ObfySettings { ControlFlow = { Intensity = 101 } };
+
+        SettingsValidator.TryValidate(settings, results).ShouldBeFalse();
+        results.ShouldContain(r =>
+            r.ErrorMessage != null && r.ErrorMessage.Contains("ControlFlow", StringComparison.Ordinal));
     }
 
     [Fact]

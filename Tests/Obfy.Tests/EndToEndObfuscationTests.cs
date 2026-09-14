@@ -541,9 +541,8 @@ public class EndToEndObfuscationTests
             var result = await CreateService().ObfuscateAsync(input, output, PackingSettings());
 
             result.Success.ShouldBeFalse();
-            result.ErrorMessage.ShouldNotBeNull();
-            result.ErrorMessage.ShouldContain("Packing failed");
-            result.ErrorMessage.ShouldContain("entry point");
+            result.ErrorMessage!.ShouldContain("Packing failed");
+            result.ErrorMessage!.ShouldContain("entry point");
             File.Exists(output).ShouldBeTrue();
             File.Exists(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBeFalse();
         }

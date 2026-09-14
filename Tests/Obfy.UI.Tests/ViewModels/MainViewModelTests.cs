@@ -647,7 +647,7 @@ public class MainViewModelTests : IDisposable
         failed.ErrorMessage.ShouldNotBeNullOrWhiteSpace();
         var source = _viewModel.Files.Files.Single(f => f.FileName == "Extra.cs");
         source.Status.ShouldBe(FileStatus.Skipped);
-        source.SkipReason.ShouldContain("Source files");
+        source.SkipReason!.ShouldContain("Source files");
         _obfuscationService.Verify(
             s => s.ObfuscateAsync(
                 It.IsAny<string>(),

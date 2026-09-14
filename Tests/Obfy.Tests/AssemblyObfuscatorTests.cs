@@ -1611,6 +1611,8 @@ public class AssemblyObfuscatorTests
         // Assert
         result.Success.ShouldBeTrue();
         result.Statistics.MetadataItemsRemoved.ShouldBeGreaterThan(0);
+        module.CustomAttributes.ShouldNotContain(a =>
+            a.TypeFullName == "System.Diagnostics.DebuggableAttribute");
     }
 
     [Fact]
@@ -3818,7 +3820,7 @@ public class AssemblyObfuscatorTests
         var context = PipelineContext.ForAssembly(module, new ObfySettings { Protection = { AntiDump = true } });
         var result = await obfuscator.ObfuscateAsync(context);
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("no IL body");
+        result.ErrorMessage!.ShouldContain("no IL body");
     }
 
     [Fact]
@@ -4022,7 +4024,7 @@ public class AssemblyObfuscatorTests
 
         var result = await obfuscator.ObfuscateAsync(context);
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("id");
+        result.ErrorMessage!.ShouldContain("id");
     }
 
     [Fact]

@@ -179,8 +179,10 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 
 | Job | Filter | When |
 |-----|--------|------|
-| Default (every PR) | exclude `UI`, `Platform` | Always |
+| Default (every PR) | exclude `UI`, `Platform` | Always (`ci.yml` `build`) |
 | Coverage | same as default | Always (80% *warning*, not a hard fail; PR comment is best-effort) |
+| Linux CLI | `Obfy.Console.Tests` | Always (`ci.yml` `linux-cli` on `ubuntu-latest`) |
+| Rider | Gradle `test` | Always (`ci.yml` `rider-tests`) |
 | UI | `Category=UI` | Local only (no nightly workflow) |
 | Platform | `Category=Platform` | `.github/workflows/platform.yml` (weekly Monday + `workflow_dispatch`); MAUI skips if the workload is missing |
 

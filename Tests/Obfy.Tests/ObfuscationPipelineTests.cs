@@ -123,8 +123,8 @@ public class ObfuscationPipelineTests
         });
 
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("First");
-        result.ErrorMessage.ShouldContain("nope");
+        result.ErrorMessage!.ShouldContain("First");
+        result.ErrorMessage!.ShouldContain("nope");
         second.Verify(o => o.ObfuscateAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -143,7 +143,7 @@ public class ObfuscationPipelineTests
         });
 
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("exploded");
+        result.ErrorMessage!.ShouldContain("exploded");
     }
 
     [Fact]

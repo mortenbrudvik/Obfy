@@ -14,11 +14,12 @@ public class MauiWindowsTests
         Directory.CreateDirectory(dir);
         try
         {
+            // First run restores the MAUI template pack; 60s timed out on GHA windows-latest.
             var created = ScenarioHarness.RunProcess(
                 "dotnet",
                 $"new maui -n MauiSmoke -o \"{dir}\" --force",
                 dir,
-                60_000);
+                180_000);
             created.ExitCode.ShouldBe(0, created.StdOut + created.StdErr);
 
             var csproj = Directory.GetFiles(dir, "MauiSmoke.csproj", SearchOption.AllDirectories).FirstOrDefault();

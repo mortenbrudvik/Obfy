@@ -473,6 +473,24 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void FromObfySettings_RoundTripsAssemblyMerge()
+    {
+        var settings = new ObfySettings
+        {
+            AssemblyMerge = { Enabled = true, Internalize = false }
+        };
+
+        var viewModel = new SettingsViewModel();
+        viewModel.FromObfySettings(settings);
+        var roundTripped = viewModel.ToObfySettings();
+
+        viewModel.AssemblyMergeEnabled.ShouldBeTrue();
+        viewModel.InternalizeMergedTypes.ShouldBeFalse();
+        roundTripped.AssemblyMerge.Enabled.ShouldBeTrue();
+        roundTripped.AssemblyMerge.Internalize.ShouldBeFalse();
+    }
+
+    [Fact]
     public void ApplyPreset_Standard_ClearsProxyExternalCalls()
     {
         var viewModel = new SettingsViewModel

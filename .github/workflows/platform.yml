@@ -8,6 +8,7 @@ on:
 jobs:
   platform:
     runs-on: windows-latest
+    timeout-minutes: 45
     permissions:
       contents: read
 

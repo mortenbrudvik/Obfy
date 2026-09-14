@@ -463,7 +463,7 @@ public class ClosedSetProcessorTests
             ClosedSetRenameSettings(preservePublicApi: true));
 
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Output path collision");
+        result.ErrorMessage!.ShouldContain("Output path collision");
         Directory.Exists(outputDir).ShouldBeFalse();
     }
 

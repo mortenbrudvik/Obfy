@@ -180,12 +180,15 @@ public class ServiceTests : IDisposable
     [Fact]
     public async Task AssemblyProcessor_Save_ResignsWithSnk()
     {
+        if (!OperatingSystem.IsWindows())
+            return;
+
         var snkPath = Path.Combine(_tempDirectory, "test.snk");
-#pragma warning disable SYSLIB0028
+#pragma warning disable SYSLIB0028, CA1416
         var cspParams = new CspParameters { KeyNumber = (int)KeyNumber.Signature };
         using (var csp = new RSACryptoServiceProvider(1024, cspParams))
             File.WriteAllBytes(snkPath, csp.ExportCspBlob(includePrivateParameters: true));
-#pragma warning restore SYSLIB0028
+#pragma warning restore SYSLIB0028, CA1416
 
         var assemblyPath = CreateTestAssembly("ToSign.dll");
         var outputPath = Path.Combine(_tempDirectory, "signed.dll");
@@ -506,7 +509,7 @@ namespace Test
 
         // Assert
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("not found");
+        result.ErrorMessage!.ShouldContain("not found");
     }
 
     [Fact]
@@ -722,7 +725,7 @@ namespace Test
 
         // Assert
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Failed to load");
+        result.ErrorMessage!.ShouldContain("Failed to load");
     }
 
     [Fact]
@@ -830,7 +833,7 @@ namespace Test
         var result = await service.ObfuscateAsync(assemblyPath, null, settings);
 
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Invalid settings");
+        result.ErrorMessage!.ShouldContain("Invalid settings");
     }
 
     [Fact]
@@ -945,7 +948,7 @@ namespace Test
 
         // Assert
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("At least two assemblies");
+        result.ErrorMessage!.ShouldContain("At least two assemblies");
     }
 
     [Fact]
@@ -966,7 +969,7 @@ namespace Test
 
         // Assert
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("not found");
+        result.ErrorMessage!.ShouldContain("not found");
     }
 
     [Fact]
@@ -991,7 +994,7 @@ namespace Test
 
         // Assert - should fail because after exclusion only one assembly remains
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Less than two assemblies remain");
+        result.ErrorMessage!.ShouldContain("Less than two assemblies remain");
     }
 
     [Fact]
@@ -1021,8 +1024,8 @@ namespace Test
             new ObfySettings());
 
         result.Success.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Merge failed");
-        result.ErrorMessage.ShouldContain("ILRepack boom");
+        result.ErrorMessage!.ShouldContain("Merge failed");
+        result.ErrorMessage!.ShouldContain("ILRepack boom");
         File.Exists(outputPath).ShouldBeFalse();
         pipeline.Verify(
             p => p.ExecuteAsync(It.IsAny<PipelineContext>(), It.IsAny<CancellationToken>()),

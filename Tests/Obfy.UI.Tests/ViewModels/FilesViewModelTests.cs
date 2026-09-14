@@ -460,7 +460,7 @@ public class FilesViewModelTests : IDisposable
 
         viewModel.Files.Count.ShouldBe(1);
         viewModel.Files[0].IsSkipped.ShouldBeTrue();
-        viewModel.Files[0].SkipReason.ShouldContain("Failed to read project");
+        viewModel.Files[0].SkipReason!.ShouldContain("Failed to read project");
     }
 
     [Fact]

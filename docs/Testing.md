@@ -8,20 +8,21 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 
 | Project | Tests | Coverage |
 |---------|-------|----------|
-| Obfy.Tests | 434 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures and Settings.Core validation |
-| Obfy.Console.Tests | 123 | CLI parsing (`IntegrationParseTests`) and `Program.Main` process tests |
-| Obfy.UI.Tests | 133 | ViewModel unit tests, startup CLI apply, and XAML contrast/theme checks |
-| Obfy.UI.AutomationTests | 25 | 6 locator unit tests (CI) + 19 FlaUI live-window tests (`Category=UI`, local) |
+| Obfy.Tests | 574 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures, schema contract, and Settings.Core validation of `ObfySettings` |
+| Obfy.Console.Tests | 159 | CLI parsing (`IntegrationParseTests`), `Program.Main` process tests, wizard file write |
+| Obfy.UI.Tests | 179 | ViewModel unit tests, startup CLI apply, and XAML contrast/theme checks |
+| Obfy.UI.AutomationTests | 29 | 6 locator unit tests (CI) + 23 FlaUI live-window tests (`Category=UI`, local) |
 | Obfy.ScenarioTests | 16 | 13 default SDK fixtures (Unity stub + merge + merge-then-obfuscate) + 3 `Category=Platform` |
-| Obfy.VisualStudio.Tests | 16 | VS settings JSON, CLI argv, in-place copy, output-assembly locator, CLI path locator (no VS hive) |
-| **Total** | **725** | Default CI (`Category!=UI&Category!=Platform`). Project counts include FlaUI + Platform; Total is the default filter. |
+| Obfy.VisualStudio.Tests | 26 | VS settings JSON, CLI argv, in-place copy, output-assembly locator, CLI path locator (no VS hive) |
+| Obfy.Rider (Gradle) | 17 | JVM unit tests for settings, CLI argv, assembly locator (CI job `rider-tests`) |
+| **Total** | **957** | Default CI (`Category!=UI&Category!=Platform`): 574+159+179+6+13+26. Project counts include FlaUI + Platform; Total is the default filter (excludes FlaUI, Platform, and Rider). Counts are xUnit cases (`[Theory]` expansions included). |
 
 ## Test Stack
 
 - **Framework**: xUnit 2.9.3
 - **Mocking**: Moq 4.20.72
 - **Assertions**: Shouldly 4.3.0
-- **Coverage**: Coverlet 6.0.4
+- **Coverage**: Coverlet 10.0.1 (`coverage.runsettings`; product assemblies including `Obfy.VmRuntime`)
 
 ## Running Tests
 
@@ -71,7 +72,7 @@ CI: `.github/workflows/platform.yml` (`workflow_dispatch` and weekly Monday).
 ### With Coverage
 
 ```bash
-dotnet test --collect:"XPlat Code Coverage"
+dotnet test --settings coverage.runsettings --collect:"XPlat Code Coverage"
 ```
 
 ## Test Projects
@@ -96,7 +97,7 @@ Tests the command-line interface:
 | CommandParsingTests | 72 | CLI options and arguments (parse) |
 | HelpOutputTests | 15 | Help text verification |
 | ErrorHandlingTests | 14 | Error scenarios |
-| WizardDefaultsTests | 7 | Use-case wizard defaults (Unity, Desktop, Blazor, MAUI, library, ASP.NET, public API) |
+| WizardDefaultsTests | 8 | Use-case wizard defaults (Unity, Desktop, Blazor, MAUI, library, ASP.NET, public API) plus writing `obfy.json` |
 | IntegrationParseTests | 3 | CLI parse without invoking `Program.Main` |
 | IntegrationProcessTests | 12 | `Program.Main` for generate, dry-run, missing file, bad JSON, unknown level |
 
@@ -257,6 +258,12 @@ This prevents race conditions with static properties and shared state during tes
 
 ## Continuous Integration
 
-PRs and pushes to `main` run `.github/workflows/ci.yml`: `dotnet test -c Release` with `Category!=UI&Category!=Platform` and `coverage.runsettings` (product assemblies only). The coverage report and an 80% **warning** (not a hard fail) run when tests succeed (later steps still run if the PR comment fails). The sticky PR coverage comment is best-effort (`continue-on-error`, same-repo PRs only); a 403 does not skip the summary or threshold. Pushes to `main` get the artifact, job summary, and 80% warning, not a PR comment. A second job runs Rider JVM tests (`./gradlew test`).
+PRs and pushes to `main` run `.github/workflows/ci.yml`:
 
-FlaUI (`Category=UI`) is local-only — there is no nightly UI workflow. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml` (weekly Monday + `workflow_dispatch`). See [Testing-Roadmap.md](Testing-Roadmap.md).
+| Job | What |
+|-----|------|
+| `build` | Windows `dotnet test -c Release` with `Category!=UI&Category!=Platform` and `coverage.runsettings`. Coverage report + 80% **warning** (not a hard fail). Sticky PR comment is best-effort (`continue-on-error`, same-repo PRs only). |
+| `linux-cli` | Ubuntu `dotnet test Tests/Obfy.Console.Tests` (cross-platform CLI claim). |
+| `rider-tests` | `./gradlew test` (JDK 21). |
+
+FlaUI (`Category=UI`) is local-only — GitHub-hosted Windows runners have no interactive desktop, so there is no nightly UI workflow. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml` (weekly Monday + `workflow_dispatch`; 45-minute job timeout). `dotnet new maui` is allowed 180s because the first run restores the template pack. See [Testing-Roadmap.md](Testing-Roadmap.md).

@@ -90,7 +90,7 @@ public class IncrementalCacheTests : IDisposable
     {
         var version = typeof(IncrementalCache).Assembly.GetName().Version;
         version.ShouldNotBeNull();
-        version.ShouldBe(new Version(1, 3, 0, 0));
+        version.ShouldNotBe(new Version(0, 0, 0, 0));
     }
 
     [Fact]

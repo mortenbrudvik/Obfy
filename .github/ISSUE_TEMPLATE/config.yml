@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/mortenbrudvik/Obfy/security/advisories/new
+    about: Report security issues privately. Do not file a public GitHub issue.
+  - name: Documentation
+    url: https://github.com/mortenbrudvik/Obfy/tree/main/docs
+    about: CLI, configuration, techniques, and platform notes.

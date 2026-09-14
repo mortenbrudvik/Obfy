@@ -1,4 +1,6 @@
+using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
+using Autofac;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using ICSharpCode.Decompiler;
@@ -6,10 +8,13 @@ using ICSharpCode.Decompiler.CSharp;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Obfy.Core.DependencyInjection;
 using Obfy.Core.Models;
 using Obfy.Core.Obfuscators.Assembly;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Services;
 using Obfy.Core.Services.Reporting;
 using Shouldly;
 
@@ -37,6 +42,26 @@ public class DecompilerResistanceTests
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var path = Path.Combine(dir, assemblyName + ".dll");
+        var emit = compilation.Emit(path);
+        emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        return path;
+    }
+
+    private static string CompileToExe(string source, string dir, string assemblyName)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator)
+            .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p));
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            new[] { tree },
+            references,
+            new CSharpCompilationOptions(OutputKind.ConsoleApplication));
+
+        var path = Path.Combine(dir, assemblyName + ".exe");
         var emit = compilation.Emit(path);
         emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
         return path;
@@ -252,5 +277,42 @@ public class DecompilerResistanceTests
             w.Category == WarningCategory.SkippedItem &&
             w.Message.Contains("4 items skipped") &&
             w.Message.Contains("generic method (IL encryption)"));
+    }
+
+    [Fact]
+    public async Task NativePackedExe_CannotBeLoadedAsManagedModule()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-qt06-native-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativePackApp");
+            var output = Path.Combine(dir, "NativePackApp.obf.exe");
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Packing = { Enabled = true }
+            };
+
+            var builder = new ContainerBuilder();
+            builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+            builder.RegisterModule<ObfuscationModule>();
+            await using var container = builder.Build();
+            var service = container.Resolve<IObfuscationService>();
+
+            var result = await service.ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            Should.Throw<BadImageFormatException>(() => ModuleDefMD.Load(output));
+            using var pe = new PEReader(new MemoryStream(File.ReadAllBytes(output)));
+            pe.PEHeaders.CorHeader.ShouldBeNull();
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
     }
 }

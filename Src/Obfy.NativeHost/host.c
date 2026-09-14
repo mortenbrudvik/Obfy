@@ -180,6 +180,23 @@ static int runtimeconfig_path(wchar_t *buf, size_t buf_cch)
     return 1;
 }
 
+/* Directory of this EXE, including trailing backslash (AppContext.BaseDirectory form). */
+static int exe_directory(wchar_t *buf, size_t buf_cch)
+{
+    DWORD n;
+    wchar_t *slash;
+
+    n = GetModuleFileNameW(NULL, buf, (DWORD)buf_cch);
+    if (n == 0 || n >= buf_cch)
+        return 0;
+
+    slash = wcsrchr(buf, L'\\');
+    if (!slash)
+        return 0;
+    slash[1] = L'\0';
+    return 1;
+}
+
 static int load_and_run(uint8_t *plain, int32_t plain_len)
 {
     char_t hostfxr_path[OBFY_PATH_CCH];
@@ -188,6 +205,10 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
     hostfxr_initialize_for_runtime_config_fn init_fn;
     hostfxr_get_runtime_delegate_fn get_delegate_fn;
     hostfxr_close_fn close_fn;
+    hostfxr_set_runtime_property_value_fn set_prop_fn;
+    struct hostfxr_initialize_parameters params;
+    wchar_t host_path[OBFY_PATH_CCH];
+    wchar_t app_base[OBFY_PATH_CCH];
     wchar_t cfg[OBFY_PATH_CCH];
     hostfxr_handle ctx = NULL;
     load_assembly_bytes_fn load_bytes = NULL;
@@ -213,15 +234,32 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
     get_delegate_fn = (hostfxr_get_runtime_delegate_fn)GetProcAddress(
         hostfxr, "hostfxr_get_runtime_delegate");
     close_fn = (hostfxr_close_fn)GetProcAddress(hostfxr, "hostfxr_close");
-    if (!init_fn || !get_delegate_fn || !close_fn)
+    set_prop_fn = (hostfxr_set_runtime_property_value_fn)GetProcAddress(
+        hostfxr, "hostfxr_set_runtime_property_value");
+    if (!init_fn || !get_delegate_fn || !close_fn || !set_prop_fn)
         return host_failed("Packed host failed: runtime not found.");
 
     if (!runtimeconfig_path(cfg, OBFY_PATH_CCH))
         return host_failed("Packed host failed: runtime not found.");
+    if (!GetModuleFileNameW(NULL, host_path, OBFY_PATH_CCH))
+        return host_failed("Packed host failed: runtime not found.");
+    if (!exe_directory(app_base, OBFY_PATH_CCH))
+        return host_failed("Packed host failed: runtime not found.");
 
-    rc = init_fn(cfg, NULL, &ctx);
+    params.size = sizeof(params);
+    params.host_path = host_path;
+    params.dotnet_root = NULL;
+
+    rc = init_fn(cfg, &params, &ctx);
     if (rc < 0 || ctx == NULL)
         return host_failed("Packed host failed: runtime not found.");
+
+    /* Component hosting does not set the app base to the EXE directory. */
+    if (set_prop_fn(ctx, L"APP_CONTEXT_BASE_DIRECTORY", app_base) != 0)
+    {
+        close_fn(ctx);
+        return host_failed("Packed host failed: runtime not found.");
+    }
 
     if (get_delegate_fn(ctx, hdt_load_assembly_bytes, (void **)&load_bytes) != 0 ||
         get_delegate_fn(ctx, hdt_get_function_pointer, (void **)&get_fn) != 0 ||

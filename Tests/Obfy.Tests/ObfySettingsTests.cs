@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Obfy.Core.Models;
 using Shouldly;
 
@@ -93,6 +94,8 @@ public class ObfySettingsTests
         settings.Exclusions.Attributes.ShouldContain("XmlElementAttribute");
         settings.Exclusions.Attributes.ShouldContain("XmlAttributeAttribute");
         settings.SymbolRenaming.PreserveXaml.ShouldBeFalse();
+        settings.Packing.Enabled.ShouldBeFalse();
+        settings.Packing.Rid.ShouldBe("win-x64");
     }
 
     [Fact]
@@ -357,6 +360,51 @@ public class ObfySettingsTests
 
         clone.Packing.Enabled.ShouldBeTrue();
         clone.Packing.ShouldNotBeSameAs(original.Packing);
+    }
+
+    [Fact]
+    public void Validate_PackingEnabledUnknownRid_Throws()
+    {
+        var settings = new ObfySettings { Packing = { Enabled = true, Rid = "linux-x64" } };
+        Should.Throw<ValidationException>(() => settings.Validate())
+            .Message.ShouldContain("rid");
+    }
+
+    [Fact]
+    public void Clone_KeepsPackingRid()
+    {
+        var original = new ObfySettings { Packing = { Enabled = true, Rid = "portable" } };
+        var clone = original.Clone();
+        clone.Packing.Rid.ShouldBe("portable");
+    }
+
+    [Fact]
+    public void Validate_PackingEnabledNullRid_TreatedAsWinX64()
+    {
+        var settings = new ObfySettings { Packing = { Enabled = true, Rid = null! } };
+        settings.Validate(); // must not throw
+        settings.Packing.IsNativeWin64.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("WIN-X64")]
+    public void Validate_PackingEnabledEmptyOrIgnoreCaseWinX64_IsNative(string rid)
+    {
+        var settings = new ObfySettings { Packing = { Enabled = true, Rid = rid } };
+        settings.Validate();
+        settings.Packing.IsNativeWin64.ShouldBeTrue();
+        settings.Packing.IsPortable.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Validate_PackingEnabledPortableIgnoreCase_IsPortable()
+    {
+        var settings = new ObfySettings { Packing = { Enabled = true, Rid = "PORTABLE" } };
+        settings.Validate();
+        settings.Packing.IsPortable.ShouldBeTrue();
+        settings.Packing.IsNativeWin64.ShouldBeFalse();
     }
 
     [Fact]

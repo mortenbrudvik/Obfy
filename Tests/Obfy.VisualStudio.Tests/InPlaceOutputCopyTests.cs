@@ -35,6 +35,27 @@ public class InPlaceOutputCopyTests : IDisposable
     }
 
     [Fact]
+    public void Copy_CopiesNativeRuntimeConfigSidecar()
+    {
+        var destDir = Path.Combine(_dir, "native-dest");
+        var tempDir = Path.Combine(_dir, "native-temp");
+        Directory.CreateDirectory(destDir);
+        Directory.CreateDirectory(tempDir);
+
+        var dest = Path.Combine(destDir, "App.exe");
+        var tempOutput = Path.Combine(tempDir, "App.exe");
+        File.WriteAllText(dest, "original");
+        File.WriteAllText(tempOutput, "native-host");
+        File.WriteAllText(Path.Combine(tempDir, "App.runtimeconfig.json"), "{}");
+
+        InPlaceOutputCopy.CopyTempDirectoryToDestination(tempOutput, dest);
+
+        File.ReadAllText(dest).ShouldBe("native-host");
+        File.ReadAllText(Path.Combine(destDir, "App.runtimeconfig.json")).ShouldBe("{}");
+        File.Exists(dest + ".obfynew").ShouldBeFalse();
+    }
+
+    [Fact]
     public void Copy_MissingTempOutput_ThrowsAndLeavesDestination()
     {
         var dest = Path.Combine(_dir, "App.dll");

@@ -30,7 +30,7 @@ public class RuntimeProfileGatingTests
         settings.Protection.AntiDump.ShouldBeFalse();
         context.Warnings.ShouldContain(w => w.Contains("Dependency embedding disabled", StringComparison.OrdinalIgnoreCase)
                                            && w.Contains(label));
-        context.Warnings.ShouldContain(w => w.Contains("Managed launcher packing disabled", StringComparison.OrdinalIgnoreCase)
+        context.Warnings.ShouldContain(w => w.Contains("Native packing disabled", StringComparison.OrdinalIgnoreCase)
                                            && w.Contains(label));
         RuntimeProfileGating.BlocksAssemblyResolve(profile).ShouldBeTrue();
         RuntimeProfileGating.BlocksPeProtections(profile).ShouldBeTrue();

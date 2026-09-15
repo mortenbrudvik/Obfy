@@ -62,7 +62,7 @@ public class ObfuscationResult
     public List<string> Warnings { get; private init; } = new();
 
     /// <summary>
-    /// Gets the path of the framework-dependent managed launcher written when packing succeeded.
+    /// Path of the native host (win-x64) or the managed launcher (portable) written when packing succeeded.
     /// </summary>
     public string? PackedLauncherPath { get; private init; }
 

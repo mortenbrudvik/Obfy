@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using Autofac;
 using dnlib.DotNet;
@@ -629,6 +630,42 @@ public class ClosedSetProcessorTests
         using var extraModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(Path.Combine(outputDir, "Extra.dll")));
         extraModule.GetTypes().ShouldNotContain(t => t.Name == "Unused");
         InvokeProgramRun(Path.Combine(outputDir, "App.exe"), Path.Combine(outputDir, "Extra.dll")).ShouldBe("pong");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PackingEnabled_PacksEntryPointAndLeavesLibraryManaged()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        var outputDir = Path.Combine(fixture.Root, "packed-out");
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            StringEncryption = { Enabled = false },
+            SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+            Packing = { Enabled = true }
+        };
+
+        var result = await CreateRealProcessor().ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            settings);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        var outApp = Path.Combine(outputDir, "App.exe");
+        var outLib = Path.Combine(outputDir, "Lib.dll");
+        File.Exists(NativePacker.RuntimeConfigPathFor(outApp)).ShouldBeTrue();
+        File.Exists(ManagedLauncherPacker.LauncherPathFor(outApp)).ShouldBeFalse();
+        using (var pe = new PEReader(new MemoryStream(File.ReadAllBytes(outApp))))
+            pe.PEHeaders.CorHeader.ShouldBeNull();
+        using var lib = ModuleDefMD.Load(outLib);
+        lib.Types.ShouldContain(t => t.Name == "Greeter");
+        result.ModuleResults.ShouldContain(r => r.PackedLauncherPath == outApp);
+        result.ModuleResults.ShouldContain(r =>
+            r.OutputPath == outLib && r.Warnings.Any(w => w.Contains("Packing skipped")));
     }
 
     private static ClosedSetProcessor CreateProcessor(IObfuscationPipeline? pipeline = null)

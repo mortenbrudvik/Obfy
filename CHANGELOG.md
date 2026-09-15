@@ -7,15 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+- `packing.enabled` now emits a native win-x64 host that replaces the obfuscated PE. Set `packing.rid` to `portable` for the previous managed `{name}.launcher.exe`.
+
 ### Added
 - WIP general IL VM encoder/runtime (`Init`/`Import` take `returnTypes`; `VmIsa.EncodedSize` matches locked widths; encoder skips generic-instantiation members and unresolved valuetype params; importer uses two-arg `GetMethodFromHandle` / `GetFieldFromHandle`). The pipeline still uses the int-only `VirtualizationObfuscator` interpreter; `Obfy.VmRuntime.Vm.Run` is not wired
 
 ### Fixed
+- Closed-set / solution runs pack entry-point outputs (and copy packing sidecars) instead of silently leaving managed PEs
+- Native packer publishes `.runtimeconfig.json` only after a successful PE replace, prefers the packed app TFM, and does not delete-then-move on non-Windows
 - Platform MAUI scenario no longer times out on first-run `dotnet new maui` (180s; weekly job timeout 45 minutes)
 - Store MSIX no longer sets `AppListEntry=none` on the CLI entry (Partner Center rejects that as a headless app)
 - `obfy config generate` writes PascalCase string enums and omits null signing paths so the file matches `schemas/obfy.schema.json`
 
 ### Changed
+- Native packing / native EXE is documented as Yes (win-x64 FDD CLR-host stub; `portable` keeps the managed launcher; not Pre-JIT; not self-contained; not ARM64). Code virtualization stays Partial (`VirtualizationObfuscator` still has `CreateExecute`; PR #23 is not on this branch)
 - CI runs `Obfy.Console.Tests` on Ubuntu so the cross-platform CLI claim is exercised every PR
 - Coverage include list adds `Obfy.VmRuntime`; incremental-cache tests no longer pin assembly version `1.3.0.0`
 - GitHub Release NuGet publish uses Trusted Publishing (OIDC) instead of a long-lived API key

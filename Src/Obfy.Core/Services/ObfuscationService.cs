@@ -87,8 +87,16 @@ public class ObfuscationService : IObfuscationService
             var warnings = new List<string> { "Incremental: reused cached output" };
             if (settings.Packing.Enabled)
             {
-                packed = ManagedLauncherPacker.LauncherPathFor(effectiveOutputEarly);
-                warnings.Add("Packed launcher: " + packed);
+                if (settings.Packing.IsPortable)
+                {
+                    packed = ManagedLauncherPacker.LauncherPathFor(effectiveOutputEarly);
+                    warnings.Add("Packed launcher: " + packed);
+                }
+                else
+                {
+                    packed = effectiveOutputEarly;
+                    warnings.Add("Packed native host: " + packed);
+                }
             }
 
             return ObfuscationResult.Successful(
@@ -169,9 +177,9 @@ public class ObfuscationService : IObfuscationService
                 {
                     try
                     {
-                        packedPath = ManagedLauncherPacker.Pack(effectiveOutput);
-                        context.Warnings.Add("Packed launcher: " + packedPath);
-                        _logger.LogInformation("Packed launcher written to {Launcher}", packedPath);
+                        packedPath = PackingApplicator.Pack(
+                            effectiveOutput, settings, inputPath, context.Warnings);
+                        _logger.LogInformation("Packed output written to {Packed}", packedPath);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {

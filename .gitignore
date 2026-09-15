@@ -36,6 +36,16 @@ x86/
 *.exe
 *.pdb
 !**/[Aa]ssets/*.dll
+!Src/Obfy.NativeHost/dist/
+Src/Obfy.NativeHost/dist/*
+!Src/Obfy.NativeHost/dist/Obfy.NativeHost.exe
+
+# Native packer host intermediates (dist EXE is checked in)
+Src/Obfy.NativeHost/host.generated.rc
+Src/Obfy.NativeHost/host.res
+Src/Obfy.NativeHost/*.obj
+Src/Obfy.NativeHost/*.exp
+Src/Obfy.NativeHost/*.lib
 
 # OS files
 .DS_Store

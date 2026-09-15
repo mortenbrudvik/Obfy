@@ -24,7 +24,7 @@ Obfy applies techniques in a specific order (priority):
 | 50 | Symbol Renaming | Rename identifiers |
 | 90 | Metadata Removal | Strip debug info |
 
-**Encryption is obfuscation, not confidentiality.** String, constant, resource, method-IL, and virtualization “encryption” embed the key or interpreter in the output assembly. Anyone who runs or inspects the binary can recover plaintext. Do not ship real secrets (API keys, tokens, credentials) inside an assembly and rely on Obfy to keep them secret.
+**Encryption is obfuscation, not confidentiality.** String, constant, resource, method-IL, virtualization, and packing “encryption” embed the key or interpreter in the output. Packing hides the managed PE on disk; the decryption key is in the overlay. Anyone who runs or inspects the binary can recover IL. Do not ship real secrets (API keys, tokens, credentials) inside an assembly and rely on Obfy to keep them secret.
 
 ## Assembly Obfuscation (dnlib)
 
@@ -830,13 +830,24 @@ Transforms control flow structures in source code.
 
 ## Post-processing: incremental cache
 
-`incremental.enabled` (off in every preset; CLI `--incremental`) skips re-obfuscation when the Obfy version, input bytes, and serialized settings have not changed. The cache file is `{outputPath}.obfycache` and stores a SHA-256 of those inputs. A hit also requires the output file to exist; if packing is on, the launcher `.exe` and `.runtimeconfig.json` must exist too. A locked or corrupt cache is a miss. The cache is written only after a successful write (including a successful launcher emit when packing is on).
+`incremental.enabled` (off in every preset; CLI `--incremental`) skips re-obfuscation when the Obfy version, input bytes, and serialized settings have not changed. The cache file is `{outputPath}.obfycache` and stores a SHA-256 of those inputs. A hit also requires the output file to exist. If packing is on, a hit additionally requires `{name}.runtimeconfig.json` (win-x64) or the managed `{name}.launcher.exe` plus its `.runtimeconfig.json` (portable). A locked or corrupt cache is a miss. The cache is written only after a successful write (including a successful pack when packing is on).
 
-## Post-processing: managed launcher
+## Post-processing: native packer (win-x64)
 
-`packing.enabled` compiles a framework-dependent managed console host (`{name}.launcher.exe` + `.runtimeconfig.json`) that embeds the obfuscated assembly as `packed.dll` and invokes its entry point. Run with `dotnet {name}.launcher.exe`. This is not native code generation (PF-09 remaining work). Config-only; off in every preset.
+`packing.enabled` (off in every preset; config-only, no `--pack` flag) replaces the obfuscated PE with a **framework-dependent native Windows host**. Default `packing.rid` is `win-x64`.
 
-The payload stays in memory (`AssemblyLoadContext.LoadFromStream`); anti-tamper skips ALC loads instead of hashing the launcher. Sibling assemblies next to the launcher are resolved from the load context. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning.
+On the win-x64 success path:
+
+- The file at the output path is an unmanaged PE (no CLR data directory). dnlib / ILSpy cannot load it as a managed module.
+- User IL is AES-256-CBC (PKCS7) ciphertext in an overlay. The host decrypts in memory and runs via `hostfxr`.
+- There is no sibling `{name}.launcher.exe` and no second managed PE of the user assembly.
+- A sibling `{name}.runtimeconfig.json` is written. The machine needs `Microsoft.NETCore.App` (framework-dependent).
+
+Set `packing.rid` to `portable` for the previous managed `{name}.launcher.exe` + `.runtimeconfig.json` (run with `dotnet`). The managed PE is left in place.
+
+This is **not** Pre-JIT, **not** self-contained, and **not** ARM64. Packing hides the managed PE on disk; the decryption key is in the overlay. Anyone who runs or inspects the EXE can recover IL. This is obfuscation, not confidentiality.
+
+The payload stays in memory (`AssemblyLoadContext.LoadFromStream`); anti-tamper skips ALC loads instead of hashing the host. Sibling assemblies next to the packed EXE are resolved from the load context. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning. NativeAOT / Unity IL2CPP / Blazor WASM turn packing off with a warning. Closed-set / solution / multi-assembly runs pack each entry-point output and leave libraries managed. Merge packs the merged entry-point assembly. Signing hashes the managed PE **before** pack, so the native EXE is not strong-named. GUI vs console is a PE Subsystem patch on the same stub. Runtimeconfig TFM prefers the assembly `TargetFrameworkAttribute` (then the input sibling JSON), otherwise the Obfy process version.
 
 ## See Also
 

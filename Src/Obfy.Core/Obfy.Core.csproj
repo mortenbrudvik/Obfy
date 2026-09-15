@@ -29,5 +29,11 @@
     </ProjectReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\Obfy.NativeHost\dist\Obfy.NativeHost.exe">
+      <LogicalName>Obfy.NativeHost.exe</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>
 

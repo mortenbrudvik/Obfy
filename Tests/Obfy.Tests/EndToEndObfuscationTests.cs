@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using Autofac;
@@ -103,11 +104,45 @@ public class EndToEndObfuscationTests
         Level = ObfuscationLevel.Custom,
         StringEncryption = { Enabled = false },
         SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+        Packing = { Enabled = true, Rid = "portable" }
+    };
+
+    private static ObfySettings NativePackingSettings() => new()
+    {
+        Level = ObfuscationLevel.Custom,
+        StringEncryption = { Enabled = false },
+        SymbolRenaming = { Enabled = false, PreservePublicApi = true },
         Packing = { Enabled = true }
     };
 
     private static int RunLauncher(string launcher, string extraArgs = "", string? workingDirectory = null)
         => RunLauncherCapture(launcher, extraArgs, workingDirectory).ExitCode;
+
+    private static int RunNative(string exe, string extraArgs = "", string? workingDirectory = null)
+        => RunNativeCapture(exe, extraArgs, workingDirectory).ExitCode;
+
+    private static (int ExitCode, string StdErr) RunNativeCapture(
+        string exe, string extraArgs = "", string? workingDirectory = null)
+    {
+        OperatingSystem.IsWindows().ShouldBeTrue("native packed EXE execute tests are Windows-only");
+        var start = new System.Diagnostics.ProcessStartInfo(exe)
+        {
+            Arguments = extraArgs,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        if (!string.IsNullOrEmpty(workingDirectory))
+            start.WorkingDirectory = workingDirectory;
+        using var process = System.Diagnostics.Process.Start(start);
+        process.ShouldNotBeNull();
+        var stdoutTask = process!.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        process.WaitForExit(15000).ShouldBeTrue("native host timed out");
+        var stderr = stderrTask.GetAwaiter().GetResult();
+        stdoutTask.GetAwaiter().GetResult();
+        return (process.ExitCode, stderr);
+    }
 
     private static (int ExitCode, string StdErr) RunLauncherCapture(
         string launcher, string extraArgs = "", string? workingDirectory = null)
@@ -721,6 +756,348 @@ public class EndToEndObfuscationTests
             result.Success.ShouldBeTrue(result.ErrorMessage);
             result.Warnings.ShouldContain(w => w.Contains("Packing skipped"));
             result.PackedLauncherPath.ShouldBeNull();
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_UnknownRid_FailsBeforeWrite()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-rid-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "RidApp");
+            var output = Path.Combine(dir, "RidApp.obf.exe");
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = false },
+                SymbolRenaming = { Enabled = false, PreservePublicApi = true },
+                Packing = { Enabled = true, Rid = "linux-x64" }
+            };
+
+            var result = await CreateService().ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeFalse();
+            result.ErrorMessage.ShouldNotBeNull();
+            result.ErrorMessage.ShouldContain("Invalid settings");
+            result.ErrorMessage.ShouldContain("rid");
+            File.Exists(output).ShouldBeFalse();
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_DefaultRid_WritesNativeHostAndNoLauncher()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeApp");
+            var output = Path.Combine(dir, "NativeApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.PackedLauncherPath.ShouldBe(output);
+            result.Warnings.ShouldContain(w => w.Contains("Packed native host:"));
+            File.Exists(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBeFalse();
+            File.Exists(NativePacker.RuntimeConfigPathFor(output)).ShouldBeTrue();
+
+            var bytes = File.ReadAllBytes(output);
+            using (var pe = new PEReader(new MemoryStream(bytes)))
+            {
+                pe.PEHeaders.CorHeader.ShouldBeNull();
+            }
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_MainReturns11()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-run-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeApp");
+            var output = Path.Combine(dir, "NativeApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.PackedLauncherPath.ShouldBe(output);
+            File.Exists(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBeFalse();
+
+            if (OperatingSystem.IsWindows())
+                RunNative(output).ShouldBe(11);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_ForwardsMainArgs()
+    {
+        const string source = "public static class Program { public static int Main(string[] args) => args.Length == 1 && args[0] == \"ping\" ? 7 : 1; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-args-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeArgsApp");
+            var output = Path.Combine(dir, "NativeArgsApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            if (OperatingSystem.IsWindows())
+                RunNative(output, "ping").ShouldBe(7);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_WaitsForAsyncTaskMain()
+    {
+        const string source = """
+            public static class Program
+            {
+                public static async System.Threading.Tasks.Task<int> Main()
+                {
+                    await System.Threading.Tasks.Task.Yield();
+                    return 9;
+                }
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-async-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeAsyncApp");
+            var output = Path.Combine(dir, "NativeAsyncApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            if (OperatingSystem.IsWindows())
+                RunNative(output).ShouldBe(9);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_ResolvesSiblingAssemblies()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-sib-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var libDir = Path.Combine(dir, "lib");
+            Directory.CreateDirectory(libDir);
+            var lib = CompileToAssembly("public static class Lib { public static int Get() => 13; }", libDir, "Lib");
+            var input = CompileToExeWithRef("public static class Program { public static int Main() => Lib.Get(); }", dir, "NativeSibApp", lib);
+            var output = Path.Combine(dir, "NativeSibApp.obf.exe");
+            File.Copy(lib, Path.Combine(dir, "Lib.dll"), overwrite: true);
+
+            var result = await CreateService().ObfuscateAsync(input, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            var cwd = Path.Combine(dir, "cwd");
+            Directory.CreateDirectory(cwd);
+
+            if (OperatingSystem.IsWindows())
+                RunNative(output, workingDirectory: cwd).ShouldBe(13);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_WithAntiTamper_Runs()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-tamper-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeTamperApp");
+            var output = Path.Combine(dir, "NativeTamperApp.obf.exe");
+            var settings = NativePackingSettings();
+            settings.Protection.AntiTamper.Enabled = true;
+
+            var result = await CreateService().ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Warnings.ShouldContain(w => w.Contains("packed ALC/LoadFromStream"));
+
+            if (OperatingSystem.IsWindows())
+                RunNative(output).ShouldBe(11);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_TruncatedOverlay_Exits1()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-trunc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeTruncApp");
+            var output = Path.Combine(dir, "NativeTruncApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            using (var fs = File.Open(output, FileMode.Open, FileAccess.ReadWrite))
+            {
+                fs.Length.ShouldBeGreaterThan(8);
+                fs.SetLength(fs.Length - 8);
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                var (exit, stderr) = RunNativeCapture(output);
+                exit.ShouldBe(1);
+                stderr.ShouldContain("invalid payload");
+            }
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_BadMagic_Exits1()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-magic-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeMagicApp");
+            var output = Path.Combine(dir, "NativeMagicApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            var bytes = File.ReadAllBytes(output);
+            var magicAt = bytes.AsSpan().IndexOf("OBP1"u8);
+            magicAt.ShouldBeGreaterThanOrEqualTo(0);
+            bytes[magicAt] = (byte)'X';
+            File.WriteAllBytes(output, bytes);
+
+            if (OperatingSystem.IsWindows())
+            {
+                var (exit, stderr) = RunNativeCapture(output);
+                exit.ShouldBe(1);
+                stderr.ShouldContain("invalid payload");
+            }
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_MissingRuntimeConfig_Exits1()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-cfg-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeCfgApp");
+            var output = Path.Combine(dir, "NativeCfgApp.obf.exe");
+            var result = await CreateService().ObfuscateAsync(input, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            File.Delete(NativePacker.RuntimeConfigPathFor(output));
+
+            if (OperatingSystem.IsWindows())
+            {
+                var (exit, stderr) = RunNativeCapture(output);
+                exit.ShouldBe(1);
+                stderr.ShouldContain("runtimeconfig.json");
+            }
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task IncrementalHit_NativePacking_ReusesHostAndMissesWithoutRuntimeConfig()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-inc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeIncApp");
+            var output = Path.Combine(dir, "NativeIncApp.obf.exe");
+            var settings = NativePackingSettings();
+            settings.Incremental.Enabled = true;
+            var service = CreateService();
+
+            var first = await service.ObfuscateAsync(input, output, settings);
+            first.Success.ShouldBeTrue(first.ErrorMessage);
+            File.Exists(ManagedLauncherPacker.LauncherPathFor(output)).ShouldBeFalse();
+
+            var second = await service.ObfuscateAsync(input, output, settings);
+            second.Success.ShouldBeTrue(second.ErrorMessage);
+            second.Warnings.ShouldContain(w => w.Contains("Incremental: reused cached output"));
+            second.Warnings.ShouldContain(w => w.Contains("Packed native host:"));
+            second.PackedLauncherPath.ShouldBe(output);
+
+            File.Delete(NativePacker.RuntimeConfigPathFor(output));
+            var third = await service.ObfuscateAsync(input, output, settings);
+            third.Success.ShouldBeTrue(third.ErrorMessage);
+            third.Warnings.ShouldNotContain(w => w.Contains("Incremental: reused cached output"));
+            File.Exists(NativePacker.RuntimeConfigPathFor(output)).ShouldBeTrue();
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_DllWithEntryPoint_WarnsAboutExtension()
+    {
+        const string source = "public static class Program { public static int Main() => 11; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-dll-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeDllApp");
+            var dllInput = Path.Combine(dir, "NativeDllApp.dll");
+            File.Copy(input, dllInput);
+            var output = Path.Combine(dir, "NativeDllApp.obf.dll");
+            var result = await CreateService().ObfuscateAsync(dllInput, output, NativePackingSettings());
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Warnings.ShouldContain(w => w.Contains(PackingApplicator.DllExtensionWarning));
+            using var pe = new PEReader(new MemoryStream(File.ReadAllBytes(output)));
+            pe.PEHeaders.CorHeader.ShouldBeNull();
         }
         finally
         {

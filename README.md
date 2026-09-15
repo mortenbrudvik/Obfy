@@ -241,6 +241,9 @@ Merge multiple assemblies into a single output before obfuscation. Internalize m
 obfy App.dll Lib1.dll Lib2.dll --merge -o output/
 ```
 
+### Native packing (win-x64)
+With `packing.enabled` (config-only; off in every preset), Obfy replaces the obfuscated PE with a framework-dependent native Windows host. User IL is AES-256-CBC ciphertext in an overlay. Set `packing.rid` to `portable` for the previous managed `{name}.launcher.exe`. Closed-set / solution runs pack each entry-point output. Not Pre-JIT, not self-contained, not ARM64. Packing hides the managed PE on disk; the key is in the overlay — this is obfuscation, not confidentiality.
+
 ## Configuration
 
 Create an `obfy.json` configuration file:

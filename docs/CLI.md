@@ -65,7 +65,9 @@ obfy <input>... [options]
 | `--version` | | Show version information | |
 | `--help` | `-h`, `-?` | Show help | |
 
-**Config-only (no CLI flags):** `packing.enabled`, `signing`, `runtimeProfile`, `dependencyEmbedding`, `symbolRenaming.preserveXaml`, `inclusions`, `watermark` (except `--watermark-id`), nested anti-decompiler junk counts, encryption algorithms, control-flow mode/intensity, naming mode, `metadata.removeAttributes`, and `metadata.stripDocumentation`. `--strip-metadata` only sets `removeDebugInfo`. `--virtualize` and `--incremental` turn those features on; `maxMethods` and cache behavior stay in the config file.
+**Config-only (no CLI flags):** `packing.enabled` / `packing.rid`, `signing`, `runtimeProfile`, `dependencyEmbedding`, `symbolRenaming.preserveXaml`, `inclusions`, `watermark` (except `--watermark-id`), nested anti-decompiler junk counts, encryption algorithms, control-flow mode/intensity, naming mode, `metadata.removeAttributes`, and `metadata.stripDocumentation`. `--strip-metadata` only sets `removeDebugInfo`. `--virtualize` and `--incremental` turn those features on; `maxMethods` and cache behavior stay in the config file. There is no `--pack` flag.
+
+**Breaking:** `packing.enabled` now emits a native win-x64 host that replaces the obfuscated PE. Set `packing.rid` to `portable` for the previous managed `{name}.launcher.exe`. Closed-set / solution / `obfy A.dll B.dll` packs each entry-point output.
 
 ### config generate
 

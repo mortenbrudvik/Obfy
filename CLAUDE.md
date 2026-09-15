@@ -22,7 +22,9 @@ Obfy/
 │   │   │   └── Source/        # Roslyn-based source obfuscators
 │   │   ├── Pipeline/          # Obfuscation pipeline orchestration
 │   │   ├── Services/          # Core services
-│   │   └── Utilities/         # Helper classes
+│   │   └── Utilities/         # Helper classes (NativePacker, ManagedLauncherPacker)
+│   ├── Obfy.NativeHost/       # Prebuilt win-x64 CLR-host stub (not in Obfy.sln)
+│   ├── Obfy.PackedBootstrap/  # Managed bootstrap loaded by the native host
 │   ├── Obfy.VisualStudio/     # Visual Studio 2022 extension (C#)
 │   ├── Obfy.Rider/            # JetBrains Rider plugin (Kotlin)
 │   ├── Obfy.VSCode/           # VS Code stub (schema + problem matcher)
@@ -143,6 +145,8 @@ Tech stack: WPF-UI 4.3.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | ReferenceProxy | 40 | Hides in-module call targets behind proxy methods |
 | SymbolRenaming | 50 | Renames types, methods, fields, properties, events, namespaces |
 | MetadataRemoval | 90 | Strips debug info and attributes |
+
+Packing (post-save, not an `IObfuscator`): native win-x64 FDD CLR-host stub that replaces the managed PE; `packing.rid: portable` keeps the managed launcher. Closed-set / solution runs pack each entry-point output. Not a Pre-JIT packer.
 
 ### Source Obfuscators (Roslyn)
 

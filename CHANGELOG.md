@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `obfy config generate` writes PascalCase string enums and omits null signing paths so the file matches `schemas/obfy.schema.json`
 
 ### Changed
-- Native packing / native EXE is documented as Yes (win-x64 FDD CLR-host stub; `portable` keeps the managed launcher; not Pre-JIT; not self-contained; not ARM64). Code virtualization stays Partial (`VirtualizationObfuscator` still has `CreateExecute`; PR #23 is not on this branch)
+- Native packing / native EXE is documented as Yes (win-x64 FDD CLR-host stub; `portable` keeps the managed launcher; not Pre-JIT; not self-contained; not ARM64). Code virtualization stays Partial (`VirtualizationObfuscator` still has `CreateExecute`; [PR #23](https://github.com/mortenbrudvik/Obfy/pull/23) is open)
+- Competitive analysis: closed-set / Store / Linux CLI job; MSBuild and Azure DevOps marked Partial; BitMono no longer listed as having a `dotnet tool` Obfy lacks; GitHub stats as of 15 Sep 2026
 - CI runs `Obfy.Console.Tests` on Ubuntu so the cross-platform CLI claim is exercised every PR
 - Coverage include list adds `Obfy.VmRuntime`; incremental-cache tests no longer pin assembly version `1.3.0.0`
 - GitHub Release NuGet publish uses Trusted Publishing (OIDC) instead of a long-lived API key

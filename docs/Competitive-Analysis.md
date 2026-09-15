@@ -235,7 +235,7 @@ Reactor’s **$249 single-developer license excludes build servers**. CI needs t
 
 **Weaknesses**
 
-- No general IL VM; no unmanaged packer; no licensing/DRM/RASP
+- No general IL VM; no licensing/DRM/RASP
 - Unity / MAUI / Blazor / NativeAOT are recipes, not first-class plugins
 - No MSBuild PackageReference — CI uses `dotnet tool install` / `Exec`, not a build task that cannot be skipped
 - GUI, VS extension, and method-IL encryption are Windows-centric

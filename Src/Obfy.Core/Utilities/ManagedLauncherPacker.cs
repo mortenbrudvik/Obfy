@@ -183,11 +183,9 @@ public static class ManagedLauncherPacker
             if (File.Exists(path))
                 File.Delete(path);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-        }
-        catch (UnauthorizedAccessException)
-        {
+            System.Diagnostics.Trace.WriteLine($"ManagedLauncherPacker: failed to delete '{path}': {ex.Message}");
         }
     }
 }

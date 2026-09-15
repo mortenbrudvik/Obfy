@@ -146,7 +146,7 @@ Tech stack: WPF-UI 4.3.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | SymbolRenaming | 50 | Renames types, methods, fields, properties, events, namespaces |
 | MetadataRemoval | 90 | Strips debug info and attributes |
 
-Packing (post-save, not an `IObfuscator`): native win-x64 FDD CLR-host stub that replaces the managed PE; `packing.rid: portable` keeps the managed launcher. Not a Pre-JIT packer.
+Packing (post-save, not an `IObfuscator`): native win-x64 FDD CLR-host stub that replaces the managed PE; `packing.rid: portable` keeps the managed launcher. Closed-set / solution runs pack each entry-point output. Not a Pre-JIT packer.
 
 ### Source Obfuscators (Roslyn)
 

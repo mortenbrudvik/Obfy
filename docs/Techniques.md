@@ -839,7 +839,7 @@ Transforms control flow structures in source code.
 On the win-x64 success path:
 
 - The file at the output path is an unmanaged PE (no CLR data directory). dnlib / ILSpy cannot load it as a managed module.
-- User IL is AES-256 ciphertext in an overlay. The host decrypts in memory and runs via `hostfxr`.
+- User IL is AES-256-CBC (PKCS7) ciphertext in an overlay. The host decrypts in memory and runs via `hostfxr`.
 - There is no sibling `{name}.launcher.exe` and no second managed PE of the user assembly.
 - A sibling `{name}.runtimeconfig.json` is written. The machine needs `Microsoft.NETCore.App` (framework-dependent).
 
@@ -847,7 +847,7 @@ Set `packing.rid` to `portable` for the previous managed `{name}.launcher.exe` +
 
 This is **not** Pre-JIT, **not** self-contained, and **not** ARM64. Packing hides the managed PE on disk; the decryption key is in the overlay. Anyone who runs or inspects the EXE can recover IL. This is obfuscation, not confidentiality.
 
-The payload stays in memory (`AssemblyLoadContext.LoadFromStream`); anti-tamper skips ALC loads instead of hashing the host. Sibling assemblies next to the packed EXE are resolved from the load context. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning. NativeAOT / Unity IL2CPP / Blazor WASM turn packing off with a warning.
+The payload stays in memory (`AssemblyLoadContext.LoadFromStream`); anti-tamper skips ALC loads instead of hashing the host. Sibling assemblies next to the packed EXE are resolved from the load context. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning. NativeAOT / Unity IL2CPP / Blazor WASM turn packing off with a warning. Closed-set / solution / multi-assembly runs pack each entry-point output and leave libraries managed. Merge packs the merged entry-point assembly. Signing hashes the managed PE **before** pack, so the native EXE is not strong-named. GUI vs console is a PE Subsystem patch on the same stub. Runtimeconfig TFM prefers the assembly `TargetFrameworkAttribute` (then the input sibling JSON), otherwise the Obfy process version.
 
 ## See Also
 

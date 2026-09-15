@@ -4,8 +4,16 @@ using System.Runtime.Loader;
 
 namespace Obfy.Runtime;
 
+/// <summary>
+/// In-memory payload loader invoked from the native host via <c>UnmanagedCallersOnly</c>.
+/// Uses <see cref="AssemblyLoadContext.Default"/> (hostfxr component hosting; matches the
+/// anti-tamper <c>LoadFromStream</c> skip). Command-line args come from
+/// <see cref="Environment.GetCommandLineArgs"/>; the C <c>wmain</c> ignores argc/argv.
+/// </summary>
 public static class PackedBootstrap
 {
+    private static int _resolvingHooked;
+
     [UnmanagedCallersOnly(EntryPoint = "ObfyPackedRun")]
     public static int ObfyPackedRun(IntPtr payload, int length)
     {
@@ -21,16 +29,8 @@ public static class PackedBootstrap
             Marshal.Copy(payload, bytes, 0, length);
 
             var alc = AssemblyLoadContext.Default;
-            alc.Resolving += static (context, name) =>
-            {
-                if (string.IsNullOrEmpty(name.Name))
-                    return null;
-                var fileName = name.Name + ".dll";
-                var probe = Path.Combine(AppContext.BaseDirectory, fileName);
-                if (!File.Exists(probe) && !string.IsNullOrEmpty(name.CultureName))
-                    probe = Path.Combine(AppContext.BaseDirectory, name.CultureName, fileName);
-                return File.Exists(probe) ? context.LoadFromAssemblyPath(probe) : null;
-            };
+            if (Interlocked.Exchange(ref _resolvingHooked, 1) == 0)
+                alc.Resolving += ResolveSibling;
 
             var assembly = alc.LoadFromStream(new MemoryStream(bytes));
             var entry = assembly.EntryPoint;
@@ -62,8 +62,19 @@ public static class PackedBootstrap
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("Packed host failed: " + ex.Message);
+            Console.Error.WriteLine("Packed host failed: " + ex);
             return 1;
         }
+    }
+
+    private static Assembly? ResolveSibling(AssemblyLoadContext context, AssemblyName name)
+    {
+        if (string.IsNullOrEmpty(name.Name))
+            return null;
+        var fileName = name.Name + ".dll";
+        var probe = Path.Combine(AppContext.BaseDirectory, fileName);
+        if (!File.Exists(probe) && !string.IsNullOrEmpty(name.CultureName))
+            probe = Path.Combine(AppContext.BaseDirectory, name.CultureName, fileName);
+        return File.Exists(probe) ? context.LoadFromAssemblyPath(probe) : null;
     }
 }

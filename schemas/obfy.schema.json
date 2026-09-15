@@ -246,7 +246,7 @@
         "enabled": {
           "type": "boolean",
           "default": false,
-          "description": "When true, fail the run if the assembly has no entry point. win-x64 replaces the managed PE with a native host; portable writes {name}.launcher.exe and .runtimeconfig.json beside the obfuscated output."
+          "description": "When true, pack after the obfuscated PE is written. Missing entry point fails the run after that write. win-x64 replaces the managed PE with a native host and {name}.runtimeconfig.json; portable writes {name}.launcher.exe and {name}.launcher.runtimeconfig.json beside the obfuscated output."
         },
         "rid": {
           "type": "string",

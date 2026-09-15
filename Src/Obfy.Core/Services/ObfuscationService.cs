@@ -177,18 +177,9 @@ public class ObfuscationService : IObfuscationService
                 {
                     try
                     {
-                        if (settings.Packing.IsPortable)
-                        {
-                            packedPath = ManagedLauncherPacker.Pack(effectiveOutput);
-                            context.Warnings.Add("Packed launcher: " + packedPath);
-                            _logger.LogInformation("Packed launcher written to {Launcher}", packedPath);
-                        }
-                        else
-                        {
-                            packedPath = NativePacker.Pack(effectiveOutput, settings, inputPath);
-                            context.Warnings.Add("Packed native host: " + packedPath);
-                            _logger.LogInformation("Packed native host written to {Host}", packedPath);
-                        }
+                        packedPath = PackingApplicator.Pack(
+                            effectiveOutput, settings, inputPath, context.Warnings);
+                        _logger.LogInformation("Packed output written to {Packed}", packedPath);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {

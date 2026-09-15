@@ -72,7 +72,7 @@ $compile = @(
     "cl.exe /nologo /O2 /Brepro /W3 /WX /MT /DUNICODE /D_UNICODE /I `"$native`"",
     "host.c /Fe:`"$exe`"",
     "/link /Brepro /INCREMENTAL:NO /SUBSYSTEM:CONSOLE /IMPLIB:`"$implib`"",
-    "`"$res`" bcrypt.lib advapi32.lib `"$nethostLib`""
+    "`"$res`" bcrypt.lib advapi32.lib user32.lib `"$nethostLib`""
 ) -join " "
 
 Write-Host "Linking libnethost.lib from pack $($pack.Name)"

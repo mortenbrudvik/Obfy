@@ -4,8 +4,8 @@ using Obfy.Core.Pipeline;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// Disables PE/kernel32 protections (method IL encryption, anti-dump) and AssemblyResolve
-/// embedding on NativeAOT, Unity IL2CPP, and Blazor WASM.
+/// Disables PE/kernel32 protections (method IL encryption, anti-dump), AssemblyResolve
+/// embedding, and native packing on NativeAOT, Unity IL2CPP, and Blazor WASM.
 /// Anti-debug stays enabled but omits kernel32 P/Invoke (see <c>AntiDebugObfuscator</c>).
 /// <see cref="Apply"/> mutates the working clone of <see cref="ObfySettings"/> (callers are
 /// cloned first by <c>ObfuscationService</c>) and records report warnings.

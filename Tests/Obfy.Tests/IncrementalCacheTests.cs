@@ -49,15 +49,6 @@ public class IncrementalCacheTests : IDisposable
     }
 
     [Fact]
-    public void TryHit_PackingEnabledWithoutLauncher_IsFalse()
-    {
-        var (input, output, settings) = Seed();
-        settings.Packing.Enabled = true;
-        IncrementalCache.Write(input, output, settings);
-        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
-    }
-
-    [Fact]
     public void TryHit_PackingWinX64WithoutRuntimeConfig_IsFalse()
     {
         var (input, output, settings) = Seed();
@@ -67,13 +58,39 @@ public class IncrementalCacheTests : IDisposable
     }
 
     [Fact]
-    public void TryHit_PackingWinX64WithRuntimeConfig_IsTrue()
+    public void TryHit_PackingWinX64DummyOutputWithRuntimeConfig_IsFalse()
     {
         var (input, output, settings) = Seed();
         settings.Packing.Enabled = true;
         IncrementalCache.Write(input, output, settings);
         File.WriteAllText(NativePacker.RuntimeConfigPathFor(output), "{}");
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryHit_PackingWinX64WithRuntimeConfigAndPackedHost_IsTrue()
+    {
+        var (input, output, settings) = Seed();
+        settings.Packing.Enabled = true;
+        IncrementalCache.Write(input, output, settings);
+        var packed = new byte[8];
+        packed[0] = (byte)'M';
+        packed[1] = (byte)'Z';
+        "OBP1"u8.CopyTo(packed.AsSpan(4));
+        File.WriteAllBytes(output, packed);
+        File.WriteAllText(NativePacker.RuntimeConfigPathFor(output), "{}");
         IncrementalCache.TryHit(input, output, settings).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ComputeKey_ChangesWhenPackingRidChanges()
+    {
+        var (input, _, settings) = Seed();
+        settings.Packing.Enabled = true;
+        settings.Packing.Rid = "win-x64";
+        var native = IncrementalCache.ComputeKey(input, settings);
+        settings.Packing.Rid = "portable";
+        IncrementalCache.ComputeKey(input, settings).ShouldNotBe(native);
     }
 
     [Fact]

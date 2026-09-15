@@ -23,7 +23,8 @@ namespace Obfy.Tests;
 /// <summary>
 /// QT-06: decompiler-resistance fixtures. These lock protection quality:
 /// multiple decrypt entry points and non-straight-line helper IL, anti-debug
-/// survives NOP-ing one user call site, and reports show method-encryption skip counts.
+/// survives NOP-ing one user call site, reports show method-encryption skip counts,
+/// and a native-packed EXE is rejected by dnlib as a managed module.
 /// </summary>
 public class DecompilerResistanceTests
 {

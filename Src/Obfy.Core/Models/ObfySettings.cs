@@ -789,7 +789,8 @@ public class PackingSettings
 
     /// <summary>
     /// Target RID: <c>win-x64</c> (default native host) or <c>portable</c> (managed
-    /// <c>{name}.launcher.exe</c>). Unknown values fail validation when packing is enabled.
+    /// <c>{name}.launcher.exe</c>). Empty/null is win-x64; anything else that is not
+    /// <c>portable</c> fails validation when packing is enabled.
     /// </summary>
     public string Rid { get; set; } = "win-x64";
 

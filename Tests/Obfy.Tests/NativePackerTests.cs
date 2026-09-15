@@ -1,4 +1,6 @@
+using System.Buffers.Binary;
 using System.Reflection.PortableExecutable;
+using System.Security.Cryptography;
 using dnlib.DotNet;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -29,6 +31,9 @@ public class NativePackerTests
 
             var bytes = File.ReadAllBytes(output);
             bytes.AsSpan().IndexOf(NativePacker.Magic).ShouldBeGreaterThanOrEqualTo(0);
+            var json = File.ReadAllText(NativePacker.RuntimeConfigPathFor(output));
+            json.ShouldContain("\"rollForward\": \"LatestMinor\"");
+            json.ShouldContain("\"name\": \"Microsoft.NETCore.App\"");
 
             using (var pe = new PEReader(new MemoryStream(bytes)))
             {
@@ -61,6 +66,8 @@ public class NativePackerTests
             using var module = ModuleDefMD.Load(output);
             module.EntryPoint.ShouldBeNull();
             module.Types.ShouldContain(t => t.Name == "Lib");
+            File.Exists(NativePacker.RuntimeConfigPathFor(output)).ShouldBeFalse();
+            File.Exists(output + ".obfypack").ShouldBeFalse();
         }
         finally
         {
@@ -147,6 +154,115 @@ public class NativePackerTests
             using var packedPe = new PEReader(new MemoryStream(File.ReadAllBytes(output)));
             packedPe.PEHeaders.PEHeader.ShouldNotBeNull();
             packedPe.PEHeaders.PEHeader!.Subsystem.ShouldBe(Subsystem.WindowsGui);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public void Pack_OverlayAtPatchedOffset_RoundTripsAesWithoutPrependingIv()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-native-pack-overlay-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe("public static class Program { public static int Main() => 11; }", dir, "OverlayApp");
+            var output = Path.Combine(dir, "OverlayApp.obf.exe");
+            File.Copy(input, output);
+            var managed = File.ReadAllBytes(output);
+            var settings = PackingSettings();
+
+            NativePacker.Pack(output, settings, input);
+
+            using var stubStream = typeof(NativePacker).Assembly.GetManifestResourceStream(NativePacker.EmbeddedName);
+            stubStream.ShouldNotBeNull();
+            var stub = new byte[stubStream!.Length];
+            stubStream.ReadExactly(stub);
+
+            var sentinelAt = stub.AsSpan().IndexOf(NativePacker.Sentinel);
+            sentinelAt.ShouldBeGreaterThanOrEqualTo(0);
+
+            var packed = File.ReadAllBytes(output);
+            var overlayOffset = (int)BinaryPrimitives.ReadUInt64LittleEndian(packed.AsSpan(sentinelAt));
+            overlayOffset.ShouldBe(stub.Length);
+            packed.AsSpan(overlayOffset, NativePacker.Magic.Length).SequenceEqual(NativePacker.Magic).ShouldBeTrue();
+
+            var header = packed.AsSpan(overlayOffset, NativePacker.OverlayHeader.Size);
+            BinaryPrimitives.ReadUInt32LittleEndian(header[NativePacker.OverlayHeader.VersionOffset..])
+                .ShouldBe(NativePacker.OverlayHeader.Version);
+            BinaryPrimitives.ReadUInt32LittleEndian(header[NativePacker.OverlayHeader.HeaderSizeOffset..])
+                .ShouldBe((uint)NativePacker.OverlayHeader.Size);
+            BinaryPrimitives.ReadUInt32LittleEndian(header[NativePacker.OverlayHeader.FlagsOffset..])
+                .ShouldBe(NativePacker.OverlayHeader.FlagAes);
+            var payloadLength = BinaryPrimitives.ReadUInt32LittleEndian(
+                header[NativePacker.OverlayHeader.PayloadLengthOffset..]);
+            payloadLength.ShouldBeGreaterThan(0u);
+
+            var key = IncrementalCache.ToAes256Key(input, settings);
+            var iv = HMACSHA256.HashData(key, "obfy-pack-iv"u8)[..16];
+            header.Slice(NativePacker.OverlayHeader.KeyOffset, 32).SequenceEqual(key).ShouldBeTrue();
+            header.Slice(NativePacker.OverlayHeader.IvOffset, 16).SequenceEqual(iv).ShouldBeTrue();
+
+            var ciphertext = packed[(overlayOffset + NativePacker.OverlayHeader.Size)..];
+            ciphertext.Length.ShouldBe((int)payloadLength);
+            ciphertext.AsSpan().StartsWith(iv).ShouldBeFalse();
+
+            using var aes = Aes.Create();
+            aes.Key = key;
+            aes.IV = iv;
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+            using var decryptor = aes.CreateDecryptor();
+            decryptor.TransformFinalBlock(ciphertext, 0, ciphertext.Length).ShouldBe(managed);
+
+            NativePacker.LooksLikePackedHost(output).ShouldBeTrue();
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public void Pack_TargetFrameworkAttribute_WritesThatTfm()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-native-pack-tfm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            const string source = """
+                [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v8.0")]
+                public static class Program { public static int Main() => 11; }
+                """;
+            var input = CompileToExe(source, dir, "TfmApp");
+            var output = Path.Combine(dir, "TfmApp.obf.exe");
+            File.Copy(input, output);
+
+            NativePacker.Pack(output, PackingSettings(), input);
+
+            var json = File.ReadAllText(NativePacker.RuntimeConfigPathFor(output));
+            json.ShouldContain("\"tfm\": \"net8.0\"");
+            json.ShouldContain("\"version\": \"8.0.0\"");
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public void LooksLikePackedHost_RejectsManagedPe()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-native-pack-looks-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe("public static class Program { public static int Main() => 11; }", dir, "LooksApp");
+            NativePacker.LooksLikePackedHost(input).ShouldBeFalse();
+            File.WriteAllBytes(Path.Combine(dir, "dummy"), [5, 6, 7, 8]);
+            NativePacker.LooksLikePackedHost(Path.Combine(dir, "dummy")).ShouldBeFalse();
         }
         finally
         {

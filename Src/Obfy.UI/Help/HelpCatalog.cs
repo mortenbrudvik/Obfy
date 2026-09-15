@@ -10,7 +10,7 @@ public static class HelpCatalog
     public const string ResultsId = "results";
 
     public const string ConfidentialitySentence =
-        "String, constant, resource, and method encryption is obfuscation, not secrecy: the keys live in the output assembly and are recoverable by anyone who runs or inspects it.";
+        "String, constant, resource, method, and packing encryption is obfuscation, not secrecy: the keys live in the output assembly (or the native packing overlay) and are recoverable by anyone who runs or inspects it.";
 
     public static IReadOnlyList<HelpTopic> Create() =>
     [
@@ -45,7 +45,7 @@ public static class HelpCatalog
             new HelpNamedNote("Protection", "Anti-Debug, Anti-Tamper, Anti-Dump, Anti-Decompiler, Reference Proxy, and Method IL Encryption."),
             new HelpNamedNote("Metadata", "Remove Debug Info, Remove Attributes, and Strip Documentation."),
             new HelpNamedNote("Watermark", "Embeds a Customer / build id. The id is required when Watermark is on."),
-            new HelpNamedNote("Native packer (win-x64)", "Replaces the output with a native Windows host (framework-dependent). Set packing.rid to portable for the managed launcher."),
+            new HelpNamedNote("Native packer (win-x64)", "Replaces the output with a native Windows host (framework-dependent). The overlay holds the AES-256-CBC key. Set packing.rid to portable for the managed launcher."),
             new HelpNamedNote("Strong-Name Signing", "Re-signs the output with a Key file (.snk / .pfx)."),
             new HelpNamedNote("Resource Encryption", "Encrypts embedded resources (XOR or AES-256). This is obfuscation, not secrecy."),
             new HelpNamedNote("Assembly Merge", "Merge input assemblies into one output, and optionally Embed referenced DLLs."),

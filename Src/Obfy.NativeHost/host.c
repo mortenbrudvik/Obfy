@@ -3,6 +3,7 @@
 #define NETHOST_USE_AS_STATIC
 #endif
 #include <windows.h>
+#include <wincon.h>
 #include <bcrypt.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -37,16 +38,50 @@ uint64_t ObfyOverlayOffset = 0x314C564F5950424FULL;
 
 typedef int32_t (__stdcall *obfy_packed_run_fn)(uint8_t *payload, int32_t length);
 
+static int stderr_is_captured(void)
+{
+    HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+    DWORD mode;
+    DWORD type;
+
+    if (h == NULL || h == INVALID_HANDLE_VALUE)
+        return 0;
+    if (GetConsoleMode(h, &mode))
+        return 0;
+    type = GetFileType(h);
+    return type == FILE_TYPE_PIPE || type == FILE_TYPE_DISK;
+}
+
+static void emit_error(const char *message)
+{
+    fprintf(stderr, "%s\n", message);
+    fflush(stderr);
+    /* GUI apps have no console. Do not MessageBox when stderr is redirected (tests, pipes). */
+    if (!stderr_is_captured() && GetConsoleWindow() == NULL)
+    {
+        wchar_t wmsg[1024];
+        if (MultiByteToWideChar(CP_UTF8, 0, message, -1, wmsg, 1024) > 0)
+            MessageBoxW(NULL, wmsg, L"Packed host", MB_OK | MB_ICONERROR);
+    }
+}
+
 static int invalid_payload(void)
 {
-    fprintf(stderr, "Packed host: invalid payload.\n");
+    emit_error("Packed host: invalid payload.");
     return 1;
 }
 
 static int host_failed(const char *message)
 {
-    fprintf(stderr, "%s\n", message);
+    emit_error(message);
     return 1;
+}
+
+static int host_failed_rc(const char *fmt, int32_t rc)
+{
+    char buf[512];
+    snprintf(buf, sizeof(buf), fmt, (int)rc);
+    return host_failed(buf);
 }
 
 /* Reconstruct the unpatched sentinel without a second contiguous OBPYOVL1 immediate. */
@@ -240,7 +275,9 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
         return host_failed("Packed host failed: runtime not found.");
 
     if (!runtimeconfig_path(cfg, OBFY_PATH_CCH))
-        return host_failed("Packed host failed: runtime not found.");
+        return host_failed("Packed host failed: could not resolve sibling .runtimeconfig.json.");
+    if (GetFileAttributesW(cfg) == INVALID_FILE_ATTRIBUTES)
+        return host_failed("Packed host failed: sibling .runtimeconfig.json is missing. Copy it next to the EXE.");
     if (!GetModuleFileNameW(NULL, host_path, OBFY_PATH_CCH))
         return host_failed("Packed host failed: runtime not found.");
     if (!exe_directory(app_base, OBFY_PATH_CCH))
@@ -255,14 +292,16 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
     {
         if (ctx != NULL)
             close_fn(ctx);
-        return host_failed("Packed host failed: runtime not found.");
+        return host_failed_rc(
+            "Packed host failed: could not initialize runtime (hostfxr rc=%d). Install Microsoft.NETCore.App.",
+            rc);
     }
 
     /* Component hosting does not set the app base to the EXE directory. */
     if (set_prop_fn(ctx, L"APP_CONTEXT_BASE_DIRECTORY", app_base) != 0)
     {
         close_fn(ctx);
-        return host_failed("Packed host failed: runtime not found.");
+        return host_failed("Packed host failed: could not set APP_CONTEXT_BASE_DIRECTORY.");
     }
 
     if (get_delegate_fn(ctx, hdt_load_assembly_bytes, (void **)&load_bytes) != 0 ||
@@ -270,7 +309,7 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
         !load_bytes || !get_fn)
     {
         close_fn(ctx);
-        return host_failed("Packed host failed: runtime not found.");
+        return host_failed("Packed host failed: could not obtain hostfxr delegates.");
     }
 
     self = GetModuleHandleW(NULL);
@@ -328,6 +367,7 @@ int wmain(int argc, wchar_t **argv)
     uint32_t plain_len = 0;
     int rc;
 
+    /* Args are read in PackedBootstrap via GetCommandLineArgs, not wmain. */
     (void)argc;
     (void)argv;
 

@@ -128,7 +128,7 @@ public class HelpCatalogTests
         var note = Topic(HelpCatalog.TechniquesId).Blocks.OfType<HelpNamedNote>()
             .Single(n => n.Heading == "Native packer (win-x64)");
         note.Text.ShouldBe(
-            "Replaces the output with a native Windows host (framework-dependent). Set packing.rid to portable for the managed launcher.");
+            "Replaces the output with a native Windows host (framework-dependent). The overlay holds the AES-256-CBC key. Set packing.rid to portable for the managed launcher.");
     }
 
     private static HelpTopic Topic(string id) =>

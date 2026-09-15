@@ -622,7 +622,7 @@ public partial class SettingsViewModel : ObservableObject
         SigningKeyFile = settings.Signing.KeyFile ?? string.Empty;
         SigningPasswordEnvironmentVariable = settings.Signing.PasswordEnvironmentVariable ?? string.Empty;
         PackingEnabled = settings.Packing.Enabled;
-        _packingRid = settings.Packing.Rid;
+        _packingRid = string.IsNullOrWhiteSpace(settings.Packing.Rid) ? "win-x64" : settings.Packing.Rid;
         VirtualizationEnabled = settings.Virtualization.Enabled;
         IncrementalEnabled = settings.Incremental.Enabled;
         }

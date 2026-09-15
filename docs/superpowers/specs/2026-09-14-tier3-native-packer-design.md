@@ -8,7 +8,7 @@
 
 ## Goal
 
-Replace the win-x64 packing path with a **framework-dependent native CLR-host stub** so the packed output is an unmanaged PE: no CLR directory, user IL only as AES-256 ciphertext in an overlay, decrypted in memory and run via `hostfxr`. After this ships, Competitive-Analysis.md marks **Native packing / native EXE** as Yes, with the limits in this spec called out — the Reactor stub analogue without Pre-JIT or a self-contained runtime.
+Replace the win-x64 packing path with a **framework-dependent native CLR-host stub** so the packed output is an unmanaged PE: no CLR directory, user IL only as AES-256-CBC ciphertext in an overlay, decrypted in memory and run via `hostfxr`. After this ships, Competitive-Analysis.md marks **Native packing / native EXE** as Yes, with the limits in this spec called out — the Reactor stub analogue without Pre-JIT or a self-contained runtime.
 
 This is the second sub-project of “make Obfy a Tier 3 obfuscation tool.” The first is general IL virtualization (locked spec `docs/superpowers/specs/2026-09-13-tier3-general-vm-design.md`, PR #23). Licensing, crash reporting, and RASP stay out of Obfy.
 
@@ -189,11 +189,11 @@ public static class NativePacker
 
 1. Require existing `assemblyPath` and an entry point (same `ModuleDefMD.Load` check as `ManagedLauncherPacker`).
 2. Read managed bytes. Record `Subsystem` from the PE optional header.
-3. `key = Convert.FromHexString(IncrementalCache.ComputeKey(inputPath, settings))` (32 bytes; no second hash). Generate a random 16-byte IV with `RandomNumberGenerator` (IV is not the cache key; ciphertext still changes only when the key or plaintext changes if tests asserted identical ciphertext — **lock:** IV is derived from HMAC-SHA256(key, "obfy-pack-iv") first 16 bytes, not `RandomNumberGenerator`, so the same key+plaintext yields the same overlay).
+3. `key = Convert.FromHexString(IncrementalCache.ComputeKey(inputPath, settings))` (32 bytes; no second hash). **Lock:** IV is derived from HMAC-SHA256(key, `"obfy-pack-iv"`) first 16 bytes, so the same key+plaintext yields the same overlay.
 4. AES-256-CBC PKCS7 encrypt the managed bytes with that key and IV. Ciphertext does **not** prepend the IV.
 5. Load embedded stub bytes. Find the 8-byte sentinel; write the overlay offset (`stub.Length` as `uint64` LE) over it. Patch `IMAGE_OPTIONAL_HEADER.Subsystem` to the recorded value. Write stub, then overlay, to a temp file in the destination directory.
-6. Write `{name}.runtimeconfig.json` with the same JSON as today’s launcher (`tfm` / `Microsoft.NETCore.App` from `Environment.Version.Major`).
-7. Replace `assemblyPath` with the temp native EXE (`File.Replace` on Windows; delete destination then `File.Move` elsewhere). On failure, delete temp native + runtimeconfig; do **not** delete the managed PE.
+6. Write `{name}.runtimeconfig.json` to a temp name. `tfm` / `Microsoft.NETCore.App` prefer `TargetFrameworkAttribute` on the managed PE, then the input sibling runtimeconfig, then `Environment.Version.Major` (same fallback as today’s launcher).
+7. Replace `assemblyPath` with the temp native EXE (`File.Replace` on Windows; `File.Move(..., overwrite: true)` elsewhere — never delete the destination first). Then publish the runtimeconfig. On failure, delete temp native + unpublished runtimeconfig; do **not** delete the managed PE or a pre-existing JSON.
 
 `RuntimeConfigPathFor` is `Path.ChangeExtension(assemblyPath, ".runtimeconfig.json")` (e.g. `App.obf.exe` → `App.obf.runtimeconfig.json`).
 
@@ -218,7 +218,7 @@ public class PackingSettings
 }
 ```
 
-Validation (`ObfySettings.Validate` / `SettingsValidator`): if `Enabled` and `Rid` is not `win-x64` or `portable` (ordinal ignore-case), throw `ValidationException` — the run fails **before** load, so no managed PE is written. Empty/`null` rid is treated as `win-x64`.
+Validation (`ObfySettings.Validate`): if `Enabled` and `Rid` is not `win-x64` or `portable` (ordinal ignore-case), throw `ValidationException` — the run fails **before** load, so no managed PE is written. Empty/`null` rid is treated as `win-x64`.
 
 `ApplyPreset` still sets `Packing.Enabled = false` and does not need to touch `Rid`.
 
@@ -285,7 +285,8 @@ No rid combo box.
 | Signing | Happens on the managed PE before pack. The native EXE is not strong-named. |
 | VS/Rider in-place copy | Copies every sidecar in the temp dir; `.runtimeconfig.json` is included. No API change. Portable still produces `.launcher.*` sidecars. |
 | Source mode | Packing skipped with warning (unchanged). |
-| Closed-set / merge | Packing still runs per written entry-point output. |
+| Merge | Packing runs on the merged entry-point assembly (`MergeAndObfuscateAsync` → `ObfuscateAsync`). |
+| Closed-set / solution / multi-assembly | Packing runs per written **entry-point** output after `SaveAsync`; libraries stay managed (skip warning). Sidecars are copied on commit. |
 
 ## Error handling
 

@@ -637,7 +637,7 @@ Unsigned compares (`cgt.un`, `blt.un`, …) are **skipped** so original IL is ke
 When `enabled` is true and `rid` is `win-x64` (the default):
 
 - The file at the output path is an unmanaged PE (no CLR directory).
-- User IL is AES-256 ciphertext in an overlay; the host decrypts in memory and runs via `hostfxr`.
+- User IL is AES-256-CBC (PKCS7) ciphertext in an overlay; the host decrypts in memory and runs via `hostfxr`.
 - There is no sibling `{name}.launcher.exe` and no second managed PE of the user assembly.
 - A sibling `{name}.runtimeconfig.json` is written. The machine needs `Microsoft.NETCore.App` (framework-dependent).
 
@@ -647,7 +647,7 @@ When `rid` is `portable`:
 - `{name}.launcher.runtimeconfig.json`
 - The original obfuscated file is not replaced.
 
-Packing requires an entry point; class libraries fail the run with `Packing failed: ...`. Source inputs skip packing with a warning. NativeAOT / Unity IL2CPP / Blazor WASM turn packing off with a warning.
+Packing requires an entry point; class libraries fail the run with `Packing failed: ...`. Source inputs skip packing with a warning. NativeAOT / Unity IL2CPP / Blazor WASM turn packing off with a warning. Closed-set / solution / multi-assembly runs pack each entry-point output and leave libraries managed. Merge packs the merged entry-point assembly. Signing hashes the managed PE **before** pack, so the native EXE is not strong-named. GUI vs console is a PE Subsystem patch on the same stub. Runtimeconfig TFM prefers the assembly `TargetFrameworkAttribute` (then the input sibling JSON), otherwise the Obfy process version.
 
 Not Pre-JIT, not self-contained, not ARM64. Packing hides the managed PE on disk; the decryption key is in the overlay. Anyone who runs or inspects the EXE can recover IL. This is obfuscation, not confidentiality.
 

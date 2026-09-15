@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
+using System.Text.Json;
 using dnlib.DotNet;
 using Obfy.Core.Models;
 
@@ -8,24 +10,77 @@ namespace Obfy.Core.Utilities;
 
 /// <summary>
 /// Replaces a managed entry-point assembly with the embedded win-x64 native host plus an
-/// AES-256-CBC overlay of the original PE. Writes a sibling <c>.runtimeconfig.json</c>.
-/// Not a sibling launcher: the managed PE is gone on success.
+/// AES-256-CBC overlay of the obfuscated managed PE (72-byte header + ciphertext; key and IV
+/// live in the header). Writes a sibling <c>.runtimeconfig.json</c>. Not a sibling launcher:
+/// the managed PE is gone on success. Runtimeconfig TFM prefers
+/// <c>TargetFrameworkAttribute</c> / the input sibling JSON, then the Obfy process version
+/// (same fallback as <see cref="ManagedLauncherPacker"/>).
 /// </summary>
 public static class NativePacker
 {
     public const string EmbeddedName = "Obfy.NativeHost.exe";
-    public const int HeaderSize = 72;
-    public static readonly byte[] Magic = "OBP1"u8.ToArray();
-    public static readonly byte[] Sentinel = "OBPYOVL1"u8.ToArray();
+
+    public static ReadOnlySpan<byte> Magic => "OBP1"u8;
+    public static ReadOnlySpan<byte> Sentinel => "OBPYOVL1"u8;
+
+    /// <summary>Overlay header layout matching <c>ObfyOverlayHeader</c> in host.c.</summary>
+    internal static class OverlayHeader
+    {
+        public const int Size = 72;
+        public const uint Version = 1;
+        public const uint FlagAes = 1;
+        public const int MagicOffset = 0;
+        public const int VersionOffset = 4;
+        public const int HeaderSizeOffset = 8;
+        public const int FlagsOffset = 12;
+        public const int TfmMajorOffset = 16;
+        public const int PayloadLengthOffset = 20;
+        public const int IvOffset = 24;
+        public const int KeyOffset = 40;
+    }
 
     public static string RuntimeConfigPathFor(string assemblyPath) =>
         Path.ChangeExtension(assemblyPath, ".runtimeconfig.json");
 
     /// <summary>
-    /// Encrypts <paramref name="assemblyPath"/> into an overlay, stamps the embedded native host,
-    /// and replaces the managed PE in place. The AES key is
-    /// <see cref="IncrementalCache.ComputeKey"/> hex-decoded (no second hash). Throws
-    /// <see cref="InvalidOperationException"/> without a <c>Packing failed:</c> prefix.
+    /// True when <paramref name="path"/> looks like a stamped native host (MZ + overlay magic).
+    /// Used by incremental cache hits so a leftover managed PE plus dummy JSON is not a hit.
+    /// </summary>
+    public static bool LooksLikePackedHost(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return false;
+            using var fs = File.OpenRead(path);
+            if (fs.Length < Magic.Length + 2)
+                return false;
+            Span<byte> mz = stackalloc byte[2];
+            if (fs.Read(mz) != 2 || mz[0] != (byte)'M' || mz[1] != (byte)'Z')
+                return false;
+            fs.Position = 0;
+            var buffer = new byte[checked((int)Math.Min(fs.Length, 1024 * 1024))];
+            var read = fs.Read(buffer);
+            if (buffer.AsSpan(0, read).IndexOf(Magic) >= 0)
+                return true;
+            if (fs.Length <= buffer.Length)
+                return false;
+            var rest = new byte[fs.Length - buffer.Length];
+            fs.ReadExactly(rest);
+            return rest.AsSpan().IndexOf(Magic) >= 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OverflowException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Encrypts the obfuscated PE at <paramref name="assemblyPath"/> into an overlay, stamps the
+    /// embedded native host, and replaces the managed PE in place. The AES key is
+    /// <see cref="IncrementalCache.ToAes256Key"/> (hex of <see cref="IncrementalCache.ComputeKey"/>,
+    /// no second hash). Throws <see cref="InvalidOperationException"/> without a
+    /// <c>Packing failed:</c> prefix.
     /// </summary>
     public static string Pack(string assemblyPath, ObfySettings settings, string inputPath)
     {
@@ -40,18 +95,22 @@ public static class NativePacker
 
         var tempPath = assemblyPath + ".obfypack";
         var runtimeConfigPath = RuntimeConfigPathFor(assemblyPath);
+        var runtimeConfigTemp = runtimeConfigPath + ".obfytmp";
         try
         {
             var managed = File.ReadAllBytes(assemblyPath);
             ushort subsystem;
             using (var pe = new PEReader(new MemoryStream(managed)))
             {
-                subsystem = (ushort)pe.PEHeaders.PEHeader!.Subsystem;
+                var peHeader = pe.PEHeaders.PEHeader
+                    ?? throw new InvalidOperationException("Packing requires a valid PE optional header.");
+                subsystem = (ushort)peHeader.Subsystem;
             }
 
-            var key = Convert.FromHexString(IncrementalCache.ComputeKey(inputPath, settings));
+            var key = IncrementalCache.ToAes256Key(inputPath, settings);
             var iv = HMACSHA256.HashData(key, "obfy-pack-iv"u8)[..16];
             var ciphertext = EncryptAes(managed, key, iv);
+            var tfmMajor = ResolveTfmMajor(managed, inputPath);
 
             var stub = LoadEmbeddedStub();
             StampStub(stub, subsystem);
@@ -59,29 +118,27 @@ public static class NativePacker
             using (var output = File.Create(tempPath))
             {
                 output.Write(stub);
-                output.Write(BuildHeader(ciphertext, iv, key));
+                output.Write(BuildHeader(ciphertext, iv, key, tfmMajor));
                 output.Write(ciphertext);
             }
 
-            WriteRuntimeConfig(runtimeConfigPath);
+            WriteRuntimeConfig(runtimeConfigTemp, tfmMajor);
 
             if (OperatingSystem.IsWindows())
                 File.Replace(tempPath, assemblyPath, destinationBackupFileName: null);
             else
-            {
-                File.Delete(assemblyPath);
-                File.Move(tempPath, assemblyPath);
-            }
+                File.Move(tempPath, assemblyPath, overwrite: true);
 
+            File.Move(runtimeConfigTemp, runtimeConfigPath, overwrite: true);
             return assemblyPath;
         }
         catch (Exception ex)
         {
             TryDelete(tempPath);
-            TryDelete(runtimeConfigPath);
+            TryDelete(runtimeConfigTemp);
             if (ex is InvalidOperationException)
                 throw;
-            throw new InvalidOperationException(ex.Message, ex);
+            throw new InvalidOperationException($"{ex.GetType().Name}: {ex.Message}", ex);
         }
     }
 
@@ -136,23 +193,22 @@ public static class NativePacker
         return encryptor.TransformFinalBlock(plaintext, 0, plaintext.Length);
     }
 
-    private static byte[] BuildHeader(byte[] ciphertext, byte[] iv, byte[] key)
+    internal static byte[] BuildHeader(byte[] ciphertext, byte[] iv, byte[] key, uint tfmMajor)
     {
-        var header = new byte[HeaderSize];
-        Magic.CopyTo(header.AsSpan());
-        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(4), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(8), (uint)HeaderSize);
-        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(12), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(16), (uint)Environment.Version.Major);
-        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(20), (uint)ciphertext.Length);
-        iv.CopyTo(header.AsSpan(24));
-        key.CopyTo(header.AsSpan(40));
+        var header = new byte[OverlayHeader.Size];
+        Magic.CopyTo(header.AsSpan(OverlayHeader.MagicOffset));
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(OverlayHeader.VersionOffset), OverlayHeader.Version);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(OverlayHeader.HeaderSizeOffset), (uint)OverlayHeader.Size);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(OverlayHeader.FlagsOffset), OverlayHeader.FlagAes);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(OverlayHeader.TfmMajorOffset), tfmMajor);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(OverlayHeader.PayloadLengthOffset), (uint)ciphertext.Length);
+        iv.CopyTo(header.AsSpan(OverlayHeader.IvOffset));
+        key.CopyTo(header.AsSpan(OverlayHeader.KeyOffset));
         return header;
     }
 
-    private static void WriteRuntimeConfig(string runtimeConfigPath)
+    private static void WriteRuntimeConfig(string runtimeConfigPath, uint major)
     {
-        var major = Environment.Version.Major;
         var runtimeConfig = $$"""
             {
               "runtimeOptions": {
@@ -168,6 +224,67 @@ public static class NativePacker
         File.WriteAllText(runtimeConfigPath, runtimeConfig);
     }
 
+    internal static uint ResolveTfmMajor(byte[] managed, string inputPath)
+    {
+        if (TryTfmFromAttribute(managed, out var major))
+            return major;
+        if (TryTfmFromRuntimeConfig(Path.ChangeExtension(inputPath, ".runtimeconfig.json"), out major))
+            return major;
+        return (uint)Environment.Version.Major;
+    }
+
+    private static bool TryTfmFromAttribute(byte[] managed, out uint major)
+    {
+        major = 0;
+        try
+        {
+            using var module = ModuleDefMD.Load(managed);
+            var attr = module.Assembly?.CustomAttributes.FirstOrDefault(static a =>
+                a.TypeFullName is "System.Runtime.Versioning.TargetFrameworkAttribute");
+            if (attr is null || attr.ConstructorArguments.Count == 0)
+                return false;
+            var value = attr.ConstructorArguments[0].Value?.ToString();
+            if (string.IsNullOrEmpty(value))
+                return false;
+            var vIndex = value.LastIndexOf('v');
+            if (vIndex < 0 || vIndex + 1 >= value.Length || !char.IsDigit(value[vIndex + 1]))
+                return false;
+            var majorEnd = vIndex + 1;
+            while (majorEnd < value.Length && char.IsDigit(value[majorEnd]))
+                majorEnd++;
+            return uint.TryParse(value.AsSpan(vIndex + 1, majorEnd - vIndex - 1), out major) && major > 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryTfmFromRuntimeConfig(string path, out uint major)
+    {
+        major = 0;
+        if (!File.Exists(path))
+            return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (!doc.RootElement.TryGetProperty("runtimeOptions", out var opts) ||
+                !opts.TryGetProperty("tfm", out var tfmEl))
+                return false;
+            var tfm = tfmEl.GetString();
+            if (tfm is null || !tfm.StartsWith("net", StringComparison.OrdinalIgnoreCase))
+                return false;
+            var rest = tfm[3..];
+            var dot = rest.IndexOf('.');
+            var majorText = dot < 0 ? rest : rest[..dot];
+            return uint.TryParse(majorText, out major) && major > 0;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     private static void TryDelete(string path)
     {
         try
@@ -175,11 +292,9 @@ public static class NativePacker
             if (File.Exists(path))
                 File.Delete(path);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-        }
-        catch (UnauthorizedAccessException)
-        {
+            Trace.WriteLine($"NativePacker: failed to delete '{path}': {ex.Message}");
         }
     }
 }

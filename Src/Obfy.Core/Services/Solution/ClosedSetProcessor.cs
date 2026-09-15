@@ -149,7 +149,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
 
                 job.Context = context;
                 job.Elapsed = result.ElapsedTime;
-                moduleResults.Add(ToSuccessfulModuleResult(job, outputPath: null));
+                moduleResults.Add(ToSuccessfulModuleResult(job, outputPath: null, packedLauncherPath: null));
             }
 
             tempDir = Path.Combine(Path.GetTempPath(), $"obfy-closed-{Guid.NewGuid():N}");
@@ -170,6 +170,34 @@ public class ClosedSetProcessor : IClosedSetProcessor
                     _logger.LogError(ex, "Failed to save {Path}", job.Loaded.Input.AssemblyPath);
                     return ClosedSetResult.Failed(
                         $"Failed to save output: {ex.Message}",
+                        loadFailures,
+                        moduleResults,
+                        symbolMap);
+                }
+
+                if (!job.PipelineSettings.Packing.Enabled)
+                    continue;
+
+                if (!HasEntryPoint(job.Loaded.Module))
+                {
+                    job.Context.Warnings.Add("Packing skipped: assembly has no entry point.");
+                    continue;
+                }
+
+                try
+                {
+                    job.PackedPath = PackingApplicator.Pack(
+                        tempPath,
+                        job.PipelineSettings,
+                        job.Loaded.Input.AssemblyPath,
+                        job.Context.Warnings);
+                    _logger.LogInformation("Packed closed-set output {Path}", job.PackedPath);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Packing failed for {Path}", job.Loaded.Input.AssemblyPath);
+                    return ClosedSetResult.Failed(
+                        $"Packing failed: {ex.Message}",
                         loadFailures,
                         moduleResults,
                         symbolMap);
@@ -306,21 +334,16 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 cancellationToken.ThrowIfCancellationRequested();
                 var source = Path.Combine(tempDir, job.RelativeOutput);
                 var dest = Path.Combine(outputDirectory, job.RelativeOutput);
-                var destDir = Path.GetDirectoryName(dest);
-                if (!string.IsNullOrEmpty(destDir))
-                    Directory.CreateDirectory(destDir);
-
-                if (File.Exists(dest))
+                PlaceFile(source, dest, outputDirectory, stashes, placed);
+                foreach (var sidecar in PackingApplicator.SidecarPaths(source, job.PipelineSettings.Packing))
                 {
-                    var backup = Path.Combine(
-                        destDir ?? outputDirectory,
-                        $".{Path.GetFileName(dest)}.{Guid.NewGuid():N}.obfyprev");
-                    File.Copy(dest, backup, overwrite: true);
-                    stashes.Add((dest, backup));
+                    if (!File.Exists(sidecar))
+                        continue;
+                    var destSidecar = Path.Combine(
+                        Path.GetDirectoryName(dest) ?? outputDirectory,
+                        Path.GetFileName(sidecar));
+                    PlaceFile(sidecar, destSidecar, outputDirectory, stashes, placed);
                 }
-
-                File.Copy(source, dest, overwrite: true);
-                placed.Add(dest);
             }
         }
         catch (OperationCanceledException)
@@ -348,9 +371,8 @@ public class ClosedSetProcessor : IClosedSetProcessor
         var finalResults = new List<ObfuscationResult>(jobs.Count);
         foreach (var job in jobs)
         {
-            finalResults.Add(ToSuccessfulModuleResult(
-                job,
-                Path.Combine(outputDirectory, job.RelativeOutput)));
+            var dest = Path.Combine(outputDirectory, job.RelativeOutput);
+            finalResults.Add(ToSuccessfulModuleResult(job, dest, PackedPathForCommit(job, dest)));
         }
 
         return ClosedSetResult.Succeeded(finalResults, loadFailures, symbolMap);
@@ -384,7 +406,41 @@ public class ClosedSetProcessor : IClosedSetProcessor
         return errors;
     }
 
-    private static ObfuscationResult ToSuccessfulModuleResult(ModuleJob job, string? outputPath)
+    private static void PlaceFile(
+        string source,
+        string dest,
+        string outputDirectory,
+        List<(string Dest, string Backup)> stashes,
+        List<string> placed)
+    {
+        var destDir = Path.GetDirectoryName(dest);
+        if (!string.IsNullOrEmpty(destDir))
+            Directory.CreateDirectory(destDir);
+
+        if (File.Exists(dest))
+        {
+            var backup = Path.Combine(
+                destDir ?? outputDirectory,
+                $".{Path.GetFileName(dest)}.{Guid.NewGuid():N}.obfyprev");
+            File.Copy(dest, backup, overwrite: true);
+            stashes.Add((dest, backup));
+        }
+
+        File.Copy(source, dest, overwrite: true);
+        placed.Add(dest);
+    }
+
+    private static string? PackedPathForCommit(ModuleJob job, string dest)
+    {
+        if (job.PackedPath is null)
+            return null;
+        return job.PipelineSettings.Packing.IsPortable
+            ? ManagedLauncherPacker.LauncherPathFor(dest)
+            : dest;
+    }
+
+    private static ObfuscationResult ToSuccessfulModuleResult(
+        ModuleJob job, string? outputPath, string? packedLauncherPath)
     {
         var context = job.Context!;
         return ObfuscationResult.Successful(
@@ -395,7 +451,8 @@ public class ClosedSetProcessor : IClosedSetProcessor
             processingTimes: [.. context.ProcessingTimes],
             skippedItems: [.. context.SkippedItems],
             symbolMap: new Dictionary<string, string>(context.SymbolMap),
-            warnings: [.. context.Warnings]);
+            warnings: [.. context.Warnings],
+            packedLauncherPath: packedLauncherPath);
     }
 
     private static string? FindOutputCollision(List<LoadedModule> loaded, IReadOnlyList<string> relativeOutputs)
@@ -499,5 +556,6 @@ public class ClosedSetProcessor : IClosedSetProcessor
         public List<string> GatingWarnings { get; } = gatingWarnings;
         public PipelineContext? Context { get; set; }
         public TimeSpan Elapsed { get; set; }
+        public string? PackedPath { get; set; }
     }
 }

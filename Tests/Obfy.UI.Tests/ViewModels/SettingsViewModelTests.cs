@@ -725,6 +725,7 @@ public class SettingsViewModelTests
         var settings = viewModel.ToObfySettings();
 
         settings.Packing.Enabled.ShouldBeTrue();
+        settings.Packing.Rid.ShouldBe("win-x64");
     }
 
     [Fact]
@@ -783,6 +784,18 @@ public class SettingsViewModelTests
         viewModel.PackingEnabled.ShouldBeFalse();
         viewModel.VirtualizationEnabled.ShouldBeFalse();
         viewModel.IncrementalEnabled.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ApplyPreset_DoesNotResetLoadedPortableRid()
+    {
+        var settings = new ObfySettings { Packing = { Enabled = true, Rid = "portable" } };
+        var viewModel = new SettingsViewModel();
+        viewModel.FromObfySettings(settings);
+        viewModel.ApplyPreset(ObfuscationLevel.Aggressive);
+        viewModel.PackingEnabled = true;
+
+        viewModel.ToObfySettings().Packing.Rid.ShouldBe("portable");
     }
 
     #endregion

@@ -20,9 +20,11 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
+        # 8.0.106 is the SDK that ships host pack 8.0.6 (used by NativeHost/build.ps1).
+        # 8.0.6 is a runtime, not an SDK; setup-dotnet 404s on it.
         dotnet-version: |
           10.0.x
-          8.0.6
+          8.0.106
 
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1

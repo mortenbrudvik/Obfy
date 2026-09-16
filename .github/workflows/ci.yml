@@ -49,10 +49,6 @@ jobs:
         }
         exit 0
 
-    - name: Clear MSVC Platform for SDK builds
-      shell: pwsh
-      run: Add-Content -Path $env:GITHUB_ENV -Value "Platform=AnyCPU"
-
     - name: Restore dependencies
       run: dotnet restore
 

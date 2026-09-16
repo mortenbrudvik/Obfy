@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Linux CLI solution analysis resolves Visual Studio `.sln` backslash paths (`Lib\Lib.csproj`) so `obfy App.sln` finds projects on Ubuntu
-- CI no longer installs a non-existent SDK `8.0.6`; `build.ps1` restores host pack `Microsoft.NETCore.App.Host.win-x64` 8.0.6 from NuGet
+- CI no longer installs a non-existent SDK `8.0.6`; `build.ps1` restores host pack `Microsoft.NETCore.App.Host.win-x64` 8.0.6 from NuGet and builds PackedBootstrap as AnyCPU so `Platform=x64` from the MSVC prompt does not hide the DLL
 - Closed-set / solution runs pack entry-point outputs (and copy packing sidecars) instead of silently leaving managed PEs
 - Native packer publishes `.runtimeconfig.json` only after a successful PE replace, prefers the packed app TFM, and does not delete-then-move on non-Windows
 - Platform MAUI scenario no longer times out on first-run `dotnet new maui` (180s; weekly job timeout 45 minutes)

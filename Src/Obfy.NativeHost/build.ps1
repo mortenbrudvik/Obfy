@@ -22,10 +22,24 @@ function Restore-NetHostPack([string]$Version) {
     return Get-Item $extract
 }
 
-dotnet build (Join-Path $repo "Src\Obfy.PackedBootstrap\Obfy.PackedBootstrap.csproj") -c Release --nologo
-if ($LASTEXITCODE -ne 0) { throw "PackedBootstrap build failed with exit $LASTEXITCODE" }
+# ilammy/msvc-dev-cmd / vcvars set Platform=x64, which sends SDK-style output
+# to bin/x64/Release instead of bin/Release.
+$savedPlatform = $env:Platform
+Remove-Item Env:Platform -ErrorAction SilentlyContinue
+try {
+    dotnet build (Join-Path $repo "Src\Obfy.PackedBootstrap\Obfy.PackedBootstrap.csproj") `
+        -c Release --nologo -p:Platform=AnyCPU
+    if ($LASTEXITCODE -ne 0) { throw "PackedBootstrap build failed with exit $LASTEXITCODE" }
+}
+finally {
+    if ($null -ne $savedPlatform) { $env:Platform = $savedPlatform }
+}
 
 $bootstrap = Join-Path $repo "Src\Obfy.PackedBootstrap\bin\Release\net8.0\Obfy.PackedBootstrap.dll"
+if (-not (Test-Path $bootstrap)) {
+    $x64 = Join-Path $repo "Src\Obfy.PackedBootstrap\bin\x64\Release\net8.0\Obfy.PackedBootstrap.dll"
+    if (Test-Path $x64) { $bootstrap = $x64 }
+}
 if (-not (Test-Path $bootstrap)) { throw "PackedBootstrap.dll missing: $bootstrap" }
 
 $dotnetCmd = Get-Command dotnet -ErrorAction SilentlyContinue

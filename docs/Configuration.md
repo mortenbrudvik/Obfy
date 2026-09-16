@@ -477,9 +477,9 @@ Opt-in; not flipped by level presets. CLI: `--watermark-id`. Settings panel has 
 | Value | Effect |
 |-------|--------|
 | `Default` | All protections as configured |
-| `NativeAot` | Disables method encryption, anti-dump, and dependency embedding; anti-debug omits kernel32 P/Invoke. Emits report warnings. |
+| `NativeAot` | Disables method encryption, anti-dump, dependency embedding, native packing, and virtualization; anti-debug omits kernel32 P/Invoke. Emits report warnings. |
 | `UnityIl2Cpp` | Same gating; Unity wizard also excludes `UnityEngine`, `UnityEngine.*`, `Unity`, and `Unity.*` |
-| `BlazorWasm` | Same gating for Blazor WebAssembly (no `AppDomain.AssemblyResolve` / `VirtualProtect`); anti-debug omits kernel32 P/Invoke. |
+| `BlazorWasm` | Same gating for Blazor WebAssembly (no `AppDomain.AssemblyResolve` / `VirtualProtect`); anti-debug omits kernel32 P/Invoke; virtualization off (`MethodBase.Invoke`). |
 
 ### signing
 
@@ -503,10 +503,10 @@ Cache file: `{outputPath}.obfycache` (SHA-256 of Obfy assembly version + input b
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `enabled` | bool | `false` | Replace eligible simple static `int` methods with a bytecode interpreter stub |
+| `enabled` | bool | `false` | Replace eligible methods with a bytecode interpreter stub. Enable with `--virtualize`. |
 | `maxMethods` | int | `32` | Maximum methods to virtualize (1–256). Out of range fails the run (does not clamp) |
 
-Eligible methods: `static`, non-generic, no exception handlers, `int` return and `int` parameters, ≤8 parameters, ≤16 int-sized locals. Body may include `ldc.i4`, `ldarg`, `ldloc`/`stloc`, `add`/`sub`/`mul`, `ceq`/`cgt`/`clt`, `ret`, and signed branches (`br`/`brtrue`/`brfalse`/`blt`/`bgt`/`ble`/`bge`/`beq`/`bne`). Unsigned compares are skipped so original IL is kept. This is **not** a general IL virtualizer. Off in every preset. CLI: `--virtualize` turns `enabled` on; `maxMethods` stays in the config.
+Eligible: instance and static methods; objects, non-generic calls, fields, `newobj`, `ldstr`; i4/i8/r4/r8. Skips EH, generic methods/types/**calls**, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded). Per-build opcode permutation + XOR. Gated off NativeAOT / Unity IL2CPP / Blazor WASM (`runtimeProfile`). Off in every preset. Enable with `--virtualize`. Deterrent, not confidentiality.
 
 ### packing
 
@@ -622,11 +622,15 @@ JSON/XML property attributes are excluded from renaming by default. A provided `
 
 ## Virtualization (IL interpreter)
 
-`virtualization.enabled` is **off** in every preset. CLI `--virtualize` turns it on. When true, Obfy replaces selected **static `int` methods** with a bytecode interpreter stub.
+`virtualization.enabled` is **off** in every preset. Enable with `--virtualize`, the UI **Virtualize methods** toggle, or the config flag. When true, Obfy replaces selected eligible **instance and static** methods with a bytecode interpreter stub.
 
-Supported IL: `ldc.i4`, `ldarg`, `ldloc`/`stloc` (≤16 int-sized locals), `add`/`sub`/`mul`, `ceq`/`cgt`/`clt`, `ret`, and signed branches (`br`/`brtrue`/`brfalse`/`blt`/`bgt`/`ble`/`bge`/`beq`/`bne`). At most 8 `int` parameters; no exception handlers or generics.
+Supported: objects, non-generic calls, fields, `newobj`, `ldstr`; i4/i8/r4/r8 arith; locals, arguments, signed and unsigned compares, branches.
 
-Unsigned compares (`cgt.un`, `blt.un`, …) are **skipped** so original IL is kept — encoding them as signed would miscompile `if (a != 0)` for negatives. Methods that cannot be encoded stay native and are reported as skipped. A warning is emitted when the feature is on but nothing was encoded, or when `maxMethods` truncates the set.
+Skipped (original IL is kept): exception handlers; generic methods, generic types, and generic **calls**; byref / `Span`; non-primitive valuetypes (custom structs, `Nullable<T>`, enums); `switch`; constructors; `typeof` (`ldtoken`); interpolators that allocate `DefaultInterpolatedStringHandler`; `using` / enumerator-struct foreach (array foreach can be encoded).
+
+Per-build opcode permutation and XOR. Gated off NativeAOT / Unity IL2CPP / Blazor WASM (`runtimeProfile`). Not a unique generated VM and not a native packer. The interpreter is a deterrent, not confidentiality.
+
+Methods that cannot be encoded stay native and are reported as skipped. A warning is emitted when the feature is on but nothing was encoded, or when `maxMethods` truncates the set. `maxMethods` out of range (not 1–256) fails the run.
 
 ## Packing (native win-x64 host)
 

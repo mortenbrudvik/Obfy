@@ -761,9 +761,11 @@ public class IncrementalSettings
 }
 
 /// <summary>
-/// Selective IL virtualization for simple static int methods (no EH, no generics;
-/// ldc.i4, ldarg, ldloc/stloc, add/sub/mul, ceq/cgt/clt, ret, and signed branches;
-/// ≤8 int params, ≤16 int-sized locals). Unsigned compares are skipped.
+/// Selective IL virtualization of eligible instance and static methods
+/// (no EH, generic methods/types/calls, byref, custom structs, Nullable{T},
+/// or constructors). Gated off NativeAOT / Unity IL2CPP / Blazor WASM.
+/// Per-build opcode permutation and XOR. Off in every preset.
+/// Deterrent, not confidentiality.
 /// </summary>
 public class VirtualizationSettings
 {

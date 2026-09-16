@@ -139,7 +139,7 @@ Tech stack: WPF-UI 4.3.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 | AntiDecompiler | 20 | Injects junk types/methods and optional decoy ConfusedBy/Dotfuscator attributes |
 | Watermark | 21 | Embeds a customer/build id as a pinned `WatermarkAttribute` |
 | AntiTamper | 22 | Verifies assembly integrity at runtime |
-| Virtualization | 24 | Bytecode interpreter for selected static int methods (ldc.i4, ldarg, ldloc/stloc, add/sub/mul, ceq/cgt/clt, signed branches; ≤8 params / ≤16 locals; no EH/generics; unsigned compares skipped). Opt-in; not a general VM. |
+| Virtualization | 24 | Bytecode interpreter for eligible instance and static methods (objects, non-generic calls, fields, newobj, ldstr; i4/i8/r4/r8). Skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, typeof (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded). Per-build permute+XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset. Deterrent, not confidentiality. |
 | MethodEncryption | 25 | XOR-encrypts method IL in the PE (Windows; per-method keys; skips generics) |
 | ControlFlow | 30 | State-machine dispatch of basic blocks and/or opaque predicates |
 | ReferenceProxy | 40 | Hides in-module call targets behind proxy methods |

@@ -100,7 +100,7 @@ public class VirtualizationObfuscatorTests
         result.Success.ShouldBeTrue();
         CallsRun(method).ShouldBeFalse();
         context.SkippedItems.ShouldContain(s =>
-            s.ItemName.Contains("TakesPoint") && s.Details == VmSkipReasons.NonPrimitiveValuetypeLocal);
+            s.ItemName.Contains("TakesPoint") && s.Details == VmSkipReasons.NonPrimitiveValuetype);
         context.Warnings.ShouldContain(w => w.Contains("no eligible methods"));
     }
 
@@ -128,7 +128,7 @@ public class VirtualizationObfuscatorTests
         result.Success.ShouldBeTrue();
         CallsRun(method).ShouldBeFalse();
         context.SkippedItems.ShouldContain(s =>
-            s.ItemName.Contains("Bar") && s.Details == VmSkipReasons.NonPrimitiveValuetypeLocal);
+            s.ItemName.Contains("Bar") && s.Details == VmSkipReasons.NonPrimitiveValuetype);
     }
 
     [Fact]

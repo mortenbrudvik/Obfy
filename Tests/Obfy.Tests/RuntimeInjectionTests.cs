@@ -285,16 +285,23 @@ public class RuntimeInjectionTests
             .ObfuscateAsync(context);
 
         result.Success.ShouldBeTrue();
-        var vm = module.Types.Single(t => t.Name == "<Vm>");
+        var vm = module.Types.Single(t => t.Name == "Vm");
         context.InjectedHelpers.ContainsKey(vm).ShouldBeTrue();
-        context.InjectedHelpers[vm].ShouldBe(RuntimeHelperOptions.Interpreter);
-        RuntimeInjection.ShouldFlattenControlFlow(context, vm).ShouldBeFalse();
+        context.InjectedHelpers[vm].ShouldBe(new RuntimeHelperOptions
+        {
+            FlattenControlFlow = true,
+            Rename = true,
+            EncryptIl = false
+        });
+        RuntimeInjection.ShouldFlattenControlFlow(context, vm).ShouldBeTrue();
         RuntimeInjection.ShouldEncryptIl(context, vm).ShouldBeFalse();
         RuntimeInjection.ShouldRename(context, vm).ShouldBeTrue();
+        vm.FindMethod("Run").ShouldNotBeNull();
+        vm.FindMethod("Execute").ShouldBeNull();
         var nested = vm.NestedTypes.FirstOrDefault();
         if (nested is not null)
         {
-            RuntimeInjection.ShouldFlattenControlFlow(context, nested).ShouldBeFalse();
+            RuntimeInjection.ShouldFlattenControlFlow(context, nested).ShouldBeTrue();
             RuntimeInjection.ShouldEncryptIl(context, nested).ShouldBeFalse();
         }
     }

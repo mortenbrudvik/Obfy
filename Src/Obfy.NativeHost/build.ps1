@@ -2,10 +2,11 @@ $ErrorActionPreference = "Stop"
 $here = $PSScriptRoot
 $repo = Resolve-Path (Join-Path $here "..\..")
 
-dotnet build (Join-Path $repo "Src\Obfy.PackedBootstrap\Obfy.PackedBootstrap.csproj") -c Release --nologo
+$bootstrapDir = Join-Path $repo "Src\Obfy.PackedBootstrap\bin\Release\net8.0"
+dotnet build (Join-Path $repo "Src\Obfy.PackedBootstrap\Obfy.PackedBootstrap.csproj") -c Release --nologo -o $bootstrapDir
 if ($LASTEXITCODE -ne 0) { throw "PackedBootstrap build failed with exit $LASTEXITCODE" }
 
-$bootstrap = Join-Path $repo "Src\Obfy.PackedBootstrap\bin\Release\net8.0\Obfy.PackedBootstrap.dll"
+$bootstrap = Join-Path $bootstrapDir "Obfy.PackedBootstrap.dll"
 if (-not (Test-Path $bootstrap)) { throw "PackedBootstrap.dll missing: $bootstrap" }
 
 $dotnetCmd = Get-Command dotnet -ErrorAction SilentlyContinue

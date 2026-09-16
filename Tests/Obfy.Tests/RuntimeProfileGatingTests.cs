@@ -82,6 +82,29 @@ public class RuntimeProfileGatingTests
         context.Warnings.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData(RuntimeProfile.NativeAot, "NativeAOT")]
+    [InlineData(RuntimeProfile.UnityIl2Cpp, "Unity IL2CPP")]
+    [InlineData(RuntimeProfile.BlazorWasm, "Blazor WebAssembly")]
+    public void Apply_DisablesVirtualizationOnRestrictedProfiles(RuntimeProfile profile, string label)
+    {
+        var settings = new ObfySettings { RuntimeProfile = profile, Virtualization = { Enabled = true } };
+        var context = PipelineContext.ForAssembly(new dnlib.DotNet.ModuleDefUser("t"), settings);
+        RuntimeProfileGating.Apply(settings, context);
+        settings.Virtualization.Enabled.ShouldBeFalse();
+        context.Warnings.ShouldContain(w => w.Contains("Virtualization disabled") && w.Contains(label));
+        RuntimeProfileGating.AllowsManagedVm(profile).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Apply_DefaultProfileKeepsVirtualization()
+    {
+        var settings = new ObfySettings { Virtualization = { Enabled = true } };
+        RuntimeProfileGating.Apply(settings, PipelineContext.ForAssembly(new dnlib.DotNet.ModuleDefUser("t"), settings));
+        settings.Virtualization.Enabled.ShouldBeTrue();
+        RuntimeProfileGating.AllowsManagedVm(RuntimeProfile.Default).ShouldBeTrue();
+    }
+
     [Fact]
     public void Apply_WarnsWhenProxyExternalIsOnWithoutReferenceProxy()
     {

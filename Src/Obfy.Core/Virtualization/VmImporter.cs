@@ -49,6 +49,51 @@ public static class VmImporter
         return vmType;
     }
 
+    public static void WriteStub(MethodDef method, MethodDef run, int id)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+        ArgumentNullException.ThrowIfNull(run);
+        var module = method.Module
+            ?? throw new InvalidOperationException("Virtualization failed: stub method has no module.");
+        var argc = method.Parameters.Count;
+        var body = new CilBody { MaxStack = 8 };
+        body.Instructions.Add(Instruction.CreateLdcI4(id));
+        body.Instructions.Add(Instruction.CreateLdcI4(argc));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Object.ToTypeDefOrRef()));
+        for (var i = 0; i < argc; i++)
+        {
+            var param = method.Parameters[i];
+            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+            body.Instructions.Add(Instruction.CreateLdcI4(i));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldarg, param));
+            var paramType = param.Type.RemovePinnedAndModifiers();
+            if (paramType is not null && paramType.IsValueType)
+                body.Instructions.Add(Instruction.Create(OpCodes.Box, paramType.ToTypeDefOrRef()));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
+        }
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, run));
+        var ret = method.MethodSig?.RetType.RemovePinnedAndModifiers();
+        if (ret is null || ret.ElementType == ElementType.Void)
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        }
+        else if (ret.IsValueType)
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Unbox_Any, ret.ToTypeDefOrRef()));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        }
+        else
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Castclass, ret.ToTypeDefOrRef()));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        }
+
+        body.UpdateInstructionOffsets();
+        method.Body = body;
+    }
+
     private static TypeDef CopyVmType(ModuleDef dest)
     {
         using var source = ModuleDefMD.Load(ReadEmbeddedBytes());
@@ -143,7 +188,8 @@ public static class VmImporter
         Dictionary<IDnlibDef, IDnlibDef> map)
     {
         if (origin.Body is null)
-            return;
+            throw new InvalidOperationException(
+                $"Virtualization failed: embedded method '{origin.FullName}' has no body.");
 
         var body = origin.Body;
         var newBody = new CilBody
@@ -240,6 +286,9 @@ public static class VmImporter
             case IField field:
                 return importer.Import(field);
             default:
+                if (operand is IMemberRef or IType)
+                    throw new InvalidOperationException(
+                        $"Virtualization failed: unsupported operand type {operand.GetType().FullName} while copying VM IL.");
                 return operand;
         }
     }

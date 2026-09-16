@@ -66,6 +66,10 @@ public class ConstantEncryptionObfuscator : IObfuscator
             var decryptSingle = decryptorType.FindMethod("DecryptSingle");
             var decryptDouble = decryptorType.FindMethod("DecryptDouble");
 
+            var skipVirtualized = context.Settings.Virtualization.Enabled
+                ? VirtualizationObfuscator.SelectSet(context)
+                : null;
+
             foreach (var type in module.GetTypes())
             {
                 if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.Constants, context.Warnings))
@@ -77,6 +81,9 @@ public class ConstantEncryptionObfuscator : IObfuscator
                         continue;
 
                     if (!ObfuscationAttributeRules.AllowMethod(method, context.Settings, ObfuscationFeature.Constants, context.Warnings))
+                        continue;
+
+                    if (skipVirtualized is not null && skipVirtualized.Contains(method))
                         continue;
 
                     var body = method.Body;

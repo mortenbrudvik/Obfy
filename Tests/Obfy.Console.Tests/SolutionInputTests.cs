@@ -18,7 +18,8 @@ public class SolutionInputTests : IDisposable
     [Fact]
     public void Parse_SlnPath_IsAcceptedAsInput()
     {
-        var parseResult = Program.CreateRootCommand().Parse(@"C:\src\App.sln -o out");
+        var sln = Path.Combine("src", "App.sln");
+        var parseResult = Program.CreateRootCommand().Parse($"\"{sln}\" -o out");
         parseResult.Errors.ShouldBeEmpty();
         parseResult.GetRequiredValue(Program.InputArgument)[0].Name.ShouldBe("App.sln");
     }

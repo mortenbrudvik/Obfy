@@ -257,6 +257,7 @@ public static class ObfuscationAttributeRules
             ObfuscationFeature.ControlFlow => normalized is "controlflow" or "cf",
             ObfuscationFeature.Strings => normalized is "strings" or "stringencryption",
             ObfuscationFeature.Constants => normalized is "constants" or "constantencryption",
+            ObfuscationFeature.Virtualization => normalized is "virtualization" or "virtualize" or "vm",
             ObfuscationFeature.All => false,
             _ => false
         };
@@ -268,7 +269,8 @@ public static class ObfuscationAttributeRules
         return normalized is "all" or "renaming" or "rename" or "symbols"
             or "controlflow" or "cf"
             or "strings" or "stringencryption"
-            or "constants" or "constantencryption";
+            or "constants" or "constantencryption"
+            or "virtualization" or "virtualize" or "vm";
     }
 
     private static string Normalize(string feature) =>
@@ -279,7 +281,7 @@ public static class ObfuscationAttributeRules
         if (warnings == null || IsAllFeature(featureName) || IsKnownFeature(featureName))
             return;
         var msg =
-            $"Unknown ObfuscationAttribute Feature '{featureName}' on {target}; supported: all, renaming, controlflow, strings, constants.";
+            $"Unknown ObfuscationAttribute Feature '{featureName}' on {target}; supported: all, renaming, controlflow, strings, constants, virtualization.";
         if (!warnings.Contains(msg))
             warnings.Add(msg);
     }
@@ -381,5 +383,6 @@ public enum ObfuscationFeature
     ControlFlow,
     Strings,
     Constants,
+    Virtualization,
     All
 }

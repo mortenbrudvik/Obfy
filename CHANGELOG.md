@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `packing.enabled` now emits a native win-x64 host that replaces the obfuscated PE. Set `packing.rid` to `portable` for the previous managed `{name}.launcher.exe`.
 
 ### Added
-- WIP general IL VM encoder/runtime (`Init`/`Import` take `returnTypes`; `VmIsa.EncodedSize` matches locked widths; encoder skips generic-instantiation members and unresolved valuetype params; importer uses two-arg `GetMethodFromHandle` / `GetFieldFromHandle`). The pipeline still uses the int-only `VirtualizationObfuscator` interpreter; `Obfy.VmRuntime.Vm.Run` is not wired
+- General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded); per-build opcode permutation + XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset; deterrent, not confidentiality
 
 ### Fixed
 - Closed-set / solution runs pack entry-point outputs (and copy packing sidecars) instead of silently leaving managed PEs
@@ -19,10 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Platform MAUI scenario no longer times out on first-run `dotnet new maui` (180s; weekly job timeout 45 minutes)
 - Store MSIX no longer sets `AppListEntry=none` on the CLI entry (Partner Center rejects that as a headless app)
 - `obfy config generate` writes PascalCase string enums and omits null signing paths so the file matches `schemas/obfy.schema.json`
+- VM `ToClr` boxes and stores enums from I4/I8 bits (`Enum.ToObject`) instead of a null `Ref`
+- VM `cgt.un` / `clt.un` on refs implement CIL null checks (`o != null`, `o is T`) instead of comparing unset `Bits`
+- VM encoder skips methods that contain a non-virtual `call` to a virtual instance method (`base.M()`), so those bodies stay original IL instead of stack-overflowing at runtime
+- VM null instance/array access throws `NullReferenceException` instead of `TargetException` / `InvalidOperationException`
+- VM `ldstr` interns literals so identity compares of equal strings succeed
+- Virtualization fails the run if a selected method cannot be re-encoded (CallVm ids stay aligned with stubs)
+- Reference proxy again trampolines string/constant decryptor calls from user IL; only `Obfy.Runtime.Vm` stays direct
 
 ### Changed
-- Native packing / native EXE is documented as Yes (win-x64 FDD CLR-host stub; `portable` keeps the managed launcher; not Pre-JIT; not self-contained; not ARM64). Code virtualization stays Partial (`VirtualizationObfuscator` still has `CreateExecute`; [PR #23](https://github.com/mortenbrudvik/Obfy/pull/23) is open)
-- Competitive analysis: closed-set / Store / Linux CLI job; MSBuild and Azure DevOps marked Partial; BitMono no longer listed as having a `dotnet tool` Obfy lacks; GitHub stats as of 15 Sep 2026
+- Native packing / native EXE is documented as Yes (win-x64 FDD CLR-host stub; `portable` keeps the managed launcher; not Pre-JIT; not self-contained; not ARM64)
+- `--virtualize` help: `Enable IL virtualization of eligible methods (no EH/generics/byref/custom structs/ctors; gated off NativeAOT / IL2CPP / Blazor WASM)`
+- Desktop toggle label `Virtualize methods` (was `Virtualize simple methods`)
+- Competitive analysis: code virtualization **Partial** with the eligibility limits footnote (Babel-class managed VM; does not cover Reactor or Babel Ultimate EH/generics/byref); closed-set / Store / Linux CLI job; MSBuild and Azure DevOps marked Partial; BitMono no longer listed as having a `dotnet tool` Obfy lacks; GitHub stats as of 15 Sep 2026
 - CI runs `Obfy.Console.Tests` on Ubuntu so the cross-platform CLI claim is exercised every PR
 - Coverage include list adds `Obfy.VmRuntime`; incremental-cache tests no longer pin assembly version `1.3.0.0`
 - GitHub Release NuGet publish uses Trusted Publishing (OIDC) instead of a long-lived API key

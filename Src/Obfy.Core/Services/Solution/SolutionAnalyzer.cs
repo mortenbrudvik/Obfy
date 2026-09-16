@@ -97,7 +97,9 @@ public class SolutionAnalyzer : ISolutionAnalyzer
 
     private static AnalyzedProject AnalyzeRef(SolutionProjectRef projectRef, string baseDirectory)
     {
-        var resolved = Path.GetFullPath(projectRef.RelativePath, baseDirectory);
+        var resolved = Path.GetFullPath(
+            projectRef.RelativePath.Replace('\\', Path.DirectorySeparatorChar),
+            baseDirectory);
         var extension = Path.GetExtension(resolved);
 
         if (!SupportedProjectExtensions.Contains(extension))

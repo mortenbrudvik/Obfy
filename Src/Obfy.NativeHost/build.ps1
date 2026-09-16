@@ -2,6 +2,26 @@ $ErrorActionPreference = "Stop"
 $here = $PSScriptRoot
 $repo = Resolve-Path (Join-Path $here "..\..")
 
+function Restore-NetHostPack([string]$Version) {
+    $restoreDir = Join-Path ([System.IO.Path]::GetTempPath()) "obfy-hostpack-$Version"
+    $extract = Join-Path $restoreDir "pkg"
+    $native = Join-Path $extract "runtimes\win-x64\native\libnethost.lib"
+    if (-not (Test-Path $native)) {
+        New-Item -ItemType Directory -Force -Path $restoreDir | Out-Null
+        $nupkg = Join-Path $restoreDir "Microsoft.NETCore.App.Host.win-x64.$Version.nupkg"
+        $url = "https://www.nuget.org/api/v2/package/Microsoft.NETCore.App.Host.win-x64/$Version"
+        Write-Host "Microsoft.NETCore.App.Host.win-x64 $Version not installed; downloading $url"
+        Invoke-WebRequest -Uri $url -OutFile $nupkg -UseBasicParsing
+        if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($nupkg, $extract)
+    }
+    if (-not (Test-Path $native)) {
+        throw "Restored Microsoft.NETCore.App.Host.win-x64 $Version is missing libnethost.lib at $native"
+    }
+    return Get-Item $extract
+}
+
 dotnet build (Join-Path $repo "Src\Obfy.PackedBootstrap\Obfy.PackedBootstrap.csproj") -c Release --nologo
 if ($LASTEXITCODE -ne 0) { throw "PackedBootstrap build failed with exit $LASTEXITCODE" }
 
@@ -18,6 +38,7 @@ if ($dotnetRoot) {
     $packCandidates = @((Join-Path $dotnetRoot "packs\Microsoft.NETCore.App.Host.win-x64")) + $packCandidates
 }
 # Pin 8.0.6: later host packs need MSVC 14.42+ (__std_find_end_2) and would churn CI dist.
+# 8.0.6 is the runtime/host-pack version (there is no SDK 8.0.6).
 $packVersion = "8.0.6"
 $pack = $null
 foreach ($root in $packCandidates) {
@@ -29,7 +50,7 @@ foreach ($root in $packCandidates) {
     }
 }
 if (-not $pack) {
-    throw "Microsoft.NETCore.App.Host.win-x64 $packVersion missing. Looked in: $($packCandidates -join '; ')"
+    $pack = Restore-NetHostPack $packVersion
 }
 
 $dist = Join-Path $here "dist"

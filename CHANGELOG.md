@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WIP general IL VM encoder/runtime (`Init`/`Import` take `returnTypes`; `VmIsa.EncodedSize` matches locked widths; encoder skips generic-instantiation members and unresolved valuetype params; importer uses two-arg `GetMethodFromHandle` / `GetFieldFromHandle`). The pipeline still uses the int-only `VirtualizationObfuscator` interpreter; `Obfy.VmRuntime.Vm.Run` is not wired
 
 ### Fixed
+- Linux CLI solution analysis resolves Visual Studio `.sln` backslash paths (`Lib\Lib.csproj`) so `obfy App.sln` finds projects on Ubuntu
+- CI no longer installs a non-existent SDK `8.0.6`; `build.ps1` restores host pack `Microsoft.NETCore.App.Host.win-x64` 8.0.6 from NuGet
 - Closed-set / solution runs pack entry-point outputs (and copy packing sidecars) instead of silently leaving managed PEs
 - Native packer publishes `.runtimeconfig.json` only after a successful PE replace, prefers the packed app TFM, and does not delete-then-move on non-Windows
 - Platform MAUI scenario no longer times out on first-run `dotnet new maui` (180s; weekly job timeout 45 minutes)

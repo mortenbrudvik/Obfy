@@ -97,7 +97,7 @@ public class SolutionAnalyzer : ISolutionAnalyzer
 
     private static AnalyzedProject AnalyzeRef(SolutionProjectRef projectRef, string baseDirectory)
     {
-        var resolved = Path.GetFullPath(projectRef.RelativePath, baseDirectory);
+        var resolved = SolutionPath.Resolve(baseDirectory, projectRef.RelativePath);
         var extension = Path.GetExtension(resolved);
 
         if (!SupportedProjectExtensions.Contains(extension))
@@ -194,7 +194,7 @@ public class SolutionAnalyzer : ISolutionAnalyzer
                 if (string.IsNullOrWhiteSpace(include))
                     continue;
 
-                referenced.Add(Path.GetFullPath(include, projectDirectory));
+                referenced.Add(SolutionPath.Resolve(projectDirectory, include));
             }
         }
 

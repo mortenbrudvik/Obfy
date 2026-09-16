@@ -120,6 +120,9 @@ internal static class ScenarioHarness
         };
         start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         start.Environment["DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER"] = "1";
+        // ilammy/msvc-dev-cmd and vcvars set Platform=x64; SDK-style projects then
+        // write to bin/x64/Release instead of bin/Release.
+        start.Environment.Remove("Platform");
 
         using var process = Process.Start(start);
         process.ShouldNotBeNull();

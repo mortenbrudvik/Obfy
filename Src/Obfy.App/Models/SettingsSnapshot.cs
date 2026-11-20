@@ -5,6 +5,7 @@ namespace Obfy.App.Models;
 /// and why not, what differs from the chosen level, and what blocks a run. Serialized by <c>JsonUtils</c> (camelCase,
 /// enums as strings), so every name here is a name in the page.
 /// </summary>
+/// <param name="Revision">Rises with every change. A pushed snapshot older than the one the page holds is stale and is dropped.</param>
 /// <param name="Level">Minimal, Standard, Aggressive or Custom.</param>
 /// <param name="LevelSummary">One line saying what the level does.</param>
 /// <param name="Techniques">Every protection and output option, each with its own options. Technique ids are camelCase.</param>
@@ -14,6 +15,7 @@ namespace Obfy.App.Models;
 /// <param name="RuntimeProfile">Default, NativeAot, UnityIl2Cpp or BlazorWasm.</param>
 /// <param name="Choices">The values each dropdown offers.</param>
 public record SettingsSnapshot(
+    long Revision,
     string Level,
     string LevelSummary,
     IReadOnlyList<TechniqueState> Techniques,

@@ -1,4 +1,5 @@
 using Obfy.App.Models;
+using Obfy.App.Services;
 using Obfy.Core.Models;
 
 namespace Obfy.App.Sessions;
@@ -49,9 +50,24 @@ public sealed class ProtectionSession
     private ObfuscationLevel _basePreset = ObfuscationLevel.Standard;
     private string? _configPath;
     private bool _dirty;
+    private long _revision;
+    private readonly IEventPublisher? _events;
+
+    /// <param name="events">Where <c>settings.changed</c> goes after every change; null for a session nobody listens to.</param>
+    public ProtectionSession(IEventPublisher? events = null) => _events = events;
 
     /// <summary>Raised once after any change, on the thread that made it, outside the session's lock.</summary>
     public event Action? Changed;
+
+    /// <summary>
+    /// After a change: pushes <c>settings.changed</c> with the new snapshot, then raises <see cref="Changed"/>.
+    /// Always outside the lock.
+    /// </summary>
+    private void RaiseChanged()
+    {
+        _events?.Publish(AppEvents.SettingsChanged, GetSnapshot());
+        Changed?.Invoke();
+    }
 
     public ObfuscationLevel Level
     {
@@ -106,9 +122,10 @@ public sealed class ProtectionSession
             if (governedChanged)
                 MarkCustom();
             _dirty = true;
+            _revision++;
         }
 
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     /// <summary>
@@ -139,9 +156,10 @@ public sealed class ProtectionSession
             }
 
             _dirty = true;
+            _revision++;
         }
 
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     /// <summary>A copy of the settings to hand to the engine or write to a file, level included.</summary>
@@ -167,9 +185,10 @@ public sealed class ProtectionSession
             _basePreset = loaded.Level == ObfuscationLevel.Custom ? ObfuscationLevel.Standard : loaded.Level;
             _configPath = configPath;
             _dirty = false;
+            _revision++;
         }
 
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     /// <summary>Records that the current settings were written to <paramref name="configPath"/>.</summary>
@@ -179,9 +198,10 @@ public sealed class ProtectionSession
         {
             _configPath = configPath;
             _dirty = false;
+            _revision++;
         }
 
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public string? ConfigPath
@@ -206,6 +226,7 @@ public sealed class ProtectionSession
 
             var techniques = Techniques.Select(def => BuildTechnique(def, settings, reference, gated, reason)).ToList();
             return new SettingsSnapshot(
+                _revision,
                 settings.Level.ToString(),
                 LevelSummary(settings.Level),
                 techniques,
@@ -251,11 +272,10 @@ public sealed class ProtectionSession
         restored.PostBuildEnabled = current.PostBuildEnabled;
         restored.RuntimeProfile = current.RuntimeProfile;
         CopyProperties(current.Signing, restored.Signing);
-        CopyProperties(current.Packing, restored.Packing);
+        restored.Packing.Rid = current.Packing.Rid; // packing.enabled is governed and comes back with the snapshot
         CopyProperties(current.AssemblyMerge, restored.AssemblyMerge);
         CopyProperties(current.DependencyEmbedding, restored.DependencyEmbedding);
         CopyProperties(current.Watermark, restored.Watermark);
-        CopyProperties(current.Incremental, restored.Incremental);
         CopyProperties(current.Exclusions, restored.Exclusions);
         CopyProperties(current.Inclusions, restored.Inclusions);
         return restored;

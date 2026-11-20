@@ -831,15 +831,68 @@ public class ProtectionSessionTests
         session.UpdateSetting("watermark.enabled", true);
         session.UpdateSetting("watermark.id", "customer-42");
         session.UpdateSetting("signing.enabled", true);
-        session.UpdateSetting("packing.enabled", true);
         session.UpdateSetting("assemblyMerge.enabled", true);
         session.UpdateSetting("dependencyEmbedding.enabled", true);
-        session.UpdateSetting("incremental.enabled", true);
         session.UpdateSetting("inclusions.types", new[] { "OnlyThis" });
         session.UpdateSetting("exclusions.methods", new[] { "Skip" });
 
         session.Level.ShouldBe(ObfuscationLevel.Standard);
         session.GetSnapshot().Level.ShouldBe("Standard");
+    }
+
+    [Theory]
+    [InlineData("virtualization.enabled")]
+    [InlineData("packing.enabled")]
+    [InlineData("incremental.enabled")]
+    public void Level_FlipsToCustom_WhenAnOptionThePresetsTurnOffIsEnabled(string key)
+    {
+        var session = new ProtectionSession();
+        session.ApplyLevel(ObfuscationLevel.Standard);
+
+        session.UpdateSetting(key, true);
+
+        session.Level.ShouldBe(ObfuscationLevel.Custom);
+    }
+
+    [Fact]
+    public void Packing_EnabledAtAPreset_MakesTheLevelCustom_SoTheEnginePacks()
+    {
+        var session = new ProtectionSession();
+        session.ApplyLevel(ObfuscationLevel.Standard);
+
+        session.UpdateSetting("packing.enabled", true);
+
+        // The engine re-applies a non-Custom level on every run and would turn packing off again.
+        var settings = session.ToObfySettings();
+        settings.Level.ShouldBe(ObfuscationLevel.Custom);
+        settings.Packing.Enabled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Incremental_EnabledAtAPreset_MakesTheLevelCustom_SoTheEngineCaches()
+    {
+        var session = new ProtectionSession();
+        session.ApplyLevel(ObfuscationLevel.Standard);
+
+        session.UpdateSetting("incremental.enabled", true);
+
+        var settings = session.ToObfySettings();
+        settings.Level.ShouldBe(ObfuscationLevel.Custom);
+        settings.Incremental.Enabled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void CustomRestore_BringsBackPackingAndIncrementalChosenInCustom()
+    {
+        var session = new ProtectionSession();
+        session.Update(Patch(("packing.enabled", true), ("incremental.enabled", true))); // Custom, remembered
+        session.ApplyLevel(ObfuscationLevel.Minimal); // a preset turns them off
+        Settings(session).Packing.Enabled.ShouldBeFalse();
+
+        session.ApplyLevel(ObfuscationLevel.Custom);
+
+        Settings(session).Packing.Enabled.ShouldBeTrue();
+        Settings(session).Incremental.Enabled.ShouldBeTrue();
     }
 
     [Fact]
@@ -853,7 +906,16 @@ public class ProtectionSessionTests
             ("inclusions.namespaces", new[] { "OnlyHere" }),
             ("runtimeProfile", "BlazorWasm"),
             ("watermark.enabled", true),
-            ("watermark.id", "build-7")));
+            ("watermark.id", "build-7"),
+            ("signing.enabled", true),
+            ("signing.keyFile", "my.snk"),
+            ("signing.passwordEnvironmentVariable", "OBFY_PFX"),
+            ("assemblyMerge.enabled", true),
+            ("assemblyMerge.internalize", false),
+            ("dependencyEmbedding.enabled", true),
+            ("dependencyEmbedding.includePatterns", new[] { "Lib.dll" }),
+            ("dependencyEmbedding.excludePatterns", new[] { "Skip.dll" })));
+        session.Level.ShouldBe(ObfuscationLevel.Minimal);
 
         session.ApplyLevel(ObfuscationLevel.Custom);
 
@@ -864,6 +926,14 @@ public class ProtectionSessionTests
         settings.RuntimeProfile.ShouldBe(RuntimeProfile.BlazorWasm);
         settings.Watermark.Enabled.ShouldBeTrue();
         settings.Watermark.Id.ShouldBe("build-7");
+        settings.Signing.Enabled.ShouldBeTrue();
+        settings.Signing.KeyFile.ShouldBe("my.snk");
+        settings.Signing.PasswordEnvironmentVariable.ShouldBe("OBFY_PFX");
+        settings.AssemblyMerge.Enabled.ShouldBeTrue();
+        settings.AssemblyMerge.Internalize.ShouldBeFalse();
+        settings.DependencyEmbedding.Enabled.ShouldBeTrue();
+        settings.DependencyEmbedding.IncludePatterns.ShouldBe(new[] { "Lib.dll" });
+        settings.DependencyEmbedding.ExcludePatterns.ShouldBe(new[] { "Skip.dll" });
     }
 
     [Fact]
@@ -1061,6 +1131,53 @@ public class ProtectionSessionTests
         json.ShouldContain("\"unavailableReason\":\"Not available for Unity IL2CPP\"");
         json.ShouldContain("\"minStringLength\":3");
         json.ShouldContain("\"differsFromLevel\":false");
+    }
+
+    #endregion
+
+    #region Events and revision
+
+    private sealed class RecordingPublisher : Obfy.App.Services.IEventPublisher
+    {
+        public List<(string Name, object? Data)> Published { get; } = [];
+        public void Publish(string eventName, object? data) => Published.Add((eventName, data));
+    }
+
+    [Fact]
+    public void EveryChange_PublishesSettingsChangedWithTheNewSnapshot()
+    {
+        var events = new RecordingPublisher();
+        var session = new ProtectionSession(events);
+
+        session.UpdateSetting("controlFlow.enabled", true);
+        session.UpdateSetting("controlFlow.enabled", true); // no-op
+        session.ApplyLevel(ObfuscationLevel.Minimal);
+        session.FromObfySettings(new ObfySettings(), @"C:\cfg.json");
+        session.MarkSaved(@"C:\cfg.json");
+
+        events.Published.Select(p => p.Name).ShouldAllBe(n => n == AppEvents.SettingsChanged);
+        events.Published.Count.ShouldBe(4);
+        var first = events.Published[0].Data.ShouldBeOfType<Obfy.App.Models.SettingsSnapshot>();
+        first.Level.ShouldBe("Custom");
+        first.Dirty.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Revision_RisesWithEveryChange_AndNotForANoOp()
+    {
+        var session = new ProtectionSession();
+        var r0 = session.GetSnapshot().Revision;
+
+        session.UpdateSetting("controlFlow.enabled", true);
+        var r1 = session.GetSnapshot().Revision;
+        session.UpdateSetting("controlFlow.enabled", true);
+        var r2 = session.GetSnapshot().Revision;
+        session.ApplyLevel(ObfuscationLevel.Aggressive);
+        var r3 = session.GetSnapshot().Revision;
+
+        r1.ShouldBeGreaterThan(r0);
+        r2.ShouldBe(r1);
+        r3.ShouldBeGreaterThan(r2);
     }
 
     #endregion

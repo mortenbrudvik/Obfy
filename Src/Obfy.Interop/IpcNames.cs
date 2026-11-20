@@ -1,3 +1,5 @@
+using Obfy.App;
+
 namespace Obfy.Interop;
 
 /// <summary>The service, method and event names shared by the bridge registrations and the page. Filled in per endpoint.</summary>
@@ -27,6 +29,6 @@ public static class IpcNames
         public const string AppRevealed = "app.revealed";
 
         /// <summary>Pushed with the new settings snapshot after any change to the protection settings.</summary>
-        public const string SettingsChanged = "settings.changed";
+        public const string SettingsChanged = AppEvents.SettingsChanged;
     }
 }

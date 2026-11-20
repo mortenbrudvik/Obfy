@@ -104,23 +104,29 @@ public class HybridWiringTests
     }
 
     [Fact]
-    public async Task ApiBridge_SettingsUpdate_ReachesTheSharedSession()
+    public void ApiBridge_SettingsUpdate_ReachesTheSharedSession()
     {
-        using var container = Build();
-        ApiRegistrations.RegisterAll(container.Resolve<ApiRegistry>());
-        var bridge = container.Resolve<IApiBridge>();
+        // On the UI thread, as in the app: the web view a change publishes through is built (and disposed) there.
+        OnSta(() =>
+        {
+            using var container = Build();
+            ApiRegistrations.RegisterAll(container.Resolve<ApiRegistry>());
+            var bridge = container.Resolve<IApiBridge>();
+            container.Resolve<ApiEventAggregator>();
 
-        var updated = await bridge.InvokeMethod(
-            IpcNames.Services.Settings, IpcNames.Methods.SettingsUpdate, """{"patch":{"controlFlow.enabled":true}}""");
-        var read = await bridge.InvokeMethod(IpcNames.Services.Settings, IpcNames.Methods.SettingsGet, "{}");
-        var bad = await bridge.InvokeMethod(
-            IpcNames.Services.Settings, IpcNames.Methods.SettingsUpdate, """{"patch":{"nope.nothing":1}}""");
+            var updated = bridge.InvokeMethod(
+                IpcNames.Services.Settings, IpcNames.Methods.SettingsUpdate, """{"patch":{"controlFlow.enabled":true}}""").GetAwaiter().GetResult();
+            var read = bridge.InvokeMethod(IpcNames.Services.Settings, IpcNames.Methods.SettingsGet, "{}").GetAwaiter().GetResult();
+            var bad = bridge.InvokeMethod(
+                IpcNames.Services.Settings, IpcNames.Methods.SettingsUpdate, """{"patch":{"nope.nothing":1}}""").GetAwaiter().GetResult();
 
-        updated.ShouldContain("\"success\":true");
-        updated.ShouldContain("\"level\":\"Custom\"");
-        read.ShouldContain("\"level\":\"Custom\"");
-        bad.ShouldContain("\"success\":false");
-        bad.ShouldContain("settings.unknownField");
-        container.Resolve<ProtectionSession>().Level.ShouldBe(Obfy.Core.Models.ObfuscationLevel.Custom);
+            updated.ShouldContain("\"success\":true");
+            updated.ShouldContain("\"level\":\"Custom\"");
+            read.ShouldContain("\"level\":\"Custom\"");
+            bad.ShouldContain("\"success\":false");
+            bad.ShouldContain("settings.unknownField");
+            container.Resolve<ProtectionSession>().Level.ShouldBe(Obfy.Core.Models.ObfuscationLevel.Custom);
+            return true;
+        });
     }
 }

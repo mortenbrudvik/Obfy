@@ -16,7 +16,8 @@ internal abstract class SettingField
 
     /// <summary>
     /// True when a level preset never changes the option, so editing it keeps the level and a Custom restore leaves it alone.
-    /// (Presets still reset packing, incremental and virtualization when applied; they just do not own them while editing.)
+    /// Packing, incremental cache and virtualization are governed: the engine re-applies the level on every run and turns
+    /// them off for any non-Custom level, so enabling one must make the level Custom for the engine to honour it.
     /// </summary>
     public required bool LevelIndependent { get; init; }
 
@@ -201,6 +202,7 @@ internal static class SettingFields
         Bool("metadataRemoval", "stripDocumentation", false, s => s.Metadata.StripDocumentation, (s, v) => s.Metadata.StripDocumentation = v),
 
         // Independent of the level: presets do not own these, so editing them never makes the level Custom.
+        // (packing.enabled and incremental.enabled below are the exception: governed, see SettingField.LevelIndependent.)
         Bool("dependencyEmbedding", "enabled", true, s => s.DependencyEmbedding.Enabled, (s, v) => s.DependencyEmbedding.Enabled = v),
         List("dependencyEmbedding", "includePatterns", true, s => s.DependencyEmbedding.IncludePatterns, (s, v) => s.DependencyEmbedding.IncludePatterns = v),
         List("dependencyEmbedding", "excludePatterns", true, s => s.DependencyEmbedding.ExcludePatterns, (s, v) => s.DependencyEmbedding.ExcludePatterns = v),
@@ -216,11 +218,11 @@ internal static class SettingFields
         Text("signing", "passwordEnvironmentVariable", true, s => s.Signing.PasswordEnvironmentVariable ?? "",
             (s, v) => s.Signing.PasswordEnvironmentVariable = string.IsNullOrWhiteSpace(v) ? null : v),
 
-        Bool("packing", "enabled", true, s => s.Packing.Enabled, (s, v) => s.Packing.Enabled = v),
+        Bool("packing", "enabled", false, s => s.Packing.Enabled, (s, v) => s.Packing.Enabled = v),
         Text("packing", "rid", true, s => string.IsNullOrWhiteSpace(s.Packing.Rid) ? "win-x64" : s.Packing.Rid,
             (s, v) => s.Packing.Rid = string.IsNullOrWhiteSpace(v) ? "win-x64" : v.Trim()),
 
-        Bool("incremental", "enabled", true, s => s.Incremental.Enabled, (s, v) => s.Incremental.Enabled = v),
+        Bool("incremental", "enabled", false, s => s.Incremental.Enabled, (s, v) => s.Incremental.Enabled = v),
 
         Choice("", "runtimeProfile", true, s => s.RuntimeProfile, (s, v) => s.RuntimeProfile = v),
 

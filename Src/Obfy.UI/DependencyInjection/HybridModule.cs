@@ -25,6 +25,9 @@ public class HybridModule : Module
 
         builder.RegisterType<ApiEventAggregator>().AsSelf().SingleInstance();
 
+        // What the application layer publishes events through; resolves the aggregator (and so the web view) on first use.
+        builder.RegisterType<ApiEventPublisher>().As<IEventPublisher>().SingleInstance();
+
         // One web view for the whole app: the aggregator pushes events through it and the shell window hosts it.
         builder.RegisterType<WebViewControl>()
             .AsSelf()
@@ -35,7 +38,6 @@ public class HybridModule : Module
 
         // The one set of protection settings the page edits. Handlers are transient; this is what they share.
         builder.RegisterType<ProtectionSession>().AsSelf().SingleInstance();
-        builder.RegisterType<SettingsEventForwarder>().AsSelf().SingleInstance();
 
         builder.RegisterType<FileDialogs>()
             .As<IFileDialogs>()

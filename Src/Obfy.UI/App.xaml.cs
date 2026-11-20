@@ -57,8 +57,6 @@ public partial class App : Application
 
             // Before the host starts the shell: the page may call as soon as it loads.
             ApiRegistrations.RegisterAll(_host.Services.GetRequiredService<ApiRegistry>());
-            // Created here, on the UI thread, so it subscribes before any settings change (it needs the web view).
-            _host.Services.GetRequiredService<SettingsEventForwarder>();
 
             await _host.StartAsync();
         }

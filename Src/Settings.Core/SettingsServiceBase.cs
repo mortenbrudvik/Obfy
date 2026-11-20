@@ -65,7 +65,15 @@ public abstract class SettingsServiceBase<T> : ISettingsService<T> where T : cla
                     {
                         _logger?.LogWarning("Settings validation failed, applying corrections");
                         ApplyValidationCorrections(_settings);
-                        Save(); // Persist corrections
+                        try
+                        {
+                            Save();
+                        }
+                        catch (Exception saveEx)
+                        {
+                            // A read-only or locked file must not discard the loaded values.
+                            _logger?.LogWarning(saveEx, "Corrected settings could not be saved to {Path}; keeping the corrected values in memory", _filePath);
+                        }
                     }
 
                     _logger?.LogDebug("Settings loaded from {Path}", _filePath);

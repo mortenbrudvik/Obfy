@@ -64,6 +64,29 @@ public class SettingsValidatorTests
     }
 
     [Fact]
+    public void SettingsServiceBase_Load_SaveOfCorrectionFails_KeepsCorrectedValues()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "obfy-settings-" + Guid.NewGuid().ToString("N") + ".json");
+        const string original = """{"name":"kept","count":99}""";
+        File.WriteAllText(path, original);
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+        try
+        {
+            var service = new CorrectingSettingsService(path);
+            service.Load();
+            service.Settings.Name.ShouldBe("kept");
+            service.Settings.Count.ShouldBe(1);
+            File.ReadAllText(path).ShouldBe(original);
+        }
+        finally
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void SettingsServiceBase_Load_CorruptJson_UsesDefaultsWithoutOverwritingFile()
     {
         var path = Path.Combine(Path.GetTempPath(), "obfy-settings-" + Guid.NewGuid().ToString("N") + ".json");
@@ -138,5 +161,16 @@ public class SettingsValidatorTests
     private sealed class SampleSettingsService : SettingsServiceBase<SampleSettings>
     {
         public SampleSettingsService(string path) : base(path) { }
+    }
+
+    private sealed class CorrectingSettingsService : SettingsServiceBase<SampleSettings>
+    {
+        public CorrectingSettingsService(string path) : base(path) { }
+
+        protected override void ApplyValidationCorrections(SampleSettings settings)
+        {
+            if (settings.Count is < 1 or > 10)
+                settings.Count = 1;
+        }
     }
 }

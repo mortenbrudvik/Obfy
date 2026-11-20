@@ -48,6 +48,8 @@ public class HybridModule : Module
         // The run's statistics, symbol tree, report and decompile preview. Parsing and decompiling run off the UI thread.
         builder.RegisterType<AssemblyPreviewDecompiler>().As<IAssemblyDecompiler>().SingleInstance();
         builder.RegisterType<ResultsStore>().AsSelf().SingleInstance();
+        // Drives a run across the four sessions above; it follows the settings and file sessions, so it is resolved by the first run.get.
+        builder.RegisterType<RunCoordinator>().AsSelf().SingleInstance();
 
         builder.RegisterType<ShellLauncher>().As<IShellLauncher>().SingleInstance();
 

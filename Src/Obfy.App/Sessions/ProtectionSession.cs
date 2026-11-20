@@ -213,6 +213,16 @@ public sealed class ProtectionSession
         RaiseChanged();
     }
 
+    /// <summary>
+    /// What is wrong with the settings as they stand (a watermark with no id, a missing signing key, ...): the same list
+    /// the snapshot carries, without building the rest of it. A run is blocked while this is not empty.
+    /// </summary>
+    public IReadOnlyList<ValidationError> ValidationErrors()
+    {
+        lock (_gate)
+            return Validate(_settings);
+    }
+
     public string? ConfigPath
     {
         get

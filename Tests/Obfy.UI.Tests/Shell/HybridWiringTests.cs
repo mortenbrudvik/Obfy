@@ -265,4 +265,41 @@ public class HybridWiringTests
         IpcNames.Events.ResultsChanged.ShouldBe(Obfy.App.AppEvents.ResultsChanged);
         IpcNames.Events.ResultsChanged.ShouldBe("results.changed");
     }
+
+    [Fact]
+    public void ApiBridge_RunGet_ReachesTheSharedCoordinator_AndReportsBlockedWithNoFiles()
+    {
+        OnSta(() =>
+        {
+            using var container = Build();
+            ApiRegistrations.RegisterAll(container.Resolve<ApiRegistry>());
+            var bridge = container.Resolve<IApiBridge>();
+            container.Resolve<ApiEventAggregator>();
+            container.Resolve<Obfy.App.Sessions.RunCoordinator>().ShouldBeSameAs(container.Resolve<Obfy.App.Sessions.RunCoordinator>());
+
+            var run = bridge.InvokeMethod(IpcNames.Services.Run, IpcNames.Methods.RunGet, "{}").GetAwaiter().GetResult();
+
+            run.ShouldContain("\"success\":true");
+            run.ShouldContain("\"canStart\":false");
+            run.ShouldContain("\"mode\":\"None\"");
+            run.ShouldContain("\"status\":\"Idle\"");
+            return true;
+        });
+    }
+
+    [Fact]
+    public void RunMethodsAreRegistered_AndTheEventsUseTheAppEventNames()
+    {
+        using var container = Build();
+        var registry = container.Resolve<ApiRegistry>();
+        ApiRegistrations.RegisterAll(registry);
+
+        registry.GetRequestType(IpcNames.Services.Run, IpcNames.Methods.RunGet).ShouldBe(typeof(Obfy.App.Features.Run.GetRunRequest));
+        registry.GetRequestType(IpcNames.Services.Run, IpcNames.Methods.RunStart).ShouldBe(typeof(Obfy.App.Features.Run.StartRunRequest));
+        registry.GetRequestType(IpcNames.Services.Run, IpcNames.Methods.RunCancel).ShouldBe(typeof(Obfy.App.Features.Run.CancelRunRequest));
+        IpcNames.Events.RunChanged.ShouldBe(Obfy.App.AppEvents.RunChanged);
+        IpcNames.Events.RunChanged.ShouldBe("run.changed");
+        IpcNames.Events.RunCompleted.ShouldBe(Obfy.App.AppEvents.RunCompleted);
+        IpcNames.Events.RunCompleted.ShouldBe("run.completed");
+    }
 }

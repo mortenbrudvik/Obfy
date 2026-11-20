@@ -14,6 +14,7 @@ public static class IpcNames
         public const string Log = "log";
         public const string Results = "results";
         public const string Preview = "preview";
+        public const string Run = "run";
     }
 
     public static class Methods
@@ -43,6 +44,9 @@ public static class IpcNames
         public const string ResultsExportMap = "exportMap";
         public const string ResultsExportReport = "exportReport";
         public const string PreviewGet = "get";
+        public const string RunGet = "get";
+        public const string RunStart = "start";
+        public const string RunCancel = "cancel";
     }
 
     public static class Events
@@ -64,5 +68,11 @@ public static class IpcNames
 
         /// <summary>Pushed with the new results snapshot after any change to the results.</summary>
         public const string ResultsChanged = AppEvents.ResultsChanged;
+
+        /// <summary>Pushed with the new run snapshot when progress, status or what blocks the run changes.</summary>
+        public const string RunChanged = AppEvents.RunChanged;
+
+        /// <summary>Pushed with the final run snapshot when a run ends.</summary>
+        public const string RunCompleted = AppEvents.RunCompleted;
     }
 }

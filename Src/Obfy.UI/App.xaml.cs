@@ -81,7 +81,9 @@ public partial class App : Application
     {
         try
         {
-            await _host!.Services.GetRequiredService<InputSession>().InitializeAsync();
+            // Built now so it follows the settings and file sessions from the start (it subscribes to their changes).
+            _ = _host!.Services.GetRequiredService<RunCoordinator>();
+            await _host.Services.GetRequiredService<InputSession>().InitializeAsync();
             await _host.Services.GetRequiredService<InputIntake>().ApplyStartupAsync(args);
         }
         catch (Exception ex)

@@ -4,6 +4,7 @@ using Obfy.App.Features.Log;
 using Obfy.App.Features.Output;
 using Obfy.App.Features.Preview;
 using Obfy.App.Features.Results;
+using Obfy.App.Features.Run;
 using Obfy.App.Features.Settings;
 
 namespace Obfy.Interop;
@@ -44,5 +45,9 @@ public static class ApiRegistrations
         registry.Register<ExportMapRequest>(IpcNames.Services.Results, IpcNames.Methods.ResultsExportMap);
         registry.Register<ExportReportRequest>(IpcNames.Services.Results, IpcNames.Methods.ResultsExportReport);
         registry.Register<GetPreviewRequest>(IpcNames.Services.Preview, IpcNames.Methods.PreviewGet);
+
+        registry.Register<GetRunRequest>(IpcNames.Services.Run, IpcNames.Methods.RunGet);
+        registry.Register<StartRunRequest>(IpcNames.Services.Run, IpcNames.Methods.RunStart);
+        registry.Register<CancelRunRequest>(IpcNames.Services.Run, IpcNames.Methods.RunCancel);
     }
 }

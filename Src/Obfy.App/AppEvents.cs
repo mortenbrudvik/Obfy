@@ -17,4 +17,10 @@ public static class AppEvents
 
     /// <summary>Pushed with the new results snapshot (state, statistics, preview selection) after any change to the results.</summary>
     public const string ResultsChanged = "results.changed";
+
+    /// <summary>Pushed with the new run snapshot when the run's progress, status or what blocks it changes.</summary>
+    public const string RunChanged = "run.changed";
+
+    /// <summary>Pushed once with the final run snapshot when a run ends, however it ends.</summary>
+    public const string RunCompleted = "run.completed";
 }

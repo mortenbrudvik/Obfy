@@ -274,7 +274,17 @@ public class Program
         {
             var output = parseResult.GetValue(configOutputOption);
             var level = parseResult.GetValue(configLevelOption);
-            await GenerateConfigAsync(output!, level!).ConfigureAwait(false);
+            try
+            {
+                await GenerateConfigAsync(output!, level!).ConfigureAwait(false);
+                return 0;
+            }
+            catch (ArgumentException ex)
+            {
+                parseResult.InvocationConfiguration.Error.WriteLine(ex.Message);
+                AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
+                return 1;
+            }
         });
 
         // Config wizard command

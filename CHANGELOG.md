@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded); per-build opcode permutation + XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset; deterrent, not confidentiality
 
 ### Fixed
+- `config generate --level` with an unknown level prints a one-line error instead of a stack trace
 - The VS Code problem matcher captures file, line, and column from `path(line,column): error|warning: message`
 - Coverage collection includes `Obfy.PackedBootstrap`
 - Project path matching is case-sensitive on Linux and case-insensitive on Windows

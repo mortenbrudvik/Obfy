@@ -165,6 +165,21 @@ public class IntegrationProcessTests : IDisposable
     }
 
     [Fact]
+    public void ConfigGenerate_UnknownLevel_PrintsOneLineError()
+    {
+        var outputPath = Path.Combine(_tempDirectory, "bad-level.json");
+        var exitCode = CommandLineTestHelpers.Invoke(
+            Program.CreateRootCommand(),
+            $"config generate -o \"{outputPath}\" --level banana",
+            out var output);
+
+        exitCode.ShouldBe(1);
+        output.ShouldContain("Unknown obfuscation level 'banana'");
+        output.ShouldNotContain("ArgumentException");
+        File.Exists(outputPath).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Help_ReturnsZeroExitCode()
     {
         var exitCode = await CommandLineTestHelpers.InvokeAsync(Program.CreateRootCommand(), "--help");

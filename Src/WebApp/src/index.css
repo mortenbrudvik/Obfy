@@ -1,0 +1,117 @@
+/* Design tokens: lifted verbatim from the approved Obfy redesign mockup. Do not invent new colours. */
+:root {
+  color-scheme: light;
+  --page: #ecebf1;
+  --win: #f7f7fa;
+  --side: #efeff4;
+  --title: #e6e5ee;
+  --card: #ffffff;
+  --input: #ffffff;
+  --text: #2a2a35;
+  --strong: #15151d;
+  --muted: #5c5c6e;
+  --dim: #6a6a80;
+  --accent: #6a3fd1;
+  --on-accent: #ffffff;
+  --ok: #1d7a4a;
+  --warn: #8a5700;
+  --err: #b3261e;
+  --border: rgba(30, 28, 60, 0.16);
+  --hair: rgba(30, 28, 60, 0.08);
+  --hover: rgba(30, 28, 60, 0.05);
+  --keycap: #e9e8f0;
+  --track: #dcdbe6;
+  --code: #f1f0f6;
+  --syn-kw: #5b3bb8;
+  --syn-str: #1d6b4a;
+  --syn-ty: #8a4b00;
+  --syn-cm: #6a6a7e;
+  --syn-num: #a1306a;
+  --font-ui: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0f1014;
+    --win: #1a1b21;
+    --side: #15161b;
+    --title: #121317;
+    --card: #202128;
+    --input: #14151a;
+    --text: #dcdce6;
+    --strong: #ecedf4;
+    --muted: #a3a4b8;
+    --dim: #8789a3;
+    --accent: #b7a2f6;
+    --on-accent: #16131f;
+    --ok: #4cc38a;
+    --warn: #e2b04b;
+    --err: #ff7b72;
+    --border: rgba(255, 255, 255, 0.12);
+    --hair: rgba(255, 255, 255, 0.06);
+    --hover: rgba(255, 255, 255, 0.05);
+    --keycap: #2d2f3a;
+    --track: #3a3c4b;
+    --code: #14151a;
+    --syn-kw: #c2b0fa;
+    --syn-str: #7fd1a5;
+    --syn-ty: #e3b777;
+    --syn-cm: #8789a3;
+    --syn-num: #f08cb8;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0f1014;
+  --win: #1a1b21;
+  --side: #15161b;
+  --title: #121317;
+  --card: #202128;
+  --input: #14151a;
+  --text: #dcdce6;
+  --strong: #ecedf4;
+  --muted: #a3a4b8;
+  --dim: #8789a3;
+  --accent: #b7a2f6;
+  --on-accent: #16131f;
+  --ok: #4cc38a;
+  --warn: #e2b04b;
+  --err: #ff7b72;
+  --border: rgba(255, 255, 255, 0.12);
+  --hair: rgba(255, 255, 255, 0.06);
+  --hover: rgba(255, 255, 255, 0.05);
+  --keycap: #2d2f3a;
+  --track: #3a3c4b;
+  --code: #14151a;
+  --syn-kw: #c2b0fa;
+  --syn-str: #7fd1a5;
+  --syn-ty: #e3b777;
+  --syn-cm: #8789a3;
+  --syn-num: #f08cb8;
+}
+@media (forced-colors: active) {
+  :root {
+    --page: Canvas; --win: Canvas; --side: Canvas; --title: Canvas; --card: Canvas; --input: Canvas;
+    --text: CanvasText; --strong: CanvasText; --muted: CanvasText; --dim: CanvasText;
+    --accent: Highlight; --on-accent: HighlightText; --ok: CanvasText; --warn: CanvasText; --err: CanvasText;
+    --border: GrayText; --hair: GrayText; --hover: Canvas; --keycap: Canvas; --track: GrayText; --code: Canvas;
+    --syn-kw: CanvasText; --syn-str: CanvasText; --syn-ty: CanvasText; --syn-cm: GrayText; --syn-num: CanvasText;
+  }
+}
+
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { background: var(--page); }
+body {
+  background: var(--page);
+  color: var(--text);
+  font: 14px/1.5 var(--font-ui);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }

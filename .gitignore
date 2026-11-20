@@ -92,3 +92,7 @@ install-gradle.ps1
 
 # Windows artifacts
 nul
+
+# Web app (Src/WebApp)
+node_modules/
+Src/WebApp/dist/

@@ -69,6 +69,35 @@ public class ReportServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildCombinedReport_IncludesEveryInputAndSumsStatistics()
+    {
+        var first = ObfuscationResult.Successful(
+            new ObfuscationStatistics { StringsEncrypted = 2 },
+            inputPath: "A.dll",
+            outputPath: "out/A.dll",
+            elapsedTime: TimeSpan.FromSeconds(1));
+        var second = ObfuscationResult.Successful(
+            new ObfuscationStatistics { StringsEncrypted = 5 },
+            inputPath: "B.dll",
+            outputPath: "out/B.dll",
+            elapsedTime: TimeSpan.FromSeconds(2));
+
+        var report = _reportService.BuildCombinedReport([first, second], new ObfySettings());
+
+        report.Files.Count.ShouldBe(2);
+        report.Files.Select(file => file.InputPath).ShouldBe(["A.dll", "B.dll"]);
+        report.Statistics.StringsEncrypted.ShouldBe(7);
+        report.Metadata.TotalElapsedTime.ShouldBe(TimeSpan.FromSeconds(3));
+
+        var htmlPath = Path.Combine(_tempDirectory, "combined.html");
+        await _reportService.GenerateReportAsync(report, htmlPath, ReportFormat.Html);
+        var html = await File.ReadAllTextAsync(htmlPath);
+        html.ShouldContain("A.dll");
+        html.ShouldContain("B.dll");
+        html.ShouldContain("2 files");
+    }
+
+    [Fact]
     public void BuildReport_IncludesCorrectMetadata()
     {
         // Arrange

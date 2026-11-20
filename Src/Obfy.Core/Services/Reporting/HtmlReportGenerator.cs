@@ -246,7 +246,10 @@ public class HtmlReportGenerator : IReportGenerator
         sb.AppendLine("    <div class=\"card\">");
         sb.AppendLine("      <h2>Summary</h2>");
         sb.AppendLine("      <table>");
-        sb.AppendLine($"        <tr><td>Input File</td><td>{Encode(Path.GetFileName(report.FileInfo.InputPath))}</td></tr>");
+        var inputLabel = report.Files.Count > 1
+            ? $"{report.Files.Count} files"
+            : Path.GetFileName(report.FileInfo.InputPath);
+        sb.AppendLine($"        <tr><td>Input File</td><td>{Encode(inputLabel)}</td></tr>");
         sb.AppendLine($"        <tr><td>Obfuscation Level</td><td>{report.Metadata.Level}</td></tr>");
         sb.AppendLine($"        <tr><td>Total Duration</td><td>{report.Metadata.TotalElapsedTime:mm\\:ss\\.fff}</td></tr>");
         sb.AppendLine($"        <tr><td>Total Transformations</td><td><strong>{report.Statistics.TotalTransformations:N0}</strong></td></tr>");
@@ -274,6 +277,19 @@ public class HtmlReportGenerator : IReportGenerator
         sb.AppendLine($"        <tr><td>Output Size</td><td>{FormatBytes(report.FileInfo.OutputSizeBytes)}</td></tr>");
         sb.AppendLine($"        <tr><td>Size Change</td><td><span class=\"size-change {sizeChangeClass}\">{sizeChangeSign}{FormatBytes(report.FileInfo.SizeDifferenceBytes)} ({sizeChangeSign}{report.FileInfo.SizeChangePercent:F1}%)</span></td></tr>");
         sb.AppendLine("      </table>");
+        if (report.Files.Count > 1)
+        {
+            sb.AppendLine("      <h3>All files</h3>");
+            sb.AppendLine("      <table>");
+            sb.AppendLine("        <tr><td>Input</td><td>Output</td></tr>");
+            foreach (var file in report.Files)
+            {
+                sb.AppendLine($"        <tr><td>{Encode(file.InputPath)}</td><td>{Encode(file.OutputPath)}</td></tr>");
+            }
+
+            sb.AppendLine("      </table>");
+        }
+
         sb.AppendLine("    </div>");
     }
 

@@ -31,6 +31,13 @@ public interface IReportService
         ObfySettings settings);
 
     /// <summary>
+    /// Builds one report that covers every result. Statistics, warnings, and file rows are combined.
+    /// </summary>
+    ObfuscationReport BuildCombinedReport(
+        IReadOnlyList<ObfuscationResult> results,
+        ObfySettings settings);
+
+    /// <summary>
     /// Generates a report file in the specified format.
     /// </summary>
     /// <param name="report">The report to generate.</param>

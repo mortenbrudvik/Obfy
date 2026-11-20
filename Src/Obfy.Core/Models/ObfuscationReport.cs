@@ -11,9 +11,15 @@ public class ObfuscationReport
     public ReportMetadata Metadata { get; init; } = new();
 
     /// <summary>
-    /// Input and output file information.
+    /// Input and output file information for the first file.
     /// </summary>
     public FileInfoSection FileInfo { get; init; } = new();
+
+    /// <summary>
+    /// Every input covered by this report. Empty when the report is a single file
+    /// and <see cref="FileInfo"/> is the only entry.
+    /// </summary>
+    public List<FileInfoSection> Files { get; init; } = [];
 
     /// <summary>
     /// Obfuscation statistics.

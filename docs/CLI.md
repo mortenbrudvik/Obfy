@@ -58,7 +58,7 @@ obfy <input>... [options]
 | `--merge` | | Merge all input assemblies into one before obfuscating | Off |
 | `--internalize` | | With `--merge` only: make merged types internal. `--internalize false` keeps them public. A config `internalize: false` is overwritten when `--merge` is also passed | On (when merging) |
 | `--map <file>` | | Output symbol mapping to file | None |
-| `--report <file>` | | Generate obfuscation report (HTML or JSON based on extension) | None |
+| `--report <file>` | | Generate an obfuscation report (HTML or JSON based on extension). A multi-file run includes every successful file | None |
 | `--dry-run` | | Analyze only, don't write output | Off |
 | `--verbose` | `-v` | Enable verbose output | Off |
 | `--no-logo` | | Suppress the banner | Off |

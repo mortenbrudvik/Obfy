@@ -80,6 +80,40 @@ public class ReportService : IReportService
     }
 
     /// <inheritdoc/>
+    public ObfuscationReport BuildCombinedReport(IReadOnlyList<ObfuscationResult> results, ObfySettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        if (results.Count == 0)
+            throw new ArgumentException("At least one result is required.", nameof(results));
+
+        if (results.Count == 1)
+            return BuildReport(results[0], settings);
+
+        var reports = results.Select(result => BuildReport(result, settings)).ToList();
+        var statistics = new ObfuscationStatistics();
+        foreach (var report in reports)
+            statistics.Merge(report.Statistics);
+
+        return new ObfuscationReport
+        {
+            Metadata = new ReportMetadata
+            {
+                ObfyVersion = reports[0].Metadata.ObfyVersion,
+                GeneratedAt = reports[0].Metadata.GeneratedAt,
+                Level = settings.Level,
+                TotalElapsedTime = new TimeSpan(reports.Sum(report => report.Metadata.TotalElapsedTime.Ticks))
+            },
+            FileInfo = reports[0].FileInfo,
+            Files = reports.Select(report => report.FileInfo).ToList(),
+            Statistics = statistics,
+            SymbolSummary = SumSymbolSummaries(reports),
+            SettingsUsed = reports[0].SettingsUsed,
+            Warnings = reports.SelectMany(report => report.Warnings).ToList(),
+            ProcessingTimes = reports.SelectMany(report => report.ProcessingTimes).ToList()
+        };
+    }
+
+    /// <inheritdoc/>
     public async Task GenerateReportAsync(
         ObfuscationReport report,
         string outputPath,
@@ -379,6 +413,20 @@ public class ReportService : IReportService
             OutputPath = outputPath,
             InputSizeBytes = inputSize,
             OutputSizeBytes = outputSize
+        };
+    }
+
+    private static SymbolMapSummary SumSymbolSummaries(IReadOnlyList<ObfuscationReport> reports)
+    {
+        return new SymbolMapSummary
+        {
+            TotalSymbolsRenamed = reports.Sum(report => report.SymbolSummary.TotalSymbolsRenamed),
+            TypesRenamed = reports.Sum(report => report.SymbolSummary.TypesRenamed),
+            MethodsRenamed = reports.Sum(report => report.SymbolSummary.MethodsRenamed),
+            FieldsRenamed = reports.Sum(report => report.SymbolSummary.FieldsRenamed),
+            PropertiesRenamed = reports.Sum(report => report.SymbolSummary.PropertiesRenamed),
+            ParametersRenamed = reports.Sum(report => report.SymbolSummary.ParametersRenamed),
+            NamingModeUsed = reports[0].SymbolSummary.NamingModeUsed
         };
     }
 

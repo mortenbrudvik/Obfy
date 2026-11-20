@@ -683,10 +683,10 @@ public class Program
                 ? ReportFormat.Json
                 : ReportFormat.Html;
 
-            // For single file, generate report directly
-            // For multiple files, use the first result (or could aggregate in future)
-            var (result, usedSettings) = successfulResults[0];
-            var report = reportService.BuildReport(result, usedSettings);
+            var (_, usedSettings) = successfulResults[0];
+            var report = reportService.BuildCombinedReport(
+                successfulResults.Select(pair => pair.Result).ToList(),
+                usedSettings);
             await reportService.GenerateReportAsync(report, reportFile.FullName, format).ConfigureAwait(false);
             AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
         }
@@ -833,7 +833,7 @@ public class Program
             }
 
             DisplaySuccess($"Merged ({closedSetInputs.Count} assemblies)", mergeResult);
-            await WriteMapAndReportAsync(mapFile, reportFile, mergeResult.SymbolMap, mergeResult, settings, service, reportService)
+            await WriteMapAndReportAsync(mapFile, reportFile, mergeResult.SymbolMap, [mergeResult], settings, service, reportService)
                 .ConfigureAwait(false);
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine("[green]Obfuscation complete![/]");
@@ -961,16 +961,8 @@ public class Program
             DisplaySuccess(name, module);
         }
 
-        if (reportFile != null && result.ModuleResults.Count > 1)
-        {
-            var firstName = Path.GetFileName(result.ModuleResults[0].InputPath) ?? "module";
-            AnsiConsole.MarkupLine(
-                $"[yellow]Report contains the first module only ({Markup.Escape(firstName)}); " +
-                $"{result.ModuleResults.Count - 1} other module(s) omitted.[/]");
-        }
-
-        var reportSource = result.ModuleResults.Count > 0 ? result.ModuleResults[0] : null;
-        await WriteMapAndReportAsync(mapFile, reportFile, result.SymbolMap, reportSource, settings, service, reportService)
+        await WriteMapAndReportAsync(
+            mapFile, reportFile, result.SymbolMap, result.ModuleResults, settings, service, reportService)
             .ConfigureAwait(false);
 
         AnsiConsole.WriteLine();
@@ -988,7 +980,7 @@ public class Program
         FileInfo? mapFile,
         FileInfo? reportFile,
         Dictionary<string, string> symbolMap,
-        ObfuscationResult? reportSource,
+        IReadOnlyList<ObfuscationResult> reportSources,
         ObfySettings settings,
         IObfuscationService service,
         IReportService reportService)
@@ -999,12 +991,12 @@ public class Program
             AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
         }
 
-        if (reportFile != null && reportSource != null)
+        if (reportFile != null && reportSources.Count > 0)
         {
             var format = Path.GetExtension(reportFile.FullName).ToLowerInvariant() == ".json"
                 ? ReportFormat.Json
                 : ReportFormat.Html;
-            var report = reportService.BuildReport(reportSource, settings);
+            var report = reportService.BuildCombinedReport(reportSources, settings);
             await reportService.GenerateReportAsync(report, reportFile.FullName, format).ConfigureAwait(false);
             AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
         }

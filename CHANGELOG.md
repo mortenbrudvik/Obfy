@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded); per-build opcode permutation + XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset; deterrent, not confidentiality
 
 ### Fixed
+- `--report` on a multi-file run includes every successful assembly, not only the first
 - Passing `--level` together with `--config` prints a warning that the config file wins
 - `config wizard` on a redirected terminal prints a one-line error instead of a stack trace
 - `config generate --level` with an unknown level prints a one-line error instead of a stack trace

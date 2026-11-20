@@ -18,4 +18,7 @@ public class ApiRegistry
 
     public Type? GetRequestType(string service, string method) =>
         _requests.GetValueOrDefault($"{service}.{method}");
+
+    /// <summary>Every registration, keyed by <c>service.method</c>. For the contract tests that pin the whole surface.</summary>
+    public IReadOnlyDictionary<string, Type> GetAll() => new Dictionary<string, Type>(_requests);
 }

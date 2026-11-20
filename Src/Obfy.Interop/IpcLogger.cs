@@ -3,8 +3,8 @@ using Microsoft.Extensions.Logging;
 namespace Obfy.Interop;
 
 /// <summary>
-/// Logs bridge traffic at Debug only, each payload cut to 200 characters. Failures are logged by the bridge at
-/// Warning or Error without the payload.
+/// Logs bridge traffic at Debug only, each request or response payload cut to 200 characters. Pushed events log
+/// their name and size only, never the payload. Failures are logged by the bridge at Warning or Error without the payload.
 /// </summary>
 public class IpcLogger(ILogger<IpcLogger> logger)
 {
@@ -16,8 +16,9 @@ public class IpcLogger(ILogger<IpcLogger> logger)
     public void LogResponse(string service, string method, string? json) =>
         logger.LogDebug("[IPC <-] {Service}.{Method} -> {Result}", service, method, Truncate(json));
 
-    public void LogEvent(string eventName, string? json) =>
-        logger.LogDebug("[IPC v] {EventName} -> {Data}", eventName, Truncate(json));
+    /// <summary>Logs a pushed event by name and serialized size. The payload (file paths, log lines) is not logged.</summary>
+    public void LogEvent(string eventName, int jsonLength) =>
+        logger.LogDebug("[IPC v] {EventName} ({Length} chars)", eventName, jsonLength);
 
     public void LogWarning(string message, params object?[] args) => logger.LogWarning(message, args);
 

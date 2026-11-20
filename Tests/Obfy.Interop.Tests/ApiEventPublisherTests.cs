@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Obfy.App;
 using Obfy.App.Sessions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Obfy.Interop;
 using Obfy.WebView;
 using Shouldly;
@@ -16,7 +17,7 @@ public class ApiEventPublisherTests
     }
 
     private static ApiEventPublisher PublisherOver(CapturingWebView webView) =>
-        new(new Lazy<ApiEventAggregator>(() => new ApiEventAggregator(webView)));
+        new(new Lazy<ApiEventAggregator>(() => new ApiEventAggregator(webView, new IpcLogger(NullLogger<IpcLogger>.Instance))));
 
     [Fact]
     public void Publish_GoesThroughTheAggregatorAsAnEnvelope()
@@ -37,7 +38,7 @@ public class ApiEventPublisherTests
         var publisher = new ApiEventPublisher(new Lazy<ApiEventAggregator>(() =>
         {
             built++;
-            return new ApiEventAggregator(new CapturingWebView());
+            return new ApiEventAggregator(new CapturingWebView(), new IpcLogger(NullLogger<IpcLogger>.Instance));
         }));
 
         built.ShouldBe(0);

@@ -302,4 +302,32 @@ public class HybridWiringTests
         IpcNames.Events.RunCompleted.ShouldBe(Obfy.App.AppEvents.RunCompleted);
         IpcNames.Events.RunCompleted.ShouldBe("run.completed");
     }
+
+    [Fact]
+    public void EveryRegisteredRequest_HasAHandlerInTheContainer_AcrossAllServices()
+    {
+        // Mediator's source generator only finds handlers in the assemblies listed in HybridBootstrap; one missing there is
+        // not a build error, the handler is simply absent. Resolving each closed handler type proves every service is wired.
+        OnSta(() =>
+        {
+            using var container = Build();
+            var registry = container.Resolve<ApiRegistry>();
+            ApiRegistrations.RegisterAll(registry);
+
+            var all = registry.GetAll();
+            all.Values.Select(t => t.Assembly).Distinct().ShouldBe([typeof(AppInfoRequest).Assembly]);
+            all.Count.ShouldBeGreaterThan(0);
+            foreach (var (name, requestType) in all)
+            {
+                var responseType = requestType.GetInterfaces()
+                    .Single(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IRequest<>))
+                    .GetGenericArguments()[0];
+                var handlerType = typeof(IRequestHandler<,>).MakeGenericType(requestType, responseType);
+
+                container.Resolve(handlerType).ShouldNotBeNull(name);
+            }
+
+            return true;
+        });
+    }
 }

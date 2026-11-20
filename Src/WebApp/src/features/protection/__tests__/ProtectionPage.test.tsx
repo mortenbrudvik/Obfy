@@ -225,4 +225,35 @@ describe("ProtectionPage", () => {
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(rowSwitch("Control flow").checked).toBe(false);
   });
+
+  it("keepsTheNewestSnapshot_whenAnswersArriveOutOfOrder", async () => {
+    const first = protectionSnapshot({ level: "Custom", revision: 2, on: ["controlFlow"] });
+    const second = protectionSnapshot({ level: "Custom", revision: 3, on: ["controlFlow", "referenceProxy"] });
+    let releaseFirst!: () => void;
+    const firstAnswer = new Promise<void>((resolve) => (releaseFirst = resolve));
+    let n = 0;
+    host(protectionSnapshot(), {
+      "settings.update": async () => {
+        if (++n === 1) {
+          await firstAnswer;
+          return first;
+        }
+        return second;
+      },
+    });
+
+    render(<ProtectionPage />);
+    await screen.findByRole("switch", { name: "Control flow" });
+    fireEvent.click(rowSwitch("Control flow"));
+    fireEvent.click(rowSwitch("Reference proxy"));
+    await waitFor(() => expect(rowSwitch("Reference proxy").checked).toBe(true));
+
+    // The older answer comes last and must not take the proxy away again.
+    releaseFirst();
+    await waitFor(() => expect(calls("update")).toHaveLength(2));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(rowSwitch("Reference proxy").checked).toBe(true);
+    expect(rowSwitch("Control flow").checked).toBe(true);
+  });
 });

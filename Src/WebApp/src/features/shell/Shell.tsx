@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import Notice from "../../components/Notice";
+import { flushPendingEdits } from "../../hooks/pendingEdits";
 import { useAppAction } from "../../hooks/useAppAction";
 import { usePushedState } from "../../hooks/usePushedState";
 import { useRun } from "../../hooks/useRun";
@@ -39,7 +40,10 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
   const [addFiles, addFilesError] = useAppAction(async () => {
     await api.files.pick();
   }, strings.shell.addFilesFailed);
+  // Text typed into a box is committed when the box is left, which a shortcut does not do: it is sent first, and the
+  // host has it before it is asked to save or to run.
   const [saveConfig, saveConfigError] = useAppAction(async () => {
+    if ((await flushPendingEdits()) === "failed") throw new Error(strings.protection.failed.pending);
     await api.settings.saveConfig();
   }, strings.shell.saveConfigFailed);
   const [openConfig, openConfigError] = useAppAction(async () => {
@@ -47,8 +51,20 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
   }, strings.shell.openConfigFailed);
 
   const running = run?.status === "Running";
+
+  // A run is blocked until a typed value (a watermark id) reaches the host, so the block is judged after it was sent.
+  const latestRun = useRef(run);
+  useEffect(() => {
+    latestRun.current = run;
+  });
+  const startAfterPendingEdits = async () => {
+    const flushed = await flushPendingEdits();
+    if (flushed === "failed") return;
+    if (flushed === "sent" || latestRun.current?.canStart) await start();
+  };
+
   useShortcuts({
-    obfuscate: run?.canStart ? () => void start() : undefined,
+    obfuscate: running ? undefined : () => void startAfterPendingEdits(),
     cancel: running ? () => void cancel() : undefined,
     guide: () => onNavigate("guide"),
     addFiles: () => void addFiles(),
@@ -85,7 +101,7 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
           includedCount={includedCount}
           level={level}
           error={runError}
-          onStart={() => void start()}
+          onStart={() => void startAfterPendingEdits()}
           onCancel={() => void cancel()}
         />
       </div>

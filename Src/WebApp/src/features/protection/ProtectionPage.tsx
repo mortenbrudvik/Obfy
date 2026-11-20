@@ -36,7 +36,7 @@ export default function ProtectionPage({ onOpenGuide }: ProtectionPageProps) {
     );
   }
 
-  const send = (patch: SettingsPatch) => void update(patch);
+  const send = (patch: SettingsPatch) => update(patch);
   const guide = (topic: string) => onOpenGuide?.(topic);
 
   const technique = settings.techniques.find((t) => t.id === selected) ?? (selected === SCOPE_ID ? undefined : settings.techniques[0]);

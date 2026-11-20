@@ -2,14 +2,14 @@ import Notice from "../../components/Notice";
 import { strings } from "../../strings";
 import type { SettingsPatch, SettingsSnapshot, TechniqueState } from "../../types/domain";
 import { DetailHead, DetailSection, GuideLink } from "./DetailParts";
-import OptionControl from "./OptionControl";
+import OptionControl, { type Committed } from "./OptionControl";
 import { switchPatch } from "./patches";
 import { contentFor } from "./techniqueContent";
 
 interface TechniqueDetailProps {
   technique: TechniqueState;
   snapshot: SettingsSnapshot;
-  onUpdate: (patch: SettingsPatch) => void;
+  onUpdate: (patch: SettingsPatch) => Committed;
   onPickKey: () => void;
   onOpenGuide: (topic: string) => void;
 }

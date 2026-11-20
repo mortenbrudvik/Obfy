@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { content } from "../../../content/content";
 import type { SettingsSnapshot } from "../../../types/domain";
 import TechniqueDetail from "../TechniqueDetail";
+import { flushPendingEdits } from "../../../hooks/pendingEdits";
 import { hostTechniqueIds, protectionSnapshot } from "./fixtures";
 
 interface Handlers {
@@ -197,6 +198,103 @@ describe("TechniqueDetail", () => {
     fireEvent.blur(include);
 
     expect(onUpdate).toHaveBeenCalledWith({ "dependencyEmbedding.includePatterns": ["*.dll", "Plugin.*"] });
+  });
+});
+
+describe("TechniqueDetail text options", () => {
+  it("commitsTheWatermarkId_whenTheBoxIsLeft_andNotBefore", () => {
+    const onUpdate = vi.fn();
+    renderDetail("watermark", protectionSnapshot(), { onUpdate });
+    const id = screen.getByLabelText(/^Id/);
+
+    fireEvent.change(id, { target: { value: "acme-1" } });
+    expect(onUpdate).not.toHaveBeenCalled();
+    fireEvent.blur(id);
+
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(onUpdate).toHaveBeenCalledWith({ "watermark.id": "acme-1" });
+  });
+
+  it("commitsTheWatermarkId_onEnter", () => {
+    const onUpdate = vi.fn();
+    renderDetail("watermark", protectionSnapshot(), { onUpdate });
+    const id = screen.getByLabelText(/^Id/);
+
+    fireEvent.change(id, { target: { value: "acme-2" } });
+    fireEvent.keyDown(id, { key: "Enter" });
+
+    expect(onUpdate).toHaveBeenCalledWith({ "watermark.id": "acme-2" });
+  });
+
+  it("sendsNothing_whenTheBoxIsLeftWithTheValueTheHostHas", () => {
+    const onUpdate = vi.fn();
+    renderDetail("watermark", protectionSnapshot({ optionValues: { watermark: { id: "acme-1" } } }), { onUpdate });
+    const id = screen.getByLabelText(/^Id/);
+
+    fireEvent.focus(id);
+    fireEvent.blur(id);
+    fireEvent.keyDown(id, { key: "Enter" });
+
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("commitsTheKeyFileAndThePasswordVariable_onBlurAndOnEnter", () => {
+    const onUpdate = vi.fn();
+    renderDetail("signing", protectionSnapshot(), { onUpdate });
+
+    const keyFile = screen.getByLabelText(/^Key file/);
+    fireEvent.change(keyFile, { target: { value: "C:\\keys\\company.pfx" } });
+    fireEvent.blur(keyFile);
+    expect(onUpdate).toHaveBeenLastCalledWith({ "signing.keyFile": "C:\\keys\\company.pfx" });
+
+    const password = screen.getByLabelText("Password variable");
+    fireEvent.change(password, { target: { value: "OBFY_KEY_PASSWORD" } });
+    fireEvent.keyDown(password, { key: "Enter" });
+    expect(onUpdate).toHaveBeenLastCalledWith({ "signing.passwordEnvironmentVariable": "OBFY_KEY_PASSWORD" });
+  });
+
+  it("followsTheHostsValue_whenItChanges", () => {
+    const { rerender } = renderDetail("watermark", protectionSnapshot({ optionValues: { watermark: { id: "a" } } }));
+    expect((screen.getByLabelText(/^Id/) as HTMLInputElement).value).toBe("a");
+
+    const next = protectionSnapshot({ revision: 2, optionValues: { watermark: { id: "b" } } });
+    rerender(
+      <TechniqueDetail
+        technique={next.techniques.find((t) => t.id === "watermark")!}
+        snapshot={next}
+        onUpdate={vi.fn()}
+        onPickKey={vi.fn()}
+        onOpenGuide={vi.fn()}
+      />,
+    );
+
+    expect((screen.getByLabelText(/^Id/) as HTMLInputElement).value).toBe("b");
+  });
+
+  it("flushesATypedValue_throughFlushPendingEdits_withoutTheBoxBeingLeft", async () => {
+    const onUpdate = vi.fn().mockResolvedValue(true);
+    renderDetail("watermark", protectionSnapshot(), { onUpdate });
+    fireEvent.change(screen.getByLabelText(/^Id/), { target: { value: "acme-3" } });
+
+    await expect(flushPendingEdits()).resolves.toBe("sent");
+
+    expect(onUpdate).toHaveBeenCalledWith({ "watermark.id": "acme-3" });
+  });
+
+  it("flushesAPatternList_andReportsARefusal", async () => {
+    const onUpdate = vi.fn().mockResolvedValue(false);
+    renderDetail("dependencyEmbedding", protectionSnapshot(), { onUpdate });
+    fireEvent.change(screen.getByLabelText("Exclude"), { target: { value: "*.resources.dll\nTest.*" } });
+
+    await expect(flushPendingEdits()).resolves.toBe("failed");
+
+    expect(onUpdate).toHaveBeenCalledWith({ "dependencyEmbedding.excludePatterns": ["*.resources.dll", "Test.*"] });
+  });
+
+  it("reportsIdle_whenNoBoxHoldsNewText", async () => {
+    renderDetail("watermark");
+
+    await expect(flushPendingEdits()).resolves.toBe("idle");
   });
 });
 

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { flushPendingEdits } from "../../hooks/pendingEdits";
 import { usePushedState } from "../../hooks/usePushedState";
 import { api, events } from "../../interop/api";
 import { failure } from "../../interop/errorMessage";
@@ -12,12 +13,13 @@ export interface UseProtection {
   failed: boolean;
   /** Why the last action failed, until the next one succeeds. */
   error: string | null;
-  applyLevel: (level: string) => Promise<void>;
-  update: (patch: SettingsPatch) => Promise<void>;
-  setRuntimeProfile: (profile: string) => Promise<void>;
-  openConfig: () => Promise<void>;
-  saveConfig: () => Promise<void>;
-  pickSigningKey: () => Promise<void>;
+  applyLevel: (level: string) => Promise<boolean>;
+  /** Answers whether the host took the change in. */
+  update: (patch: SettingsPatch) => Promise<boolean>;
+  setRuntimeProfile: (profile: string) => Promise<boolean>;
+  openConfig: () => Promise<boolean>;
+  saveConfig: () => Promise<boolean>;
+  pickSigningKey: () => Promise<boolean>;
 }
 
 /**
@@ -33,12 +35,16 @@ export function useProtection(): UseProtection {
 
   // One error for the whole page: the next action that works clears it.
   const act = useCallback(
-    (label: string, call: () => Promise<SettingsSnapshot>) => async () => {
+    (label: string, call: () => Promise<SettingsSnapshot>) => async (): Promise<boolean> => {
       try {
-        setAnswered(await call());
+        const next = await call();
+        // Answers can arrive out of order when edits come fast: an older one never replaces a newer one.
+        setAnswered((held) => (held && held.revision > next.revision ? held : next));
         setError(null);
+        return true;
       } catch (err) {
         setError(failure(label, err));
+        return false;
       }
     },
     [],
@@ -57,7 +63,11 @@ export function useProtection(): UseProtection {
     applyLevel: (level) => act(strings.protection.failed.level, () => api.settings.applyLevel(level))(),
     setRuntimeProfile: (profile) => update({ runtimeProfile: profile }),
     openConfig: act(strings.protection.failed.config, () => api.settings.openConfig()),
-    saveConfig: act(strings.protection.failed.save, () => api.settings.saveConfig()),
+    // What is typed in a box is saved too, not only what the host last heard.
+    saveConfig: act(strings.protection.failed.save, async () => {
+      if ((await flushPendingEdits()) === "failed") throw new Error(strings.protection.failed.pending);
+      return api.settings.saveConfig();
+    }),
     pickSigningKey: act(strings.protection.failed.key, () => api.settings.pickSigningKey()),
   };
 }

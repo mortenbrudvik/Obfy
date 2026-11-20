@@ -105,6 +105,7 @@ export const strings = {
       config: "Could not open the configuration",
       save: "Could not save the configuration",
       key: "Could not choose the key file",
+      pending: "the value you typed was not accepted",
     },
   },
   run: {

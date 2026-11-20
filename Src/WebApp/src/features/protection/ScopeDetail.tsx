@@ -3,12 +3,12 @@ import { content } from "../../content/content";
 import { strings } from "../../strings";
 import type { SettingsPatch, SettingsSnapshot } from "../../types/domain";
 import { DetailHead, DetailSection, GuideLink } from "./DetailParts";
-import { ListOption } from "./OptionControl";
+import { ListOption, type Committed } from "./OptionControl";
 import { ruleCount } from "./scope";
 
 interface ScopeDetailProps {
   snapshot: SettingsSnapshot;
-  onUpdate: (patch: SettingsPatch) => void;
+  onUpdate: (patch: SettingsPatch) => Committed;
   onOpenGuide: (topic: string) => void;
 }
 

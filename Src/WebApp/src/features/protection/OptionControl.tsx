@@ -3,6 +3,7 @@ import { content, type OptionContent } from "../../content/content";
 import Field from "../../components/Field";
 import Select from "../../components/Select";
 import Slider from "../../components/Slider";
+import { usePendingEdit, type FlushResult } from "../../hooks/pendingEdits";
 import { useDraft } from "../../hooks/useDraft";
 import { strings } from "../../strings";
 import type { SettingsChoices, SettingsPatch } from "../../types/domain";
@@ -16,9 +17,13 @@ interface OptionControlProps {
   choices: SettingsChoices;
   /** What the host says is wrong with this option, if anything. */
   error: string | null;
-  onUpdate: (patch: SettingsPatch) => void;
+  /** Answers when the host has taken the change in. */
+  onUpdate: (patch: SettingsPatch) => Committed;
   onPickKey: () => void;
 }
+
+/** What a change answers: nothing, or (once the host has answered) whether it took the change in; `false` is a refusal. */
+export type Committed = void | boolean | Promise<void | boolean>;
 
 const asText = (value: unknown) => (typeof value === "string" ? value : "");
 const asNumber = (value: unknown) => (typeof value === "number" ? value : 0);
@@ -220,7 +225,7 @@ interface TextOptionProps {
   option: OptionContent;
   value: string;
   error: string | null;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => Committed;
   /** A Browse… button beside the box, for an option that names a file. */
   onBrowse?: () => void;
 }
@@ -228,9 +233,12 @@ interface TextOptionProps {
 /** A text box that follows the host's value and sends what was typed when it is left, or on Enter. */
 function TextOption({ option, value, error, onCommit, onBrowse }: TextOptionProps) {
   const [text, setText] = useDraft(value);
-  const commit = () => {
-    if (text !== value) onCommit(text);
+  // Committed on leaving the box or on Enter. A shortcut that acts first (run, save) flushes it through here.
+  const commit = async (): Promise<FlushResult> => {
+    if (text === value) return "idle";
+    return (await onCommit(text)) === false ? "failed" : "sent";
   };
+  usePendingEdit(commit);
   return (
     <div className="opt">
       <Field label={option.label} help={option.help} error={error} required={option.required}>
@@ -244,9 +252,9 @@ function TextOption({ option, value, error, onCommit, onBrowse }: TextOptionProp
               placeholder={option.placeholder}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              onBlur={commit}
+              onBlur={() => void commit()}
               onKeyDown={(e: KeyboardEvent) => {
-                if (e.key === "Enter") commit();
+                if (e.key === "Enter") void commit();
               }}
             />
             {onBrowse && (
@@ -265,13 +273,18 @@ interface ListOptionProps {
   option: OptionContent;
   value: string[];
   error: string | null;
-  onCommit: (value: string[]) => void;
+  onCommit: (value: string[]) => Committed;
 }
 
 /** A box of patterns, one per line; the host trims, drops blanks and duplicates. Sent when the box is left. */
 export function ListOption({ option, value, error, onCommit }: ListOptionProps) {
   const joined = value.join("\n");
   const [text, setText] = useDraft(joined);
+  const commit = async (): Promise<FlushResult> => {
+    if (text === joined) return "idle";
+    return (await onCommit(text.split(/\r?\n/))) === false ? "failed" : "sent";
+  };
+  usePendingEdit(commit);
   return (
     <div className="opt">
       <Field label={option.label} help={option.help} error={error}>
@@ -283,9 +296,7 @@ export function ListOption({ option, value, error, onCommit }: ListOptionProps) 
             placeholder={option.placeholder}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onBlur={() => {
-              if (text !== joined) onCommit(text.split(/\r?\n/));
-            }}
+            onBlur={() => void commit()}
           />
         )}
       </Field>

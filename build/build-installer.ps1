@@ -16,6 +16,37 @@ $PublishDirUI = Join-Path $BuildDir "publish-ui"
 $OutputDir = Join-Path $BuildDir "output"
 $ConsoleProject = Join-Path $ProjectRoot "Src\Obfy.Console\Obfy.Console.csproj"
 $UIProject = Join-Path $ProjectRoot "Src\Obfy.UI\Obfy.UI.csproj"
+$RedistDir = Join-Path $BuildDir "redist"
+$WebView2BootstrapperUrl = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+$WebView2BootstrapperName = "MicrosoftEdgeWebview2Setup.exe"
+
+# The bootstrapper runs elevated on every install that lacks WebView2, so a corrupt or substituted binary is a
+# real hazard. Anything smaller than this is a truncated download or an HTML error page, not the ~1.7 MB signed
+# installer.
+$MinBootstrapperBytes = 100KB
+
+function Test-Bootstrapper {
+    # Returns $null when the file is trustworthy, otherwise a reason string.
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) {
+        return "file does not exist"
+    }
+
+    $length = (Get-Item $Path).Length
+    if ($length -lt $MinBootstrapperBytes) {
+        return "only $length bytes - truncated download or an error page"
+    }
+
+    $signature = Get-AuthenticodeSignature $Path
+    if ($signature.Status -ne "Valid") {
+        return "Authenticode signature is not valid (status: $($signature.Status))"
+    }
+    if ($signature.SignerCertificate.Subject -notmatch "O=Microsoft Corporation") {
+        return "not signed by Microsoft (subject: $($signature.SignerCertificate.Subject))"
+    }
+    return $null
+}
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Obfy Installer Build Script" -ForegroundColor Cyan
@@ -129,6 +160,21 @@ if (-not $SkipPublish) {
         exit 1
     }
 
+    # The web UI is loaded from Assets\ beside ObfyUI.exe. The publish builds the frontend itself (the
+    # frontend build is never skipped here), so a missing index.html means the frontend did not build.
+    $UIIndexPath = Join-Path $PublishDirUI "Assets\index.html"
+    if (-not (Test-Path $UIIndexPath)) {
+        Write-Host "ERROR: Assets\index.html not found in UI publish output - the frontend did not build!" -ForegroundColor Red
+        exit 1
+    }
+
+    # The installer excludes these too, but a source map must never be published next to the page.
+    $strayWebSymbols = @(Get-ChildItem -Path (Join-Path $PublishDirUI "Assets") -Recurse -File -Include *.map, *.pdb)
+    if ($strayWebSymbols.Count -gt 0) {
+        Write-Host "ERROR: source maps or symbols found in Assets: $($strayWebSymbols.FullName -join ', ')" -ForegroundColor Red
+        exit 1
+    }
+
     $fileCountUI = (Get-ChildItem -Path $PublishDirUI -Recurse -File).Count
     Write-Host "  Published $fileCountUI UI files" -ForegroundColor Green
 } else {
@@ -206,6 +252,49 @@ if (-not (Test-Path $OutputDir)) {
     New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
 }
 Write-Host "  Output: $OutputDir" -ForegroundColor Green
+
+# The installer bundles the WebView2 Evergreen bootstrapper (ObfySetup.iss installs it only when the runtime is absent).
+if (-not $SkipBuild) {
+    if (-not (Test-Path $RedistDir)) {
+        New-Item -Path $RedistDir -ItemType Directory -Force | Out-Null
+    }
+    $BootstrapperPath = Join-Path $RedistDir $WebView2BootstrapperName
+
+    # The cached copy is re-verified every run: a file that failed mid-download would otherwise be reused forever.
+    $Problem = Test-Bootstrapper -Path $BootstrapperPath
+    if (-not $Problem) {
+        Write-Host "  WebView2 bootstrapper (cached): $BootstrapperPath" -ForegroundColor Green
+    } else {
+        if (Test-Path $BootstrapperPath) {
+            Write-Host "  Rejecting cached bootstrapper ($Problem) - re-downloading." -ForegroundColor Yellow
+            Remove-Item $BootstrapperPath -Force
+        }
+
+        # Download to a staging name so a failed transfer never lands on the real path.
+        $StagingPath = "$BootstrapperPath.download"
+        Remove-Item $StagingPath -Force -ErrorAction SilentlyContinue
+
+        Write-Host "  Downloading $WebView2BootstrapperName ..." -ForegroundColor Gray
+        try {
+            Invoke-WebRequest -Uri $WebView2BootstrapperUrl -OutFile $StagingPath -UseBasicParsing
+        } catch {
+            Remove-Item $StagingPath -Force -ErrorAction SilentlyContinue
+            Write-Host "ERROR: Failed to download WebView2 bootstrapper: $_" -ForegroundColor Red
+            Write-Host "  Place $WebView2BootstrapperName in build\redist\ manually and re-run." -ForegroundColor Yellow
+            exit 1
+        }
+
+        $Problem = Test-Bootstrapper -Path $StagingPath
+        if ($Problem) {
+            Remove-Item $StagingPath -Force -ErrorAction SilentlyContinue
+            Write-Host "ERROR: Downloaded WebView2 bootstrapper rejected: $Problem" -ForegroundColor Red
+            exit 1
+        }
+
+        Move-Item -Path $StagingPath -Destination $BootstrapperPath -Force
+        Write-Host "  Downloaded and verified: $BootstrapperPath" -ForegroundColor Green
+    }
+}
 
 # Step 7: Build installer
 if (-not $SkipBuild) {

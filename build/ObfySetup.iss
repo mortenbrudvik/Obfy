@@ -7,6 +7,8 @@
 #define MyAppURL "https://github.com/mortenbrudvik/Obfy"
 #define MyAppExeName "obfy.exe"
 #define MyAppUIExeName "ObfyUI.exe"
+; ObfyUI.exe hosts WebView2 and loads its page from {app}\UI\Assets, so the Evergreen runtime must be present.
+#define WebView2ClientGuid "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
 [Setup]
 ; Unique application ID - generated GUID for Obfy
@@ -43,10 +45,15 @@ PrivilegesRequired=admin
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
+; The dontcopy prerequisite MUST be listed first. With SolidCompression,
+; ExtractTemporaryFile has to decompress everything ahead of it in the block, so
+; listing it after the publish payload would stall setup on exactly the machines
+; that lack WebView2. build-installer.ps1 downloads it into build\redist.
+Source: ".\redist\MicrosoftEdgeWebview2Setup.exe"; Flags: dontcopy noencryption
 ; CLI files from publish directory
 Source: ".\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; UI files from publish-ui directory
-Source: ".\publish-ui\*"; DestDir: "{app}\UI"; Flags: ignoreversion recursesubdirs createallsubdirs
+; UI files from publish-ui directory (includes the web Assets\ folder; no symbols or source maps)
+Source: ".\publish-ui\*"; DestDir: "{app}\UI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.map"
 
 [Icons]
 ; Start Menu shortcuts
@@ -67,7 +74,85 @@ Filename: "taskkill"; Parameters: "/f /im {#MyAppUIExeName}"; Flags: runhidden; 
 
 [Code]
 const
+  WebView2ExitRebootRequired = 3010;
   EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+
+// The Evergreen runtime registers its version ('pv') under the EdgeUpdate client GUID,
+// machine-wide or per-user, in either registry view. Empty and 0.0.0.0 mean "not installed".
+function WebView2VersionIsValid(Version: string): Boolean;
+begin
+  Result := (Version <> '') and (Version <> '0.0.0.0');
+end;
+
+function IsWebView2RuntimeInstalled: Boolean;
+var
+  Version: string;
+begin
+  Result := True;
+
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{#WebView2ClientGuid}', 'pv', Version) and WebView2VersionIsValid(Version) then
+    Exit;
+  if RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{#WebView2ClientGuid}', 'pv', Version) and WebView2VersionIsValid(Version) then
+    Exit;
+  if RegQueryStringValue(HKCU, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{#WebView2ClientGuid}', 'pv', Version) and WebView2VersionIsValid(Version) then
+    Exit;
+  if RegQueryStringValue(HKCU, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{#WebView2ClientGuid}', 'pv', Version) and WebView2VersionIsValid(Version) then
+    Exit;
+
+  Result := False;
+end;
+
+// Runs the bundled Evergreen bootstrapper silently. Returns '' on success, otherwise the
+// message that aborts setup.
+function InstallWebView2Runtime(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+  Bootstrapper: string;
+begin
+  Result := '';
+
+  try
+    ExtractTemporaryFile('MicrosoftEdgeWebview2Setup.exe');
+  except
+    Result := 'The WebView2 bootstrapper is missing from the installer payload.' + #13#10 +
+      'Re-run build\build-installer.ps1 to download build\redist\MicrosoftEdgeWebview2Setup.exe.';
+    Exit;
+  end;
+
+  Bootstrapper := ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe');
+  if not FileExists(Bootstrapper) then
+  begin
+    Result := 'The WebView2 bootstrapper could not be extracted to the temporary folder.';
+    Exit;
+  end;
+
+  if not Exec(Bootstrapper, '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Result := 'Failed to start the WebView2 Runtime installer.';
+    Exit;
+  end;
+
+  // 3010 = installed successfully, reboot required. Reported through NeedsRestart rather
+  // than a MsgBox so it does not block an unattended /SILENT install.
+  if ResultCode = WebView2ExitRebootRequired then
+  begin
+    NeedsRestart := True;
+    Exit;
+  end;
+
+  if ResultCode <> 0 then
+    Result := 'WebView2 Runtime installation failed (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
+      'Install WebView2 manually from https://developer.microsoft.com/microsoft-edge/webview2/ and re-run setup.';
+end;
+
+// Runs after the user confirms the install, so the machine-wide runtime is only installed
+// once they have committed. A non-empty result aborts setup with that message.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if not IsWebView2RuntimeInstalled then
+    Result := InstallWebView2Runtime(NeedsRestart);
+end;
 
 procedure EnvAddPath(Path: string);
 var

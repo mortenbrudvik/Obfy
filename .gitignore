@@ -98,3 +98,4 @@ nul
 # Web app (Src/WebApp)
 node_modules/
 Src/WebApp/dist/
+build/redist/*.exe

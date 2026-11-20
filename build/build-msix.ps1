@@ -218,6 +218,10 @@ if (-not $SkipPublish) {
     if (-not (Test-Path $uiExe)) {
         throw "ObfyUI.exe not found in $LayoutDir"
     }
+    # The web UI is loaded from Assets\ beside ObfyUI.exe; the publish builds the frontend itself.
+    if (-not (Test-Path (Join-Path $LayoutDir "Assets\index.html"))) {
+        throw "Assets\index.html not found in $LayoutDir - the frontend did not build."
+    }
     Write-Host "  Published $(Get-PublishFileCount $LayoutDir) UI files" -ForegroundColor Green
 } else {
     Write-Host "[3/7] Skipping UI publish (-SkipPublish)" -ForegroundColor Gray
@@ -262,8 +266,20 @@ if ($missingAssets.Count -gt 0) {
     throw "Required Store assets missing. Run .\build\generate-msix-assets.ps1. Missing: $($missingAssets -join ', ')"
 }
 
+# Assets\ already holds the web UI from the UI publish (index.html, assets\...). Merge the Store logos into it:
+# copying the logo folder itself onto an existing Assets\ would nest it as Assets\Assets\ and break the manifest paths.
 $layoutAssets = Join-Path $LayoutDir "Assets"
-Copy-Item $AssetsSource $layoutAssets -Recurse -Force
+New-Item -Path $layoutAssets -ItemType Directory -Force | Out-Null
+Copy-Item (Join-Path $AssetsSource "*") $layoutAssets -Recurse -Force
+
+foreach ($fileName in $RequiredAssets) {
+    if (-not (Test-Path (Join-Path $layoutAssets $fileName))) {
+        throw "Store asset $fileName missing from the layout Assets folder"
+    }
+}
+if (-not (Test-Path (Join-Path $layoutAssets "index.html"))) {
+    throw "Assets\index.html missing from the layout - the web UI would not load (run without -SkipPublish)."
+}
 
 [xml]$manifest = Get-Content $ManifestSource
 $ns = New-Object System.Xml.XmlNamespaceManager($manifest.NameTable)
@@ -294,6 +310,14 @@ $pdbs = @(Get-ChildItem -Path $LayoutDir -Recurse -Filter *.pdb -File)
 if ($pdbs.Count -gt 0) {
     throw "PDB files remain in the layout (close the registered app or uninstall first): $($pdbs.FullName -join ', ')"
 }
+
+$maps = @(Get-ChildItem -Path $LayoutDir -Recurse -Filter *.map -File)
+if ($maps.Count -gt 0) {
+    throw "Source maps remain in the layout (the web build must not emit them): $($maps.FullName -join ', ')"
+}
+
+# The WebView2 runtime is deliberately not bundled: it ships with Windows 11 and supported Windows 10 builds,
+# and the app shows a message when it is missing.
 
 if ($MakePri -and -not $SkipPri) {
     Write-Host "  Generating resources.pri..." -ForegroundColor Gray

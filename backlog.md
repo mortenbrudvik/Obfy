@@ -1,10 +1,20 @@
 # UI Backlog
 
-Findings from a full review of the WPF desktop app (`Src/Obfy.UI`). All 35 items are fixed
-on `fix/ui-backlog`. The sections below keep the original problem statements.
+Findings from two full reviews of the WPF desktop app (`Src/Obfy.UI`).
+
+- **First review** (commit `7805545`): UI-001 to UI-035. All were addressed on `fix/ui-backlog`.
+- **Second review** (commit `912ecf6`, after that fix): 31 of the 35 hold up. Four are
+  **reopened** (UI-006, UI-010, UI-024, UI-034) and 24 new items were found (UI-036 to
+  UI-059), several of them regressions from the rework. See
+  [Second review](#second-review-2026-11-20-commit-912ecf6) at the end.
+
+The sections for UI-001 to UI-035 keep the original problem statements.
 
 - **Reviewed:** 2026-11-20, commit `7805545` (v2.0.0), Debug build
 - **Fixed:** `fix/ui-backlog`, merged to `main`. Product version stays 2.0.0.
+- **Re-reviewed:** 2026-11-20, commit `912ecf6`, Debug build, same method as below with
+  isolated preferences (`OBFY_UI_PREFERENCES`). `Tests/Obfy.UI.Tests` passed (190).
+  `Tests/Obfy.UI.AutomationTests` smoke tests: 3 passed, 2 failed (UI-038).
 - **Checked:** `dotnet test Tests/Obfy.UI.Tests` passed, including symbol-tree keys from the
   real renamer and Custom-preset restore. `SymbolMapKeyTests` passed. The app started.
   FlaUI `Category=UI` was not run, and the 1400×900 / 900×600 row counts in UI-008 were not
@@ -19,7 +29,7 @@ on `fix/ui-backlog`. The sections below keep the original problem statements.
 
 Each item has:
 
-- **Status** — Done
+- **Status** — Done, Reopened (marked Done but the second review found it not met), or Open
 - **Priority** — P1 (wrong or broken behaviour a user will hit), P2 (clear usability cost),
   P3 (polish or cleanup)
 - **Evidence** — *Observed* (seen in the running app), *Code* (follows from reading the code,
@@ -38,11 +48,11 @@ UI-022 uses an indeterminate bar. It does not add pipeline progress.
 | UI-003 | P1 | Done | Accessibility | Status bar message is hidden from screen readers |
 | UI-004 | P1 | Done | Files | Output directory preference is polluted and never validated |
 | UI-005 | P1 | Done | Help | Help dialog clips at the minimum window size |
-| UI-006 | P1 | Done | Help | Help text is out of date |
+| UI-006 | P1 | Reopened | Help | Help text is out of date |
 | UI-007 | P1 | Done | Files | Output directory placeholder is wrong for closed-set runs |
 | UI-008 | P1 | Done | Layout | Files, Results and Output do not fit in one column |
 | UI-009 | P2 | Done | Layout | Results panel cannot be dismissed |
-| UI-010 | P2 | Done | Layout | Empty-state drop zone is clipped at the minimum size |
+| UI-010 | P2 | Reopened | Layout | Empty-state drop zone is clipped at the minimum size |
 | UI-011 | P3 | Done | Layout | Title bar and toolbar use two rows of chrome |
 | UI-012 | P2 | Done | Settings | Collapsed expanders do not show whether a technique is on |
 | UI-013 | P2 | Done | Settings | Obfuscation level dropdown text is truncated |
@@ -56,7 +66,7 @@ UI-022 uses an indeterminate bar. It does not add pipeline progress.
 | UI-021 | P3 | Done | Settings | Choosing a preset silently overwrites Custom settings |
 | UI-022 | P2 | Done | Progress | Progress bar sits at 0% for closed-set and merge runs |
 | UI-023 | P2 | Done | Files | File status icons are monochrome and rows hide the output path |
-| UI-024 | P2 | Done | Toolbar | Open output folder is always enabled and its icon is ambiguous |
+| UI-024 | P2 | Reopened | Toolbar | Open output folder is always enabled and its icon is ambiguous |
 | UI-025 | P3 | Done | Files | File list has no keyboard or bulk actions |
 | UI-026 | P3 | Done | Files | Files can only be dropped on the Files panel |
 | UI-027 | P3 | Done | Files | Typed output directory may be ignored on Ctrl+Enter |
@@ -66,8 +76,32 @@ UI-022 uses an indeterminate bar. It does not add pipeline progress.
 | UI-031 | P3 | Done | Results | Symbol search rebuilds the whole tree on every keystroke |
 | UI-032 | P3 | Done | Results | Preview shows only the last output |
 | UI-033 | P3 | Done | Output | Log is cleared at the start of every run |
-| UI-034 | P3 | Done | Output | Log lines cannot be copied individually and never wrap |
+| UI-034 | P3 | Reopened | Output | Log lines cannot be copied individually and never wrap |
 | UI-035 | P3 | Done | Cleanup | Dead code and unused dependencies |
+| UI-036 | P1 | Open | Output | Log options menu never opens |
+| UI-037 | P1 | Open | Settings | Protection toggle labels overlap their card titles |
+| UI-038 | P1 | Open | Tests | Two UI smoke tests fail |
+| UI-039 | P2 | Open | Settings | Settings outside the presets switch the level to Custom |
+| UI-040 | P2 | Open | Settings | Turning a technique on does not reveal its required options |
+| UI-041 | P2 | Open | Settings | Cards are tall, titles are cut off and toggles are misaligned |
+| UI-042 | P2 | Open | Accessibility | Expander cards have no accessible name |
+| UI-043 | P2 | Open | Layout | Output directory box has no visible label |
+| UI-044 | P2 | Open | Results | Preview decompiles on the UI thread |
+| UI-045 | P2 | Open | Files | Symbol map path is always editable and relative paths go to the working directory |
+| UI-046 | P3 | Open | Settings | Cards expand to an empty body |
+| UI-047 | P3 | Open | Visual | Disabled buttons look emphasised |
+| UI-048 | P3 | Open | Files | File list scrolls sideways instead of trimming paths |
+| UI-049 | P3 | Open | Results | Statistics strip labels are malformed |
+| UI-050 | P3 | Open | Results | Unrenamed types show as a rename to themselves |
+| UI-051 | P3 | Open | Layout | Tabs repeat their own heading and Preview shows the path twice |
+| UI-052 | P3 | Open | Commands | Commands are enabled with nothing to act on |
+| UI-053 | P3 | Open | Files | Merge output name and symbol map folder ignore the include checkbox |
+| UI-054 | P3 | Open | Files | Re-including a skipped solution row loses its reason |
+| UI-055 | P3 | Open | Settings | Choosing Custom again discards exclusions added on a preset |
+| UI-056 | P3 | Open | Results | Symbol parsing and search run on the UI thread and scale badly |
+| UI-057 | P3 | Open | Layout | No splitter between the file list and the tabs |
+| UI-058 | P3 | Open | Files | Drop overlay omits .json and appears during a run |
+| UI-059 | P3 | Open | Results | Results tab has no before-run state |
 
 ---
 
@@ -208,7 +242,17 @@ bar.
 
 ### UI-006 — Help text is out of date
 
-- **Status:** Done
+- **Status:** Reopened
+- **Reopened (second review, `912ecf6`, Observed):** the content now covers solutions, closed
+  sets and skipped rows, but the "Getting started" output paragraph is assembled from
+  placeholder constants and reads wrong: "one file is written Next to the input as
+  \*.obfuscated.\* A closed set … Merge writes Next to the first input as \*.obfuscated.\*" —
+  capital "Next" mid-sentence and missing full stops (`Src/Obfy.UI/Help/HelpCatalog.cs:27`).
+  Help also says "Output goes to Output Directory", but that box no longer has a visible label
+  (UI-043). The Techniques topic still uses the old names and wording: "Assembly Merge" (the
+  card is now "Merge and embedding"), "Set packing.rid to portable" (there is now a dropdown),
+  and Virtualize methods is not listed under Protection (`HelpCatalog.cs:48-60`). Write the
+  sentences out in full rather than splicing placeholder strings into prose.
 - **Priority:** P1 · **Evidence:** Observed (text compared against the running UI)
 - **Where:** `Src/Obfy.UI/Help/HelpCatalog.cs:19-31`
 
@@ -309,7 +353,13 @@ button to the results header and do not show the panel when there are no success
 
 ### UI-010 — Empty-state drop zone is clipped at the minimum size
 
-- **Status:** Done
+- **Status:** Reopened
+- **Reopened (second review, `912ecf6`, Observed):** still clipped at 900×600 before a run. The
+  icon is cut off at the top and the extensions line at the bottom. The file list row is `*`
+  against a `2*` tab area (`Src/Obfy.UI/Views/MainWindow.xaml:155-159`), which leaves the drop
+  zone about 70px, and it has no `MinHeight`
+  (`Src/Obfy.UI/Views/Controls/FilesPanel.xaml:55-62`). Give the files row a `MinHeight` that
+  fits the empty state, or use a one-line empty state when the row is short.
 - **Priority:** P2 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:53-59`
 
@@ -558,7 +608,14 @@ Explorer, Copy path. Add a tooltip with the full path for trimmed text.
 
 ### UI-024 — Open output folder is always enabled and its icon is ambiguous
 
-- **Status:** Done
+- **Status:** Reopened
+- **Reopened (second review, `912ecf6`, Observed):** the command now has a `CanExecute` and a
+  distinct Load icon, but nothing re-evaluates it when the output directory changes. With an
+  empty box and no run, typing (or browsing to) an existing folder leaves the button disabled
+  with "No output folder yet." `MainViewModel` refreshes the command only on file-list and
+  settings changes (`Src/Obfy.UI/ViewModels/MainViewModel.cs:108-118,206-215`); it does not
+  listen for `Files.OutputDirectory`. Subscribe to `Files.PropertyChanged` for
+  `OutputDirectory` and call `RefreshFileCommands`, with a regression test.
 - **Priority:** P2 · **Evidence:** Code (icons observed)
 - **Where:** `Src/Obfy.UI/ViewModels/MainViewModel.cs:840-859`,
   `Src/Obfy.UI/Views/MainWindow.xaml:84-97`,
@@ -733,7 +790,20 @@ toggle. The Clear button already covers manual clearing.
 
 ### UI-034 — Log lines cannot be copied individually and never wrap
 
-- **Status:** Done
+- **Status:** Reopened
+- **Reopened (second review, `912ecf6`):** copying selected lines is in place (Ctrl+C and a
+  context menu; read from code, not exercised). Wrapping is not:
+  - *Observed:* the Wrap option cannot be reached at all, because the options menu never opens
+    (UI-036).
+  - *Code:* even when reachable it cannot wrap. Each log row is a horizontal `StackPanel`
+    (`Src/Obfy.UI/Views/Controls/OutputPanel.xaml:96`), which measures its children with
+    unlimited width, so `TextWrapping="Wrap"` has no effect; with the horizontal scrollbar
+    disabled the text would be clipped instead.
+  - *Observed:* the same template no longer aligns the message column — "Success" rows start
+    further right than "Info" rows.
+
+  Use a `Grid` per row with `Auto` columns for timestamp and level (`SharedSizeGroup` to keep
+  them aligned) and a `*` column for the message.
 - **Priority:** P3 · **Evidence:** Code (horizontal scrollbar observed)
 - **Where:** `Src/Obfy.UI/Views/Controls/OutputPanel.xaml:47-102`
 
@@ -775,3 +845,511 @@ menu. A level filter (errors and warnings only) would help on long runs.
 - [x] `SymbolTreeNode.HasChildren` and the `LogEntry.Info`/`Warning`/`Error`/`Success`/`Debug`
       static factories have no callers in `Src` or `Tests` (only `LogEntry.Create` is used) —
       `Src/Obfy.UI/Models/SymbolTreeNode.cs`, `Src/Obfy.UI/Models/LogEntry.cs`
+
+---
+
+## Second review (2026-11-20, commit `912ecf6`)
+
+A fresh review of the app after `fix/ui-backlog` was merged. Same method as the first review,
+with preferences redirected through `OBFY_UI_PREFERENCES`. Paths and line numbers below are as
+of `912ecf6`.
+
+**Confirmed working:** nested symbol tree, statistics that add up (96 = 96), the
+Output / Results / Preview tabs with Results selected after a successful run, separated log
+timestamp and level, the status message exposed to UI Automation, Help fitting at 900×600, the
+missing-folder warning with isolated preferences, and runtime-profile gating of protections.
+
+**Reopened:** UI-006, UI-010, UI-024 and UI-034 — see the note at the top of each.
+
+**Suggested order:** UI-036, UI-037, UI-040 and the UI-024 reopen first. Those four make the
+smoke tests pass again (UI-038), which then guard the rest. After that UI-039, UI-041 and
+UI-042.
+
+### UI-036 — Log options menu never opens
+
+- **Status:** Open
+- **Priority:** P1 · **Evidence:** Observed (not clicked by hand — see below)
+- **Where:** `Src/Obfy.UI/Views/Controls/OutputPanel.xaml:29-50`,
+  `Tests/Obfy.UI.AutomationTests/TestBase.cs:41-59`
+
+**Problem.** Timestamps, Auto-scroll, Wrap and Problems only were moved into a
+`ui:DropDownButton` whose `Flyout` is a `ui:Flyout`. WPF-UI 4.3.0's `DropDownButton` only
+opens a `ContextMenu`: reflecting over the shipped `Wpf.Ui.dll` shows a single `_contextMenu`
+field, `OnFlyoutChanged` casting the value to `ContextMenu`, and the open logic living in
+`OnPreviewMouseLeftButtonUp`. Any other flyout type is ignored.
+
+Invoking the button through UI Automation opened no popup and none of the four toggles could
+be found, which is also why `Smoke_WindowChrome_IsPresentAndObfuscateDisabled` fails. The
+button was not clicked with a physical mouse during the review; the reflection result is the
+basis for saying a click does nothing either.
+
+All four log options are therefore unreachable, including the two that existed before the
+rework.
+
+**Suggested fix.** Use a `ContextMenu` with checkable `MenuItem`s bound to the four
+properties, or a `ToggleButton` with a `Popup`. Because `DropDownButton` opens on mouse-up
+only, check that the menu also opens from the keyboard (Enter/Space) and through UI
+Automation; if it does not, prefer the `ToggleButton` + `Popup`.
+
+**Done when.** Each option can be toggled by mouse and keyboard, and the smoke test that looks
+for the toggles passes.
+
+---
+
+### UI-037 — Protection toggle labels overlap their card titles
+
+- **Status:** Open
+- **Priority:** P1 · **Evidence:** Observed
+- **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:226-229,247-249,262-267,297-299,320-322,335-340`
+
+**Problem.** Six header toggles — Anti-debug, Anti-tamper, Anti-dump, Anti-decompiler,
+Reference proxy and Method IL encryption — still have a `Content` label. The toggle is layered
+over the card header with only 72px reserved for it, so the label is drawn on top of the
+title: "Anti-decompiler" over "Anti-decompiler", "Method IL encryption" over "Method IL
+encrypt", and so on. The text is unreadable. The other header toggles have no `Content` and
+are fine.
+
+**Suggested fix.** Remove `Content` from these six and give them
+`AutomationProperties.Name="Enable …"` like the others. UI-041 covers the layering approach
+itself.
+
+**Done when.** No header toggle draws text over its card title at any panel width.
+
+---
+
+### UI-038 — Two UI smoke tests fail
+
+- **Status:** Open
+- **Priority:** P1 · **Evidence:** Observed
+- **Where:** `Tests/Obfy.UI.AutomationTests/SmokeTests.cs:38,104`
+
+**Problem.** `dotnet test Tests/Obfy.UI.AutomationTests --filter FullyQualifiedName~SmokeTests`
+on `912ecf6`: 3 passed, 2 failed.
+
+- `Smoke_WindowChrome_IsPresentAndObfuscateDisabled` — `FindLogOption("AutoScrollToggle")`
+  is null. Caused by UI-036.
+- `Smoke_ProtectionAndMerge_AreReachable` — `FindById("WatermarkIdBox")` is null. Caused by
+  UI-040.
+
+The fix commit recorded that FlaUI `Category=UI` was not run. At review time the CI run for
+`912ecf6` had not finished; CI had concluded `failure` on the two commits before it (not
+investigated here).
+
+**Suggested fix.** Fix UI-036 and UI-040, then run the full `Category=UI` set locally before
+merging UI changes. Find out why CI was already red on `7805545` and `60f5caa`.
+
+**Done when.** `Category=UI` passes locally and the Windows CI job is green.
+
+---
+
+### UI-039 — Settings outside the presets switch the level to Custom
+
+- **Status:** Open
+- **Priority:** P2 · **Evidence:** Observed (runtime profile); Code (the others)
+- **Where:** `Src/Obfy.UI/ViewModels/SettingsViewModel.cs:446-466`,
+  `Src/Obfy.UI/ViewModels/SettingsViewModel.Extras.cs:15-40`
+
+**Problem.** Choosing NativeAOT as the runtime profile changed the level from Standard to
+Custom. Every property change that is not in `PresetNeutralProperties` does this, and that
+list only holds draft text and derived values. So settings no preset touches — runtime
+profile, watermark and its id, signing and its key file, packing RID, merge, dependency
+embedding, Preserve public API / XAML — all turn "Standard" into "Custom", although the
+techniques still match Standard.
+
+**Suggested fix.** Switch to Custom only when a property that `ApplyPreset` assigns changes.
+Derive that set from one list used by both `ApplyPreset` and the change handler so they cannot
+drift.
+
+**Done when.** Changing the runtime profile, watermark, signing or packing settings on a
+preset leaves the level unchanged; changing a technique a preset sets still switches to
+Custom. Covered by unit tests.
+
+---
+
+### UI-040 — Turning a technique on does not reveal its required options
+
+- **Status:** Open
+- **Priority:** P2 · **Evidence:** Observed (failing smoke test); status text from code
+- **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:375-402`,
+  `Src/Obfy.UI/ViewModels/MainViewModel.cs:121-133`
+
+**Problem.** The header toggle turns Watermark on without expanding the card. Obfuscate goes
+disabled and the status bar says "Enter a watermark id.", but the id box is inside the
+collapsed card — it is not on screen and not in the automation tree. The user has to guess
+that the fix is behind the chevron. Signing has the same shape: the key file is hidden until
+the card is expanded.
+
+**Suggested fix.** Expand a card when its technique is switched on and it has required input
+(Watermark, Signing), or expand any card with options when it is enabled. Clicking the status
+message could also scroll to and focus the field.
+
+**Done when.** Switching Watermark on shows the id box, focused, without a second click.
+
+---
+
+### UI-041 — Cards are tall, titles are cut off and toggles are misaligned
+
+- **Status:** Open
+- **Priority:** P2 · **Evidence:** Observed
+- **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:57-521`
+
+**Problem.** Each card layers a `ToggleSwitch` over a `CardExpander` in a `Grid`, with a
+hard-coded margin (`0,14,36,0`) and a 72px gap reserved in the header. At the default 300px
+panel width:
+
+- Titles are cut off with no ellipsis: "Constant encryptic", "Strong-name signi", "Resource
+  encryptic". In "Merge and embedding" the toggle labels are cut too: "Merge input assembli",
+  "Embed referenced DL".
+- Descriptions wrap to three to eight lines, so cards are roughly 120–240px tall. About five
+  of the twenty fit on screen at 1400×900, where the old layout showed twice that. Seeing what
+  is enabled still means a lot of scrolling — the point of UI-012.
+- Toggles sit above the chevron rather than on its line. The Incremental cache toggle is
+  centred on the whole card, so it moves down when the card expands.
+
+**Suggested fix.** Build the header as one `Grid` (title and description in a `*` column, the
+toggle in an `Auto` column) inside `CardExpander.Header` instead of overlaying. Keep the
+description to one short line and move caveats to the tooltip or the expanded body. Trim long
+titles with an ellipsis and a tooltip.
+
+**Done when.** At 300px no title or label is cut off, every toggle lines up with its chevron
+in both states, and at least ten cards are visible at 1400×900.
+
+---
+
+### UI-042 — Expander cards have no accessible name
+
+- **Status:** Open
+- **Priority:** P2 · **Evidence:** Observed (UI Automation tree)
+- **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:57-545,50-55`
+
+**Problem.** With the header replaced by custom content, 18 of the 20 cards are exposed as a
+group with an empty name containing a button (`ExpanderToggleButton`) with an empty name. Only
+Inclusions and Exclusions, which still use a string header, are named. A screen-reader user
+hears "button" twenty times.
+
+Separately, the runtime profile list items are exposed as the raw enum names — `NativeAot`,
+`UnityIl2Cpp`, `BlazorWasm` — rather than the descriptions shown on screen.
+
+**Suggested fix.** Set `AutomationProperties.Name` on each `CardExpander`. For the combo
+boxes, set the item container's automation name through `EnumDescriptionConverter`.
+
+**Done when.** Every card and every combo item reports the text a sighted user sees.
+
+---
+
+### UI-043 — Output directory box has no visible label
+
+- **Status:** Open
+- **Priority:** P2 · **Evidence:** Observed
+- **Where:** `Src/Obfy.UI/Views/MainWindow.xaml:173-178`
+
+**Problem.** The "Output Directory" label was dropped when the row was compacted. The box now
+shows only a placeholder such as "Next to the input as \*.obfuscated.\*", and once it holds a
+path nothing says what the path is for. Help still calls it "Output Directory".
+
+**Suggested fix.** Add a short label in front of the box ("Output folder"), or use the
+labelled form of the text box. Keep the placeholder as the hint.
+
+---
+
+### UI-044 — Preview decompiles on the UI thread
+
+- **Status:** Open
+- **Priority:** P2 · **Evidence:** Code
+- **Where:** `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:166-217`
+
+**Problem.** Selecting an assembly in the Preview tab calls `LoadPreview` straight from the
+property-changed handler, which runs `AssemblyPreview.Decompile` synchronously. Before the
+rework the decompile ran in `Task.Run`. A large assembly will freeze the window for the whole
+decompile, with no progress indication and no way to cancel. Not measured — the review used
+two small libraries.
+
+**Suggested fix.** Decompile on a background thread, show a progress ring, cancel the previous
+request when the selection changes, and ignore results that arrive for a stale selection.
+
+**Done when.** The window stays responsive while a large assembly is decompiled, and switching
+selection mid-decompile shows the newly selected file.
+
+---
+
+### UI-045 — Symbol map path is always editable and relative paths go to the working directory
+
+- **Status:** Open
+- **Priority:** P2 · **Evidence:** Observed (always editable); Code (path resolution)
+- **Where:** `Src/Obfy.UI/Views/MainWindow.xaml:203-216`,
+  `Src/Obfy.UI/ViewModels/FilesViewModel.cs:476-488`
+
+**Problem.** The symbol map path box is enabled while "Write symbol map" is off, so it looks
+live when it is ignored. When it is used, `ResolveSymbolMapPath` returns the text as typed.
+The placeholder shows `symbolmap.json`, which invites a bare file name — and a relative path
+resolves against the process working directory, not the output folder. Started from the Start
+menu or an installer shortcut, that can be the install folder or `System32`. There is no
+Browse button, and the path is not saved between sessions.
+
+**Suggested fix.** Enable the box only when the toggle is on. Resolve a relative path against
+the output folder that will actually be used. Add a Browse button and show the resolved
+location as the placeholder.
+
+---
+
+### UI-046 — Cards expand to an empty body
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Observed (Incremental cache, Constant encryption)
+- **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:58-68,87-88,217-225,253-261,326-334,344-352,362-373`
+
+**Problem.** Five cards have a chevron but no body at all: Incremental cache, Anti-debug,
+Anti-dump, Method IL encryption and Virtualize methods. Metadata keeps its checkboxes in the
+header, so its body is empty too. For the rest, the body is hidden while the technique is off,
+so expanding an off card also shows an empty strip.
+
+**Suggested fix.** Use a plain card (no chevron) for techniques without options. For
+techniques that are off, show the options disabled instead of hiding them, so the user can see
+what turning it on would offer.
+
+---
+
+### UI-047 — Disabled buttons look emphasised
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Observed
+- **Where:** `Src/Obfy.UI/App.xaml:13-17`
+
+**Problem.** The app overrides the disabled button brushes so a disabled Obfuscate does not
+vanish on dark. The border uses `ControlStrongStrokeColorDefault`, which is brighter than an
+enabled button's border. Disabled buttons — Copy in Results, Open output folder, Obfuscate —
+end up as the most prominent buttons in their row and read as focused or selected.
+
+**Suggested fix.** Keep the readable disabled foreground but use the normal or a weaker stroke
+for the border, and lower the content opacity slightly.
+
+---
+
+### UI-048 — File list scrolls sideways instead of trimming paths
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Observed (900×600)
+- **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:64-73,124-130`
+
+**Problem.** The file list allows horizontal scrolling, so rows are as wide as their longest
+path and `TextTrimming` never applies. At the minimum window size a horizontal scrollbar
+appears across the list and covers the last line of the only visible row.
+
+**Suggested fix.** Set `ScrollViewer.HorizontalScrollBarVisibility="Disabled"` on the list so
+paths trim with an ellipsis; the row tooltip already carries the full path.
+
+---
+
+### UI-049 — Statistics strip labels are malformed
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Observed
+- **Where:** `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:59-76`,
+  `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:226-264`
+
+**Problem.** The strip reads `Renamed Types:4 Methods:6 …`, `Metadata Metadata removed:46`
+and `Total Total:96`. The space after the colon is lost (it is trailing whitespace in a
+`StringFormat`), and two groups repeat their own name as the chip label.
+
+**Suggested fix.** Space label and value with a margin rather than a trailing space. Label the
+metadata chip "Items removed" and show Total as a single value without a chip label.
+
+---
+
+### UI-050 — Unrenamed types show as a rename to themselves
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Observed
+- **Where:** `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:302-308`,
+  `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:140-145`
+
+**Problem.** When members of a type were renamed but the type itself was not (for example
+with Preserve public API), a parent node is created with the type name as both original and
+obfuscated name. It renders as
+``Settings.Core.SettingsServiceBase`1 -> Settings.Core.SettingsServiceBase`1`` with the right
+side in the accent colour, which looks like a rename.
+
+**Suggested fix.** Mark such nodes as not renamed and show only the name (muted, or with a
+"not renamed" hint). Exclude them from "Copy obfuscated".
+
+---
+
+### UI-051 — Tabs repeat their own heading and Preview shows the path twice
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Observed
+- **Where:** `Src/Obfy.UI/Views/Controls/OutputPanel.xaml:26`,
+  `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:28`,
+  `Src/Obfy.UI/Views/MainWindow.xaml:238-253`
+
+**Problem.** The Output tab opens with an "Output" heading and the Results tab with
+"Obfuscation Results", each directly under the tab of the same name. In Preview, the combo box
+shows the full output path and the line below repeats it.
+
+**Suggested fix.** Drop the two headings and keep the toolbars (the elapsed time can sit next
+to the Results buttons). In Preview show the file name in the combo with the path as a
+tooltip, and remove the second line once a file is selected.
+
+---
+
+### UI-052 — Commands are enabled with nothing to act on
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Observed (Export Map, Clear files); Code (the rest)
+- **Where:** `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:393-410`,
+  `Src/Obfy.UI/ViewModels/FilesViewModel.cs:149-153,205-218,252-257`,
+  `Src/Obfy.UI/ViewModels/MainViewModel.cs:988-996`,
+  `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:84-98`
+
+**Problem.**
+
+- Export Map is enabled before any run and would save an empty map.
+- Clear (files) is enabled with an empty list. Clear and Copy for the log have no
+  `CanExecute` either.
+- In the file row menu, Open output, Reveal in Explorer and Preview output are enabled on rows
+  that have no output and answer with a warning toast.
+- "Copy path" copies the output path after a run and the input path before one, under the same
+  label.
+
+**Suggested fix.** Add `CanExecute` to each, driven by whether there is a symbol map, a file,
+a log entry or an output. Split the menu item into "Copy input path" and "Copy output path".
+
+---
+
+### UI-053 — Merge output name and symbol map folder ignore the include checkbox
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Code
+- **Where:** `Src/Obfy.UI/ViewModels/FilesViewModel.cs:476-500`,
+  `Src/Obfy.UI/ViewModels/MainViewModel.cs:143-154,550-553`
+
+**Problem.** Rows can now be unchecked, but two helpers still look at the whole list:
+
+- `ResolveMergeOutputPath` names the merged output after the first assembly in the list, even
+  when that row is unchecked or skipped.
+- `ResolveSymbolMapPath` falls back to the folder of `Files[0]`, which can be a skipped
+  project row.
+
+Also, the output hint and the run disagree about merging: the hint shows the merge location
+when two or more included files are assemblies, but the run merges only when *every* included
+file is an assembly. With two DLLs and a `.cs` file the hint says merge and the run does a
+closed set.
+
+**Suggested fix.** Use the first *included* assembly in both helpers, and share one
+"will this run merge?" check between the hint and the run. Add unit tests for an unchecked
+first row.
+
+---
+
+### UI-054 — Re-including a skipped solution row loses its reason
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Code
+- **Where:** `Src/Obfy.UI/Models/AssemblyFile.cs:79-99`,
+  `Src/Obfy.UI/ViewModels/MainViewModel.cs:579-584`
+
+**Problem.** A project that was skipped when a solution was loaded (for example, no built
+output) has a checkbox like any other row. Checking it clears the skip reason and marks the
+row included, although its path is still the project file and there is nothing to obfuscate.
+During a closed-set run it is then skipped again with the wrong message, "Source files are not
+part of a closed-set session". Unchecking it afterwards shows "Excluded"; the original reason
+is gone for good.
+
+**Suggested fix.** Keep the analyzer's skip reason separately from the user's choice. Disable
+the checkbox on rows that cannot be included and show why.
+
+---
+
+### UI-055 — Choosing Custom again discards exclusions added on a preset
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Code
+- **Where:** `Src/Obfy.UI/ViewModels/SettingsViewModel.cs:338-357,655,673`
+
+**Problem.** Leaving Custom takes a snapshot of every setting, and choosing Custom again
+restores all of it, including the exclusion, inclusion and embedding lists. Editing those
+lists does not raise a property change, so it neither switches to Custom nor refreshes the
+snapshot. The sequence Custom → Aggressive → add an exclusion → Custom silently removes the
+exclusion just added.
+
+**Suggested fix.** Snapshot and restore only the values presets control (the same set as
+UI-039), and leave lists, watermark, signing and profile alone.
+
+**Done when.** A unit test for the sequence above keeps the added exclusion.
+
+---
+
+### UI-056 — Symbol parsing and search run on the UI thread and scale badly
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Code (not measured)
+- **Where:** `Src/Obfy.Core/Models/SymbolMapKey.cs:33-66`,
+  `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:98-109,276-375`
+
+**Problem.** UI-031 added a debounce and parses keys once, but the work is still on the UI
+thread and two parts are quadratic:
+
+- `SymbolMapKey.ParseAll` tests every member key against every type name until one matches.
+- `ApplyFilter` calls `MemberMatches` / `TypeSelfMatches`, each of which scans the whole
+  symbol list, once per symbol.
+
+The tree is also still filled one node at a time. Fine for a small library; an assembly with
+tens of thousands of symbols will stall when results load and on each search.
+
+**Suggested fix.** Find a member's type by walking its dotted prefixes against a set of type
+names. Precompute members per type for the filter. Build the node list off the UI thread and
+swap it in once. Measure with a 50,000-entry map before and after.
+
+---
+
+### UI-057 — No splitter between the file list and the tabs
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Code
+- **Where:** `Src/Obfy.UI/Views/MainWindow.xaml:154-159`
+
+**Problem.** The right column is fixed at one part file list to two parts tabs. The old
+layout had splitters; this one has none, so a user with a forty-project solution cannot give
+the list more room, and one reading a long log cannot shrink it.
+
+**Suggested fix.** Add a `GridSplitter` between the two rows with sensible minimum heights
+(this also helps UI-010).
+
+---
+
+### UI-058 — Drop overlay omits .json and appears during a run
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Code
+- **Where:** `Src/Obfy.UI/Help/HelpCatalog.cs:12-13`,
+  `Src/Obfy.UI/Views/MainWindow.xaml.cs:28-67`,
+  `Src/Obfy.UI/ViewModels/MainViewModel.cs:972-986`,
+  `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:12,43-53`
+
+**Problem.**
+
+- A `.json` configuration can be dropped on the window, but the overlay and the empty state
+  list only assembly, source, solution and project extensions.
+- During a run the overlay still appears and the cursor shows "copy", but the drop is
+  silently ignored.
+- Dropping several configurations loads them all without awaiting, so which one wins is not
+  defined.
+- The Files panel keeps its own drop handlers and overlay underneath the window-level ones.
+
+**Suggested fix.** Mention configuration files in the overlay, reject drags while a run is in
+progress, load only the last configuration dropped, and remove the panel-level handlers.
+
+---
+
+### UI-059 — Results tab has no before-run state
+
+- **Status:** Open
+- **Priority:** P3 · **Evidence:** Observed
+- **Where:** `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:28-33,84-98`
+
+**Problem.** Before any run the Results tab shows "Completed in 00:00.000", a live search box
+and "No symbols were renamed." — statements about a run that has not happened.
+
+**Suggested fix.** Add a "has results" state. Before the first run (and while one is in
+progress) show "Run an obfuscation to see results" and hide the elapsed time, search box and
+export buttons.

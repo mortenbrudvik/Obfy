@@ -12,6 +12,8 @@ public static class IpcNames
         public const string Files = "files";
         public const string Output = "output";
         public const string Log = "log";
+        public const string Results = "results";
+        public const string Preview = "preview";
     }
 
     public static class Methods
@@ -36,6 +38,11 @@ public static class IpcNames
         public const string OutputSetSymbolMap = "setSymbolMap";
         public const string LogGet = "get";
         public const string LogClear = "clear";
+        public const string ResultsSummary = "summary";
+        public const string ResultsSymbols = "symbols";
+        public const string ResultsExportMap = "exportMap";
+        public const string ResultsExportReport = "exportReport";
+        public const string PreviewGet = "get";
     }
 
     public static class Events
@@ -54,5 +61,8 @@ public static class IpcNames
 
         /// <summary>Pushed with the empty log snapshot after the log is cleared.</summary>
         public const string LogCleared = AppEvents.LogCleared;
+
+        /// <summary>Pushed with the new results snapshot after any change to the results.</summary>
+        public const string ResultsChanged = AppEvents.ResultsChanged;
     }
 }

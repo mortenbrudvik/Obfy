@@ -58,6 +58,10 @@ internal sealed class FakeDialogs : IFileDialogs
     public int FilePicks;
     public int FolderPicks;
 
+    /// <summary>What the save dialog answers; null is a cancel.</summary>
+    public string? SavePath { get; set; }
+    public int SavePicks;
+
     public Task<string[]> PickFilesAsync(string title, string filter, bool multi)
     {
         FilePicks++;
@@ -70,7 +74,11 @@ internal sealed class FakeDialogs : IFileDialogs
         return Task.FromResult(Folder);
     }
 
-    public Task<string?> PickSaveAsync(string title, string filter, string? defaultName) => Task.FromResult<string?>(null);
+    public Task<string?> PickSaveAsync(string title, string filter, string? defaultName)
+    {
+        SavePicks++;
+        return Task.FromResult(SavePath);
+    }
 
     public Task<string?> PickKeyAsync() => Task.FromResult<string?>(null);
 }

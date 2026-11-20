@@ -45,6 +45,9 @@ public class HybridModule : Module
         builder.RegisterType<InputIntake>().AsSelf().SingleInstance();
         // The run log. The run loop adds lines from a pool thread; the page reads it and follows batched pushes.
         builder.RegisterType<LogBuffer>().AsSelf().SingleInstance();
+        // The run's statistics, symbol tree, report and decompile preview. Parsing and decompiling run off the UI thread.
+        builder.RegisterType<AssemblyPreviewDecompiler>().As<IAssemblyDecompiler>().SingleInstance();
+        builder.RegisterType<ResultsStore>().AsSelf().SingleInstance();
 
         builder.RegisterType<ShellLauncher>().As<IShellLauncher>().SingleInstance();
 

@@ -230,4 +230,39 @@ public class HybridWiringTests
         IpcNames.Events.LogCleared.ShouldBe(Obfy.App.AppEvents.LogCleared);
         IpcNames.Events.LogCleared.ShouldBe("log.cleared");
     }
+
+    [Fact]
+    public void ApiBridge_ResultsSummary_ReachesTheSharedStore_AndReportsNotRun()
+    {
+        OnSta(() =>
+        {
+            using var container = Build();
+            ApiRegistrations.RegisterAll(container.Resolve<ApiRegistry>());
+            var bridge = container.Resolve<IApiBridge>();
+            container.Resolve<ApiEventAggregator>();
+            container.Resolve<ResultsStore>().ShouldBeSameAs(container.Resolve<ResultsStore>());
+
+            var summary = bridge.InvokeMethod(IpcNames.Services.Results, IpcNames.Methods.ResultsSummary, "{}").GetAwaiter().GetResult();
+
+            summary.ShouldContain("\"success\":true");
+            summary.ShouldContain("\"state\":\"NotRun\"");
+            return true;
+        });
+    }
+
+    [Fact]
+    public void ResultsAndPreviewMethodsAreRegistered_AndTheEventUsesTheAppEventName()
+    {
+        using var container = Build();
+        var registry = container.Resolve<ApiRegistry>();
+        ApiRegistrations.RegisterAll(registry);
+
+        registry.GetRequestType(IpcNames.Services.Results, IpcNames.Methods.ResultsSummary).ShouldBe(typeof(Obfy.App.Features.Results.GetResultsSummaryRequest));
+        registry.GetRequestType(IpcNames.Services.Results, IpcNames.Methods.ResultsSymbols).ShouldBe(typeof(Obfy.App.Features.Results.QuerySymbolsRequest));
+        registry.GetRequestType(IpcNames.Services.Results, IpcNames.Methods.ResultsExportMap).ShouldBe(typeof(Obfy.App.Features.Results.ExportMapRequest));
+        registry.GetRequestType(IpcNames.Services.Results, IpcNames.Methods.ResultsExportReport).ShouldBe(typeof(Obfy.App.Features.Results.ExportReportRequest));
+        registry.GetRequestType(IpcNames.Services.Preview, IpcNames.Methods.PreviewGet).ShouldBe(typeof(Obfy.App.Features.Preview.GetPreviewRequest));
+        IpcNames.Events.ResultsChanged.ShouldBe(Obfy.App.AppEvents.ResultsChanged);
+        IpcNames.Events.ResultsChanged.ShouldBe("results.changed");
+    }
 }

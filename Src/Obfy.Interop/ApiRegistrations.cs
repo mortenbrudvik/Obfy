@@ -2,6 +2,8 @@ using Obfy.App.Features.App;
 using Obfy.App.Features.Files;
 using Obfy.App.Features.Log;
 using Obfy.App.Features.Output;
+using Obfy.App.Features.Preview;
+using Obfy.App.Features.Results;
 using Obfy.App.Features.Settings;
 
 namespace Obfy.Interop;
@@ -36,5 +38,11 @@ public static class ApiRegistrations
 
         registry.Register<GetLogRequest>(IpcNames.Services.Log, IpcNames.Methods.LogGet);
         registry.Register<ClearLogRequest>(IpcNames.Services.Log, IpcNames.Methods.LogClear);
+
+        registry.Register<GetResultsSummaryRequest>(IpcNames.Services.Results, IpcNames.Methods.ResultsSummary);
+        registry.Register<QuerySymbolsRequest>(IpcNames.Services.Results, IpcNames.Methods.ResultsSymbols);
+        registry.Register<ExportMapRequest>(IpcNames.Services.Results, IpcNames.Methods.ResultsExportMap);
+        registry.Register<ExportReportRequest>(IpcNames.Services.Results, IpcNames.Methods.ResultsExportReport);
+        registry.Register<GetPreviewRequest>(IpcNames.Services.Preview, IpcNames.Methods.PreviewGet);
     }
 }

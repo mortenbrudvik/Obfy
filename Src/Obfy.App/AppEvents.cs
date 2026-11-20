@@ -14,4 +14,7 @@ public static class AppEvents
 
     /// <summary>Pushed with the empty log snapshot after the log is cleared; the page drops what it shows.</summary>
     public const string LogCleared = "log.cleared";
+
+    /// <summary>Pushed with the new results snapshot (state, statistics, preview selection) after any change to the results.</summary>
+    public const string ResultsChanged = "results.changed";
 }

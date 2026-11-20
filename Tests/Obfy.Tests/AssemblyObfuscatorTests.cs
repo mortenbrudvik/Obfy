@@ -300,6 +300,65 @@ public class AssemblyObfuscatorTests
         }
     }
 
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public async Task StringEncryption_StoresBlobsInOneRva_AndStillDecrypts(EncryptionAlgorithm algorithm)
+    {
+        var longText = new string('x', 400);
+        const string accented = "héllo—secret";
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Greeter", isPublic: true);
+        var longMethod = CreateMethodWithString(type, "GetLong", longText);
+        var accentedMethod = CreateMethodWithString(type, "GetAccented", accented);
+        longMethod.Attributes = MethodAttributes.Public | MethodAttributes.Static;
+        accentedMethod.Attributes = MethodAttributes.Public | MethodAttributes.Static;
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            StringEncryption = { Enabled = true, Algorithm = algorithm, MinStringLength = 3 }
+        };
+        var result = await obfuscator.ObfuscateAsync(PipelineContext.ForAssembly(module, settings));
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.Statistics.StringsEncrypted.ShouldBe(2);
+
+        var decryptor = module.Types.First(t => t.Namespace == "Obfy.Runtime" && t.Name == "<StringDecryptor>");
+        var cctor = decryptor.FindStaticConstructor();
+        cctor.ShouldNotBeNull();
+        // The 32-byte key is still stored one byte at a time. The ciphertext blobs are not.
+        cctor!.Body.Instructions.Count(i => i.OpCode == OpCodes.Stelem_I1).ShouldBe(32);
+        cctor.Body.Instructions.ShouldContain(i => i.OpCode == OpCodes.Call && ((IMethod)i.Operand).Name == "InitializeArray");
+        var rva = decryptor.Fields.Single(f => f.HasFieldRVA);
+        rva.InitialValue.Length.ShouldBeGreaterThan(400);
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-str-rva-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "TestAssembly.dll");
+        try
+        {
+            module.Write(path);
+            var alc = new AssemblyLoadContext($"rva-{Guid.NewGuid():N}", isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromAssemblyPath(path);
+                var greeter = asm.GetType("TestNamespace.Greeter");
+                greeter.ShouldNotBeNull();
+                greeter!.GetMethod("GetLong")!.Invoke(null, null).ShouldBe(longText);
+                greeter.GetMethod("GetAccented")!.Invoke(null, null).ShouldBe(accented);
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
     [Fact]
     public async Task StringEncryption_SkipsShortStrings()
     {

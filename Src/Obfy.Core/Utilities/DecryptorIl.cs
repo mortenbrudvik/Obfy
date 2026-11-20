@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 
@@ -385,31 +386,184 @@ internal static class DecryptorIl
 
     /// <summary>
     /// Emits IL that builds a <c>byte[][]</c> from <paramref name="blobs"/> and stores it in
-    /// <paramref name="field"/>.
+    /// <paramref name="field"/>. The bytes live in one RVA field. A fixed loop copies them out,
+    /// so the static constructor does not grow by one store per byte.
     /// </summary>
     public static void EmitByteArrayArray(CilBody body, ModuleDef module, FieldDef field, IReadOnlyList<byte[]> blobs)
     {
-        body.Instructions.Add(Instruction.CreateLdcI4(blobs.Count));
-        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, new SZArraySig(module.CorLibTypes.Byte).ToTypeDefOrRef()));
-
-        for (var index = 0; index < blobs.Count; index++)
+        var byteArrayArray = new SZArraySig(module.CorLibTypes.Byte).ToTypeDefOrRef();
+        if (blobs.Count == 0)
         {
-            var data = blobs[index];
-            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
-            body.Instructions.Add(Instruction.CreateLdcI4(index));
-            body.Instructions.Add(Instruction.CreateLdcI4(data.Length));
-            body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
-            for (var i = 0; i < data.Length; i++)
-            {
-                body.Instructions.Add(Instruction.Create(OpCodes.Dup));
-                body.Instructions.Add(Instruction.CreateLdcI4(i));
-                body.Instructions.Add(Instruction.CreateLdcI4(data[i]));
-                body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I1));
-            }
-
-            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
+            body.Instructions.Add(Instruction.CreateLdcI4(0));
+            body.Instructions.Add(Instruction.Create(OpCodes.Newarr, byteArrayArray));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, field));
+            return;
         }
 
+        var packed = PackBlobs(blobs);
+        var rvaField = CreateRvaField(module, field, packed);
+        body.InitLocals = true;
+
+        var packedLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
+        var arraysLocal = new Local(new SZArraySig(new SZArraySig(module.CorLibTypes.Byte)));
+        var indexLocal = new Local(module.CorLibTypes.Int32);
+        var offsetLocal = new Local(module.CorLibTypes.Int32);
+        var lengthLocal = new Local(module.CorLibTypes.Int32);
+        var itemLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
+        body.Variables.Add(packedLocal);
+        body.Variables.Add(arraysLocal);
+        body.Variables.Add(indexLocal);
+        body.Variables.Add(offsetLocal);
+        body.Variables.Add(lengthLocal);
+        body.Variables.Add(itemLocal);
+
+        var runtimeHelpers = new TypeRefUser(
+            module, "System.Runtime.CompilerServices", "RuntimeHelpers", module.CorLibTypes.AssemblyRef);
+        var initArray = new MemberRefUser(
+            module,
+            "InitializeArray",
+            MethodSig.CreateStatic(
+                module.CorLibTypes.Void,
+                new ClassSig(new TypeRefUser(module, "System", "Array", module.CorLibTypes.AssemblyRef)),
+                new ValueTypeSig(new TypeRefUser(module, "System", "RuntimeFieldHandle", module.CorLibTypes.AssemblyRef))),
+            runtimeHelpers);
+        var blockCopy = new MemberRefUser(
+            module,
+            "BlockCopy",
+            MethodSig.CreateStatic(
+                module.CorLibTypes.Void,
+                new ClassSig(new TypeRefUser(module, "System", "Array", module.CorLibTypes.AssemblyRef)),
+                module.CorLibTypes.Int32,
+                new ClassSig(new TypeRefUser(module, "System", "Array", module.CorLibTypes.AssemblyRef)),
+                module.CorLibTypes.Int32,
+                module.CorLibTypes.Int32),
+            new TypeRefUser(module, "System", "Buffer", module.CorLibTypes.AssemblyRef));
+
+        body.Instructions.Add(Instruction.CreateLdcI4(packed.Length));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
+        body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, rvaField));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, initArray));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, packedLocal));
+
+        body.Instructions.Add(Instruction.CreateLdcI4(blobs.Count));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, byteArrayArray));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, arraysLocal));
+
+        body.Instructions.Add(Instruction.CreateLdcI4(4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, offsetLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, indexLocal));
+
+        var loop = Instruction.Create(OpCodes.Ldloc, packedLocal);
+        body.Instructions.Add(loop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        EmitLittleEndianInt32(body, packedLocal, offsetLocal);
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, lengthLocal));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, offsetLocal));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, lengthLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, itemLocal));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, packedLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, itemLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, lengthLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, blockCopy));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, lengthLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, offsetLocal));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, arraysLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, indexLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, itemLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, indexLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, indexLocal));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, indexLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(blobs.Count));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, loop));
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, arraysLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, field));
+    }
+
+    private static byte[] PackBlobs(IReadOnlyList<byte[]> blobs)
+    {
+        var size = 4;
+        foreach (var blob in blobs)
+            size = checked(size + 4 + blob.Length);
+
+        var packed = new byte[size];
+        BinaryPrimitives.WriteInt32LittleEndian(packed.AsSpan(0, 4), blobs.Count);
+        var offset = 4;
+        foreach (var blob in blobs)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(packed.AsSpan(offset, 4), blob.Length);
+            offset += 4;
+            blob.CopyTo(packed.AsSpan(offset));
+            offset += blob.Length;
+        }
+
+        return packed;
+    }
+
+    private static FieldDef CreateRvaField(ModuleDef module, FieldDef destination, byte[] packed)
+    {
+        if (destination.DeclaringType is not TypeDef owner)
+            throw new InvalidOperationException("Encrypted blob field has no declaring type.");
+
+        var blobType = new TypeDefUser(
+            owner.Namespace,
+            "<Blob>" + owner.NestedTypes.Count,
+            new TypeRefUser(module, "System", "ValueType", module.CorLibTypes.AssemblyRef))
+        {
+            Attributes = TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout |
+                         TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit,
+            ClassLayout = new ClassLayoutUser(1, (uint)packed.Length)
+        };
+        owner.NestedTypes.Add(blobType);
+
+        var rvaField = new FieldDefUser(
+            "_rva" + owner.Fields.Count,
+            new FieldSig(new ValueTypeSig(blobType)),
+            FieldAttributes.Private | FieldAttributes.Static | FieldAttributes.HasFieldRVA)
+        {
+            InitialValue = packed
+        };
+        owner.Fields.Add(rvaField);
+        return rvaField;
+    }
+
+    /// <summary>
+    /// Pushes a little-endian int32 read from <paramref name="packed"/> at <paramref name="offset"/>.
+    /// </summary>
+    private static void EmitLittleEndianInt32(CilBody body, Local packed, Local offset)
+    {
+        // The loop label already pushed packed and offset for the first byte.
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+        for (var shift = 8; shift <= 24; shift += 8)
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, packed));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offset));
+            body.Instructions.Add(Instruction.CreateLdcI4(shift / 8));
+            body.Instructions.Add(Instruction.Create(OpCodes.Add));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+            body.Instructions.Add(Instruction.CreateLdcI4(shift));
+            body.Instructions.Add(Instruction.Create(OpCodes.Shl));
+            body.Instructions.Add(Instruction.Create(OpCodes.Or));
+        }
     }
 }

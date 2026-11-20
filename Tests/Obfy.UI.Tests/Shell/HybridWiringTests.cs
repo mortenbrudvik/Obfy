@@ -3,6 +3,7 @@ using Mediator;
 using Shouldly;
 using Obfy.App.Features.App;
 using Obfy.App.Features.Files;
+using Obfy.App.Sessions;
 using Obfy.Interop;
 using Obfy.UI.DependencyInjection;
 
@@ -100,5 +101,26 @@ public class HybridWiringTests
 
         raised.ShouldBe(1);
         coordinator.IsReady.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ApiBridge_SettingsUpdate_ReachesTheSharedSession()
+    {
+        using var container = Build();
+        ApiRegistrations.RegisterAll(container.Resolve<ApiRegistry>());
+        var bridge = container.Resolve<IApiBridge>();
+
+        var updated = await bridge.InvokeMethod(
+            IpcNames.Services.Settings, IpcNames.Methods.SettingsUpdate, """{"patch":{"controlFlow.enabled":true}}""");
+        var read = await bridge.InvokeMethod(IpcNames.Services.Settings, IpcNames.Methods.SettingsGet, "{}");
+        var bad = await bridge.InvokeMethod(
+            IpcNames.Services.Settings, IpcNames.Methods.SettingsUpdate, """{"patch":{"nope.nothing":1}}""");
+
+        updated.ShouldContain("\"success\":true");
+        updated.ShouldContain("\"level\":\"Custom\"");
+        read.ShouldContain("\"level\":\"Custom\"");
+        bad.ShouldContain("\"success\":false");
+        bad.ShouldContain("settings.unknownField");
+        container.Resolve<ProtectionSession>().Level.ShouldBe(Obfy.Core.Models.ObfuscationLevel.Custom);
     }
 }

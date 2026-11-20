@@ -1,6 +1,7 @@
 using Autofac;
 using Obfy.App.Features.App;
 using Obfy.App.Services;
+using Obfy.App.Sessions;
 using Obfy.Interop;
 using Obfy.UI.Services;
 using Obfy.UI.ViewModels;
@@ -31,6 +32,10 @@ public class HybridModule : Module
             .SingleInstance();
 
         builder.RegisterType<AppReadyCoordinator>().AsSelf().SingleInstance();
+
+        // The one set of protection settings the page edits. Handlers are transient; this is what they share.
+        builder.RegisterType<ProtectionSession>().AsSelf().SingleInstance();
+        builder.RegisterType<SettingsEventForwarder>().AsSelf().SingleInstance();
 
         builder.RegisterType<FileDialogs>()
             .As<IFileDialogs>()

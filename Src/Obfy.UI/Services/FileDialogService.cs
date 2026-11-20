@@ -19,16 +19,16 @@ public class FileDialogService : IFileDialogService
         return dialog.ShowDialog() == true ? dialog.FileNames : Array.Empty<string>();
     }
 
-    public string[] ShowOpenSourceDialog()
+    public string? ShowOpenKeyFileDialog()
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Select Source Files",
-            Filter = "C# Files (*.cs)|*.cs|All Files (*.*)|*.*",
-            Multiselect = true
+            Title = "Select Strong-Name Key",
+            Filter = "Strong-name keys (*.snk;*.pfx;*.p12)|*.snk;*.pfx;*.p12|All Files (*.*)|*.*",
+            Multiselect = false
         };
 
-        return dialog.ShowDialog() == true ? dialog.FileNames : Array.Empty<string>();
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
 
     public string? ShowFolderBrowserDialog()

@@ -15,10 +15,9 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
         <Border Grid.Row="0" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="0,0,0,1">
-            <Grid Margin="12,6">
+            <Grid Margin="12,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -27,50 +26,79 @@
                 <ui:TextBlock Text="Output" FontTypography="BodyStrong" VerticalAlignment="Center"
                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <ui:ToggleSwitch AutomationProperties.AutomationId="ShowTimestampsToggle"
-                                  Content="Timestamps" IsChecked="{Binding ShowTimestamps}" Margin="0,0,12,0"/>
-                    <ui:ToggleSwitch AutomationProperties.AutomationId="AutoScrollToggle"
-                                  Content="Auto-scroll" IsChecked="{Binding AutoScroll}" Margin="0,0,12,0"/>
+                    <ui:DropDownButton AutomationProperties.AutomationId="LogOptionsButton"
+                                       AutomationProperties.Name="Log options"
+                                       Content="Options"
+                                       Icon="{ui:SymbolIcon Settings24}"
+                                       MinHeight="32" Margin="0,0,4,0">
+                        <ui:DropDownButton.Flyout>
+                            <ui:Flyout>
+                                <StackPanel MinWidth="180" Margin="4">
+                                    <ui:ToggleSwitch AutomationProperties.AutomationId="ShowTimestampsToggle"
+                                                  Content="Timestamps" IsChecked="{Binding ShowTimestamps}" Margin="0,4"/>
+                                    <ui:ToggleSwitch AutomationProperties.AutomationId="AutoScrollToggle"
+                                                  Content="Auto-scroll" IsChecked="{Binding AutoScroll}" Margin="0,4"/>
+                                    <ui:ToggleSwitch AutomationProperties.AutomationId="WrapLinesToggle"
+                                                  AutomationProperties.Name="Wrap log lines"
+                                                  Content="Wrap" IsChecked="{Binding WrapLines}" Margin="0,4"/>
+                                    <ui:ToggleSwitch AutomationProperties.AutomationId="ProblemsOnlyToggle"
+                                                  AutomationProperties.Name="Problems only"
+                                                  Content="Problems only" IsChecked="{Binding ProblemsOnly}" Margin="0,4"/>
+                                </StackPanel>
+                            </ui:Flyout>
+                        </ui:DropDownButton.Flyout>
+                    </ui:DropDownButton>
                     <ui:Button AutomationProperties.AutomationId="ClearLogsButton"
                               AutomationProperties.Name="Clear output log"
-                              Icon="{ui:SymbolIcon Delete24}" ToolTip="Clear" MinWidth="40" MinHeight="40"
+                              Icon="{ui:SymbolIcon Delete24}" ToolTip="Clear" MinWidth="32" MinHeight="32"
                               Command="{Binding ClearLogsCommand}" Padding="4"/>
                     <ui:Button AutomationProperties.AutomationId="CopyLogsButton"
                               AutomationProperties.Name="Copy output log"
-                              Icon="{ui:SymbolIcon Copy24}" ToolTip="Copy" MinWidth="40" MinHeight="40"
+                              Icon="{ui:SymbolIcon Copy24}" ToolTip="Copy" MinWidth="32" MinHeight="32"
                               Command="{Binding CopyLogsCommand}" Margin="4,0,0,0" Padding="4"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Log List -->
         <ListBox AutomationProperties.AutomationId="LogListBox"
                  AutomationProperties.Name="Output log"
-                 Grid.Row="1" x:Name="LogListBox" ItemsSource="{Binding Logs}"
+                 Grid.Row="1" x:Name="LogListBox" ItemsSource="{Binding FilteredLogs}"
+                 SelectionMode="Extended"
+                 PreviewKeyDown="OnLogKeyDown"
                  FontFamily="Cascadia Mono, Consolas, Courier New" FontSize="12"
                  Background="{DynamicResource ApplicationBackgroundBrush}"
                  BorderThickness="0"
                  VirtualizingPanel.IsVirtualizing="True"
-                 VirtualizingPanel.VirtualizationMode="Recycling"
-                 ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                 VirtualizingPanel.VirtualizationMode="Recycling">
+            <ListBox.Style>
+                <Style TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
+                    <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding WrapLines}" Value="True">
+                            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ListBox.Style>
+            <ListBox.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Copy" Click="OnCopySelection"/>
+                </ContextMenu>
+            </ListBox.ContextMenu>
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
                     <Setter Property="AutomationProperties.Name" Value="{Binding}"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                 </Style>
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Grid Margin="4,2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="85"/>
-                            <ColumnDefinition Width="70"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <ui:TextBlock Grid.Column="0" Text="{Binding Timestamp, StringFormat=HH:mm:ss.fff}"
+                    <StackPanel Orientation="Horizontal" Margin="4,2">
+                        <ui:TextBlock Text="{Binding Timestamp, StringFormat=HH:mm:ss.fff}"
+                                  Margin="0,0,12,0"
                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                   Visibility="{Binding DataContext.ShowTimestamps, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                        <ui:TextBlock Grid.Column="1" Text="{Binding Level}" FontWeight="SemiBold">
+                        <ui:TextBlock Text="{Binding Level}" FontWeight="SemiBold" Margin="0,0,12,0">
                             <ui:TextBlock.Style>
                                 <Style TargetType="ui:TextBlock">
                                     <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
@@ -94,9 +122,20 @@
                                 </Style>
                             </ui:TextBlock.Style>
                         </ui:TextBlock>
-                        <ui:TextBlock Grid.Column="2" Text="{Binding Message}" TextWrapping="NoWrap"
-                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                    </Grid>
+                        <ui:TextBlock Text="{Binding Message}"
+                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                            <ui:TextBlock.Style>
+                                <Style TargetType="ui:TextBlock">
+                                    <Setter Property="TextWrapping" Value="NoWrap"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DataContext.WrapLines, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                            <Setter Property="TextWrapping" Value="Wrap"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ui:TextBlock.Style>
+                        </ui:TextBlock>
+                    </StackPanel>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>

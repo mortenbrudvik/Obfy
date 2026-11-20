@@ -1,6 +1,7 @@
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
+using Shouldly;
 
 namespace Obfy.UI.AutomationTests;
 
@@ -21,7 +22,7 @@ public abstract class TestBase : IDisposable
     protected TestBase()
     {
         Automation = new UIA3Automation();
-        App = Application.Launch(AppPath);
+        App = UiLaunch.Launch(AppPath);
         MainWindow = App.GetMainWindow(Automation, TimeSpan.FromSeconds(10))
             ?? throw new InvalidOperationException("Obfy main window did not appear.");
     }
@@ -32,6 +33,29 @@ public abstract class TestBase : IDisposable
     protected AutomationElement? FindById(string automationId)
     {
         return MainWindow.FindFirstDescendant(cf => cf.ByAutomationId(automationId));
+    }
+
+    /// <summary>
+    /// Opens the log options flyout. Timestamp and auto-scroll toggles live inside it.
+    /// </summary>
+    protected void OpenLogOptions()
+    {
+        var options = FindById("LogOptionsButton");
+        options.ShouldNotBeNull("LogOptionsButton should exist");
+        if (options.Patterns.Invoke.IsSupported)
+            options.Patterns.Invoke.Pattern.Invoke();
+        else
+            options.Click();
+        Thread.Sleep(400);
+    }
+
+    /// <summary>
+    /// Finds a log option. Flyout content may live in a popup outside the main window tree.
+    /// </summary>
+    protected AutomationElement? FindLogOption(string automationId)
+    {
+        return FindById(automationId)
+            ?? Automation.GetDesktop().FindFirstDescendant(cf => cf.ByAutomationId(automationId));
     }
 
     /// <summary>

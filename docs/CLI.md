@@ -280,7 +280,7 @@ Obfy stores configuration and logs in the following locations:
 | Type | Path |
 |------|------|
 | Obfuscation settings | The `-c` / `obfy config generate` file you choose (`obfy.json` in the current directory by default). Not auto-loaded from AppData |
-| UI preferences | `%APPDATA%\Obfy\ui-preferences.json` (last output folder, symbol-map option) |
+| UI preferences | `%APPDATA%\Obfy\ui-preferences.json` (last output folder and the symbol-map toggle). The desktop app clears a saved folder that no longer exists. A desktop `-o` path is used for that session and is not saved. `OBFY_UI_PREFERENCES` overrides the file path |
 | Logs | `LocalApplicationData/Obfy/Logs/` (`%LOCALAPPDATA%\Obfy\Logs\` on Windows) |
 
 The WPF UI, method IL encryption (`VirtualProtect`), and anti-dump MiniDump hook are Windows-only. The CLI can obfuscate assemblies on any OS; PE-level Windows protections warn or no-op off-Windows.

@@ -20,13 +20,20 @@ public partial class ResultsViewModel : ObservableObject
     private readonly IReportService _reportService;
     private readonly IClipboardService _clipboard;
     private readonly IUserNotificationService _notifications;
-    private Dictionary<string, string> _symbolMap = new();
+    private readonly Dictionary<string, string> _symbolMap = new();
+    private List<ParsedSymbol> _parsed = [];
     private ObfuscationReport? _currentReport;
+    private int _searchVersion;
+    private bool _suppressPreview;
 
     /// <summary>
     /// Gets the root nodes of the symbol tree.
     /// </summary>
     public ObservableCollection<SymbolTreeNode> RootNodes { get; } = new();
+
+    public ObservableCollection<StatisticGroup> StatisticGroups { get; } = new();
+
+    public ObservableCollection<string> PreviewPaths { get; } = new();
 
     [ObservableProperty]
     private ObfuscationStatistics? _statistics;
@@ -47,9 +54,17 @@ public partial class ResultsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasPreviewError))]
     private string? _previewError;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PreviewFileLabel))]
+    private string? _selectedPreviewPath;
+
     public bool HasPreview => PreviewError is null && PreviewText.Length > 0;
 
     public bool HasPreviewError => !string.IsNullOrEmpty(PreviewError);
+
+    public string PreviewFileLabel => string.IsNullOrEmpty(SelectedPreviewPath)
+        ? "Choose an output assembly"
+        : SelectedPreviewPath;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExportReportCommand))]
@@ -57,6 +72,8 @@ public partial class ResultsViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CopySymbolCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopyOriginalNameCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopyObfuscatedNameCommand))]
     private SymbolTreeNode? _selectedNode;
 
     public bool HasNoSymbols => RootNodes.Count == 0 && string.IsNullOrWhiteSpace(SearchText);
@@ -80,9 +97,14 @@ public partial class ResultsViewModel : ObservableObject
     /// </summary>
     public void LoadResults(Dictionary<string, string> symbolMap, ObfuscationStatistics? statistics, TimeSpan elapsedTime)
     {
-        _symbolMap = symbolMap;
+        _symbolMap.Clear();
+        foreach (var (key, value) in symbolMap)
+            _symbolMap[key] = value;
+
         Statistics = statistics;
         ElapsedTime = elapsedTime;
+        RebuildParsed();
+        RebuildStatistics();
         ApplyFilter();
     }
 
@@ -92,10 +114,16 @@ public partial class ResultsViewModel : ObservableObject
     public void Clear()
     {
         RootNodes.Clear();
+        StatisticGroups.Clear();
         Statistics = null;
         ElapsedTime = TimeSpan.Zero;
         _symbolMap.Clear();
+        _parsed = [];
         SearchText = string.Empty;
+        _suppressPreview = true;
+        PreviewPaths.Clear();
+        SelectedPreviewPath = null;
+        _suppressPreview = false;
         PreviewText = string.Empty;
         PreviewError = null;
         _currentReport = null;
@@ -111,6 +139,23 @@ public partial class ResultsViewModel : ObservableObject
     {
         _currentReport = report;
         HasReport = true;
+    }
+
+    /// <summary>
+    /// Records assemblies the user can decompile. Does not decompile until one is selected.
+    /// </summary>
+    public void SetPreviewPaths(IEnumerable<string> paths)
+    {
+        _suppressPreview = true;
+        PreviewPaths.Clear();
+        foreach (var path in paths.Where(static path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.OrdinalIgnoreCase))
+            PreviewPaths.Add(path);
+
+        SelectedPreviewPath = null;
+        PreviewText = string.Empty;
+        PreviewError = null;
+        _suppressPreview = false;
+        OnPropertyChanged(nameof(PreviewFileLabel));
     }
 
     /// <summary>
@@ -155,39 +200,119 @@ public partial class ResultsViewModel : ObservableObject
         }
     }
 
-    private void BuildSymbolTree(IEnumerable<KeyValuePair<string, string>> symbols)
+    partial void OnSelectedPreviewPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(PreviewFileLabel));
+        if (_suppressPreview)
+            return;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            PreviewText = string.Empty;
+            PreviewError = null;
+            return;
+        }
+
+        LoadPreview(value);
+    }
+
+    private void RebuildParsed()
+    {
+        _parsed = SymbolMapKey.ParseAll(_symbolMap.Keys)
+            .Select(entry => new ParsedSymbol(entry, _symbolMap[entry.Key]))
+            .ToList();
+    }
+
+    private void RebuildStatistics()
+    {
+        StatisticGroups.Clear();
+        if (Statistics is null)
+            return;
+
+        AddGroup("Renamed",
+        [
+            Chip("Types", Statistics.TypesRenamed),
+            Chip("Methods", Statistics.MethodsRenamed),
+            Chip("Fields", Statistics.FieldsRenamed),
+            Chip("Properties", Statistics.PropertiesRenamed),
+            Chip("Parameters", Statistics.ParametersRenamed),
+            Chip("Events", Statistics.EventsRenamed),
+            Chip("Namespaces", Statistics.NamespacesRenamed)
+        ]);
+        AddGroup("Encrypted",
+        [
+            Chip("Strings", Statistics.StringsEncrypted),
+            Chip("Constants", Statistics.ConstantsEncrypted),
+            Chip("Resources", Statistics.ResourcesEncrypted)
+        ]);
+        AddGroup("Protection",
+        [
+            Chip("Control flow", Statistics.MethodsControlFlowObfuscated),
+            Chip("Protections", Statistics.ProtectionsApplied),
+            Chip("Methods encrypted", Statistics.MethodsEncrypted),
+            Chip("Assemblies embedded", Statistics.AssembliesEmbedded)
+        ]);
+        AddGroup("Metadata",
+        [
+            Chip("Metadata removed", Statistics.MetadataItemsRemoved)
+        ]);
+
+        if (Statistics.TotalTransformations != 0)
+        {
+            StatisticGroups.Add(new StatisticGroup("Total", [new StatisticChip("Total", Statistics.TotalTransformations)]));
+        }
+    }
+
+    private void AddGroup(string name, IEnumerable<StatisticChip?> chips)
+    {
+        var visible = chips.Where(static chip => chip is not null).Cast<StatisticChip>().ToList();
+        if (visible.Count > 0)
+            StatisticGroups.Add(new StatisticGroup(name, visible));
+    }
+
+    private static StatisticChip? Chip(string label, int value)
+        => value == 0 ? null : new StatisticChip(label, value);
+
+    private void BuildSymbolTree(IEnumerable<ParsedSymbol> symbols, bool expandMatches)
     {
         RootNodes.Clear();
-        var typeGroups = new Dictionary<string, SymbolTreeNode>(StringComparer.Ordinal);
+        var typeNodes = new Dictionary<string, SymbolTreeNode>(StringComparer.Ordinal);
 
-        foreach (var (original, obfuscated) in symbols)
+        foreach (var symbol in symbols)
         {
-            var (typeName, memberName, symbolType) = ParseSymbol(original);
-
-            if (string.IsNullOrEmpty(typeName))
+            var entry = symbol.Entry;
+            if (entry.TypeFullName is null)
             {
-                if (typeGroups.TryGetValue(original, out var existing))
+                if (entry.Kind == SymbolMapKey.TypeKind && typeNodes.TryGetValue(entry.DisplayName, out var existing))
                 {
-                    existing.ObfuscatedName = obfuscated;
-                }
-                else
-                {
-                    var node = SymbolTreeNode.Create(original, obfuscated, SymbolType.Type);
-                    typeGroups[original] = node;
-                    RootNodes.Add(node);
+                    existing.ObfuscatedName = symbol.Obfuscated;
+                    existing.IsExpanded = expandMatches || existing.IsExpanded;
+                    continue;
                 }
 
+                var node = SymbolTreeNode.Create(entry.DisplayName, symbol.Obfuscated, MapKind(entry.Kind));
+                node.IsExpanded = expandMatches;
+                if (entry.Kind == SymbolMapKey.TypeKind)
+                    typeNodes[entry.DisplayName] = node;
+
+                RootNodes.Add(node);
                 continue;
             }
 
-            if (!typeGroups.TryGetValue(typeName, out var typeNode))
+            if (!typeNodes.TryGetValue(entry.TypeFullName, out var parent))
             {
-                typeNode = SymbolTreeNode.Create(typeName, typeName, SymbolType.Type);
-                typeGroups[typeName] = typeNode;
-                RootNodes.Add(typeNode);
+                parent = SymbolTreeNode.Create(entry.TypeFullName, entry.TypeFullName, SymbolType.Type);
+                parent.IsExpanded = expandMatches;
+                typeNodes[entry.TypeFullName] = parent;
+                RootNodes.Add(parent);
+            }
+            else if (expandMatches)
+            {
+                parent.IsExpanded = true;
             }
 
-            typeNode.AddChild(SymbolTreeNode.Create(memberName, obfuscated, symbolType));
+            var child = SymbolTreeNode.Create(entry.DisplayName, symbol.Obfuscated, MapKind(entry.Kind));
+            parent.AddChild(child);
         }
 
         NotifyEmptyStates();
@@ -197,60 +322,73 @@ public partial class ResultsViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(SearchText))
         {
-            BuildSymbolTree(_symbolMap);
+            BuildSymbolTree(_parsed, expandMatches: false);
             return;
         }
 
         var query = SearchText.Trim();
-        var typeMatches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (original, obfuscated) in _symbolMap)
+        var matchingTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var symbol in _parsed)
         {
-            var (typeName, _, _) = ParseSymbol(original);
-            if (string.IsNullOrEmpty(typeName))
-            {
-                if (Matches(original, obfuscated, query))
-                    typeMatches.Add(original);
-            }
-            else if (Matches(original, obfuscated, query) || Matches(typeName, typeName, query))
-            {
-                typeMatches.Add(typeName);
-            }
+            if (!Matches(symbol, query))
+                continue;
+
+            if (symbol.Entry.TypeFullName is { } parent)
+                matchingTypes.Add(parent);
+            else if (symbol.Entry.Kind == SymbolMapKey.TypeKind)
+                matchingTypes.Add(symbol.Entry.DisplayName);
         }
 
-        var filtered = _symbolMap.Where(kv =>
+        var filtered = _parsed.Where(symbol =>
         {
-            var (typeName, _, _) = ParseSymbol(kv.Key);
-            if (string.IsNullOrEmpty(typeName))
-                return typeMatches.Contains(kv.Key);
+            if (symbol.Entry.Kind == SymbolMapKey.TypeKind && symbol.Entry.TypeFullName is null)
+            {
+                return matchingTypes.Contains(symbol.Entry.DisplayName)
+                       && (Matches(symbol, query) || MemberMatches(symbol.Entry.DisplayName, query));
+            }
 
-            if (!typeMatches.Contains(typeName))
-                return false;
+            if (symbol.Entry.TypeFullName is { } parent)
+            {
+                if (!matchingTypes.Contains(parent))
+                    return false;
 
-            var typeSelfMatches = Matches(typeName, typeName, query);
-            return typeSelfMatches || Matches(kv.Key, kv.Value, query);
+                return TypeSelfMatches(parent, query) || Matches(symbol, query);
+            }
+
+            return Matches(symbol, query);
         });
 
-        BuildSymbolTree(filtered);
+        BuildSymbolTree(filtered, expandMatches: true);
     }
 
-    private static bool Matches(string original, string obfuscated, string query)
-        => original.Contains(query, StringComparison.OrdinalIgnoreCase)
-           || obfuscated.Contains(query, StringComparison.OrdinalIgnoreCase);
+    private bool MemberMatches(string typeName, string query)
+        => _parsed.Any(symbol =>
+            symbol.Entry.TypeFullName is not null
+            && symbol.Entry.TypeFullName.Equals(typeName, StringComparison.Ordinal)
+            && Matches(symbol, query));
 
-    private static (string typeName, string memberName, SymbolType symbolType) ParseSymbol(string symbol)
+    private bool TypeSelfMatches(string typeName, string query)
+        => _parsed.Any(symbol =>
+            symbol.Entry.Kind == SymbolMapKey.TypeKind
+            && symbol.Entry.DisplayName.Equals(typeName, StringComparison.Ordinal)
+            && Matches(symbol, query))
+           || typeName.Contains(query, StringComparison.OrdinalIgnoreCase);
+
+    private static bool Matches(ParsedSymbol symbol, string query)
+        => symbol.Entry.Key.Contains(query, StringComparison.OrdinalIgnoreCase)
+           || symbol.Entry.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)
+           || symbol.Obfuscated.Contains(query, StringComparison.OrdinalIgnoreCase);
+
+    private static SymbolType MapKind(string kind) => kind switch
     {
-        if (symbol.Contains("::"))
-        {
-            var parts = symbol.Split("::", 2);
-            var memberName = parts[1];
-            var symbolType = memberName.Contains('(') ? SymbolType.Method :
-                            memberName.StartsWith("get_", StringComparison.Ordinal) || memberName.StartsWith("set_", StringComparison.Ordinal) ? SymbolType.Property :
-                            SymbolType.Field;
-            return (parts[0], memberName, symbolType);
-        }
-
-        return (string.Empty, symbol, SymbolType.Type);
-    }
+        SymbolMapKey.NamespaceKind => SymbolType.Namespace,
+        SymbolMapKey.MethodKind => SymbolType.Method,
+        SymbolMapKey.FieldKind => SymbolType.Field,
+        SymbolMapKey.PropertyKind => SymbolType.Property,
+        SymbolMapKey.EventKind => SymbolType.Event,
+        SymbolMapKey.ParameterKind => SymbolType.Parameter,
+        _ => SymbolType.Type
+    };
 
     [RelayCommand]
     private async Task ExportSymbolMapAsync()
@@ -296,16 +434,44 @@ public partial class ResultsViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
+    private bool CanCopySymbol(SymbolTreeNode? node) => node != null || SelectedNode != null;
+
+    [RelayCommand(CanExecute = nameof(CanCopySymbol))]
     private void CopySymbol(SymbolTreeNode? node)
     {
         var target = node ?? SelectedNode;
         if (target == null)
             return;
 
+        CopyText($"{target.OriginalName} -> {target.ObfuscatedName}", "Copied mapping");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCopySymbol))]
+    private void CopyOriginalName(SymbolTreeNode? node)
+    {
+        var target = node ?? SelectedNode;
+        if (target == null)
+            return;
+
+        CopyText(target.OriginalName, "Copied original name");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCopySymbol))]
+    private void CopyObfuscatedName(SymbolTreeNode? node)
+    {
+        var target = node ?? SelectedNode;
+        if (target == null)
+            return;
+
+        CopyText(target.ObfuscatedName, "Copied obfuscated name");
+    }
+
+    private void CopyText(string text, string title)
+    {
         try
         {
-            _clipboard.SetText($"{target.OriginalName} -> {target.ObfuscatedName}");
+            _clipboard.SetText(text);
+            _notifications.Show(title, text, NotificationSeverity.Success);
         }
         catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
         {
@@ -313,7 +479,28 @@ public partial class ResultsViewModel : ObservableObject
         }
     }
 
-    partial void OnSearchTextChanged(string value) => ApplyFilter();
+    partial void OnSearchTextChanged(string value) => ScheduleFilter();
+
+    private void ScheduleFilter()
+    {
+        var version = ++_searchVersion;
+        if (System.Windows.Application.Current is null)
+        {
+            ApplyFilter();
+            return;
+        }
+
+        _ = FilterAfterDelayAsync(version);
+    }
+
+    private async Task FilterAfterDelayAsync(int version)
+    {
+        await Task.Delay(200);
+        if (version != _searchVersion)
+            return;
+
+        ApplyFilter();
+    }
 
     private void NotifyEmptyStates()
     {
@@ -321,4 +508,5 @@ public partial class ResultsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoSearchMatches));
     }
 
+    private readonly record struct ParsedSymbol(SymbolMapKey.Entry Entry, string Obfuscated);
 }

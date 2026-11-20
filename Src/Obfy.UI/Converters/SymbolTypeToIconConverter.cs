@@ -22,6 +22,7 @@ public class SymbolTypeToIconConverter : IValueConverter
                 SymbolType.Field => SymbolRegular.TextBulletListSquare24,
                 SymbolType.Property => SymbolRegular.Wrench24,
                 SymbolType.Parameter => SymbolRegular.TextDescription24,
+                SymbolType.Event => SymbolRegular.Flash24,
                 _ => SymbolRegular.Document24
             };
         }

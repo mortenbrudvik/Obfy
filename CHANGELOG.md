@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The desktop window keeps Settings on the left and a compact output row (directory, browse, symbol-map toggle, symbol-map path) above the file list. Output, Results, and Preview are tabs under the files. A successful run opens Results. Preview decompiles only the assembly you select
+- The closed level dropdown shows Minimal, Standard, Aggressive, or Custom. The description stays in the open list and on the line under the dropdown. Choosing Custom again restores the technique switches from before the preset. Each protection switch stays in the card header when the card is collapsed
+- Help content sizes to the dialog
+- Log options (timestamps, auto-scroll, wrap, problems only) are in the log menu. A new run keeps the earlier log and inserts a separator when that log is not empty
+- The overall progress bar is indeterminate for one included file, a merge, and a closed set
+
+### Fixed
+- The Results tree nests members under their type. Method keys include the signature, for example `Method:Ns.MyType.Foo(System.Void ())`. Zero counters are hidden. Copy copies the selected mapping, and search waits briefly before filtering
+- Files can be dropped on the window. A dropped `.json` file loads that configuration
+- A saved output folder that no longer exists is cleared, and the window says it was not found. A desktop `-o` path is used for that session and is not saved as the default. Editing the box saves the new path, including a folder that does not exist yet
+- File rows have an include checkbox, a status color, and the output path after success. Extended selection and Delete remove the selected rows. The row menu can open the output, reveal it, copy the path, preview it, or remove the row
+- Obfuscate explains why it is disabled. The status text is the status bar name
+- NativeAOT, Unity IL2CPP, and Blazor WebAssembly disable the protections those profiles cannot use and keep the stored values. Signing has a key-file browse button, and a missing key or an empty watermark id stays marked invalid
+
 ## [2.0.0] - 2026-11-20
 
 ### Breaking

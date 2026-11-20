@@ -12,10 +12,9 @@ public interface IFileDialogService
     string[] ShowOpenAssemblyDialog();
 
     /// <summary>
-    /// Shows an open file dialog for selecting source code files.
+    /// Shows an open file dialog for a strong-name key (.snk, .pfx, or .p12).
     /// </summary>
-    /// <returns>Selected file paths, or empty array if cancelled.</returns>
-    string[] ShowOpenSourceDialog();
+    string? ShowOpenKeyFileDialog();
 
     /// <summary>
     /// Shows a folder browser dialog for selecting an output directory.

@@ -15,13 +15,13 @@ public class HelpDialogContentXamlTests
     }
 
     [Fact]
-    public void UserControl_IsPinnedAt840By480()
+    public void UserControl_FitsInsideTheHelpDialog()
     {
         var root = XDocument.Load(FindXaml()).Root.ShouldNotBeNull();
-        root.Attribute("Width")!.Value.ShouldBe("840");
-        root.Attribute("Height")!.Value.ShouldBe("480");
-        root.Attribute("MinWidth")!.Value.ShouldBe("840");
-        root.Attribute("MinHeight")!.Value.ShouldBe("480");
+        root.Attribute("Width").ShouldBeNull();
+        root.Attribute("Height").ShouldBeNull();
+        root.Attribute("MinWidth").ShouldBeNull();
+        root.Attribute("MinHeight").ShouldBeNull();
     }
 
     [Fact]

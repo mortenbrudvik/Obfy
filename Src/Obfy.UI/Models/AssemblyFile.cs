@@ -76,7 +76,27 @@ public partial class AssemblyFile : ObservableObject
 
     public bool IsSkipped => Status == FileStatus.Skipped;
 
-    public bool IsIncluded => Status != FileStatus.Skipped;
+    public bool IsIncluded
+    {
+        get => Status != FileStatus.Skipped;
+        set
+        {
+            if (value == IsIncluded)
+                return;
+
+            if (value)
+            {
+                Status = FileStatus.Pending;
+                SkipReason = null;
+                ErrorMessage = null;
+            }
+            else
+            {
+                Status = FileStatus.Skipped;
+                SkipReason = "Excluded";
+            }
+        }
+    }
 
     public string FormattedSize => FileSize switch
     {

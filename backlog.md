@@ -1,66 +1,73 @@
 # UI Backlog
 
-Findings from a full review of the WPF desktop app (`Src/Obfy.UI`).
+Findings from a full review of the WPF desktop app (`Src/Obfy.UI`). All 35 items are fixed
+on `fix/ui-backlog`. The sections below keep the original problem statements.
 
 - **Reviewed:** 2026-11-20, commit `7805545` (v2.0.0), Debug build
+- **Fixed:** `fix/ui-backlog`, merged to `main`. Product version stays 2.0.0.
+- **Checked:** `dotnet test Tests/Obfy.UI.Tests` passed, including symbol-tree keys from the
+  real renamer and Custom-preset restore. `SymbolMapKeyTests` passed. The app started.
+  FlaUI `Category=UI` was not run, and the 1400×900 / 900×600 row counts in UI-008 were not
+  re-measured.
 - **Method:** read every XAML view, view model, converter and UI service; then ran the app and
   drove it through a real two-assembly (closed-set) obfuscation with UI Automation, capturing
   the window at the default size (1400×900) and the minimum size (900×600), dark theme, 150% DPI
-- **Not covered:** light theme, high-contrast mode, screen-reader walkthrough, drag-and-drop by
-  hand, source-file (`.cs`) and merge runs, error paths
+- **Not covered by the original review:** light theme, high-contrast mode, screen-reader
+  walkthrough, drag-and-drop by hand, source-file (`.cs`) and merge runs, error paths
 
 ## How to read this
 
 Each item has:
 
+- **Status** — Done
 - **Priority** — P1 (wrong or broken behaviour a user will hit), P2 (clear usability cost),
   P3 (polish or cleanup)
 - **Evidence** — *Observed* (seen in the running app), *Code* (follows from reading the code,
-  not exercised), or *Unconfirmed* (suspected; reproduce before fixing)
-- **Where** — paths are relative to the repo root
+  not exercised), or *Unconfirmed* (suspected; reproduced from the code before fixing)
+- **Where** — paths are relative to the repo root, as of the review commit
 
-Suggested order: all P1 bugs first (most are small), then UI-008 (layout), then UI-012
-(expander state). Items marked *Unconfirmed* need a reproduction before any work.
+UI-011 was fixed by shrinking the toolbar, not by moving buttons into the title bar.
+UI-022 uses an indeterminate bar. It does not add pipeline progress.
 
 ## Index
 
-| ID | Priority | Area | Title |
-|----|----------|------|-------|
-| UI-001 | P1 | Results | Symbol tree never groups members under their type |
-| UI-002 | P1 | Output | Log timestamp and level columns collide |
-| UI-003 | P1 | Accessibility | Status bar message is hidden from screen readers |
-| UI-004 | P1 | Files | Output directory preference is polluted and never validated |
-| UI-005 | P1 | Help | Help dialog clips at the minimum window size |
-| UI-006 | P1 | Help | Help text is out of date |
-| UI-007 | P1 | Files | Output directory placeholder is wrong for closed-set runs |
-| UI-008 | P1 | Layout | Files, Results and Output do not fit in one column |
-| UI-009 | P2 | Layout | Results panel cannot be dismissed |
-| UI-010 | P2 | Layout | Empty-state drop zone is clipped at the minimum size |
-| UI-011 | P3 | Layout | Title bar and toolbar use two rows of chrome |
-| UI-012 | P2 | Settings | Collapsed expanders do not show whether a technique is on |
-| UI-013 | P2 | Settings | Obfuscation level dropdown text is truncated |
-| UI-014 | P2 | Settings | Disabled Obfuscate button gives no reason |
-| UI-015 | P2 | Settings | Runtime profile does not affect the toggles it gates |
-| UI-016 | P3 | Settings | Options are grouped under the wrong expanders |
-| UI-017 | P3 | Settings | Protection toggles have no descriptions |
-| UI-018 | P3 | Settings | Signing key file has no Browse button |
-| UI-019 | P3 | Settings | Some settings have no UI at all |
-| UI-020 | P3 | Settings | Label casing and wording are inconsistent |
-| UI-021 | P3 | Settings | Choosing a preset silently overwrites Custom settings |
-| UI-022 | P2 | Progress | Progress bar sits at 0% for closed-set and merge runs |
-| UI-023 | P2 | Files | File status icons are monochrome and rows hide the output path |
-| UI-024 | P2 | Toolbar | Open output folder is always enabled and its icon is ambiguous |
-| UI-025 | P3 | Files | File list has no keyboard or bulk actions |
-| UI-026 | P3 | Files | Files can only be dropped on the Files panel |
-| UI-027 | P3 | Files | Typed output directory may be ignored on Ctrl+Enter |
-| UI-028 | P3 | Files | Drop overlay may flicker while dragging |
-| UI-029 | P2 | Results | Copy is enabled with nothing selected |
-| UI-030 | P2 | Results | Statistics strip does not add up to the total |
-| UI-031 | P3 | Results | Symbol search rebuilds the whole tree on every keystroke |
-| UI-032 | P3 | Results | Preview shows only the last output |
-| UI-033 | P3 | Output | Log is cleared at the start of every run |
-| UI-034 | P3 | Output | Log lines cannot be copied individually and never wrap |
-| UI-035 | P3 | Cleanup | Dead code and unused dependencies |
+| ID | Priority | Status | Area | Title |
+|----|----------|--------|------|-------|
+| UI-001 | P1 | Done | Results | Symbol tree never groups members under their type |
+| UI-002 | P1 | Done | Output | Log timestamp and level columns collide |
+| UI-003 | P1 | Done | Accessibility | Status bar message is hidden from screen readers |
+| UI-004 | P1 | Done | Files | Output directory preference is polluted and never validated |
+| UI-005 | P1 | Done | Help | Help dialog clips at the minimum window size |
+| UI-006 | P1 | Done | Help | Help text is out of date |
+| UI-007 | P1 | Done | Files | Output directory placeholder is wrong for closed-set runs |
+| UI-008 | P1 | Done | Layout | Files, Results and Output do not fit in one column |
+| UI-009 | P2 | Done | Layout | Results panel cannot be dismissed |
+| UI-010 | P2 | Done | Layout | Empty-state drop zone is clipped at the minimum size |
+| UI-011 | P3 | Done | Layout | Title bar and toolbar use two rows of chrome |
+| UI-012 | P2 | Done | Settings | Collapsed expanders do not show whether a technique is on |
+| UI-013 | P2 | Done | Settings | Obfuscation level dropdown text is truncated |
+| UI-014 | P2 | Done | Settings | Disabled Obfuscate button gives no reason |
+| UI-015 | P2 | Done | Settings | Runtime profile does not affect the toggles it gates |
+| UI-016 | P3 | Done | Settings | Options are grouped under the wrong expanders |
+| UI-017 | P3 | Done | Settings | Protection toggles have no descriptions |
+| UI-018 | P3 | Done | Settings | Signing key file has no Browse button |
+| UI-019 | P3 | Done | Settings | Some settings have no UI at all |
+| UI-020 | P3 | Done | Settings | Label casing and wording are inconsistent |
+| UI-021 | P3 | Done | Settings | Choosing a preset silently overwrites Custom settings |
+| UI-022 | P2 | Done | Progress | Progress bar sits at 0% for closed-set and merge runs |
+| UI-023 | P2 | Done | Files | File status icons are monochrome and rows hide the output path |
+| UI-024 | P2 | Done | Toolbar | Open output folder is always enabled and its icon is ambiguous |
+| UI-025 | P3 | Done | Files | File list has no keyboard or bulk actions |
+| UI-026 | P3 | Done | Files | Files can only be dropped on the Files panel |
+| UI-027 | P3 | Done | Files | Typed output directory may be ignored on Ctrl+Enter |
+| UI-028 | P3 | Done | Files | Drop overlay may flicker while dragging |
+| UI-029 | P2 | Done | Results | Copy is enabled with nothing selected |
+| UI-030 | P2 | Done | Results | Statistics strip does not add up to the total |
+| UI-031 | P3 | Done | Results | Symbol search rebuilds the whole tree on every keystroke |
+| UI-032 | P3 | Done | Results | Preview shows only the last output |
+| UI-033 | P3 | Done | Output | Log is cleared at the start of every run |
+| UI-034 | P3 | Done | Output | Log lines cannot be copied individually and never wrap |
+| UI-035 | P3 | Done | Cleanup | Dead code and unused dependencies |
 
 ---
 
@@ -68,6 +75,7 @@ Suggested order: all P1 bugs first (most are small), then UI-008 (layout), then 
 
 ### UI-001 — Symbol tree never groups members under their type
 
+- **Status:** Done
 - **Priority:** P1 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:240` (`ParseSymbol`),
   `Src/Obfy.Core/Obfuscators/Assembly/SymbolRenamingObfuscator.cs:76,102,115,132,150,710`,
@@ -101,6 +109,7 @@ iconed, and the tests use keys produced by the actual renamer.
 
 ### UI-002 — Log timestamp and level columns collide
 
+- **Status:** Done
 - **Priority:** P1 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/OutputPanel.xaml:64-72`
 
@@ -121,6 +130,7 @@ the level column to the left edge.
 
 ### UI-003 — Status bar message is hidden from screen readers
 
+- **Status:** Done
 - **Priority:** P1 · **Evidence:** Observed (UI Automation returned `Status` after a completed run)
 - **Where:** `Src/Obfy.UI/Views/MainWindow.xaml:197-201`
 
@@ -141,6 +151,7 @@ automation test asserts it after a run.
 
 ### UI-004 — Output directory preference is polluted and never validated
 
+- **Status:** Done
 - **Priority:** P1 · **Evidence:** Observed (the reviewer's `%APPDATA%\Obfy\ui-preferences.json`
   pointed at a deleted `%TEMP%\obfy-ui-obf-…\out` folder)
 - **Where:** `Src/Obfy.UI/ViewModels/FilesViewModel.cs:170-177` (`ApplyStartup`),
@@ -174,6 +185,7 @@ does not change the saved default, and a missing saved directory is surfaced to 
 
 ### UI-005 — Help dialog clips at the minimum window size
 
+- **Status:** Done
 - **Priority:** P1 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/HelpDialogContent.xaml:11-12`,
   `Src/Obfy.UI/ViewModels/MainViewModel.cs:802-811`
@@ -196,6 +208,7 @@ bar.
 
 ### UI-006 — Help text is out of date
 
+- **Status:** Done
 - **Priority:** P1 · **Evidence:** Observed (text compared against the running UI)
 - **Where:** `Src/Obfy.UI/Help/HelpCatalog.cs:19-31`
 
@@ -223,6 +236,7 @@ string that does not exist in the UI.
 
 ### UI-007 — Output directory placeholder is wrong for closed-set runs
 
+- **Status:** Done
 - **Priority:** P1 · **Evidence:** Code (placeholder observed; `obfy-out` path read from code)
 - **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:144`,
   `Src/Obfy.UI/ViewModels/MainViewModel.cs:486-494`
@@ -245,6 +259,7 @@ file list.
 
 ### UI-008 — Files, Results and Output do not fit in one column
 
+- **Status:** Done
 - **Priority:** P1 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/MainWindow.xaml:148-185`,
   `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:127-155`,
@@ -278,6 +293,7 @@ no control is clipped in either the before-run or after-run state.
 
 ### UI-009 — Results panel cannot be dismissed
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/ViewModels/MainViewModel.cs:190`,
   `Src/Obfy.UI/Views/MainWindow.xaml:160-175`
@@ -293,6 +309,7 @@ button to the results header and do not show the panel when there are no success
 
 ### UI-010 — Empty-state drop zone is clipped at the minimum size
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:53-59`
 
@@ -308,6 +325,7 @@ when space is tight.
 
 ### UI-011 — Title bar and toolbar use two rows of chrome
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/MainWindow.xaml:38-111`
 
@@ -323,6 +341,7 @@ before any content. With vertical space already short (UI-008), that is expensiv
 
 ### UI-012 — Collapsed expanders do not show whether a technique is on
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:36-400`
 
@@ -342,6 +361,7 @@ and can turn one on or off without expanding it.
 
 ### UI-013 — Obfuscation level dropdown text is truncated
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:20-25`,
   `Src/Obfy.Core/Models/ObfuscationLevel.cs:13-31`
@@ -358,6 +378,7 @@ having to fit in one line.
 
 ### UI-014 — Disabled Obfuscate button gives no reason
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Code (disabled state observed; reasons read from code)
 - **Where:** `Src/Obfy.UI/ViewModels/MainViewModel.cs:119-121`,
   `Src/Obfy.UI/Views/MainWindow.xaml:56-60`
@@ -375,6 +396,7 @@ Watermark id box as invalid when it is required and empty.
 
 ### UI-015 — Runtime profile does not affect the toggles it gates
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:27-34,144-235`,
   `Src/Obfy.Core/Models/ObfySettings.cs:685-696`
@@ -392,6 +414,7 @@ NativeAOT"). Keep the stored value so switching the profile back restores it.
 
 ### UI-016 — Options are grouped under the wrong expanders
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:215-235,279-291`
 
@@ -407,6 +430,7 @@ or rename the group to "Merge & embedding".
 
 ### UI-017 — Protection toggles have no descriptions
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:144-187`
 
@@ -422,6 +446,7 @@ technique table in `CLAUDE.md` / `docs/Techniques.md`, plus a tooltip for the ca
 
 ### UI-018 — Signing key file has no Browse button
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:245-249`
 
@@ -435,6 +460,7 @@ is no validation that the file exists or has a supported extension.
 
 ### UI-019 — Some settings have no UI at all
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/ViewModels/SettingsViewModel.cs:80,106-107,213-215`,
   `Src/Obfy.UI/ViewModels/FilesViewModel.cs:37-38`
@@ -457,6 +483,7 @@ a loaded config contains values the panel does not display.
 
 ### UI-020 — Label casing and wording are inconsistent
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml`, `FilesPanel.xaml`,
   `MainWindow.xaml`
@@ -477,6 +504,7 @@ reusable template or control.
 
 ### UI-021 — Choosing a preset silently overwrites Custom settings
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/ViewModels/SettingsViewModel.cs:272-278,285-365`
 
@@ -493,6 +521,7 @@ Custom again, or show an "Undo" snackbar after a preset replaces a Custom config
 
 ### UI-022 — Progress bar sits at 0% for closed-set and merge runs
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Code (the run in the review finished too fast to observe)
 - **Where:** `Src/Obfy.UI/ViewModels/MainViewModel.cs:364,512` (jump to 100),
   `:271,298` (per-file steps), `Src/Obfy.UI/Views/MainWindow.xaml:73-79`
@@ -511,6 +540,7 @@ the stage name next to the bar.
 
 ### UI-023 — File status icons are monochrome and rows hide the output path
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:84-108`
 
@@ -528,6 +558,7 @@ Explorer, Copy path. Add a tooltip with the full path for trimmed text.
 
 ### UI-024 — Open output folder is always enabled and its icon is ambiguous
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Code (icons observed)
 - **Where:** `Src/Obfy.UI/ViewModels/MainViewModel.cs:840-859`,
   `Src/Obfy.UI/Views/MainWindow.xaml:84-97`,
@@ -552,6 +583,7 @@ labels to the config buttons.
 
 ### UI-025 — File list has no keyboard or bulk actions
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:62-122`,
   `Src/Obfy.UI/ViewModels/FilesViewModel.cs:133-146`
@@ -570,6 +602,7 @@ checkbox per row to include/exclude without removing.
 
 ### UI-026 — Files can only be dropped on the Files panel
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:10`
 
@@ -583,6 +616,7 @@ panel (or the whole window). Dropping a `.json` config could load it.
 
 ### UI-027 — Typed output directory may be ignored on Ctrl+Enter
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Unconfirmed
 - **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:140-144`,
   `Src/Obfy.UI/Views/MainWindow.xaml:23`
@@ -598,6 +632,7 @@ Ctrl+Enter should start the run with the *previous* value. Not reproduced yet.
 
 ### UI-028 — Drop overlay may flicker while dragging
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Unconfirmed
 - **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml.cs:34`,
   `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:43-50`
@@ -616,6 +651,7 @@ and only hide it when the pointer has actually left the control's bounds.
 
 ### UI-029 — Copy is enabled with nothing selected
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Observed (button enabled with no selection; cause read from code)
 - **Where:** `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:58-60,299-314`
 
@@ -630,6 +666,7 @@ Consider "Copy original" / "Copy obfuscated" in the context menu, and Ctrl+C on 
 
 ### UI-030 — Statistics strip does not add up to the total
 
+- **Status:** Done
 - **Priority:** P2 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:52-86`,
   `Src/Obfy.Core/Models/ObfuscationResult.cs:120-180`
@@ -648,6 +685,7 @@ technique was off.
 
 ### UI-031 — Symbol search rebuilds the whole tree on every keystroke
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:158-234,316`
 
@@ -664,6 +702,7 @@ Measure with a large symbol map before and after.
 
 ### UI-032 — Preview shows only the last output
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/ViewModels/MainViewModel.cs:177-182,655-681`,
   `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:150-173`
@@ -680,6 +719,7 @@ run.
 
 ### UI-033 — Log is cleared at the start of every run
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/ViewModels/MainViewModel.cs:146`
 
@@ -693,6 +733,7 @@ toggle. The Clear button already covers manual clearing.
 
 ### UI-034 — Log lines cannot be copied individually and never wrap
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Code (horizontal scrollbar observed)
 - **Where:** `Src/Obfy.UI/Views/Controls/OutputPanel.xaml:47-102`
 
@@ -711,25 +752,26 @@ menu. A level filter (errors and warnings only) would help on long runs.
 
 ### UI-035 — Dead code and unused dependencies
 
+- **Status:** Done
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** see list
 
-- [ ] `LevelToColorConverter` is never used; the log uses `DataTrigger`s instead. Remove the
+- [x] `LevelToColorConverter` is never used; the log uses `DataTrigger`s instead. Remove the
       class and its registration — `Src/Obfy.UI/Converters/LevelToColorConverter.cs`,
       `Src/Obfy.UI/App.xaml:22`
-- [ ] `AddSourceFilesCommand` and `ShowOpenSourceDialog` are not bound to any view; Add Files
+- [x] `AddSourceFilesCommand` and `ShowOpenSourceDialog` are not bound to any view; Add Files
       already accepts `.cs`. Only a unit test calls the command
       (`Tests/Obfy.UI.Tests/ViewModels/FilesViewModelTests.cs:514`), so remove that test with
       it — `Src/Obfy.UI/ViewModels/FilesViewModel.cs:126-131`,
       `Src/Obfy.UI/Services/FileDialogService.cs:22`,
       `Src/Obfy.UI/Services/IFileDialogService.cs:18`
-- [ ] `SymbolTreeNode.IsExpanded` is never bound to `TreeViewItem.IsExpanded`. Either bind it
+- [x] `SymbolTreeNode.IsExpanded` is never bound to `TreeViewItem.IsExpanded`. Either bind it
       (useful for auto-expanding search matches once UI-001 is fixed) or remove it —
       `Src/Obfy.UI/Models/SymbolTreeNode.cs:34`
-- [ ] `Microsoft.Xaml.Behaviors.Wpf` is referenced but not used in any XAML or code —
+- [x] `Microsoft.Xaml.Behaviors.Wpf` is referenced but not used in any XAML or code —
       `Src/Obfy.UI/Obfy.UI.csproj:22`
-- [ ] `InternalsVisibleTo Include="Obfy.UI.Tests"` appears twice —
+- [x] `InternalsVisibleTo Include="Obfy.UI.Tests"` appears twice —
       `Src/Obfy.UI/Obfy.UI.csproj:15,39`
-- [ ] `SymbolTreeNode.HasChildren` and the `LogEntry.Info`/`Warning`/`Error`/`Success`/`Debug`
+- [x] `SymbolTreeNode.HasChildren` and the `LogEntry.Info`/`Warning`/`Error`/`Success`/`Debug`
       static factories have no callers in `Src` or `Tests` (only `LogEntry.Create` is used) —
       `Src/Obfy.UI/Models/SymbolTreeNode.cs`, `Src/Obfy.UI/Models/LogEntry.cs`

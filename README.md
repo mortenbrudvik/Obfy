@@ -17,6 +17,8 @@ These techniques raise the cost of casual reverse engineering. They are **not** 
 
 ![Obfy desktop application](docs/images/ui-overview.png)
 
+*Earlier window. The current layout is described under [Desktop Application](#desktop-application).*
+
 ## Why Obfy?
 
 - **Easy to Use** - Single command to obfuscate your assemblies
@@ -105,18 +107,24 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
 dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -- MyApp.dll -o output/
 ```
 
+The screenshots on this page show an earlier window: Output Directory sat in the file column, and Output was stacked under the files. Settings stay on the left. Output directory, browse, the symbol-map toggle, and the symbol-map path sit in a compact row. Output, Results, and Preview are tabs under the file list.
+
 ![Obfy with assemblies loaded](docs/images/ui-ready.png)
 
 **Features:**
-- Three-panel layout (Settings, Files, Output)
-- Drag-and-drop assemblies, source files, or a solution/project (expands into included outputs and skipped rows)
+- Drag and drop assemblies, source files, a solution or project, or a `.json` configuration onto the window. A solution or project expands into included outputs and skipped rows
 - Closed-set protection when two or more *included* assemblies are listed, or when files came from a solution/project session (the Merge toggle still wins)
-- Level presets with expandable advanced settings
-- In-app Help (toolbar Help and F1)
-- Real-time progress and color-coded output
-- Results visualization with symbol map export
+- An empty Output Directory writes one file next to the input as `*.obfuscated.*`, a closed set to an `obfy-out` folder next to the first input, and a merge next to the first input as `*.obfuscated.*`
+- Level presets. The closed dropdown shows the level name, and choosing Custom again restores the switches from before the preset. Protection switches stay visible when a card is collapsed
+- Runtime profiles disable protections that profile cannot use and keep the stored values
+- In-app Help (toolbar Help and F1). The article fits the dialog
+- A path passed with `-o` applies to that session and is not saved as the default. A saved folder that no longer exists is cleared, with a warning
+- Indeterminate progress for one file, a merge, and a closed set. The log keeps earlier runs
+- Results group symbols under their types, hide zero counters, and export the symbol map. Preview decompiles only after you pick a file
 
 ![Obfuscation results and symbol map](docs/images/ui-results.png)
+
+*Earlier results pane: symbols were a flat list, and Preview was a tab inside that pane.*
 
 ### Visual Studio Extension
 

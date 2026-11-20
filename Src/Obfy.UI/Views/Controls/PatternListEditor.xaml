@@ -1,0 +1,46 @@
+<UserControl x:Class="Obfy.UI.Views.Controls.PatternListEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:controls="clr-namespace:Obfy.UI.Views.Controls"
+             x:Name="EditorRoot">
+    <StackPanel Margin="0,0,0,12">
+        <ui:TextBlock Text="{Binding Title, ElementName=EditorRoot}" FontWeight="SemiBold" Margin="0,0,0,4"
+                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ui:TextBox AutomationProperties.Name="{Binding DraftAutomationName, ElementName=EditorRoot}"
+                        Text="{Binding Draft, ElementName=EditorRoot, UpdateSourceTrigger=PropertyChanged}"
+                        PlaceholderText="{Binding Placeholder, ElementName=EditorRoot}">
+                <ui:TextBox.InputBindings>
+                    <KeyBinding Key="Return" Command="{Binding AddCommand, ElementName=EditorRoot}"/>
+                </ui:TextBox.InputBindings>
+            </ui:TextBox>
+            <ui:Button Grid.Column="1" Content="Add"
+                       AutomationProperties.Name="{Binding AddAutomationName, ElementName=EditorRoot}"
+                       Command="{Binding AddCommand, ElementName=EditorRoot}" Margin="8,0,0,0"/>
+        </Grid>
+        <ItemsControl ItemsSource="{Binding Items, ElementName=EditorRoot}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ui:TextBlock Text="{Binding}" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Dismiss24}"
+                                   AutomationProperties.Name="{Binding RemoveAutomationName, RelativeSource={RelativeSource AncestorType=controls:PatternListEditor}}"
+                                   Command="{Binding RemoveCommand, RelativeSource={RelativeSource AncestorType=controls:PatternListEditor}}"
+                                   CommandParameter="{Binding}"
+                                   Padding="4" MinWidth="32" MinHeight="32"/>
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

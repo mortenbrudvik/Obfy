@@ -59,16 +59,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ObfuscateCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
+    [NotifyPropertyChangedFor(nameof(StatusText))]
+    [NotifyPropertyChangedFor(nameof(ShowProgressPercent))]
+    [NotifyPropertyChangedFor(nameof(ObfuscateToolTip))]
     private bool _isObfuscating;
 
     [ObservableProperty]
     private double _overallProgress;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowProgressPercent))]
+    private bool _progressIndeterminate;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText))]
     private string _statusMessage = "Ready";
 
     [ObservableProperty]
     private bool _showResultsPanel;
+
+    [ObservableProperty]
+    private int _bottomTabIndex;
 
     public MainViewModel(
         IObfuscationService obfuscationService,
@@ -94,16 +105,66 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Files = files;
         Output = output;
         Results = results;
-        _filesChanged = (_, _) => ObfuscateCommand.NotifyCanExecuteChanged();
+        _filesChanged = OnFilesChanged;
         Files.Files.CollectionChanged += _filesChanged;
         _settingsChanged = (_, e) =>
         {
             if (e.PropertyName is nameof(SettingsViewModel.WatermarkEnabled)
                 or nameof(SettingsViewModel.WatermarkId)
+                or nameof(SettingsViewModel.AssemblyMergeEnabled)
                 or null)
-                ObfuscateCommand.NotifyCanExecuteChanged();
+                RefreshFileCommands();
         };
         Settings.PropertyChanged += _settingsChanged;
+    }
+
+    public string? ObfuscateBlockedReason
+    {
+        get
+        {
+            if (IsObfuscating)
+                return null;
+            if (!Files.HasIncludedFiles)
+                return "Add at least one included file.";
+            if (Settings.WatermarkEnabled && string.IsNullOrWhiteSpace(Settings.WatermarkId))
+                return "Enter a watermark id.";
+            return null;
+        }
+    }
+
+    public string ObfuscateToolTip => ObfuscateBlockedReason ?? "Obfuscate (Ctrl+Enter)";
+
+    public string StatusText => !IsObfuscating && ObfuscateBlockedReason is { } reason
+        ? reason
+        : StatusMessage;
+
+    public bool ShowProgressPercent => IsObfuscating && !ProgressIndeterminate;
+
+    public string OutputLocationHint
+    {
+        get
+        {
+            var included = Files.Files.Where(static file => file.IsIncluded).ToList();
+            if (Settings.AssemblyMergeEnabled && included.Count(static file => file.IsAssembly) >= 2)
+                return Help.HelpCatalog.MergeOutputPlaceholder;
+            if (ShouldUseClosedSet(Files.Files))
+                return Help.HelpCatalog.ClosedSetOutputPlaceholder;
+            return Help.HelpCatalog.SingleOutputPlaceholder;
+        }
+    }
+
+    public string OpenOutputToolTip => CanOpenOutputFolder()
+        ? "Open output folder"
+        : OpenOutputBlockedReason;
+
+    private string OpenOutputBlockedReason
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Files.OutputDirectory) && !Directory.Exists(Files.OutputDirectory))
+                return "Output folder was not found.";
+            return "No output folder yet.";
+        }
     }
 
     /// <summary>
@@ -114,6 +175,43 @@ public partial class MainViewModel : ObservableObject, IDisposable
         await _settingsService.LoadPreferencesAsync();
         Files.ApplyPreferences();
         Output.Info("Obfy UI initialized. Add files and configure settings to begin.");
+    }
+
+    private void OnFilesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems != null)
+        {
+            foreach (AssemblyFile file in e.NewItems)
+                file.PropertyChanged += OnFilePropertyChanged;
+        }
+
+        if (e.OldItems != null)
+        {
+            foreach (AssemblyFile file in e.OldItems)
+                file.PropertyChanged -= OnFilePropertyChanged;
+        }
+
+        RefreshFileCommands();
+    }
+
+    private void OnFilePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(AssemblyFile.Status)
+            or nameof(AssemblyFile.IsIncluded)
+            or nameof(AssemblyFile.OutputPath)
+            or nameof(AssemblyFile.FromSession))
+            RefreshFileCommands();
+    }
+
+    private void RefreshFileCommands()
+    {
+        ObfuscateCommand.NotifyCanExecuteChanged();
+        OpenOutputFolderCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(OutputLocationHint));
+        OnPropertyChanged(nameof(ObfuscateBlockedReason));
+        OnPropertyChanged(nameof(ObfuscateToolTip));
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(OpenOutputToolTip));
     }
 
     private bool CanObfuscate() =>
@@ -142,8 +240,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var totalStats = new ObfuscationStatistics();
         var successfulResults = new List<ObfuscationResult>();
         var stopwatch = Stopwatch.StartNew();
+        ProgressIndeterminate = ShouldMerge(settings, included)
+            || ShouldUseClosedSet(files)
+            || included.Count <= 1;
 
-        Output.Clear();
+        if (Output.Logs.Count > 0)
+            Output.Info("———");
         Output.Info("Starting obfuscation...");
         Output.Info($"Level: {settings.Level}");
         Output.Info($"Files: {included.Count}");
@@ -174,20 +276,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var combined = CombineResults(successfulResults, totalStats, allSymbols, stopwatch.Elapsed);
                 Results.SetReport(_reportService.BuildReport(combined, settings));
-                var previewPath = successfulResults
+                var previewPaths = successfulResults
                     .Select(r => r.OutputPath)
-                    .LastOrDefault(p => p is not null &&
-                                        File.Exists(p) &&
-                                        Path.GetExtension(p) is ".dll" or ".exe");
-                await LoadPreviewAsync(previewPath, cancellationToken);
+                    .Where(p => p is not null &&
+                                File.Exists(p) &&
+                                Path.GetExtension(p) is ".dll" or ".exe")
+                    .Cast<string>();
+                Results.SetPreviewPaths(previewPaths);
+                ShowResultsPanel = true;
+                BottomTabIndex = 1;
+            }
+            else
+            {
+                ShowResultsPanel = false;
             }
 
             if (Files.GenerateSymbolMap && allSymbols.Count > 0)
             {
                 await WriteSymbolMapAsync(allSymbols);
             }
-
-            ShowResultsPanel = true;
 
             var failed = files.Count(f => f.Status == FileStatus.Error);
             if (failed > 0)
@@ -222,6 +329,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         finally
         {
             IsObfuscating = false;
+            ProgressIndeterminate = false;
+            RefreshFileCommands();
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = null;
             ObfuscateCommand.NotifyCanExecuteChanged();
@@ -652,34 +761,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task LoadPreviewAsync(string? previewPath, CancellationToken cancellationToken)
-    {
-        if (previewPath is null)
-        {
-            Results.LoadPreview(null);
-            return;
-        }
-
-        try
-        {
-            var text = await Task.Run(
-                () => Obfy.Core.Utilities.AssemblyPreview.Decompile(previewPath),
-                cancellationToken);
-            Results.PreviewError = null;
-            Results.PreviewText = text;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Results.PreviewText = string.Empty;
-            Results.PreviewError = "Preview failed: " + ex.Message;
-            Output.Warning($"Preview failed: {ex.Message}");
-        }
-    }
-
     private static ObfuscationResult CombineResults(
         List<ObfuscationResult> successful,
         ObfuscationStatistics totalStats,
@@ -765,6 +846,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (string.IsNullOrEmpty(filePath))
             return;
 
+        await LoadConfigurationFromPathAsync(filePath);
+    }
+
+    public async Task LoadConfigurationFromPathAsync(string filePath)
+    {
         try
         {
             var settings = await _settingsService.LoadSettingsAsync(filePath);
@@ -803,12 +889,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 Title = "Help",
                 Content = content,
-                CloseButtonText = "Close",
-                DialogMaxWidth = 920,
-                DialogMaxHeight = 640,
-                DialogWidth = 920,
-                DialogHeight = 640,
+                IsFooterVisible = false,
+                DialogMaxWidth = 860,
+                DialogMaxHeight = 520,
+                DialogWidth = 720,
+                DialogHeight = 460,
             };
+            _help.RequestClose = () => dialog.Hide();
             dialog.SetValue(
                 ScrollViewer.VerticalScrollBarVisibilityProperty,
                 ScrollBarVisibility.Disabled);
@@ -837,25 +924,82 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     }
 
-    [RelayCommand]
+    private bool CanOpenOutputFolder()
+    {
+        if (Files.Files.Select(file => file.OutputPath).Any(path => !string.IsNullOrEmpty(path) && OutputExists(path)))
+            return true;
+
+        return !string.IsNullOrWhiteSpace(Files.OutputDirectory) && Directory.Exists(Files.OutputDirectory);
+    }
+
+    private static bool OutputExists(string path)
+        => File.Exists(path) || Directory.Exists(path);
+
+    [RelayCommand(CanExecute = nameof(CanOpenOutputFolder))]
     private void OpenOutputFolder()
     {
         var path = Files.Files
             .Select(f => f.OutputPath)
-            .LastOrDefault(p => !string.IsNullOrEmpty(p));
+            .LastOrDefault(p => !string.IsNullOrEmpty(p) && OutputExists(p));
 
-        if (string.IsNullOrEmpty(path))
-            return;
+        string? directory = null;
+        if (!string.IsNullOrEmpty(path))
+            directory = File.Exists(path) ? Path.GetDirectoryName(path) : path;
+        else if (Directory.Exists(Files.OutputDirectory))
+            directory = Files.OutputDirectory;
 
-        var directory = File.Exists(path) ? Path.GetDirectoryName(path) : path;
         if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+        {
+            _notifications.Show("Output folder not found", OpenOutputBlockedReason, NotificationSeverity.Warning);
+            OpenOutputFolderCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = directory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            _notifications.Show("Could not open output", ex.Message, NotificationSeverity.Error);
+        }
+    }
+
+    public void HandleDrop(string[] paths)
+    {
+        if (paths.Length == 0 || IsObfuscating)
             return;
 
-        Process.Start(new ProcessStartInfo
+        var configs = paths
+            .Where(path => File.Exists(path) && Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var inputs = paths.Where(FilesViewModel.IsSupportedInputPath).ToArray();
+        if (inputs.Length > 0)
+            Files.HandleFileDrop(inputs);
+
+        foreach (var config in configs)
+            _ = LoadConfigurationFromPathAsync(config);
+    }
+
+    [RelayCommand]
+    private void PreviewFile(AssemblyFile? file)
+    {
+        var path = file?.OutputPath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
-            FileName = directory,
-            UseShellExecute = true
-        });
+            _notifications.Show("No output to preview", file?.FileName ?? "Select a successful assembly.", NotificationSeverity.Warning);
+            return;
+        }
+
+        if (!Results.PreviewPaths.Contains(path))
+            Results.PreviewPaths.Add(path);
+
+        BottomTabIndex = 2;
+        Results.SelectedPreviewPath = path;
     }
 
     public static string GetInformationalVersion()

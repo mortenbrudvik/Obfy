@@ -1,5 +1,7 @@
 using System.Collections.Specialized;
 using System.Windows.Controls;
+using System.Windows.Input;
+using Obfy.UI.Models;
 using Obfy.UI.ViewModels;
 
 namespace Obfy.UI.Views.Controls;
@@ -44,5 +46,25 @@ public partial class OutputPanel : UserControl
                 LogListBox.ScrollIntoView(LogListBox.Items[^1]);
             }
         }
+    }
+
+    private void OnLogKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.C || Keyboard.Modifiers != ModifierKeys.Control)
+            return;
+
+        CopySelection();
+        e.Handled = true;
+    }
+
+    private void OnCopySelection(object sender, System.Windows.RoutedEventArgs e) => CopySelection();
+
+    private void CopySelection()
+    {
+        if (DataContext is not OutputViewModel viewModel)
+            return;
+
+        var selected = LogListBox.SelectedItems.OfType<LogEntry>().ToList();
+        viewModel.CopyEntries(selected.Count == 0 ? null : selected);
     }
 }

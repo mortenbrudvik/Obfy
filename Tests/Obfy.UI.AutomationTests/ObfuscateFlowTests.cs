@@ -30,7 +30,7 @@ public class ObfuscateFlowTests : IDisposable
 
         var exe = UiExecutableLocator.ResolveFromTestContext(AppContext.BaseDirectory);
         _automation = new UIA3Automation();
-        _app = Application.Launch(exe, $"\"{dll}\" -o \"{outputDir}\"");
+        _app = UiLaunch.Launch(exe, $"\"{dll}\" -o \"{outputDir}\"");
         var window = _app.GetMainWindow(_automation, TimeSpan.FromSeconds(15))
             ?? throw new InvalidOperationException("Obfy main window did not appear.");
 
@@ -45,6 +45,10 @@ public class ObfuscateFlowTests : IDisposable
         var expected = Path.Combine(outputDir, Path.GetFileName(dll));
         WaitUntil(() => OutputHasBytes(expected), TimeSpan.FromSeconds(60), $"obfuscated output not written: {expected}");
         new FileInfo(expected).Length.ShouldBeGreaterThan(0);
+        WaitUntil(
+            () => window.FindFirstDescendant(cf => cf.ByAutomationId("StatusMessage"))?.Name == "Obfuscation complete",
+            TimeSpan.FromSeconds(10),
+            "Status name did not become Obfuscation complete");
     }
 
     public void Dispose()

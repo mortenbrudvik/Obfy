@@ -7,20 +7,19 @@ using Obfy.UI.Models;
 namespace Obfy.UI.Converters;
 
 /// <summary>
-/// Converts a log level to a theme brush for display.
+/// Maps a file status to a theme brush. Glyphs stay distinct; color adds success, error, and caution.
 /// </summary>
-public class LevelToColorConverter : IValueConverter
+public class FileStatusToBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var key = value is LogLevel level
-            ? level switch
+        var key = value is FileStatus status
+            ? status switch
             {
-                LogLevel.Error => "SystemFillColorCriticalBrush",
-                LogLevel.Warning => "SystemFillColorCautionBrush",
-                LogLevel.Info => "SystemFillColorAttentionBrush",
-                LogLevel.Debug => "TextFillColorSecondaryBrush",
-                LogLevel.Success => "SystemFillColorSuccessBrush",
+                FileStatus.Success => "SystemFillColorSuccessBrush",
+                FileStatus.Error => "SystemFillColorCriticalBrush",
+                FileStatus.Skipped => "SystemFillColorCautionBrush",
+                FileStatus.Processing => "SystemFillColorAttentionBrush",
                 _ => "TextFillColorPrimaryBrush"
             }
             : "TextFillColorPrimaryBrush";
@@ -31,11 +30,9 @@ public class LevelToColorConverter : IValueConverter
         if (Application.Current?.TryFindResource("TextFillColorPrimaryBrush") is Brush primary)
             return primary;
 
-        return SystemColors.GrayTextBrush;
+        return SystemColors.ControlTextBrush;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        throw new NotSupportedException();
-    }
+        => throw new NotSupportedException();
 }

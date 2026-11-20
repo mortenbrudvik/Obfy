@@ -57,9 +57,9 @@ public class ResultsViewModelTests : IDisposable
         _viewModel.LoadResults(
             new Dictionary<string, string>
             {
-                ["MyType"] = "a",
-                ["MyType::Foo()"] = "b",
-                ["MyType::Bar"] = "c"
+                ["Type:MyType"] = "a",
+                ["Method:MyType.Foo(System.Void ())"] = "b",
+                ["Field:MyType.Bar"] = "c"
             },
             new ObfuscationStatistics { TypesRenamed = 1 },
             TimeSpan.FromSeconds(1));
@@ -78,10 +78,10 @@ public class ResultsViewModelTests : IDisposable
         _viewModel.LoadResults(
             new Dictionary<string, string>
             {
-                ["TypeA"] = "x",
-                ["TypeA::Foo()"] = "y",
-                ["TypeA::Bar()"] = "z",
-                ["TypeB"] = "w"
+                ["Type:TypeA"] = "x",
+                ["Method:TypeA.Foo(System.Void ())"] = "y",
+                ["Method:TypeA.Bar(System.Void ())"] = "z",
+                ["Type:TypeB"] = "w"
             },
             new ObfuscationStatistics(),
             TimeSpan.Zero);
@@ -91,7 +91,7 @@ public class ResultsViewModelTests : IDisposable
         _viewModel.RootNodes.Count.ShouldBe(1);
         _viewModel.RootNodes[0].OriginalName.ShouldBe("TypeA");
         _viewModel.RootNodes[0].Children.Count.ShouldBe(1);
-        _viewModel.RootNodes[0].Children[0].OriginalName.ShouldBe("Foo()");
+        _viewModel.RootNodes[0].Children[0].OriginalName.ShouldBe("Foo(System.Void ())");
         _viewModel.HasNoSearchMatches.ShouldBeFalse();
     }
 

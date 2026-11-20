@@ -164,12 +164,12 @@ obfy MyApp.dll -o output/ --map symbols.json
 ```json
 {
   "Type:MyNamespace.MyClass": "_a",
-  "Method:MyNamespace.MyClass.MyMethod": "_b",
+  "Method:MyNamespace.MyClass.MyMethod(System.Void ())": "_b",
   "Field:MyNamespace.MyClass._privateField": "_c"
 }
 ```
 
-Keys are prefixed `Type:`, `Method:`, `Field:`, `Property:`, `Event:`, or `Namespace:`.
+Keys are prefixed `Type:`, `Method:`, `Field:`, `Property:`, `Event:`, or `Namespace:`. A method key includes the signature, as in `Method:Ns.MyType.Foo(System.Void ())`. Source maps use the Roslyn symbol kind (`NamedType:`, `Parameter:`, and the others). The desktop Results tree nests members under the longest matching `Type:` name.
 
 **Uses:**
 - Decode stack traces from production

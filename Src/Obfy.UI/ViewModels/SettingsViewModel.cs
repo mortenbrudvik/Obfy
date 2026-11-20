@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Obfy.Core.Models;
@@ -77,6 +78,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _packingEnabled = false;
 
+    [ObservableProperty]
     private string _packingRid = "win-x64";
 
     [ObservableProperty]
@@ -102,9 +104,6 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _dependencyEmbeddingEnabled = false;
-
-    private List<string>? _dependencyEmbeddingIncludes;
-    private List<string>? _dependencyEmbeddingExcludes;
 
     /// <summary>
     /// Settings last loaded from disk. <see cref="ToObfySettings"/> copies this and
@@ -213,6 +212,8 @@ public partial class SettingsViewModel : ObservableObject
     public ObservableCollection<string> IncludedNamespaces { get; } = new();
     public ObservableCollection<string> IncludedTypes { get; } = new();
     public ObservableCollection<string> IncludedMethods { get; } = new();
+    public ObservableCollection<string> EmbeddingIncludes { get; } = new();
+    public ObservableCollection<string> EmbeddingExcludes { get; } = new();
 
     [ObservableProperty]
     private string _newExcludedNamespace = string.Empty;
@@ -222,6 +223,21 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string _newExcludedMethod = string.Empty;
+
+    [ObservableProperty]
+    private string _newIncludedNamespace = string.Empty;
+
+    [ObservableProperty]
+    private string _newIncludedType = string.Empty;
+
+    [ObservableProperty]
+    private string _newIncludedMethod = string.Empty;
+
+    [ObservableProperty]
+    private string _newEmbeddingInclude = string.Empty;
+
+    [ObservableProperty]
+    private string _newEmbeddingExclude = string.Empty;
 
     [RelayCommand]
     private void AddExcludedNamespace() => AddUnique(ExcludedNamespaces, NewExcludedNamespace, v => NewExcludedNamespace = v);
@@ -253,6 +269,56 @@ public partial class SettingsViewModel : ObservableObject
             ExcludedMethods.Remove(value);
     }
 
+    [RelayCommand]
+    private void AddIncludedNamespace() => AddUnique(IncludedNamespaces, NewIncludedNamespace, v => NewIncludedNamespace = v);
+
+    [RelayCommand]
+    private void AddIncludedType() => AddUnique(IncludedTypes, NewIncludedType, v => NewIncludedType = v);
+
+    [RelayCommand]
+    private void AddIncludedMethod() => AddUnique(IncludedMethods, NewIncludedMethod, v => NewIncludedMethod = v);
+
+    [RelayCommand]
+    private void RemoveIncludedNamespace(string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            IncludedNamespaces.Remove(value);
+    }
+
+    [RelayCommand]
+    private void RemoveIncludedType(string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            IncludedTypes.Remove(value);
+    }
+
+    [RelayCommand]
+    private void RemoveIncludedMethod(string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            IncludedMethods.Remove(value);
+    }
+
+    [RelayCommand]
+    private void AddEmbeddingInclude() => AddUnique(EmbeddingIncludes, NewEmbeddingInclude, v => NewEmbeddingInclude = v);
+
+    [RelayCommand]
+    private void AddEmbeddingExclude() => AddUnique(EmbeddingExcludes, NewEmbeddingExclude, v => NewEmbeddingExclude = v);
+
+    [RelayCommand]
+    private void RemoveEmbeddingInclude(string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            EmbeddingIncludes.Remove(value);
+    }
+
+    [RelayCommand]
+    private void RemoveEmbeddingExclude(string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            EmbeddingExcludes.Remove(value);
+    }
+
     private static void AddUnique(ObservableCollection<string> items, string raw, Action<string> clear)
     {
         var value = raw.Trim();
@@ -271,10 +337,23 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnLevelChanged(ObfuscationLevel value)
     {
-        if (value != ObfuscationLevel.Custom)
+        var previous = _previousLevel;
+        _previousLevel = value;
+        OnPropertyChanged(nameof(LevelSummary));
+        if (_applyingPreset > 0)
+            return;
+
+        if (value == ObfuscationLevel.Custom)
         {
-            ApplyPreset(value);
+            if (!_suppressCustomRestore && previous != ObfuscationLevel.Custom && _customSnapshot != null)
+                FromObfySettings(_customSnapshot);
+            return;
         }
+
+        if (previous == ObfuscationLevel.Custom)
+            CaptureCustomSnapshot();
+
+        ApplyPreset(value);
     }
 
     /// <summary>
@@ -367,15 +446,23 @@ public partial class SettingsViewModel : ObservableObject
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
-        if (_applyingPreset > 0)
+        if (_applyingPreset > 0 || e.PropertyName is null || PresetNeutralProperties.Contains(e.PropertyName))
             return;
-        if (e.PropertyName is null or nameof(Level)
-            or nameof(NewExcludedNamespace)
-            or nameof(NewExcludedType)
-            or nameof(NewExcludedMethod))
-            return;
+
         if (Level != ObfuscationLevel.Custom)
-            Level = ObfuscationLevel.Custom;
+        {
+            _suppressCustomRestore = true;
+            try
+            {
+                Level = ObfuscationLevel.Custom;
+            }
+            finally
+            {
+                _suppressCustomRestore = false;
+            }
+        }
+
+        CaptureCustomSnapshot();
     }
 
     partial void OnProxyExternalCallsChanged(bool value)
@@ -450,10 +537,8 @@ public partial class SettingsViewModel : ObservableObject
         settings.AssemblyMerge.Internalize = InternalizeMergedTypes;
 
         settings.DependencyEmbedding.Enabled = DependencyEmbeddingEnabled;
-        if (_dependencyEmbeddingIncludes is not null)
-            settings.DependencyEmbedding.IncludePatterns = _dependencyEmbeddingIncludes.ToList();
-        if (_dependencyEmbeddingExcludes is not null)
-            settings.DependencyEmbedding.ExcludePatterns = _dependencyEmbeddingExcludes.ToList();
+        settings.DependencyEmbedding.IncludePatterns = EmbeddingIncludes.ToList();
+        settings.DependencyEmbedding.ExcludePatterns = EmbeddingExcludes.ToList();
 
         settings.ConstantEncryption.Enabled = ConstantEncryptionEnabled;
         settings.ConstantEncryption.Algorithm = ConstantEncryptionAlgorithm;
@@ -483,7 +568,7 @@ public partial class SettingsViewModel : ObservableObject
             ? null
             : SigningPasswordEnvironmentVariable;
         settings.Packing.Enabled = PackingEnabled;
-        settings.Packing.Rid = _packingRid;
+        settings.Packing.Rid = PackingRid;
         settings.Virtualization.Enabled = VirtualizationEnabled;
         settings.Incremental.Enabled = IncrementalEnabled;
         return settings;
@@ -552,8 +637,8 @@ public partial class SettingsViewModel : ObservableObject
         AssemblyMergeEnabled = settings.AssemblyMerge.Enabled;
         InternalizeMergedTypes = settings.AssemblyMerge.Internalize;
         DependencyEmbeddingEnabled = settings.DependencyEmbedding.Enabled;
-        _dependencyEmbeddingIncludes = settings.DependencyEmbedding.IncludePatterns?.ToList();
-        _dependencyEmbeddingExcludes = settings.DependencyEmbedding.ExcludePatterns?.ToList();
+        ReplaceAll(EmbeddingIncludes, settings.DependencyEmbedding.IncludePatterns);
+        ReplaceAll(EmbeddingExcludes, settings.DependencyEmbedding.ExcludePatterns);
 
         // Constant Encryption
         ConstantEncryptionEnabled = settings.ConstantEncryption.Enabled;
@@ -603,13 +688,24 @@ public partial class SettingsViewModel : ObservableObject
         SigningKeyFile = settings.Signing.KeyFile ?? string.Empty;
         SigningPasswordEnvironmentVariable = settings.Signing.PasswordEnvironmentVariable ?? string.Empty;
         PackingEnabled = settings.Packing.Enabled;
-        _packingRid = string.IsNullOrWhiteSpace(settings.Packing.Rid) ? "win-x64" : settings.Packing.Rid;
+        PackingRid = string.IsNullOrWhiteSpace(settings.Packing.Rid) ? "win-x64" : settings.Packing.Rid;
         VirtualizationEnabled = settings.Virtualization.Enabled;
         IncrementalEnabled = settings.Incremental.Enabled;
+        _customSnapshot = settings.Level == ObfuscationLevel.Custom ? settings.Clone() : null;
         }
         finally
         {
             _applyingPreset--;
         }
+    }
+
+    private static void ReplaceAll(ObservableCollection<string> target, IEnumerable<string>? values)
+    {
+        target.Clear();
+        if (values is null)
+            return;
+
+        foreach (var value in values)
+            target.Add(value);
     }
 }

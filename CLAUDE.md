@@ -115,12 +115,14 @@ obfy App.dll Lib.dll --merge -o output/
 
 The WPF desktop application provides a visual interface for obfuscation:
 
-- **Three-panel layout**: Settings (left), Files (center), Output (bottom)
-- **Drag-and-drop**: Drop .dll/.exe/.cs files or a .sln/.csproj; solutions expand into included outputs and skipped rows
+- **Layout**: Settings (left); compact output row (directory, browse, symbol-map toggle, symbol-map path); file list; tabs Output, Results, and Preview. A successful run selects Results. Preview decompiles only after a file is chosen
+- **Drag-and-drop**: The window accepts `.dll`, `.exe`, `.cs`, `.sln`, `.slnx`, `.csproj`, `.vbproj`, `.fsproj`, and `.json`. Solutions and projects expand into included outputs and skipped rows. A `.json` file loads that configuration
 - **Closed-set**: Obfuscate runs a closed set when two or more included assemblies are listed, or when files came from a session (Merge still wins)
-- **Level presets**: Minimal, Standard, Aggressive, or Custom
-- **Real-time progress**: Color-coded output logs
-- **Results view**: Statistics and symbol map export
+- **Empty output**: One file writes `*.obfuscated.*` next to the input. A closed set writes `obfy-out` next to the first input. Merge writes `*.obfuscated.*` next to the first input
+- **Level presets**: Minimal, Standard, Aggressive, or Custom. The closed combo shows the level name. Choosing Custom restores the snapshot taken when leaving Custom. Profile gates disable unavailable protections and keep the stored values
+- **Progress**: Indeterminate for one included file, a merge, and a closed set. Color-coded logs keep earlier runs and insert `———` when the log is not empty. Timestamps, auto-scroll, wrap, and problems-only are in the log-options menu
+- **Results**: `SymbolMapKey` nests members under the longest matching `Type:` name. Method keys include the signature (`Method:Ns.MyType.Foo(System.Void ())`). Zero counters are hidden
+- **Preferences**: `%APPDATA%\Obfy\ui-preferences.json` stores the last output folder and the symbol-map option (`OBFY_UI_PREFERENCES` overrides the path). A missing restored folder is cleared. A session `-o` path is not written as the default; editing the box clears that flag
 
 Tech stack: WPF-UI 4.3.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
 
@@ -181,7 +183,8 @@ Uses Autofac with module-based registration (`ObfuscationModule`).
 | `Obfy.Core/Pipeline/ObfuscationPipeline.cs` | Orchestrates obfuscator execution |
 | `Obfy.Core/Models/ObfySettings.cs` | Complete configuration model |
 | `Obfy.Console/Program.cs` | CLI entry point |
-| `Obfy.UI/Views/MainWindow.xaml` | UI main window (three-panel layout) |
+| `Obfy.UI/Views/MainWindow.xaml` | UI main window (settings, output row, files, Output/Results/Preview tabs) |
+| `Obfy.Core/Models/SymbolMapKey.cs` | Parses symbol-map keys for the Results tree |
 | `Obfy.UI/ViewModels/MainViewModel.cs` | UI orchestration and obfuscation logic |
 | `Obfy.UI/ViewModels/SettingsViewModel.cs` | UI settings binding to ObfySettings |
 | `package/AppxManifest.xml` | MSIX identity, full-trust capability, CLI alias |
@@ -213,7 +216,7 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 
 ## Data Storage
 
-- Settings: user-chosen `obfy.json` (`obfy config generate` / Save Configuration); UI prefs at `%APPDATA%\Obfy\ui-preferences.json`
+- Settings: user-chosen `obfy.json` (`obfy config generate` / Save Configuration); UI prefs at `%APPDATA%\Obfy\ui-preferences.json` (override with `OBFY_UI_PREFERENCES`). A session `-o` path is not saved
 - Logs: `%LOCALAPPDATA%\Obfy\Logs\`
 
 ## Code Reuse

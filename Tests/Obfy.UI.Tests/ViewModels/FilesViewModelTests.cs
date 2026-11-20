@@ -153,16 +153,30 @@ public class FilesViewModelTests : IDisposable
     [Fact]
     public void Constructor_LoadsLastOutputDirectoryFromSettings()
     {
-        // Arrange
         var mockSettings = new Mock<ISettingsService>();
-        mockSettings.Setup(s => s.LastOutputDirectory).Returns(@"C:\Output");
+        var output = Path.Combine(_tempDirectory, "saved-output");
+        Directory.CreateDirectory(output);
+        mockSettings.Setup(s => s.LastOutputDirectory).Returns(output);
         mockSettings.Setup(s => s.GenerateSymbolMap).Returns(false);
 
-        // Act
         var viewModel = new FilesViewModel(_mockFileDialogService.Object, mockSettings.Object);
 
-        // Assert
-        viewModel.OutputDirectory.ShouldBe(@"C:\Output");
+        viewModel.OutputDirectory.ShouldBe(output);
+        viewModel.OutputDirectoryWarning.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Constructor_MissingSavedOutputDirectory_ClearsPathAndWarns()
+    {
+        var mockSettings = new Mock<ISettingsService>();
+        var missing = Path.Combine(_tempDirectory, "missing-output");
+        mockSettings.Setup(s => s.LastOutputDirectory).Returns(missing);
+        mockSettings.Setup(s => s.GenerateSymbolMap).Returns(false);
+
+        var viewModel = new FilesViewModel(_mockFileDialogService.Object, mockSettings.Object);
+
+        viewModel.OutputDirectory.ShouldBeEmpty();
+        viewModel.OutputDirectoryWarning.ShouldContain(missing);
     }
 
     [Fact]
@@ -191,14 +205,16 @@ public class FilesViewModelTests : IDisposable
         viewModel.OutputDirectory.ShouldBe(string.Empty);
         viewModel.GenerateSymbolMap.ShouldBeFalse();
 
-        mockSettings.Setup(s => s.LastOutputDirectory).Returns(@"C:\Loaded\Output");
+        var loaded = Path.Combine(_tempDirectory, "loaded-output");
+        Directory.CreateDirectory(loaded);
+        mockSettings.Setup(s => s.LastOutputDirectory).Returns(loaded);
         mockSettings.Setup(s => s.GenerateSymbolMap).Returns(true);
 
         // Act
         viewModel.ApplyPreferences();
 
         // Assert
-        viewModel.OutputDirectory.ShouldBe(@"C:\Loaded\Output");
+        viewModel.OutputDirectory.ShouldBe(loaded);
         viewModel.GenerateSymbolMap.ShouldBeTrue();
         mockSettings.Verify(s => s.SavePreferencesAsync(), Times.Never);
     }
@@ -250,6 +266,22 @@ public class FilesViewModelTests : IDisposable
         _viewModel.Files.Count.ShouldBe(1);
         _viewModel.Files[0].FilePath.ShouldBe(dllPath);
         _viewModel.OutputDirectory.ShouldBe(output);
+    }
+
+    [Fact]
+    public async Task ApplyStartup_DoesNotPersistSessionOutputDirectory()
+    {
+        var output = Path.Combine(_tempDirectory, "session-out");
+        Directory.CreateDirectory(output);
+        _viewModel.ApplyStartup(new StartupCommandLine([], output));
+
+        await _viewModel.PersistPreferencesAsync();
+
+        _mockSettingsService.VerifySet(s => s.LastOutputDirectory = It.IsAny<string?>(), Times.Never);
+
+        var edited = Path.Combine(_tempDirectory, "edited-out");
+        _viewModel.OutputDirectory = edited;
+        _mockSettingsService.VerifySet(s => s.LastOutputDirectory = edited, Times.Once);
     }
 
     [Fact]
@@ -511,12 +543,12 @@ public class FilesViewModelTests : IDisposable
     }
 
     [Fact]
-    public void AddSourceFilesCommand_AddsCsFiles()
+    public void AddFilesCommand_AddsCsFiles()
     {
         var cs = CreateTestFile("Program.cs");
-        _mockFileDialogService.Setup(s => s.ShowOpenSourceDialog()).Returns(new[] { cs });
+        _mockFileDialogService.Setup(s => s.ShowOpenAssemblyDialog()).Returns(new[] { cs });
 
-        _viewModel.AddSourceFilesCommand.Execute(null);
+        _viewModel.AddFilesCommand.Execute(null);
 
         _viewModel.Files.Count.ShouldBe(1);
         _viewModel.Files[0].IsSourceFile.ShouldBeTrue();

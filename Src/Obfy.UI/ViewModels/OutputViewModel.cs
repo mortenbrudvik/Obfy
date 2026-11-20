@@ -28,6 +28,14 @@ public partial class OutputViewModel : ObservableObject
     [ObservableProperty]
     private bool _showTimestamps = true;
 
+    [ObservableProperty]
+    private bool _wrapLines;
+
+    [ObservableProperty]
+    private bool _problemsOnly;
+
+    public ObservableCollection<LogEntry> FilteredLogs { get; } = new();
+
     public OutputViewModel(
         IUiDispatcher dispatcher,
         IClipboardService clipboard,
@@ -45,7 +53,10 @@ public partial class OutputViewModel : ObservableObject
     {
         _dispatcher.Invoke(() =>
         {
-            Logs.Add(LogEntry.Create(message, level));
+            var entry = LogEntry.Create(message, level);
+            Logs.Add(entry);
+            if (IncludeLog(entry))
+                FilteredLogs.Add(entry);
         });
     }
 
@@ -79,7 +90,11 @@ public partial class OutputViewModel : ObservableObject
     /// </summary>
     public void Clear()
     {
-        _dispatcher.Invoke(Logs.Clear);
+        _dispatcher.Invoke(() =>
+        {
+            Logs.Clear();
+            FilteredLogs.Clear();
+        });
     }
 
     [RelayCommand]
@@ -89,27 +104,49 @@ public partial class OutputViewModel : ObservableObject
     /// Copies all log entries to the clipboard.
     /// </summary>
     [RelayCommand]
-    private void CopyLogs()
+    private void CopyLogs() => CopyEntries(Logs);
+
+    public void CopyEntries(IEnumerable<LogEntry>? entries)
     {
+        var list = entries?.ToList();
+        if (list is null || list.Count == 0)
+            list = Logs.ToList();
+
         var sb = new StringBuilder();
-        foreach (var log in Logs)
+        foreach (var log in list)
         {
             if (ShowTimestamps)
-            {
                 sb.AppendLine($"[{log.Timestamp:HH:mm:ss.fff}] [{log.Level}] {log.Message}");
-            }
             else
-            {
                 sb.AppendLine($"[{log.Level}] {log.Message}");
-            }
         }
+
         try
         {
             _clipboard.SetText(sb.ToString());
+            _notifications.Show("Copied log", list.Count == 1 ? "1 line" : $"{list.Count} lines", NotificationSeverity.Success);
         }
         catch (Exception ex) when (ex is ExternalException or InvalidOperationException)
         {
             _notifications.Show("Copy failed", ex.Message, NotificationSeverity.Error);
         }
+    }
+
+    partial void OnProblemsOnlyChanged(bool value)
+    {
+        FilteredLogs.Clear();
+        foreach (var entry in Logs)
+        {
+            if (IncludeLog(entry))
+                FilteredLogs.Add(entry);
+        }
+    }
+
+    private bool IncludeLog(LogEntry entry)
+    {
+        if (!ProblemsOnly)
+            return true;
+
+        return entry.Level is LogLevel.Error or LogLevel.Warning;
     }
 }

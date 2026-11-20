@@ -19,7 +19,6 @@
     <PackageReference Include="Autofac" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
     <PackageReference Include="WPF-UI" />
     <PackageReference Include="WPF-UI.Abstractions" />
     <PackageReference Include="WPF-UI.DependencyInjection" />
@@ -33,10 +32,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Obfy.Core\Obfy.Core.csproj" />
     <ProjectReference Include="..\Logging.Core\Logging.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <InternalsVisibleTo Include="Obfy.UI.Tests" />
   </ItemGroup>
 
 </Project>

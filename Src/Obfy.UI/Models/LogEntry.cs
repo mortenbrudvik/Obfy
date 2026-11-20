@@ -46,29 +46,4 @@ public class LogEntry
             Message = message
         };
     }
-
-    /// <summary>
-    /// Creates an info log entry.
-    /// </summary>
-    public static LogEntry Info(string message) => Create(message, LogLevel.Info);
-
-    /// <summary>
-    /// Creates a warning log entry.
-    /// </summary>
-    public static LogEntry Warning(string message) => Create(message, LogLevel.Warning);
-
-    /// <summary>
-    /// Creates an error log entry.
-    /// </summary>
-    public static LogEntry Error(string message) => Create(message, LogLevel.Error);
-
-    /// <summary>
-    /// Creates a success log entry.
-    /// </summary>
-    public static LogEntry Success(string message) => Create(message, LogLevel.Success);
-
-    /// <summary>
-    /// Creates a debug log entry.
-    /// </summary>
-    public static LogEntry Debug(string message) => Create(message, LogLevel.Debug);
 }

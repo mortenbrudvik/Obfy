@@ -47,7 +47,9 @@ public class ApplicationLaunchTests : TestBase
     public void MainWindow_Has_Output_Panel_Controls()
     {
         FindById("LogListBox").ShouldNotBeNull("LogListBox should exist");
-        FindById("AutoScrollToggle").ShouldNotBeNull("AutoScrollToggle should exist");
+        FindById("LogOptionsButton").ShouldNotBeNull("LogOptionsButton should exist");
+        OpenLogOptions();
+        FindLogOption("AutoScrollToggle").ShouldNotBeNull("AutoScrollToggle should exist");
         FindById("ClearLogsButton").ShouldNotBeNull("ClearLogsButton should exist");
         FindById("CopyLogsButton").ShouldNotBeNull("CopyLogsButton should exist");
     }

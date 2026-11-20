@@ -10,10 +10,9 @@ namespace Obfy.UI.Services;
 /// </summary>
 public class SettingsService : ISettingsService
 {
-    private readonly string _preferencesPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Obfy",
-        "ui-preferences.json");
+    public const string PreferencesPathVariable = "OBFY_UI_PREFERENCES";
+
+    private readonly string _preferencesPath;
 
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -25,8 +24,26 @@ public class SettingsService : ISettingsService
     private readonly object _preferencesLock = new();
 
     public SettingsService(ILogger<SettingsService> logger)
+        : this(logger, ResolvePreferencesPath())
+    {
+    }
+
+    public SettingsService(ILogger<SettingsService> logger, string preferencesPath)
     {
         _logger = logger;
+        _preferencesPath = preferencesPath;
+    }
+
+    public static string ResolvePreferencesPath()
+    {
+        var overridePath = Environment.GetEnvironmentVariable(PreferencesPathVariable);
+        if (!string.IsNullOrWhiteSpace(overridePath))
+            return overridePath;
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Obfy",
+            "ui-preferences.json");
     }
 
     public string? LastOutputDirectory { get; set; }

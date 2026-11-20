@@ -19,8 +19,8 @@
             <!-- Converters -->
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
             <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
-            <converters:LevelToColorConverter x:Key="LevelToColorConverter"/>
             <converters:SymbolTypeToIconConverter x:Key="SymbolTypeToIconConverter"/>
+            <converters:FileStatusToBrushConverter x:Key="FileStatusToBrushConverter"/>
             <converters:EnumDescriptionConverter x:Key="EnumDescriptionConverter"/>
             <converters:FileStatusToIconConverter x:Key="FileStatusToIconConverter"/>
             <converters:FileKindToIconConverter x:Key="FileKindToIconConverter"/>

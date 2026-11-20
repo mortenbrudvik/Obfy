@@ -33,11 +33,14 @@ public class SmokeTests : TestBase
         FindById("LevelSelector").ShouldNotBeNull();
         FindById("StringEncryptionToggle").ShouldNotBeNull();
         FindById("LogListBox").ShouldNotBeNull();
-        FindById("AutoScrollToggle").ShouldNotBeNull();
-        FindById("ShowTimestampsToggle").ShouldNotBeNull();
+        FindById("LogOptionsButton").ShouldNotBeNull();
+        OpenLogOptions();
+        FindLogOption("AutoScrollToggle").ShouldNotBeNull();
+        FindLogOption("ShowTimestampsToggle").ShouldNotBeNull();
         FindById("ClearLogsButton").ShouldNotBeNull();
         FindById("CopyLogsButton").ShouldNotBeNull();
         FindById("StatusMessage").ShouldNotBeNull();
+        FindById("StatusMessage")!.Name.ShouldBe("Add at least one included file.");
         FindById("FileCount").ShouldNotBeNull();
 
         FindById("ObfuscateButton")!.AsButton().IsEnabled.ShouldBeFalse();

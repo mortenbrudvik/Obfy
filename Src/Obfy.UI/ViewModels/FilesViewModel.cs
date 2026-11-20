@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Xml;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -21,6 +22,8 @@ public partial class FilesViewModel : ObservableObject
     private readonly ILogger<FilesViewModel>? _logger;
     private readonly IUserNotificationService? _notifications;
     private bool _suppressPreferenceSave;
+    private bool _sessionOutputOverride;
+    private int _preferenceVersion;
     private Task _preferenceSave = Task.CompletedTask;
 
     /// <summary>
@@ -36,6 +39,9 @@ public partial class FilesViewModel : ObservableObject
 
     [ObservableProperty]
     private string _symbolMapPath = string.Empty;
+
+    [ObservableProperty]
+    private string _outputDirectoryWarning = string.Empty;
 
     /// <summary>
     /// Gets whether there are files in the list.
@@ -53,24 +59,28 @@ public partial class FilesViewModel : ObservableObject
     public bool HasIncludedFiles =>
         Files.Any(f => f.IsIncluded && (f.IsAssembly || f.IsSourceFile));
 
+    private readonly IClipboardService? _clipboard;
+
     public FilesViewModel(
         IFileDialogService fileDialogService,
         ISettingsService settingsService,
         ISolutionAnalyzer? solutionAnalyzer = null,
         ILogger<FilesViewModel>? logger = null,
-        IUserNotificationService? notifications = null)
+        IUserNotificationService? notifications = null,
+        IClipboardService? clipboard = null)
     {
         _fileDialogService = fileDialogService;
         _settingsService = settingsService;
         _solutionAnalyzer = solutionAnalyzer;
         _logger = logger;
         _notifications = notifications;
+        _clipboard = clipboard;
 
         _suppressPreferenceSave = true;
         try
         {
-            OutputDirectory = _settingsService.LastOutputDirectory ?? string.Empty;
             GenerateSymbolMap = _settingsService.GenerateSymbolMap;
+            AssignStoredOutputDirectory(_settingsService.LastOutputDirectory);
         }
         finally
         {
@@ -95,8 +105,8 @@ public partial class FilesViewModel : ObservableObject
         _suppressPreferenceSave = true;
         try
         {
-            OutputDirectory = _settingsService.LastOutputDirectory ?? string.Empty;
             GenerateSymbolMap = _settingsService.GenerateSymbolMap;
+            AssignStoredOutputDirectory(_settingsService.LastOutputDirectory);
         }
         finally
         {
@@ -109,9 +119,13 @@ public partial class FilesViewModel : ObservableObject
     /// </summary>
     public Task PersistPreferencesAsync()
     {
-        _settingsService.LastOutputDirectory = string.IsNullOrWhiteSpace(OutputDirectory)
-            ? null
-            : OutputDirectory;
+        if (!_sessionOutputOverride)
+        {
+            _settingsService.LastOutputDirectory = string.IsNullOrWhiteSpace(OutputDirectory)
+                ? null
+                : OutputDirectory;
+        }
+
         _settingsService.GenerateSymbolMap = GenerateSymbolMap;
         return _settingsService.SavePreferencesAsync();
     }
@@ -120,13 +134,6 @@ public partial class FilesViewModel : ObservableObject
     private void AddFiles()
     {
         var files = _fileDialogService.ShowOpenAssemblyDialog();
-        AddFilesInternal(files);
-    }
-
-    [RelayCommand]
-    private void AddSourceFiles()
-    {
-        var files = _fileDialogService.ShowOpenSourceDialog();
         AddFilesInternal(files);
     }
 
@@ -173,11 +180,109 @@ public partial class FilesViewModel : ObservableObject
             HandleFileDrop(parsed.Files.ToArray());
 
         if (!string.IsNullOrWhiteSpace(parsed.OutputDirectory))
-            OutputDirectory = parsed.OutputDirectory;
+        {
+            _suppressPreferenceSave = true;
+            try
+            {
+                OutputDirectoryWarning = string.Empty;
+                OutputDirectory = parsed.OutputDirectory;
+            }
+            finally
+            {
+                _suppressPreferenceSave = false;
+            }
+
+            _sessionOutputOverride = true;
+        }
+    }
+
+    public void RemoveFiles(IEnumerable<AssemblyFile> files)
+    {
+        foreach (var file in files.ToList())
+            Files.Remove(file);
+    }
+
+    [RelayCommand]
+    private void OpenOutput(AssemblyFile? file) => Reveal(file, selectFile: false);
+
+    [RelayCommand]
+    private void RevealOutput(AssemblyFile? file) => Reveal(file, selectFile: true);
+
+    private void Reveal(AssemblyFile? file, bool selectFile)
+    {
+        var path = file?.OutputPath;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            _notifications?.Show("No output yet", file?.FileName ?? "This file has no output path.", NotificationSeverity.Warning);
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(path) && selectFile)
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{path}\"",
+                    UseShellExecute = true
+                });
+                return;
+            }
+
+            var directory = File.Exists(path) ? Path.GetDirectoryName(path) : path;
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            {
+                _notifications?.Show("Output folder not found", path, NotificationSeverity.Warning);
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = directory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            _notifications?.Show("Could not open output", ex.Message, NotificationSeverity.Error);
+        }
+    }
+
+    [RelayCommand]
+    private void CopyFilePath(AssemblyFile? file)
+    {
+        var path = file?.OutputPath ?? file?.FilePath;
+        if (string.IsNullOrWhiteSpace(path) || _clipboard is null)
+            return;
+
+        try
+        {
+            _clipboard.SetText(path);
+            _notifications?.Show("Copied path", path, NotificationSeverity.Success);
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
+        {
+            _notifications?.Show("Copy failed", ex.Message, NotificationSeverity.Error);
+        }
     }
 
     public static bool CanAcceptDrop(IEnumerable<string>? paths)
-        => paths != null && paths.Any(IsSupportedInputPath);
+        => paths != null && paths.Any(path => IsSupportedInputPath(path) || IsConfigPath(path));
+
+    public static bool IsConfigPath(string path)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(path)
+                && File.Exists(path)
+                && Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException)
+        {
+            return false;
+        }
+    }
 
     public static bool IsSupportedInputPath(string path)
     {
@@ -299,6 +404,8 @@ public partial class FilesViewModel : ObservableObject
         if (_suppressPreferenceSave)
             return;
 
+        _sessionOutputOverride = false;
+        OutputDirectoryWarning = string.Empty;
         _settingsService.LastOutputDirectory = string.IsNullOrWhiteSpace(value) ? null : value;
         QueuePreferenceSave();
     }
@@ -312,9 +419,46 @@ public partial class FilesViewModel : ObservableObject
         QueuePreferenceSave();
     }
 
+    private void AssignStoredOutputDirectory(string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && !Directory.Exists(value))
+        {
+            OutputDirectoryWarning = $"Saved output directory was not found: {value}";
+            OutputDirectory = string.Empty;
+            return;
+        }
+
+        OutputDirectoryWarning = string.Empty;
+        OutputDirectory = value ?? string.Empty;
+    }
+
     private void QueuePreferenceSave()
     {
-        _preferenceSave = SavePreferencesSafeAsync();
+        if (System.Windows.Application.Current is null)
+        {
+            _preferenceSave = SavePreferencesSafeAsync();
+            return;
+        }
+
+        var version = ++_preferenceVersion;
+        _preferenceSave = SavePreferencesDebouncedAsync(version);
+    }
+
+    private async Task SavePreferencesDebouncedAsync(int version)
+    {
+        try
+        {
+            await Task.Delay(300);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (version != _preferenceVersion)
+            return;
+
+        await SavePreferencesSafeAsync();
     }
 
     private async Task SavePreferencesSafeAsync()

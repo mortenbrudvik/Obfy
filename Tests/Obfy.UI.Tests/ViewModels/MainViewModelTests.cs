@@ -169,7 +169,8 @@ public class MainViewModelTests : IDisposable
         _viewModel.Output.Logs.ShouldContain(l => l.Level == Obfy.UI.Models.LogLevel.Success);
         _reportService.Verify(s => s.BuildReport(It.IsAny<ObfuscationResult>(), It.IsAny<ObfySettings>()), Times.Once);
         VerifySnackbar(ControlAppearance.Success, "complete");
-        _viewModel.Results.HasPreviewError.ShouldBeTrue();
+        _viewModel.Results.HasPreviewError.ShouldBeFalse();
+        _viewModel.Results.PreviewText.ShouldBeEmpty();
     }
 
     [Fact]
@@ -193,7 +194,10 @@ public class MainViewModelTests : IDisposable
         await _viewModel.ObfuscateCommand.ExecuteAsync(null);
 
         _viewModel.ShowResultsPanel.ShouldBeTrue();
+        _viewModel.Results.PreviewPaths.ShouldContain(dll);
         _viewModel.Results.PreviewError.ShouldBeNull();
+        _viewModel.Results.PreviewText.ShouldBeEmpty();
+        _viewModel.Results.SelectedPreviewPath = dll;
         _viewModel.Results.PreviewText.ShouldNotBeEmpty();
         _viewModel.Results.HasPreview.ShouldBeTrue();
     }
@@ -281,13 +285,15 @@ public class MainViewModelTests : IDisposable
     [Fact]
     public async Task InitializeAsync_LoadsAndAppliesPreferences()
     {
-        _settingsService.Setup(s => s.LastOutputDirectory).Returns(@"C:\Out");
+        var output = Path.Combine(_tempDirectory, "saved-out");
+        Directory.CreateDirectory(output);
+        _settingsService.Setup(s => s.LastOutputDirectory).Returns(output);
         _settingsService.Setup(s => s.GenerateSymbolMap).Returns(true);
 
         await _viewModel.InitializeAsync();
 
         _settingsService.Verify(s => s.LoadPreferencesAsync(), Times.Once);
-        _viewModel.Files.OutputDirectory.ShouldBe(@"C:\Out");
+        _viewModel.Files.OutputDirectory.ShouldBe(output);
         _viewModel.Files.GenerateSymbolMap.ShouldBeTrue();
     }
 

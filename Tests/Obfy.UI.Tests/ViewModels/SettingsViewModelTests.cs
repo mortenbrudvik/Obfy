@@ -344,6 +344,23 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void SelectingCustom_RestoresChoicesFromBeforeThePreset()
+    {
+        var viewModel = new SettingsViewModel();
+        viewModel.ControlFlowEnabled = true;
+
+        viewModel.Level = ObfuscationLevel.Minimal;
+        viewModel.ControlFlowEnabled.ShouldBeFalse();
+        viewModel.StringEncryptionEnabled.ShouldBeFalse();
+
+        viewModel.Level = ObfuscationLevel.Standard;
+        viewModel.Level = ObfuscationLevel.Custom;
+
+        viewModel.ControlFlowEnabled.ShouldBeTrue();
+        viewModel.StringEncryptionEnabled.ShouldBeTrue();
+    }
+
+    [Fact]
     public void ToObfySettings_ConvertsLevel()
     {
         // Arrange

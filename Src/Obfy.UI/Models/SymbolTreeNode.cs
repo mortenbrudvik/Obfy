@@ -13,7 +13,8 @@ public enum SymbolType
     Method,
     Field,
     Property,
-    Parameter
+    Parameter,
+    Event
 }
 
 /// <summary>
@@ -39,11 +40,6 @@ public partial class SymbolTreeNode : ObservableObject
     public ObservableCollection<SymbolTreeNode> Children { get; } = new();
 
     public override string ToString() => $"{OriginalName} -> {ObfuscatedName}";
-
-    /// <summary>
-    /// Gets whether this node has children.
-    /// </summary>
-    public bool HasChildren => Children.Count > 0;
 
     /// <summary>
     /// Creates a new symbol tree node.

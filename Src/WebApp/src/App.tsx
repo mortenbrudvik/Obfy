@@ -1,34 +1,37 @@
 import { useState } from "react";
+import { FIRST_GUIDE_TOPIC } from "./content/guideContent";
 import FilesPage from "./features/files/FilesPage";
+import GuidePage from "./features/guide/GuidePage";
 import ProtectionPage from "./features/protection/ProtectionPage";
 import ResultsPage from "./features/results/ResultsPage";
 import Shell from "./features/shell/Shell";
 import type { Screen } from "./features/shell/Sidebar";
 
-function GuidePlaceholder() {
-  return (
-    <div className="placeholder-screen">
-      <h1 className="title">Guide</h1>
-      <p className="sub">How Obfy works, and the keyboard shortcuts.</p>
-    </div>
-  );
-}
-
-/** The shell hosting the current screen. Files, Protection and Results are built; the Guide is a placeholder until its task fills it in. */
+/** The shell hosting the current screen. The Guide opens at its first topic from the sidebar and F1, and at a given topic from a "Read more" link. */
 export default function App() {
   const [screen, setScreen] = useState<Screen>("files");
+  const [guideTopic, setGuideTopic] = useState(FIRST_GUIDE_TOPIC);
+
+  const navigate = (next: Screen) => {
+    // Opening the Guide from elsewhere starts at its first topic; asking for it while it is open leaves the reader where they are.
+    if (next === "guide" && screen !== "guide") setGuideTopic(FIRST_GUIDE_TOPIC);
+    setScreen(next);
+  };
+  const openGuide = (topic: string) => {
+    setGuideTopic(topic);
+    setScreen("guide");
+  };
 
   return (
-    <Shell screen={screen} onNavigate={setScreen}>
+    <Shell screen={screen} onNavigate={navigate}>
       {screen === "files" ? (
         <FilesPage />
       ) : screen === "protection" ? (
-        // The Guide opens at its first topic until it takes a topic of its own.
-        <ProtectionPage onOpenGuide={() => setScreen("guide")} />
+        <ProtectionPage onOpenGuide={openGuide} />
       ) : screen === "results" ? (
         <ResultsPage />
       ) : (
-        <GuidePlaceholder />
+        <GuidePage topic={guideTopic} onTopicChange={setGuideTopic} />
       )}
     </Shell>
   );

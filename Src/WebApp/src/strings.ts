@@ -64,6 +64,10 @@ export const strings = {
       config: "Could not open the configuration",
     },
   },
+  guide: {
+    title: "Guide",
+    topics: "Guide topics",
+  },
   protection: {
     title: "Protection",
     unreachable: "Could not read the protection settings.",

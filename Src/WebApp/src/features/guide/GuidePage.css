@@ -1,0 +1,17 @@
+/* The Guide screen, lifted from the approved mockup (Guide). Colours come from the tokens in index.css. */
+
+.guide { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; }
+.topics { display: flex; flex-direction: column; gap: 2px; align-self: start; }
+.topics-title { padding: 0 12px 8px; }
+.topic { padding: 7px 12px; text-align: left; background: none; border: 0; border-radius: 6px; color: var(--muted); }
+.topic:hover { background: var(--hover); }
+.topic[aria-current="true"] { color: var(--strong); font-weight: 600; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.article { max-width: 66ch; display: flex; flex-direction: column; gap: 12px; }
+.article h2 { font-size: 20px; font-weight: 600; color: var(--strong); }
+.article h3 { font-size: 14px; font-weight: 600; color: var(--strong); margin-top: 6px; }
+.article p, .article li { font-size: 14px; }
+.article ul { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.keyrow { display: inline-flex; align-items: center; gap: 3px; }
+.keys { width: 100%; border-collapse: collapse; }
+.keys td { padding: 8px 0; border-bottom: 1px solid var(--hair); font-size: 13px; }
+.keys td:first-child { width: 150px; }

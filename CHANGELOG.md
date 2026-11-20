@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded); per-build opcode permutation + XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset; deterrent, not confidentiality
 
 ### Fixed
+- The Windows CI job runs the FlaUI smoke tests against the Release build
 - Pull requests run the NativeAOT platform test, and the platform job fails when a platform test is skipped
 - NuGet publish rebuilds the native host before packing, and CI fails when that host's sources do not match the committed stamp
 - CI and publish pin third-party actions to commit SHAs, and Dependabot updates those actions

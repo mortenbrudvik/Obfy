@@ -114,7 +114,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 | QT-01 | Console CLI tests | P1 | Medium | High | ✅ Done |
 | QT-02 | ViewModel unit tests | P2 | Medium | Medium | ✅ Done |
 | QT-03 | Code coverage CI | P2 | Low | Medium | Partial — workflow + 80% warning exist; [TR-03](Testing-Roadmap.md) confirms they run on GitHub Actions |
-| QT-04 | UI automation tests | P3 | High | Low | ✅ Done (local FlaUI; `Category=UI`, skipped in CI) |
+| QT-04 | UI automation tests | P3 | High | Low | ✅ Done (`Category=UI` on the Windows CI job; default `dotnet test` still skips it) |
 | QT-05 | Aggressive pipeline e2e (compile → run) | P0 | Medium | High | ✅ Done (1.3.0) |
 | QT-06 | Decompiler-resistance fixtures | P0 | Medium | High | ✅ Done |
 | QT-07 | Scenario / SDK project tests | P1 | Medium | High | ✅ Done (Phases 1–5 — [Testing-Roadmap.md](Testing-Roadmap.md)) |
@@ -133,7 +133,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 
 ### Testing: remaining coverage gaps
 
-Engine + SDK fixtures (WPF, console, WinForms, examples, merge, Unity stub) run on default CI. FlaUI is local-only (`QT-04`, `Category=UI`). Coverage CI is wired (`QT-03`). Platform job is weekly (Blazor WASM, NativeAOT, MAUI Windows when the workload is present). Remaining: Unity Development Player, MAUI iOS/Android, VS hive / Rider UI. Plan: [Testing-Roadmap.md](Testing-Roadmap.md).
+Engine + SDK fixtures (WPF, console, WinForms, examples, merge, Unity stub) run on default CI. FlaUI (`QT-04`, `Category=UI`) runs on the Windows CI job. Coverage CI is wired (`QT-03`). Platform tests run from `platform.yml` (NativeAOT on pull requests; the full set weekly). Remaining: Unity Development Player, MAUI iOS/Android, VS hive / Rider UI. Plan: [Testing-Roadmap.md](Testing-Roadmap.md).
 
 ### PS-01 / PS-02 / PS-03: real platform tests
 

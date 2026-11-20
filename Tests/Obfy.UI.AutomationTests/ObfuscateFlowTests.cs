@@ -43,7 +43,7 @@ public class ObfuscateFlowTests : IDisposable
         obfuscate.Click();
 
         var expected = Path.Combine(outputDir, Path.GetFileName(dll));
-        WaitUntil(() => File.Exists(expected), TimeSpan.FromSeconds(60), $"obfuscated output not written: {expected}");
+        WaitUntil(() => OutputHasBytes(expected), TimeSpan.FromSeconds(60), $"obfuscated output not written: {expected}");
         new FileInfo(expected).Length.ShouldBeGreaterThan(0);
     }
 
@@ -94,6 +94,18 @@ public class ObfuscateFlowTests : IDisposable
         var dll = Path.Combine(workDir, "bin", "Release", "net10.0", "Lib.dll");
         File.Exists(dll).ShouldBeTrue(dll);
         return dll;
+    }
+
+    private static bool OutputHasBytes(string path)
+    {
+        try
+        {
+            return File.Exists(path) && new FileInfo(path).Length > 0;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     private static void WaitUntil(Func<bool> condition, TimeSpan timeout, string message)

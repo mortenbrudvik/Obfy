@@ -6,7 +6,8 @@ namespace Obfy.UI.AutomationTests;
 
 /// <summary>
 /// Base class for UI automation tests providing app launch and window access.
-/// FlaUI tests are Category=UI: skipped by default <c>dotnet test</c> / CI.
+/// FlaUI tests are Category=UI. Default <c>dotnet test</c> skips them.
+/// The Windows CI job runs this category against the Release build.
 /// </summary>
 [Trait("Category", "UI")]
 public abstract class TestBase : IDisposable

@@ -183,8 +183,8 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 | Coverage | same as default | Always (80% *warning*, not a hard fail; PR comment is best-effort) |
 | Linux CLI | `Obfy.Console.Tests` | Always (`ci.yml` `linux-cli` on `ubuntu-latest`) |
 | Rider | Gradle `test` | Always (`ci.yml` `rider-tests`) |
-| UI | `Category=UI` | Local only (no nightly workflow) |
-| Platform | `Category=Platform` | `.github/workflows/platform.yml` (weekly Monday + `workflow_dispatch`); MAUI skips if the workload is missing |
+| UI | `Category=UI` | Windows `ci.yml` `build` job, after the default suite |
+| Platform | `Category=Platform` | `platform.yml`: NativeAOT on pull requests; full set weekly and on `workflow_dispatch`. A skipped test fails the job |
 
 `Obfy.ScenarioTests` (minus `Category=Platform`) runs in the default job. There is no separate `Category=Scenario` job.
 

@@ -97,10 +97,11 @@ public class SmokeTests : TestBase
         FindById("MethodEncryptionToggle").ShouldNotBeNull();
 
         ExpandNamed("Watermark");
-        FindById("WatermarkToggle").ShouldNotBeNull();
+        EnsureOn("WatermarkToggle");
         FindById("WatermarkIdBox").ShouldNotBeNull();
 
         ExpandNamed("Protection");
+        EnsureOn("AntiDecompilerToggle");
         FindById("AddDecoyAttributesCheck").ShouldNotBeNull();
 
         ExpandNamed("Assembly Merge");
@@ -140,6 +141,19 @@ public class SmokeTests : TestBase
                     return false;
                 }
             });
+    }
+
+    private void EnsureOn(string automationId)
+    {
+        var element = FindById(automationId);
+        element.ShouldNotBeNull();
+        var pattern = element.Patterns.Toggle.PatternOrDefault;
+        pattern.ShouldNotBeNull();
+        if (pattern.ToggleState.Value != ToggleState.On)
+        {
+            pattern.Toggle();
+            Thread.Sleep(200);
+        }
     }
 
     private void ExpandNamed(string name)

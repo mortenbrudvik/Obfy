@@ -127,6 +127,14 @@ jobs:
           Write-Host "::warning::Coverage $pct% is below 80% threshold (warning only; not a hard fail)"
         }
 
+    # windows-latest has an interactive session. Default dotnet test still
+    # excludes Category=UI; this step is the opt-in run against the Release exe.
+    - name: UI tests
+      shell: pwsh
+      run: |
+        dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --no-build -c Release --filter "Category=UI" --nologo
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   linux-cli:
     runs-on: ubuntu-latest
     permissions:

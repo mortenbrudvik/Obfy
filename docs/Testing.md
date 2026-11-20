@@ -1,6 +1,6 @@
 # Testing Guide
 
-How to run and extend the current suite. Remaining gaps (Unity Development Player, MAUI iOS/Android, FlaUI local-only) are in [Testing-Roadmap.md](Testing-Roadmap.md).
+How to run and extend the current suite. Remaining gaps (Unity Development Player, MAUI iOS/Android) are in [Testing-Roadmap.md](Testing-Roadmap.md).
 
 ## Overview
 
@@ -11,7 +11,7 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 | Obfy.Tests | 574 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures, schema contract, and Settings.Core validation of `ObfySettings` |
 | Obfy.Console.Tests | 160 | CLI parsing (`CommandParsingTests`, `SolutionInputTests`), `Program.Main` process tests, wizard file write |
 | Obfy.UI.Tests | 179 | ViewModel unit tests, Help catalog, startup CLI apply, and XAML contrast/theme checks |
-| Obfy.UI.AutomationTests | 29 | 6 locator unit tests (CI) + 23 FlaUI live-window tests (`Category=UI`, local) |
+| Obfy.UI.AutomationTests | 29 | 6 locator unit tests (default CI) + 23 FlaUI live-window tests (`Category=UI`, Windows CI job) |
 | Obfy.ScenarioTests | 16 | 13 default SDK fixtures (Unity stub + merge + merge-then-obfuscate) + 3 `Category=Platform` |
 | Obfy.VisualStudio.Tests | 26 | VS settings JSON, settings dialog ViewModel, CLI argv, in-place copy, output-assembly locator, CLI path locator (no VS hive) |
 | Obfy.Rider (Gradle) | 17 | JVM unit tests for settings, CLI argv, assembly locator (CI job `rider-tests`) |
@@ -26,7 +26,7 @@ Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForm
 
 ## Running Tests
 
-Default `dotnet test` (and CI) skip `Category=UI` and `Category=Platform`. FlaUI needs an interactive desktop and a built `ObfyUI.exe`; it is opt-in.
+Default `dotnet test` skips `Category=UI` and `Category=Platform`. The Windows CI job runs `Category=UI` after that default suite. FlaUI needs an interactive session and a built `ObfyUI.exe`.
 
 ### Default (CI / every PR)
 
@@ -46,7 +46,7 @@ dotnet test Tests/Obfy.VisualStudio.Tests
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 ```
 
-The AutomationTests project still runs locator unit tests under the default filter. FlaUI cases stay skipped.
+The AutomationTests project still runs locator unit tests under the default filter. The Windows CI job runs the FlaUI cases with `--filter Category=UI`.
 
 ### FlaUI (local, interactive desktop)
 
@@ -269,8 +269,8 @@ PRs and pushes to `main` run `.github/workflows/ci.yml`:
 
 | Job | What |
 |-----|------|
-| `build` | Windows `dotnet test -c Release` with `Category!=UI&Category!=Platform` and `coverage.runsettings`. Coverage report + 80% **warning** (not a hard fail). Sticky PR comment is best-effort (`continue-on-error`, same-repo PRs only). |
+| `build` | Windows `dotnet test -c Release` with `Category!=UI&Category!=Platform` and `coverage.runsettings`. Coverage report + 80% **warning** (not a hard fail). Sticky PR comment is best-effort (`continue-on-error`, same-repo PRs only). The same job then runs `Category=UI`. |
 | `linux-cli` | Ubuntu `dotnet test Tests/Obfy.Console.Tests` (cross-platform CLI claim). |
 | `rider-tests` | `./gradlew test` (JDK 21). |
 
-FlaUI (`Category=UI`) is local-only — GitHub-hosted Windows runners have no interactive desktop, so there is no nightly UI workflow. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml` (weekly Monday + `workflow_dispatch`; 45-minute job timeout). `dotnet new maui` is allowed 180s because the first run restores the template pack. See [Testing-Roadmap.md](Testing-Roadmap.md).
+FlaUI (`Category=UI`) runs on the Windows `build` job after the default suite. That runner's session is interactive, so the smoke tests can launch `ObfyUI.exe`. Default `dotnet test` still skips `Category=UI`, so a local run does not open the window. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml`: NativeAOT on pull requests, and the full set on the weekly schedule and `workflow_dispatch`. A skipped platform test fails that job. `dotnet new maui` is allowed 180s because the first run restores the template pack. See [Testing-Roadmap.md](Testing-Roadmap.md).

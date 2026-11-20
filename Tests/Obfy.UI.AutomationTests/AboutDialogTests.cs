@@ -14,9 +14,11 @@ public class AboutDialogTests : TestBase
     {
         var aboutButton = FindById("AboutButton")?.AsButton();
         aboutButton.ShouldNotBeNull();
+        aboutButton.Focus();
         aboutButton.Click();
 
-        var title = WaitForName("About Obfy", TimeSpan.FromSeconds(5));
+        var title = WaitForName("About Obfy", TimeSpan.FromSeconds(2))
+            ?? RetryClick(aboutButton);
         title.ShouldNotBeNull("About ContentDialog should open in the main window");
 
         CloseAbout();
@@ -27,13 +29,21 @@ public class AboutDialogTests : TestBase
     {
         var aboutButton = FindById("AboutButton")?.AsButton();
         aboutButton.ShouldNotBeNull();
+        aboutButton.Focus();
         aboutButton.Click();
 
-        WaitForName("About Obfy", TimeSpan.FromSeconds(5)).ShouldNotBeNull();
+        (WaitForName("About Obfy", TimeSpan.FromSeconds(2)) ?? RetryClick(aboutButton)).ShouldNotBeNull();
         CloseAbout();
         Thread.Sleep(400);
 
         MainWindow.FindFirstDescendant(cf => cf.ByName("About Obfy")).ShouldBeNull();
+    }
+
+    private AutomationElement? RetryClick(Button button)
+    {
+        button.Focus();
+        button.Click();
+        return WaitForName("About Obfy", TimeSpan.FromSeconds(5));
     }
 
     private AutomationElement? WaitForName(string name, TimeSpan timeout)

@@ -102,7 +102,7 @@ public class AntiDecompilerObfuscator : IObfuscator
     }
 
     /// <summary>
-    /// Adds the SuppressIldasm attribute to the assembly to block ILDasm.
+    /// Adds the SuppressIldasm attribute. Current disassemblers (ILDasm, ILSpy, dnSpy) ignore it.
     /// </summary>
     private bool InjectSuppressIldasmAttribute(ModuleDef module)
     {
@@ -302,7 +302,7 @@ public class AntiDecompilerObfuscator : IObfuscator
 
         // Create a loop-like structure
         var loopStart = Instruction.Create(OpCodes.Ldloc_0);
-        var loopEnd = Instruction.Create(OpCodes.Ldloc_2);
+        var loopEnd = Instruction.Create(OpCodes.Ldloc_1);
 
         instructions.Add(loopStart);
         instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
@@ -325,9 +325,8 @@ public class AntiDecompilerObfuscator : IObfuscator
         // Loop back
         instructions.Add(Instruction.Create(OpCodes.Br_S, loopStart));
 
-        // After loop
+        // After loop: loc2 = loc1; return loc2 & 0xFF. The branch target must not push an extra value.
         instructions.Add(loopEnd);
-        instructions.Add(Instruction.Create(OpCodes.Ldloc_1));
         instructions.Add(Instruction.Create(OpCodes.Stloc_2));
 
         // Some conditional logic

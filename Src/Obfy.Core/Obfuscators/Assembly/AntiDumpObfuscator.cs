@@ -265,10 +265,11 @@ public class AntiDumpObfuscator : IObfuscator
         body.Variables.Add(dirBaseLocal);
 
         var tryStart = Instruction.Create(OpCodes.Ldtoken, declaringType);
-        var afterTry = Instruction.Create(OpCodes.Call, neutralize);
+        var neutralizeCall = Instruction.Create(OpCodes.Call, neutralize);
         var ret = Instruction.Create(OpCodes.Ret);
         var catchPop = Instruction.Create(OpCodes.Pop);
-        var leaveEnd = Instruction.Create(OpCodes.Leave, afterTry);
+        var leaveEnd = Instruction.Create(OpCodes.Leave, neutralizeCall);
+        var catchNeutralize = Instruction.Create(OpCodes.Pop);
 
         body.Instructions.Add(tryStart);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
@@ -347,8 +348,14 @@ public class AntiDumpObfuscator : IObfuscator
         body.Instructions.Add(leaveEnd);
 
         body.Instructions.Add(catchPop);
-        body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));
-        body.Instructions.Add(afterTry);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, neutralizeCall));
+        // NeutralizeDumpers loads dbghelp and RuntimeInformation. A missing library or
+        // architecture helper must not fail the module initializer. The call still runs
+        // after the PE wipe, including when that wipe leaves early.
+        body.Instructions.Add(neutralizeCall);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, ret));
+        body.Instructions.Add(catchNeutralize);
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, ret));
         body.Instructions.Add(ret);
 
         body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
@@ -356,7 +363,15 @@ public class AntiDumpObfuscator : IObfuscator
             TryStart = tryStart,
             TryEnd = catchPop,
             HandlerStart = catchPop,
-            HandlerEnd = afterTry,
+            HandlerEnd = neutralizeCall,
+            CatchType = module.CorLibTypes.Object.ToTypeDefOrRef()
+        });
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+        {
+            TryStart = neutralizeCall,
+            TryEnd = catchNeutralize,
+            HandlerStart = catchNeutralize,
+            HandlerEnd = ret,
             CatchType = module.CorLibTypes.Object.ToTypeDefOrRef()
         });
 

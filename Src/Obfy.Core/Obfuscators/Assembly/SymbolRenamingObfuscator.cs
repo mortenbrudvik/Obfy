@@ -85,7 +85,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                         {
                             var newName = _nameGenerator.Generate(method.Name, settings.Mode);
                             methodRenames[method] = newName;
-                            context.SymbolMap[$"Method:{type.FullName}.{method.Name}"] = newName;
+                            context.SymbolMap[MethodSymbolKey(type, method)] = newName;
                         }
                     }
                 }
@@ -152,6 +152,8 @@ public class SymbolRenamingObfuscator : IObfuscator
                 }
             }
 
+            var runtimeNames = SnapshotRuntimeNames(module);
+
             // Apply renames
             foreach (var (type, newName) in typeRenames)
             {
@@ -173,6 +175,7 @@ public class SymbolRenamingObfuscator : IObfuscator
 
             foreach (var (property, newName) in propertyRenames)
             {
+                SyncDefaultMember(property, newName);
                 property.Name = newName;
                 stats.PropertiesRenamed++;
             }
@@ -206,6 +209,8 @@ public class SymbolRenamingObfuscator : IObfuscator
 
                 stats.NamespacesRenamed++;
             }
+
+            RenameDerivedResources(module, runtimeNames);
 
             // Rename parameters if enabled
             if (settings.RenameParameters)
@@ -305,7 +310,9 @@ public class SymbolRenamingObfuscator : IObfuscator
         foreach (var (module, settings, plan) in plans)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var runtimeNames = SnapshotRuntimeNames(module);
             ApplyClosedSetRenames(module, settings.SymbolRenaming, plan, namespaceRenames, stats);
+            RenameDerivedResources(module, runtimeNames);
 
             if (settings.SymbolRenaming.RenameParameters)
                 RenameClosedSetParameters(module, settings, sharedContext, stats, cancellationToken);
@@ -363,7 +370,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                     {
                         var newName = _nameGenerator.Generate(method.Name, settings.Mode);
                         plan.MethodRenames[method] = newName;
-                        sharedContext.SymbolMap[$"Method:{type.FullName}.{method.Name}"] = newName;
+                        sharedContext.SymbolMap[MethodSymbolKey(type, method)] = newName;
                     }
                 }
             }
@@ -459,6 +466,7 @@ public class SymbolRenamingObfuscator : IObfuscator
 
         foreach (var (property, newName) in plan.PropertyRenames)
         {
+            SyncDefaultMember(property, newName);
             property.Name = newName;
             stats.PropertiesRenamed++;
         }
@@ -577,7 +585,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (chosen is null)
             return typeRef.ResolveTypeDef();
 
-        return FindType(chosen, typeRef.Namespace, typeRef.Name);
+        return FindType(chosen, typeRef);
     }
 
     private static bool IsInSetMemberRef(MemberRef memberRef, IReadOnlyList<ModuleDef> set)
@@ -662,15 +670,119 @@ public class SymbolRenamingObfuscator : IObfuscator
         return candidates[0];
     }
 
+    private static TypeDef? FindType(ModuleDef module, TypeRef typeRef)
+    {
+        // Nested TypeRefs carry an empty namespace and the enclosing type as their
+        // resolution scope. Matching only the simple name collapses two nested types
+        // that share that name (Enumerator, Builder, ...).
+        if (typeRef.ResolutionScope is TypeRef enclosingRef)
+        {
+            var enclosing = FindType(module, enclosingRef);
+            if (enclosing is null)
+                return null;
+
+            foreach (var nested in enclosing.NestedTypes)
+            {
+                if (nested.Name == typeRef.Name)
+                    return nested;
+            }
+
+            return null;
+        }
+
+        return FindType(module, typeRef.Namespace, typeRef.Name);
+    }
+
     private static TypeDef? FindType(ModuleDef module, UTF8String? ns, UTF8String? name)
     {
-        foreach (var type in module.GetTypes())
+        foreach (var type in module.Types)
         {
             if (type.Name == name && type.Namespace == ns)
                 return type;
         }
 
         return null;
+    }
+
+    private static string MethodSymbolKey(TypeDef type, MethodDef method)
+    {
+        var signature = method.MethodSig?.ToString() ?? "";
+        return $"Method:{type.FullName}.{method.Name}({signature})";
+    }
+
+    private static Dictionary<TypeDef, string> SnapshotRuntimeNames(ModuleDef module)
+    {
+        var names = new Dictionary<TypeDef, string>();
+        foreach (var type in module.GetTypes())
+            names[type] = RuntimeFullName(type);
+        return names;
+    }
+
+    /// <summary>
+    /// Runtime <see cref="Type.FullName"/> uses <c>+</c> for nested types. dnlib uses <c>/</c>.
+    /// WinForms resource names are the runtime full name plus <c>.resources</c>.
+    /// </summary>
+    private static string RuntimeFullName(TypeDef type)
+    {
+        if (type.DeclaringType is { } parent)
+            return RuntimeFullName(parent) + "+" + type.Name.String;
+
+        var ns = type.Namespace?.String ?? "";
+        return ns.Length == 0 ? type.Name.String : ns + "." + type.Name.String;
+    }
+
+    private static void RenameDerivedResources(ModuleDef module, Dictionary<TypeDef, string> oldRuntimeNames)
+    {
+        if (module.Resources.Count == 0 || oldRuntimeNames.Count == 0)
+            return;
+
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (type, oldName) in oldRuntimeNames)
+        {
+            var newName = RuntimeFullName(type);
+            if (string.Equals(oldName, newName, StringComparison.Ordinal))
+                continue;
+            map[oldName + ".resources"] = newName + ".resources";
+        }
+
+        if (map.Count == 0)
+            return;
+
+        foreach (var resource in module.Resources)
+        {
+            if (map.TryGetValue(resource.Name, out var updated))
+                resource.Name = updated;
+        }
+    }
+
+    private static void SyncDefaultMember(PropertyDef property, string newName)
+    {
+        var type = property.DeclaringType;
+        if (type is null || !type.HasCustomAttributes)
+            return;
+
+        var oldName = property.Name.String;
+        foreach (var attr in type.CustomAttributes)
+        {
+            var attrName = attr.AttributeType?.Name?.String ?? "";
+            if (attrName != "DefaultMemberAttribute" &&
+                !attr.TypeFullName.EndsWith(".DefaultMemberAttribute", StringComparison.Ordinal))
+                continue;
+            if (attr.ConstructorArguments.Count == 0)
+                continue;
+
+            var current = attr.ConstructorArguments[0].Value switch
+            {
+                UTF8String utf => utf.String,
+                string text => text,
+                _ => null
+            };
+            if (!string.Equals(current, oldName, StringComparison.Ordinal))
+                continue;
+
+            var arg = attr.ConstructorArguments[0];
+            attr.ConstructorArguments[0] = new CAArgument(arg.Type, new UTF8String(newName));
+        }
     }
 
     /// <summary>
@@ -753,6 +865,9 @@ public class SymbolRenamingObfuscator : IObfuscator
         {
             if (typeRef.Name != def.Name)
                 typeRef.Name = def.Name;
+            // Nested TypeRefs keep an empty namespace; the enclosing TypeRef owns the namespace.
+            if (typeRef.ResolutionScope is TypeRef)
+                continue;
             if (typeRef.Namespace != def.Namespace)
                 typeRef.Namespace = def.Namespace;
         }
@@ -907,7 +1022,7 @@ public class SymbolRenamingObfuscator : IObfuscator
     private static bool TypeMatchedInclusions(TypeDef type, InclusionRules inclusions) =>
         ObfuscationAttributeRules.MatchesInclusions(type, null, inclusions);
 
-    private static bool CanRenameEvent(
+    private bool CanRenameEvent(
         EventDef evt,
         SymbolRenamingSettings settings,
         ExclusionRules exclusions,
@@ -925,6 +1040,9 @@ public class SymbolRenamingObfuscator : IObfuscator
             return false;
 
         if (inclusions.HasAny && !TypeMatchedInclusions(evt.DeclaringType, inclusions))
+            return false;
+
+        if (!AllAccessorsRenamable(EventAccessors(evt), settings, exclusions, inclusions, warnings))
             return false;
 
         return true;
@@ -967,7 +1085,12 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (settings.PreservePublicApi && isPublic)
             return false;
 
-        if (property.IsRuntimeSpecialName || property.IsSpecialName)
+        if (property.IsRuntimeSpecialName)
+            return false;
+
+        // Indexers are special-name, but the default-member string is their name.
+        // Other special-name properties stay put.
+        if (property.IsSpecialName && !IsIndexer(property))
             return false;
 
         if (IsMemberProtected(property, exclusions, warnings))
@@ -980,6 +1103,95 @@ public class SymbolRenamingObfuscator : IObfuscator
             !(property.GetMethod?.IsStatic ?? false) &&
             ObfuscatorHelpers.LooksLikeXamlBindable(property.DeclaringType))
             return false;
+
+        if (!AllAccessorsRenamable(PropertyAccessors(property), settings, exclusions, inclusions, warnings))
+            return false;
+
+        return true;
+    }
+
+    private static bool IsIndexer(PropertyDef property) =>
+        property.PropertySig?.Params.Count > 0;
+
+    private static IEnumerable<MethodDef> PropertyAccessors(PropertyDef property)
+    {
+        if (property.GetMethod != null)
+            yield return property.GetMethod;
+        if (property.SetMethod != null)
+            yield return property.SetMethod;
+        foreach (var other in property.OtherMethods)
+            yield return other;
+    }
+
+    private static IEnumerable<MethodDef> EventAccessors(EventDef evt)
+    {
+        if (evt.AddMethod != null)
+            yield return evt.AddMethod;
+        if (evt.RemoveMethod != null)
+            yield return evt.RemoveMethod;
+        if (evt.InvokeMethod != null)
+            yield return evt.InvokeMethod;
+        foreach (var other in evt.OtherMethods)
+            yield return other;
+    }
+
+    private bool AllAccessorsRenamable(
+        IEnumerable<MethodDef> accessors,
+        SymbolRenamingSettings settings,
+        ExclusionRules exclusions,
+        InclusionRules inclusions,
+        ICollection<string> warnings)
+    {
+        foreach (var accessor in accessors)
+        {
+            if (!CanRenameAccessor(accessor, settings, exclusions, inclusions, warnings))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Same visibility, override, interface, and exclusion rules as <see cref="CanRenameMethod"/>,
+    /// except special-name is ignored because property and event accessors always carry it.
+    /// </summary>
+    private bool CanRenameAccessor(
+        MethodDef method,
+        SymbolRenamingSettings settings,
+        ExclusionRules exclusions,
+        InclusionRules inclusions,
+        ICollection<string> warnings)
+    {
+        if (method.IsConstructor || method.IsStaticConstructor)
+            return false;
+
+        if (method.DeclaringType.Module.EntryPoint == method)
+            return false;
+
+        if (settings.PreservePublicApi && method.IsPublic)
+            return false;
+
+        if (ObfuscatorHelpers.MethodMatchesExclusion(method, exclusions))
+            return false;
+
+        if (IsMemberProtected(method, exclusions, warnings))
+            return false;
+
+        if (!ObfuscationAttributeRules.MatchesInclusions(method.DeclaringType, method, inclusions))
+            return false;
+
+        if (method.HasOverrides)
+            return false;
+
+        if (ImplementsInterface(method))
+            return false;
+
+        if (method.IsVirtual &&
+            !method.DeclaringType.IsSealed &&
+            (method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly))
+        {
+            return false;
+        }
 
         return true;
     }

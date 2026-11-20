@@ -143,6 +143,55 @@ public class ClosedSetProcessorTests
     }
 
     [Fact]
+    public void RenameClosedSet_SameNamedNestedTypes_KeepDistinctTargets()
+    {
+        const string nestedLib = """
+            namespace N;
+            public class OuterA
+            {
+                public class Builder
+                {
+                    public static int V() => 11;
+                }
+            }
+            public class OuterB
+            {
+                public class Builder
+                {
+                    public static int V() => 22;
+                }
+            }
+            """;
+        const string nestedApp = """
+            public static class Program
+            {
+                public static void Main() { }
+                public static string Run() => (N.OuterA.Builder.V() * 100 + N.OuterB.Builder.V()).ToString();
+            }
+            """;
+
+        using var fixture = new ClosedSetEmit();
+        var libPath = fixture.CompileSource(nestedLib, "Lib", OutputKind.DynamicallyLinkedLibrary);
+        var appPath = fixture.CompileSource(nestedApp, "App", OutputKind.ConsoleApplication, libPath);
+        var ctx = ModuleDef.CreateModuleContext();
+        using var lib = ModuleDefMD.Load(File.ReadAllBytes(libPath), ctx);
+        using var app = ModuleDefMD.Load(File.ReadAllBytes(appPath), ctx);
+        ((dnlib.DotNet.AssemblyResolver)ctx.AssemblyResolver).AddToCache(lib);
+        ((dnlib.DotNet.AssemblyResolver)ctx.AssemblyResolver).AddToCache(app);
+
+        var settings = ClosedSetRenameSettings(preservePublicApi: false);
+        var shared = PipelineContext.ForAssembly(lib, settings);
+        CreateRenamer().RenameClosedSet([(lib, settings), (app, settings)], shared);
+
+        var builders = lib.GetTypes().Where(t => t.DeclaringType != null && t.Methods.Any(m => m.IsStatic && m.Parameters.Count == 0 && m.MethodSig.RetType.ElementType == ElementType.I4)).ToList();
+        builders.Count.ShouldBe(2);
+        builders[0].Name.String.ShouldNotBe(builders[1].Name.String);
+
+        var (outLib, outApp) = fixture.Write(lib, app);
+        InvokeProgramRun(outApp, outLib).ShouldBe("1122");
+    }
+
+    [Fact]
     public void RenameClosedSet_PreservePublicApi_KeepsGreeterName()
     {
         using var fixture = new ClosedSetEmit();

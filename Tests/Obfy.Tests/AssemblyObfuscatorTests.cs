@@ -197,6 +197,26 @@ public class AssemblyObfuscatorTests
         return property;
     }
 
+    private static bool TickDeltaKillsProcess(MethodDef check)
+    {
+        var instructions = check.Body.Instructions;
+        for (var i = 0; i < instructions.Count - 1; i++)
+        {
+            if (!instructions[i].IsLdcI4() || instructions[i].GetLdcI4Value() != 1000)
+                continue;
+
+            var next = instructions[i + 1].OpCode;
+            if (next == OpCodes.Ble || next == OpCodes.Ble_S ||
+                next == OpCodes.Bgt || next == OpCodes.Bgt_S ||
+                next == OpCodes.Bge || next == OpCodes.Bge_S ||
+                next == OpCodes.Blt || next == OpCodes.Blt_S ||
+                next == OpCodes.Beq || next == OpCodes.Bne_Un)
+                return true;
+        }
+
+        return false;
+    }
+
     #endregion
 
     #region StringEncryptionObfuscator Tests
@@ -1280,6 +1300,7 @@ public class AssemblyObfuscatorTests
         names.Count(n => n == "get_TickCount").ShouldBeGreaterThanOrEqualTo(2);
         names.ShouldContain("FailFast");
         check.Body.Instructions.Any(i => i.OpCode == OpCodes.Throw).ShouldBeTrue();
+        TickDeltaKillsProcess(check).ShouldBeFalse();
     }
 
     [Fact]
@@ -1722,9 +1743,14 @@ public class AssemblyObfuscatorTests
         // Arrange
         var module = CreateTestModule();
 
-        // Add XML resource
-        var resource = new EmbeddedResource("Documentation.xml", new byte[] { 0x3C, 0x3F, 0x78, 0x6D, 0x6C });
-        module.Resources.Add(resource);
+        var doc = new EmbeddedResource(
+            "Lib.xml",
+            System.Text.Encoding.UTF8.GetBytes("<doc><assembly><name>Lib</name></assembly><members></members></doc>"));
+        var config = new EmbeddedResource(
+            "config.xml",
+            System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><settings>keep</settings>"));
+        module.Resources.Add(doc);
+        module.Resources.Add(config);
 
         var logger = new Mock<ILogger<MetadataRemovalObfuscator>>();
         var obfuscator = new MetadataRemovalObfuscator(logger.Object);
@@ -1737,7 +1763,30 @@ public class AssemblyObfuscatorTests
 
         // Assert
         result.Success.ShouldBeTrue();
-        module.Resources.ShouldNotContain(r => r.Name.EndsWith(".xml"));
+        module.Resources.ShouldNotContain(r => r.Name == "Lib.xml");
+        module.Resources.ShouldContain(r => r.Name == "config.xml");
+    }
+
+    [Fact]
+    public async Task MetadataRemoval_ShortNameExclusion_KeepsAttribute()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "TestClass");
+        var attrType = module.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", "CompilerGeneratedAttribute");
+        type.CustomAttributes.Add(new CustomAttribute(new MemberRefUser(
+            module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void), attrType)));
+
+        var obfuscator = new MetadataRemovalObfuscator(new Mock<ILogger<MetadataRemovalObfuscator>>().Object);
+        var settings = new ObfySettings
+        {
+            Metadata = { RemoveAttributes = true },
+            Exclusions = { Attributes = ["CompilerGeneratedAttribute"] }
+        };
+        var context = PipelineContext.ForAssembly(module, settings);
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        type.CustomAttributes.ShouldContain(a => a.TypeFullName.Contains("CompilerGeneratedAttribute"));
     }
 
     [Fact]
@@ -3699,9 +3748,9 @@ public class AssemblyObfuscatorTests
         neutralize.Body.Instructions.Any(i =>
             i.OpCode == OpCodes.Brfalse && i.Operand is Instruction).ShouldBeTrue();
 
-        wipe.Body.ExceptionHandlers.Count.ShouldBe(1);
-        wipe.Body.ExceptionHandlers[0].HandlerType.ShouldBe(ExceptionHandlerType.Catch);
-        wipe.Body.ExceptionHandlers[0].CatchType.FullName.ShouldBe("System.Object");
+        wipe.Body.ExceptionHandlers.Count.ShouldBe(2);
+        wipe.Body.ExceptionHandlers.ShouldAllBe(h =>
+            h.HandlerType == ExceptionHandlerType.Catch && h.CatchType.FullName == "System.Object");
         wipe.Body.Instructions.Any(i => i.IsLdcI4() && i.GetLdcI4Value() == 64).ShouldBeTrue();
         wipe.Body.Instructions.Any(i => i.IsLdcI4() && i.GetLdcI4Value() == 0xC00).ShouldBeTrue();
 
@@ -3758,15 +3807,25 @@ public class AssemblyObfuscatorTests
         (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
 
         var wipe = module.Types.First(t => t.Name == "<AntiDump>").FindMethod("Wipe")!;
-        var eh = wipe.Body.ExceptionHandlers.ShouldHaveSingleItem();
-        eh.HandlerType.ShouldBe(ExceptionHandlerType.Catch);
+        wipe.Body.ExceptionHandlers.Count.ShouldBe(2);
 
         var neutralizeIdx = wipe.Body.Instructions
             .Select((instruction, i) => (instruction, i))
             .First(t => t.instruction.OpCode == OpCodes.Call &&
                         t.instruction.Operand is IMethod m && m.Name == "NeutralizeDumpers").i;
-        var tryEndIdx = wipe.Body.Instructions.IndexOf(eh.TryEnd);
-        neutralizeIdx.ShouldBeGreaterThanOrEqualTo(tryEndIdx);
+        var covering = wipe.Body.ExceptionHandlers.First(eh =>
+        {
+            var start = wipe.Body.Instructions.IndexOf(eh.TryStart);
+            var end = wipe.Body.Instructions.IndexOf(eh.HandlerEnd);
+            return eh.HandlerType == ExceptionHandlerType.Catch &&
+                   eh.CatchType.FullName == "System.Object" &&
+                   neutralizeIdx >= start &&
+                   neutralizeIdx < end;
+        });
+        covering.CatchType.FullName.ShouldBe("System.Object");
+
+        var peTryEnd = wipe.Body.Instructions.IndexOf(wipe.Body.ExceptionHandlers[0].TryEnd);
+        neutralizeIdx.ShouldBeGreaterThanOrEqualTo(peTryEnd);
 
         var blt = wipe.Body.Instructions.First(i => i.OpCode == OpCodes.Blt);
         ((Instruction)blt.Operand!).OpCode.ShouldBe(OpCodes.Leave);

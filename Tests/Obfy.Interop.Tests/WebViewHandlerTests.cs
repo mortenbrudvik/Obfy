@@ -1,3 +1,4 @@
+using Microsoft.Web.WebView2.Core;
 using Obfy.WebView;
 using Shouldly;
 
@@ -48,6 +49,34 @@ public class WebViewHandlerTests
     [Fact]
     public void ShouldShowContextMenu_Neither_False() =>
         WebViewHandler.ShouldShowContextMenu(isEditable: false, hasSelection: false).ShouldBeFalse();
+
+    [Theory]
+    [InlineData(CoreWebView2ProcessFailedKind.RenderProcessExited)]
+    [InlineData(CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)]
+    public void RespondTo_RendererFailure_ReloadsUpToMaxReloads(CoreWebView2ProcessFailedKind kind)
+    {
+        // reloadsSoFar 0, 1, 2 are the 1st, 2nd and 3rd failures: each is reloaded.
+        for (var reloads = 0; reloads < WebViewHandler.MaxReloads; reloads++)
+            WebViewHandler.RespondTo(kind, reloads).ShouldBe(ProcessFailureResponse.Reload);
+
+        // The 4th failure (3 reloads already spent) gives up.
+        WebViewHandler.RespondTo(kind, WebViewHandler.MaxReloads).ShouldBe(ProcessFailureResponse.GiveUp);
+        WebViewHandler.RespondTo(kind, WebViewHandler.MaxReloads + 1).ShouldBe(ProcessFailureResponse.GiveUp);
+    }
+
+    [Fact]
+    public void RespondTo_MaxReloads_IsThree() => WebViewHandler.MaxReloads.ShouldBe(3);
+
+    [Fact]
+    public void RespondTo_BrowserProcessExited_GivesUpImmediately() =>
+        WebViewHandler.RespondTo(CoreWebView2ProcessFailedKind.BrowserProcessExited, 0).ShouldBe(ProcessFailureResponse.GiveUp);
+
+    [Theory]
+    [InlineData(CoreWebView2ProcessFailedKind.GpuProcessExited)]
+    [InlineData(CoreWebView2ProcessFailedKind.FrameRenderProcessExited)]
+    [InlineData(CoreWebView2ProcessFailedKind.UtilityProcessExited)]
+    public void RespondTo_SelfRecoveringProcess_DoesNothing(CoreWebView2ProcessFailedKind kind) =>
+        WebViewHandler.RespondTo(kind, 0).ShouldBe(ProcessFailureResponse.None);
 
     [Fact]
     public void DefaultHostName_IsObfyLocalAssets() =>

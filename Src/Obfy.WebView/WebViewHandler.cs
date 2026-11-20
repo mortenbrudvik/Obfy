@@ -188,13 +188,13 @@ public class WebViewHandler
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Could not reload the page");
-                    Unrecoverable?.Invoke();
+                    RaiseSafely(() => Unrecoverable?.Invoke(), nameof(Unrecoverable));
                 }
 
                 break;
             case ProcessFailureResponse.GiveUp:
                 _logger.LogError("The page cannot be recovered in this window; a restart brings it back");
-                Unrecoverable?.Invoke();
+                RaiseSafely(() => Unrecoverable?.Invoke(), nameof(Unrecoverable));
                 break;
         }
     }
@@ -248,7 +248,23 @@ public class WebViewHandler
         catch (Exception ex)
         {
             _logger.LogError(ex, "WebView2 initialization failed");
-            InitializeFailed?.Invoke(ex);
+            RaiseSafely(() => InitializeFailed?.Invoke(ex), nameof(InitializeFailed));
+        }
+    }
+
+    /// <summary>
+    /// Runs a caller-supplied callback, logging and swallowing what it throws: the start task is discarded, so an
+    /// exception from a callback would otherwise fault it unobserved.
+    /// </summary>
+    private void RaiseSafely(Action callback, string name)
+    {
+        try
+        {
+            callback();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "The {Callback} callback threw", name);
         }
     }
 

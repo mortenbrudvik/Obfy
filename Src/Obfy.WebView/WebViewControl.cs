@@ -47,7 +47,9 @@ public class WebViewControl : WebView2, IWebViewInterop
 
             _unreachableLogged = false;
         }
-        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException or COMException)
+        // ArgumentException: malformed JSON surfaces from CoreWebView2 as E_INVALIDARG; inside a dispatcher delegate it
+        // would be an unhandled exception and take the app down.
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException or COMException or ArgumentException)
         {
             if (!_unreachableLogged)
             {

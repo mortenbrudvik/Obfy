@@ -1,0 +1,58 @@
+/* The Files screen, lifted from the approved mockup (Files: empty, Files: table). Colours come from the tokens in index.css. */
+
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---- Empty ---- */
+.files-wrap { max-width: 760px; margin: 0 auto; padding-top: 12px; display: flex; flex-direction: column; gap: 24px; }
+.drop { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 24px; text-align: center; border: 2px dashed color-mix(in srgb, var(--accent) 50%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.drop h2 { font-size: 16px; font-weight: 600; color: var(--strong); }
+.drop .types { font-size: 12px; color: var(--muted); max-width: 52ch; }
+.drop .ring { width: 40px; height: 40px; }
+.steps-label { margin-bottom: 8px; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; list-style: none; }
+.steps li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; font-size: 13px; }
+.steps .n { flex: none; width: 22px; height: 22px; display: grid; place-items: center; font-size: 12px; font-weight: 600; border-radius: 50%; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); }
+.steps b { display: block; color: var(--strong); font-weight: 600; }
+.steps span:not(.n) { color: var(--muted); font-size: 12px; }
+
+/* ---- Table ---- */
+.files-page { display: flex; flex-direction: column; gap: 14px; }
+.toolbar { display: flex; align-items: center; gap: 8px; }
+.ftable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ftable th { padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+.ftable td { padding: 9px 12px; border-bottom: 1px solid var(--hair); }
+.ftable tr:last-child td { border-bottom: 0; }
+.ftable tr.skip td { color: var(--muted); }
+.ftable tr.skip td.name { opacity: 0.85; }
+.ftable tr.selected td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.ftable tr:focus-visible { outline-offset: -2px; }
+.ftable .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ftable td:first-child, .ftable th:first-child { width: 40px; padding-right: 0; }
+.ftable td:last-child { width: 44px; text-align: right; padding-left: 0; }
+.st { display: inline-flex; align-items: center; gap: 6px; }
+.st::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.st.skipped::before { background: var(--dim); }
+.st.error::before { background: var(--err); }
+.more { width: 28px; height: 24px; background: none; border: 0; border-radius: 4px; color: var(--muted); font-size: 16px; line-height: 1; }
+.more:hover { background: var(--hover); }
+.rowmenu { position: relative; display: inline-block; }
+.menu { position: absolute; z-index: 2; right: 0; top: 100%; min-width: 150px; padding: 4px; display: flex; flex-direction: column; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); }
+.menu button { padding: 6px 10px; font-size: 13px; text-align: left; color: var(--text); background: none; border: 0; border-radius: 4px; }
+.menu button:hover:not(:disabled) { background: var(--hover); }
+.menu button:disabled { color: var(--dim); cursor: not-allowed; }
+
+/* ---- Output ---- */
+.outcard { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.outcard h2 { font-size: 14px; font-weight: 600; color: var(--strong); }
+.rowfield { display: flex; gap: 8px; }
+.rowfield .field { flex: 1; max-width: 460px; }
+.toggle-row { display: flex; gap: 12px; align-items: flex-start; }
+.toggle-row .sw { margin-top: 2px; }
+.toggle-row label { font-size: 13px; font-weight: 600; color: var(--strong); }
+.fl.tight { gap: 2px; }
+.warn-text { color: var(--warn); }
+
+@media (forced-colors: active) {
+  .ftable tr.selected td { outline: 1px solid Highlight; outline-offset: -1px; }
+  .st::before { background: CanvasText; }
+}

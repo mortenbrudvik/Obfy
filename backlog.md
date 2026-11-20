@@ -1368,7 +1368,7 @@ the list more room, and one reading a long log cannot shrink it.
 ### UI-058 — Drop overlay omits .json and appears during a run
 
 - **Status:** Fixed (hybrid)
-- **Hybrid UI:** `InputSession` (plan Task 10): `.json` is a drop type and a configuration loads instead of being added as an input; test in `InputSessionTests` ("UI-058"). The drop overlay itself is gone with WPF; re-verify drops during a run on the page.
+- **Hybrid UI:** `InputSession` (plan Task 10): `.json` is a drop type and a configuration loads instead of being added as an input; test in `InputSessionTests` ("UI-058"). The WPF drop overlay is gone: the host now rejects input while a run is in progress (`RunCoordinator.EnsureNotRunning`: `files.pick`, `files.remove`, `files.clear`, `files.setIncluded`, `settings.openConfig` and the config-load path throw `run.blocked`; a native drop is refused with a warning notice), and the page shows a `shell.dragState` overlay that says files cannot be added during a run. Tests in `RunCoordinatorTests` ("Input_IsRefusedWhileARunGoes_AndAllowedWhenIdle") and `Shell.test.tsx`. Real-drag behaviour during a run is still a manual check.
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/Help/HelpCatalog.cs:12-13`,
   `Src/Obfy.UI/Views/MainWindow.xaml.cs:28-67`,

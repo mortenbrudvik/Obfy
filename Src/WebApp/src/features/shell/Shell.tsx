@@ -1,10 +1,11 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Notice from "../../components/Notice";
 import { flushPendingEdits } from "../../hooks/pendingEdits";
 import { useAppAction } from "../../hooks/useAppAction";
 import { usePushedState } from "../../hooks/usePushedState";
 import { useRun } from "../../hooks/useRun";
 import { useShortcuts } from "../../hooks/useShortcuts";
+import { useWebViewEvent } from "../../hooks/useWebViewEvent";
 import { api, events } from "../../interop/api";
 import { strings } from "../../strings";
 import type { AppInfo, InputSnapshot, ResultsSnapshot, SettingsSnapshot } from "../../types/domain";
@@ -52,6 +53,10 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
 
   const running = run?.status === "Running";
 
+  // The host sees the native drag; the page only draws the cue. The host refuses the drop during a run, so the overlay says so.
+  const [dragging, setDragging] = useState(false);
+  useWebViewEvent<{ dragging: boolean }>(events.shellDragState, (data) => setDragging(data.dragging));
+
   // A run is blocked until a typed value (a watermark id) reaches the host, so the block is judged after it was sent.
   const latestRun = useRef(run);
   useEffect(() => {
@@ -80,6 +85,11 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
 
   return (
     <div className="shell">
+      {dragging && (
+        <div className={`drop-overlay${running ? " blocked" : ""}`} data-testid="drop-overlay" aria-hidden="true">
+          <span>{running ? strings.shell.dropOverlayRunning : strings.shell.dropOverlay}</span>
+        </div>
+      )}
       <Sidebar
         screen={screen}
         onNavigate={onNavigate}

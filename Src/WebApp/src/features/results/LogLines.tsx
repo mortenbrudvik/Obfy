@@ -13,7 +13,7 @@ export default function LogLines({ lines, timestamps }: LogLinesProps) {
     <>
       {lines.map((line) =>
         isSeparator(line) ? (
-          <div key={line.id} className="sepline" aria-label={strings.results.logView.newRun}>
+          <div key={line.id} className="sepline" role="separator" aria-label={strings.results.logView.newRun}>
             {line.message}
           </div>
         ) : (

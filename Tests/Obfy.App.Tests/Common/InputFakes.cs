@@ -124,3 +124,11 @@ internal sealed class FakeAnalyzer : ISolutionAnalyzer
 
     public CoreSession Analyze(string path) => new() { SourcePath = path, Entries = Entries(path) };
 }
+
+/// <summary>A coordinator that never runs anything: for handlers that only ask whether a run is going.</summary>
+internal static class IdleRun
+{
+    public static Obfy.App.Sessions.RunCoordinator For(
+        Obfy.App.Sessions.InputSession input, Obfy.App.Sessions.ProtectionSession protection) =>
+        new(null!, null!, protection, input, new Obfy.App.Sessions.LogBuffer(), new Obfy.App.Sessions.ResultsStore());
+}

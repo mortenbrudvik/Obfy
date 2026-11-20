@@ -21,6 +21,8 @@ export const events = {
   resultsChanged: "results.changed",
   runChanged: "run.changed",
   runCompleted: "run.completed",
+  /** Pushed by the shell (not a session) as `{ dragging }` while files are dragged over the window. */
+  shellDragState: "shell.dragState",
 } as const;
 
 /** A call that waits on the user (a native file dialog): it may take as long as the user does. */

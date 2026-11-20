@@ -14,15 +14,26 @@ namespace Obfy.App.Services;
 /// event publisher should build the web view if this is its first publish.
 /// </para>
 /// </summary>
-public sealed class InputIntake(InputSession input, ProtectionSession protection, ILogger<InputIntake> logger)
+public sealed class InputIntake(InputSession input, ProtectionSession protection, RunCoordinator run, ILogger<InputIntake> logger)
 {
     /// <summary>
     /// Adds the files among <paramref name="paths"/> to the list and loads the first <c>.json</c> as the configuration.
     /// Further configurations are named in a notice and not loaded. A configuration that cannot be read is a notice, not an
     /// exception.
+    /// <para>
+    /// While a run goes nothing is added and no configuration is loaded: a native drop has no page caller to answer, so the
+    /// refusal is a notice the page shows.
+    /// </para>
     /// </summary>
     public async Task AddPathsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken)
     {
+        if (run.IsRunning)
+        {
+            logger.LogDebug("Refused {Count} path(s): a run is in progress", paths.Count);
+            input.Notify(NoticeLevel.Warning, "Run in progress", RunCoordinator.InputBlockedMessage);
+            return;
+        }
+
         logger.LogDebug("Adding {Count} path(s)", paths.Count);
         var result = input.AddPaths(paths);
         await LoadConfigAsync(result.ConfigPath, cancellationToken);

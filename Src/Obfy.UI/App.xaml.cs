@@ -11,8 +11,6 @@ using Obfy.App.Sessions;
 using Obfy.Interop;
 using Obfy.UI.DependencyInjection;
 using Obfy.UI.Services;
-using Wpf.Ui;
-using Wpf.Ui.Extensions;
 
 namespace Obfy.UI;
 
@@ -52,7 +50,6 @@ public partial class App : Application
                 {
                     HybridBootstrap.AddMediatorServices(services);
                     services.AddHostedService<ApplicationHostService>();
-                    services.AddSingleton<IContentDialogService, ContentDialogService>();
                 })
                 .Build();
 
@@ -106,29 +103,10 @@ public partial class App : Application
         }
     }
 
-    private async void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         TryLog(ex: e.Exception, "Unhandled UI exception");
         e.Handled = true;
-
-        try
-        {
-            var dialog = _host?.Services.GetService<IContentDialogService>();
-            if (dialog is not null)
-            {
-                await dialog.ShowSimpleDialogAsync(new SimpleContentDialogCreateOptions
-                {
-                    Title = "Obfy",
-                    Content = e.Exception.Message,
-                    CloseButtonText = "Close"
-                });
-                return;
-            }
-        }
-        catch (Exception dialogEx)
-        {
-            TryLog(dialogEx, "Failed to show exception dialog");
-        }
 
         MessageBox.Show(e.Exception.Message, "Obfy", MessageBoxButton.OK, MessageBoxImage.Error);
     }

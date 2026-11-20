@@ -63,7 +63,7 @@ export default function LogTab({ lines, options, onOptionsChange, onClear }: Log
         </button>
         {copyFailed && <span className="help" role="alert">{text.copyFailed}</span>}
       </div>
-      <div className={`log ${options.wrap ? "wrap" : "nowrap"} tall`} tabIndex={0} aria-label={strings.results.log}>
+      <div className={`log ${options.wrap ? "wrap" : "nowrap"} tall`} role="log" tabIndex={0} aria-label={strings.results.log}>
         {shown.length === 0 ? (
           <p className="help">{lines.length === 0 ? text.empty : text.noProblems}</p>
         ) : (

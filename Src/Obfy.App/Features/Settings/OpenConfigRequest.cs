@@ -7,7 +7,7 @@ namespace Obfy.App.Features.Settings;
 
 /// <summary>
 /// Asks for a configuration file through the native picker and loads it (<c>settings.openConfig</c>). The page never
-/// names a path. Cancelling leaves the settings as they were. Answers with the snapshot.
+/// names a path. Cancelling leaves the settings as they were. Refused with <c>run.blocked</c> while a run goes. Answers with the snapshot.
 /// </summary>
 public record OpenConfigRequest : IRequest<SettingsSnapshot>;
 
@@ -17,10 +17,11 @@ public record OpenConfigRequest : IRequest<SettingsSnapshot>;
 /// </summary>
 public record LoadConfigRequest(string Path) : IRequest<SettingsSnapshot>;
 
-public class OpenConfigRequestHandler(ProtectionSession session, IFileDialogs dialogs) : IRequestHandler<OpenConfigRequest, SettingsSnapshot>
+public class OpenConfigRequestHandler(ProtectionSession session, IFileDialogs dialogs, RunCoordinator run) : IRequestHandler<OpenConfigRequest, SettingsSnapshot>
 {
     public async ValueTask<SettingsSnapshot> Handle(OpenConfigRequest request, CancellationToken cancellationToken)
     {
+        run.EnsureNotRunning();
         var picked = await dialogs.PickFilesAsync("Load Configuration", ConfigFile.DialogFilter, multi: false).ConfigureAwait(false);
         if (picked.Length > 0 && !string.IsNullOrEmpty(picked[0]))
             session.FromObfySettings(await ConfigFile.LoadAsync(picked[0], cancellationToken).ConfigureAwait(false), picked[0]);
@@ -29,10 +30,11 @@ public class OpenConfigRequestHandler(ProtectionSession session, IFileDialogs di
     }
 }
 
-public class LoadConfigRequestHandler(ProtectionSession session) : IRequestHandler<LoadConfigRequest, SettingsSnapshot>
+public class LoadConfigRequestHandler(ProtectionSession session, RunCoordinator run) : IRequestHandler<LoadConfigRequest, SettingsSnapshot>
 {
     public async ValueTask<SettingsSnapshot> Handle(LoadConfigRequest request, CancellationToken cancellationToken)
     {
+        run.EnsureNotRunning();
         session.FromObfySettings(await ConfigFile.LoadAsync(request.Path, cancellationToken).ConfigureAwait(false), request.Path);
         return session.GetSnapshot();
     }

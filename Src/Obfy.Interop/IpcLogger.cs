@@ -3,18 +3,18 @@ using Microsoft.Extensions.Logging;
 namespace Obfy.Interop;
 
 /// <summary>
-/// Logs bridge traffic at Debug only, each request or response payload cut to 200 characters. Pushed events log
-/// their name and size only, never the payload. Failures are logged by the bridge at Warning or Error without the payload.
+/// Logs bridge traffic at Debug as the call's name and the payload's length, never its text. The log file takes Debug and
+/// above, and a payload can hold what the user typed (an output folder, a symbol-map path, a watermark id, a key-file
+/// path), so it must not be written there. Pushed events log the same way. Failures are logged by the bridge at Warning
+/// or Error without the payload.
 /// </summary>
 public class IpcLogger(ILogger<IpcLogger> logger)
 {
-    private const int MaxLoggedLength = 200;
-
     public void LogRequest(string service, string method, string? jsonParams) =>
-        logger.LogDebug("[IPC ->] {Service}.{Method}({Params})", service, method, Truncate(jsonParams));
+        logger.LogDebug("[IPC ->] {Service}.{Method} ({Length} chars)", service, method, jsonParams?.Length ?? 0);
 
     public void LogResponse(string service, string method, string? json) =>
-        logger.LogDebug("[IPC <-] {Service}.{Method} -> {Result}", service, method, Truncate(json));
+        logger.LogDebug("[IPC <-] {Service}.{Method} ({Length} chars)", service, method, json?.Length ?? 0);
 
     /// <summary>Logs a pushed event by name and serialized size. The payload (file paths, log lines) is not logged.</summary>
     public void LogEvent(string eventName, int jsonLength) =>
@@ -24,11 +24,4 @@ public class IpcLogger(ILogger<IpcLogger> logger)
 
     public void LogError(Exception exception, string message, params object?[] args) =>
         logger.LogError(exception, message, args);
-
-    private static string Truncate(string? value)
-    {
-        if (value is null)
-            return "(null)";
-        return value.Length <= MaxLoggedLength ? value : value[..MaxLoggedLength] + "...";
-    }
 }

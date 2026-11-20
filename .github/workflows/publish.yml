@@ -39,6 +39,14 @@ jobs:
         pwsh -File Src/Obfy.NativeHost/build.ps1
         if ($LASTEXITCODE -ne 0) { throw "Native host build failed ($LASTEXITCODE)" }
 
+    # Node must be on PATH before the build: Obfy.UI.csproj runs npm (ci + run build) as part of building Obfy.sln.
+    - name: Setup Node
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: Src/WebApp/package-lock.json
+
     - name: Resolve package version
       id: version
       shell: pwsh

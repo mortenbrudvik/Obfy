@@ -121,8 +121,9 @@ public class WebViewHandler
         Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && IsAllowedOrigin(parsed, allowed);
 
     /// <summary>
-    /// What a Release log may keep of a blocked address: its scheme ("file", "https"), or "unknown" when it does not
-    /// parse. The whole address could name a document or a page the user was working on; it is a Debug line.
+    /// What the log may keep of a blocked address: its scheme ("file", "https"), or "unknown" when it does not parse. The
+    /// whole address could name a document or a page the user was working on, and the log file keeps everything from
+    /// Debug up, so it is never logged.
     /// </summary>
     public static string LoggableAddress(string? uri) =>
         Uri.TryCreate(uri, UriKind.Absolute, out var parsed) ? parsed.Scheme : "unknown";
@@ -348,10 +349,9 @@ public class WebViewHandler
         };
     }
 
-    /// <summary>A warning with only the address's scheme (see <see cref="LoggableAddress"/>); the whole address is Debug.</summary>
+    /// <summary>A warning with only the address's scheme (see <see cref="LoggableAddress"/>); the whole address is not logged.</summary>
     private void LogBlocked(string what, string? uri)
     {
         _logger.LogWarning("Blocked {What} a {Scheme} address", what, LoggableAddress(uri));
-        _logger.LogDebug("Blocked {What} {Uri}", what, uri);
     }
 }

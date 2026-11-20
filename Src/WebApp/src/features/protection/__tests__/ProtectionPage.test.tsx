@@ -89,7 +89,7 @@ describe("ProtectionPage", () => {
     host(protectionSnapshot());
 
     render(<ProtectionPage />);
-    fireEvent.click(await screen.findByRole("button", { name: /String encoding/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /String encryption/ }));
 
     fireEvent.change(await screen.findByLabelText("Algorithm"), { target: { value: "Xor" } });
 
@@ -105,7 +105,7 @@ describe("ProtectionPage", () => {
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Find an option" }), { target: { value: "string" } });
 
-    expect(within(techniqueList()).getByRole("button", { name: /String encoding/ })).toBeTruthy();
+    expect(within(techniqueList()).getByRole("button", { name: /String encryption/ })).toBeTruthy();
     expect(screen.queryByRole("switch", { name: "Control flow" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Watermark" })).toBeNull();
     // A group label with no row left is not shown either.
@@ -130,13 +130,13 @@ describe("ProtectionPage", () => {
     const bridge = host(protectionSnapshot({ level: "Aggressive" }));
 
     render(<ProtectionPage />);
-    await screen.findByRole("switch", { name: "Method body encoding" });
-    expect(rowSwitch("Method body encoding").disabled).toBe(false);
+    await screen.findByRole("switch", { name: "Method body encryption" });
+    expect(rowSwitch("Method body encryption").disabled).toBe(false);
 
     bridge.push("settings.changed", protectionSnapshot({ level: "Aggressive", revision: 3, runtimeProfile: "NativeAot" }));
 
-    await waitFor(() => expect(rowSwitch("Method body encoding").disabled).toBe(true));
-    for (const name of ["Method body encoding", "Memory image guard", "Virtualization", "Embed dependencies"]) {
+    await waitFor(() => expect(rowSwitch("Method body encryption").disabled).toBe(true));
+    for (const name of ["Method body encryption", "Memory image guard", "Virtualization", "Embed dependencies"]) {
       const row = rowSwitch(name).closest("li") as HTMLElement;
       expect(rowSwitch(name).disabled).toBe(true);
       expect(rowSwitch(name).checked).toBe(false);
@@ -145,7 +145,7 @@ describe("ProtectionPage", () => {
     // A technique the profile does not rule out stays usable.
     expect(rowSwitch("Control flow").disabled).toBe(false);
 
-    fireEvent.click(within(techniqueList()).getByRole("button", { name: /Method body encoding/ }));
+    fireEvent.click(within(techniqueList()).getByRole("button", { name: /Method body encryption/ }));
     expect(screen.getByText(/It is switched off for you/)).toBeTruthy();
   });
 

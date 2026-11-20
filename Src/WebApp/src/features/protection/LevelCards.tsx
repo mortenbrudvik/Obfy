@@ -15,12 +15,12 @@ interface LevelInfo {
 // meters, which let the cards be compared at a glance.
 const levels: LevelInfo[] = [
   { id: "Minimal", name: "Minimal", description: "Renames symbols and strips debug information. The safest choice.", meters: [1, 0, 1] },
-  { id: "Standard", name: "Standard", description: "Minimal, plus encoded string literals and attribute clean-up.", meters: [2, 1, 1], recommended: true },
+  { id: "Standard", name: "Standard", description: "Minimal, plus encrypted string literals and attribute clean-up.", meters: [2, 1, 1], recommended: true },
   {
     id: "Aggressive",
     name: "Aggressive",
     description:
-      "Everything in Standard, plus control flow, constant, resource and method body encoding, reference proxies, debugger, integrity and memory checks, and decompiler decoys. Test your app thoroughly.",
+      "Everything in Standard, plus control flow, constant, resource and method body encryption, reference proxies, debugger, integrity and memory checks, and decompiler decoys. Test your app thoroughly.",
     meters: [3, 2, 3],
   },
   { id: "Custom", name: "Custom", description: "Your own mix. Changing any option below moves you here.", meters: null },

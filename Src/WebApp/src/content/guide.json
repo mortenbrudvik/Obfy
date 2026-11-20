@@ -26,11 +26,11 @@
       "id": "levels",
       "title": "Settings and levels",
       "blocks": [
-        { "type": "p", "text": "A level is a ready-made set of protections. **Minimal** renames symbols and strips debug information, and is the safest. **Standard** adds encoded strings and attribute clean-up. **Aggressive** adds control flow, constant, resource and method body encoding, reference proxies, and the debugger, integrity and memory checks with decompiler decoys, and needs careful testing. Each card shows three small meters for protection, run-time cost and compatibility risk, so you can compare them at a glance." },
+        { "type": "p", "text": "A level is a ready-made set of protections. **Minimal** renames symbols and strips debug information, and is the safest. **Standard** adds encrypted strings and attribute clean-up. **Aggressive** adds control flow, constant, resource and method body encryption, reference proxies, and the debugger, integrity and memory checks with decompiler decoys, and needs careful testing. Each card shows three small meters for protection, run-time cost and compatibility risk, so you can compare them at a glance." },
         { "type": "p", "text": "Virtualization, native packing and the incremental cache are off at every level. Turning one on moves you to Custom." },
         { "type": "p", "text": "Change any option a level controls and you move to **Custom**. A **Changed** badge marks every protection that differs from the level you started from. Choose a level card again to reset, or choose Custom to return to your own mix. Watermark, signing, merge, embedding, the packing target and the scope lists belong to no level, so changing them keeps your level." },
         { "type": "h3", "text": "Target runtime" },
-        { "type": "p", "text": "Some protections do not work on every runtime. Pick the runtime your app runs on (Default, NativeAOT, Unity IL2CPP or Blazor WebAssembly) and Obfy switches off method body encoding, memory image guard, virtualization and dependency embedding for you. Their settings are kept, so switching back restores them. The debugger check stays available and leaves out its Windows-specific part." },
+        { "type": "p", "text": "Some protections do not work on every runtime. Pick the runtime your app runs on (Default, NativeAOT, Unity IL2CPP or Blazor WebAssembly) and Obfy switches off method body encryption, memory image guard, virtualization and dependency embedding for you. Their settings are kept, so switching back restores them. The debugger check stays available and leaves out its Windows-specific part." },
         { "type": "h3", "text": "Configuration files" },
         { "type": "p", "text": "Save ({Ctrl+S}) writes your settings to `obfy.json`. Open ({Ctrl+L}) loads one, and so does dropping a `.json` file onto the window. Check the file in next to your solution so builds on other machines use the same settings." }
       ]
@@ -44,15 +44,15 @@
           "type": "ul",
           "items": [
             "**Names.** Symbol renaming replaces type, member and namespace names.",
-            "**Data.** String, constant and resource encoding hide the values your code uses.",
-            "**Code.** Control flow, reference proxies, method body encoding and virtualization change how code is stored and run.",
+            "**Data.** String, constant and resource encryption hide the values your code uses.",
+            "**Code.** Control flow, reference proxies, method body encryption and virtualization change how code is stored and run.",
             "**Runtime checks.** Debugger, integrity and memory image checks, and decoy types for decompilers.",
             "**Packaging.** Merge, embed dependencies, native packing and strong-name signing.",
             "**Housekeeping.** Metadata removal, the watermark and the incremental cache.",
             "**Scope.** Rules that leave types and members alone, or limit protection to some of them."
           ]
         },
-        { "type": "note", "title": "Obfuscation is not confidentiality", "text": "String, constant, resource and method body encoding, and native packing, hide values from casual inspection. The key is stored in the output, so anyone who runs or inspects it can recover the content: XOR trivially, AES-256 with a little more effort. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on obfuscation." },
+        { "type": "note", "title": "Obfuscation is not confidentiality", "text": "String, constant, resource and method body encryption, and native packing, hide values from casual inspection. The key is stored in the output, so anyone who runs or inspects it can recover the content: XOR trivially, AES-256 with a little more effort. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on obfuscation." },
         { "type": "p", "text": "Obfuscation can break code that looks names up as text, such as reflection, serialization and XAML bindings. Test the protected build, keep the symbol map, and use the scope rules to leave those names alone." }
       ]
     },
@@ -80,7 +80,7 @@
       "id": "results",
       "title": "Results",
       "blocks": [
-        { "type": "p", "text": "After a run, Results shows four tabs. **Summary** counts what was renamed, encoded and removed and lists each output file. **Symbols** is the symbol map as a tree: original names first, then the new short names, with members nested under their type." },
+        { "type": "p", "text": "After a run, Results shows four tabs. **Summary** counts what was renamed, encrypted and removed and lists each output file. **Symbols** is the symbol map as a tree: original names first, then the new short names, with members nested under their type." },
         { "type": "p", "text": "**Preview** decompiles an output assembly so you can see what a reader would see. It only decompiles when you choose a file. **Log** keeps earlier runs and separates them with a line, and can show only warnings and errors." },
         { "type": "p", "text": "To read a stack trace from the protected build, search the Symbols tab for the short name, or open the exported symbol map. Warnings in the log usually point at code that looks names up as text." }
       ]

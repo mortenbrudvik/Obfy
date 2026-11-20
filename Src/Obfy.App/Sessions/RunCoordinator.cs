@@ -89,6 +89,30 @@ public sealed class RunCoordinator : IDisposable
     /// <summary>Raised once after any change, on the thread that made it, outside the coordinator's lock.</summary>
     public event Action? Changed;
 
+    /// <summary>What the host answers when a change to the files or the configuration is asked for while a run goes.</summary>
+    public const string InputBlockedMessage = "The files and the configuration cannot change while a run is in progress.";
+
+    /// <summary>Whether a run is going now.</summary>
+    public bool IsRunning
+    {
+        get
+        {
+            lock (_gate)
+                return _status == RunStatus.Running;
+        }
+    }
+
+    /// <summary>
+    /// The rule that input is refused during a run, kept here in the host and not in the page: a native drop and the picker
+    /// shortcut never pass through the page's disabled controls.
+    /// </summary>
+    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going.</exception>
+    public void EnsureNotRunning()
+    {
+        if (IsRunning)
+            throw new ObfyApiException("run.blocked", InputBlockedMessage);
+    }
+
     /// <summary>Finishes when the run now going ends (or already has). Never faults.</summary>
     public Task Completion
     {
@@ -394,23 +418,43 @@ public sealed class RunCoordinator : IDisposable
         }
         catch (OperationCanceledException)
         {
-            _log.Add(LogLevel.Warning, "Obfuscation cancelled by user");
             status = RunStatus.Cancelled;
             message = "Cancelled";
-            ResetProcessingFiles(error: null);
-            _results.Clear();
+            CleanUpAfterStop(() => _log.Add(LogLevel.Warning, "Obfuscation cancelled by user"), error: null);
         }
         catch (Exception ex)
         {
             // Whatever the engine, the report service or a file system call throws, the run ends with a status.
-            _log.Add(LogLevel.Error, $"Obfuscation failed: {ex.Message}");
             status = RunStatus.Faulted;
             message = ex.Message;
-            ResetProcessingFiles(error: ex.Message);
-            _results.Clear();
+            CleanUpAfterStop(() => _log.Add(LogLevel.Error, $"Obfuscation failed: {ex.Message}"), error: ex.Message);
         }
 
         Finish(status, message);
+    }
+
+    /// <summary>
+    /// The log line, the file rows and the results after a run that did not finish. Best effort and never throwing: what
+    /// it calls may fail, and <see cref="Finish"/> must still run, or the coordinator would stay Running for good.
+    /// </summary>
+    private void CleanUpAfterStop(Action log, string? error)
+    {
+        // Each step on its own: one failing must not skip the others.
+        Attempt(log);
+        Attempt(() => ResetProcessingFiles(error));
+        Attempt(_results.Clear);
+    }
+
+    private static void Attempt(Action step)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
     }
 
     private void Finish(RunStatus status, string message)

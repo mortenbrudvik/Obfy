@@ -178,8 +178,8 @@ public class ApiRegistrationsTests
         var appEventNames = ConstantsOf(typeof(AppEvents)).Select(c => c.Name).ToHashSet();
         var shellOwned = ConstantsOf(typeof(IpcNames.Events)).Where(c => !appEventNames.Contains(c.Name)).ToList();
 
-        // app.revealed is pushed by the shell (ShellViewModel), not by the application layer, so AppEvents has no copy of it.
-        shellOwned.ShouldHaveSingleItem().Value.ShouldBe("app.revealed");
+        // These are pushed by the shell (ShellViewModel), not by the application layer, so AppEvents has no copy of them.
+        shellOwned.Select(c => c.Value).ShouldBe(["app.revealed", "shell.dragState"], ignoreOrder: true);
     }
 
     [Fact]

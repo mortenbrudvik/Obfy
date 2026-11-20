@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using Obfy.App.Tests.Common;
 using Obfy.App;
 using Obfy.App.Features.Settings;
 using Obfy.App.Services;
@@ -32,6 +34,7 @@ public sealed class SettingsHandlersTests : IDisposable
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "obfy-settings-" + Guid.NewGuid().ToString("N"));
     private readonly ProtectionSession _session = new();
+    private readonly InputSession _input = new(new FakeSettings(), null, new FakeShell(), null, NullLogger<InputSession>.Instance, TimeSpan.Zero);
     private readonly FakeDialogs _dialogs = new();
 
     public SettingsHandlersTests() => Directory.CreateDirectory(_dir);
@@ -106,7 +109,7 @@ public sealed class SettingsHandlersTests : IDisposable
         await ConfigFile.SaveAsync(source, path);
         _dialogs.Files = [path];
 
-        var snapshot = await new OpenConfigRequestHandler(_session, _dialogs).Handle(new OpenConfigRequest(), default);
+        var snapshot = await new OpenConfigRequestHandler(_session, _dialogs, IdleRun.For(_input, _session)).Handle(new OpenConfigRequest(), default);
 
         snapshot.Level.ShouldBe("Aggressive");
         snapshot.ConfigPath.ShouldBe(path);
@@ -119,7 +122,7 @@ public sealed class SettingsHandlersTests : IDisposable
     {
         _dialogs.Files = [];
 
-        var snapshot = await new OpenConfigRequestHandler(_session, _dialogs).Handle(new OpenConfigRequest(), default);
+        var snapshot = await new OpenConfigRequestHandler(_session, _dialogs, IdleRun.For(_input, _session)).Handle(new OpenConfigRequest(), default);
 
         snapshot.ConfigPath.ShouldBeNull();
         snapshot.Level.ShouldBe("Standard");
@@ -132,7 +135,7 @@ public sealed class SettingsHandlersTests : IDisposable
         await File.WriteAllTextAsync(named, """{ "level": "Minimal", "runtimeProfile": "BlazorWasm" }""");
         var numbered = Path.Combine(_dir, "numbered.json");
         await File.WriteAllTextAsync(numbered, """{ "level": 2 }""");
-        var handler = new LoadConfigRequestHandler(_session);
+        var handler = new LoadConfigRequestHandler(_session, IdleRun.For(_input, _session));
 
         (await handler.Handle(new LoadConfigRequest(named), default)).RuntimeProfile.ShouldBe("BlazorWasm");
         _session.Level.ShouldBe(ObfuscationLevel.Minimal);
@@ -144,7 +147,7 @@ public sealed class SettingsHandlersTests : IDisposable
     [Fact]
     public async Task LoadConfig_MissingOrInvalidFile_ThrowsAnApiError()
     {
-        var handler = new LoadConfigRequestHandler(_session);
+        var handler = new LoadConfigRequestHandler(_session, IdleRun.For(_input, _session));
         var bad = Path.Combine(_dir, "bad.json");
         await File.WriteAllTextAsync(bad, "{ not json");
 
@@ -200,7 +203,7 @@ public sealed class SettingsHandlersTests : IDisposable
         await new SaveConfigRequestHandler(_session, _dialogs).Handle(new SaveConfigRequest(), default);
 
         var other = new ProtectionSession();
-        await new LoadConfigRequestHandler(other).Handle(new LoadConfigRequest(path), default);
+        await new LoadConfigRequestHandler(other, IdleRun.For(_input, other)).Handle(new LoadConfigRequest(path), default);
 
         other.Level.ShouldBe(ObfuscationLevel.Aggressive);
         other.ToObfySettings().Exclusions.Namespaces.ShouldBe(new[] { "Keep" });

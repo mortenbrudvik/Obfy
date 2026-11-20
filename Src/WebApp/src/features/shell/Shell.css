@@ -31,6 +31,12 @@
 .bar.indeterminate > i { width: 40%; animation: indeterminate 1.4s ease-in-out infinite; }
 @keyframes indeterminate { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 
+/* Shown while files are dragged over the window; it takes no pointer events, the host owns the drop. */
+.drop-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; pointer-events: none; background: color-mix(in srgb, var(--accent) 12%, transparent); border: 2px dashed var(--accent); border-radius: 8px; }
+.drop-overlay > span { padding: 12px 20px; font-size: 15px; font-weight: 600; color: var(--strong); background: var(--win); border-radius: 8px; }
+.drop-overlay.blocked { border-color: var(--dim); background: color-mix(in srgb, var(--dim) 14%, transparent); }
+.drop-overlay.blocked > span { color: var(--muted); font-weight: 400; }
+
 .placeholder-screen { max-width: 520px; }
 
 @media (forced-colors: active) {

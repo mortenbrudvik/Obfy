@@ -227,6 +227,7 @@ describe("ResultsPage", () => {
 
     fireEvent.change(screen.getByRole("combobox", { name: "Output assembly" }), { target: { value: "C:/out/MyApp.dll" } });
     expect(await screen.findByText("class MyApp {}")).toBeTruthy();
+    expect(screen.getByRole("region", { name: /MyApp\.dll/ })).toBeTruthy();
 
     fireEvent.change(screen.getByRole("combobox", { name: "Output assembly" }), { target: { value: "C:/out/MyApp.Core.dll" } });
     expect((await screen.findByRole("alert")).textContent).toContain("not one of this run's output assemblies");

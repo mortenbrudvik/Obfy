@@ -5,9 +5,9 @@ import Toggle from "../Toggle";
 describe("Toggle", () => {
   it("callsOnChangeWithTheNewValue_whenClicked", () => {
     const onChange = vi.fn();
-    render(<Toggle label="String encoding" checked={false} onChange={onChange} />);
+    render(<Toggle label="String encryption" checked={false} onChange={onChange} />);
 
-    fireEvent.click(screen.getByRole("switch", { name: "String encoding" }));
+    fireEvent.click(screen.getByRole("switch", { name: "String encryption" }));
 
     expect(onChange).toHaveBeenCalledWith(true);
   });

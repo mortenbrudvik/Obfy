@@ -31,6 +31,9 @@ describe("LogTab", () => {
     expect(screen.getByText("Loading A.dll")).toBeTruthy();
     expect(screen.getByText("12:00:01.000")).toBeTruthy();
     expect(screen.getByLabelText("Start of a new run").textContent).toBe("———");
+    // Roles, so a screen reader exposes the names the labels give.
+    expect(screen.getByRole("separator", { name: "Start of a new run" })).toBeTruthy();
+    expect(screen.getByRole("log", { name: "Log" })).toBeTruthy();
     expect(screen.getByText("Warning").className).toContain("lv-warning");
   });
 

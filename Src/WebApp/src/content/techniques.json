@@ -83,16 +83,16 @@
 
     "stringEncryption": {
       "group": "Data",
-      "name": "String encoding",
+      "name": "String encryption",
       "summary": "Hides string literals",
-      "what": "Replaces each string literal with a call that decodes it when the program runs. The text no longer appears in the file, so a quick search through the binary finds nothing readable.",
+      "what": "Encrypts each string literal and replaces it with a call that decrypts it when the program runs. The text no longer appears in the file, so a quick search through the binary finds nothing readable.",
       "good": [
-        "A small run-time cost, because strings are decoded as they are used.",
+        "A small run-time cost, because strings are decrypted as they are used.",
         "Standard and Aggressive turn this on. Minimal leaves strings as they are."
       ],
       "securityNote": {
         "title": "Obfuscation, not confidentiality.",
-        "text": "The key to decode each string ships inside the output assembly, so anyone who runs or inspects it can recover the text: XOR trivially, AES-256 with a little more effort. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
+        "text": "The key to decrypt each string ships inside the output assembly, so anyone who runs or inspects it can recover the text: XOR trivially, AES-256 with a little more effort. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
       },
       "beforeAfter": { "before": "\"Order not found\"", "after": "c.a(1482)" },
       "guideTopic": "tech",
@@ -107,16 +107,16 @@
 
     "constantEncryption": {
       "group": "Data",
-      "name": "Constant encoding",
+      "name": "Constant encryption",
       "summary": "Hides numeric constants",
-      "what": "Replaces integer, long, float and double constants in your code with expressions that are worked out when the program runs.",
+      "what": "Encrypts integer, long, float and double constants in your code and replaces them with expressions that are worked out when the program runs.",
       "good": [
         "Constants in hot loops are worked out every time, so those loops run slower.",
         "Very common values such as 0, 1 and -1 are skipped by default, since hiding them costs more than it protects."
       ],
       "securityNote": {
         "title": "Obfuscation, not confidentiality.",
-        "text": "The key to decode each constant ships inside the output assembly, so anyone who runs or inspects it can recover the values: XOR trivially, AES-256 with a little more effort. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
+        "text": "The key to decrypt each constant ships inside the output assembly, so anyone who runs or inspects it can recover the values: XOR trivially, AES-256 with a little more effort. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
       },
       "guideTopic": "tech",
       "options": [
@@ -148,16 +148,16 @@
 
     "resourceEncryption": {
       "group": "Data",
-      "name": "Resource encoding",
+      "name": "Resource encryption",
       "summary": "Hides embedded resources",
-      "what": "Encodes the resources embedded in the assembly, such as images and text files, and decodes them when the program reads them.",
+      "what": "Encrypts the resources embedded in the assembly, such as images and text files, and decrypts them when the program reads them.",
       "good": [
         "Large resources take longer to load the first time they are used.",
         "Tools that read resources straight from the file, without running your program, will no longer find them."
       ],
       "securityNote": {
         "title": "Obfuscation, not confidentiality.",
-        "text": "The key to decode the resources ships inside the output assembly, so anyone who runs or inspects it can recover the content: XOR trivially, AES-256 with a little more effort. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
+        "text": "The key to decrypt the resources ships inside the output assembly, so anyone who runs or inspects it can recover the content: XOR trivially, AES-256 with a little more effort. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
       },
       "guideTopic": "tech",
       "options": [{ "key": "algorithm", "type": "select", "label": "Algorithm", "choiceSet": "algorithm" }]
@@ -207,17 +207,17 @@
 
     "methodEncryption": {
       "group": "Code",
-      "name": "Method body encoding",
-      "summary": "Stores method bodies encoded in the file",
-      "what": "Keeps method bodies encoded in the file. A start-up routine decodes them in memory when the assembly loads, before the methods are compiled to run.",
+      "name": "Method body encryption",
+      "summary": "Stores method bodies encrypted in the file",
+      "what": "Keeps method bodies encrypted in the file. A start-up routine decrypts them in memory when the assembly loads, before the methods are compiled to run.",
       "good": [
         "Each method has its own key. Generic methods are left as they are.",
-        "If a body cannot be decoded, the method stays unreadable. Run your tests against the protected build.",
+        "If a body cannot be decrypted, the method stays unreadable. Run your tests against the protected build.",
         "The protected file works on Windows only."
       ],
       "securityNote": {
         "title": "Obfuscation, not confidentiality.",
-        "text": "The keys to decode the method bodies ship inside the output assembly, so anyone who runs or inspects it can recover the code. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
+        "text": "The keys to decrypt the method bodies ship inside the output assembly, so anyone who runs or inspects it can recover the code. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
       },
       "windowsOnly": true,
       "guideTopic": "tech",

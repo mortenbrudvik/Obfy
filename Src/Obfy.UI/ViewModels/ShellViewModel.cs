@@ -100,6 +100,20 @@ public partial class ShellViewModel : ObservableObject
     /// <summary>Tells the page the window is now shown (<c>app.revealed</c>). Safe from any thread.</summary>
     public void NotifyRevealed() => _events.Publish(IpcNames.Events.AppRevealed, new { ready = _ready.IsReady });
 
+    /// <summary>Tells the page files are being dragged over the window, or no longer are (<c>shell.dragState</c>).</summary>
+    public void NotifyDragState(bool dragging)
+    {
+        try
+        {
+            _events.Publish(IpcNames.Events.ShellDragState, new { dragging });
+        }
+        catch (Exception ex)
+        {
+            // A cosmetic cue: a page that cannot be reached (WebView2 failed) is not a reason to fail the drag.
+            _logger.LogDebug(ex, "Could not publish the drag state");
+        }
+    }
+
     /// <summary>The failure panel's Restart: starts a new process and closes this one.</summary>
     [RelayCommand]
     private void Restart()

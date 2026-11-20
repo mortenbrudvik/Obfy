@@ -59,7 +59,9 @@ public class ApiBridge(IMediator mediator, ApiRegistry registry, IpcLogger logge
             if (error.Code == InternalCode)
                 logger.LogError(ex, "API call failed: {Service}.{Method}", serviceName, methodName);
             else
-                logger.LogWarning("API call {Service}.{Method} failed with {Code}: {Message}", serviceName, methodName, error.Code, error.Message);
+                // The code and the exception's type only: the message can hold a path the user typed or picked, and the log
+                // file keeps everything from Debug up, so there is no level at which it is safe to write it.
+                logger.LogWarning("API call {Service}.{Method} failed with {Code} ({ExceptionType})", serviceName, methodName, error.Code, ex.GetType().Name);
             return Respond(serviceName, methodName, error);
         }
     }

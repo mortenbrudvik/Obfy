@@ -54,6 +54,9 @@ public static class IpcNames
         /// <summary>Pushed to the page once the shell has shown the window after <c>app.ready</c>.</summary>
         public const string AppRevealed = "app.revealed";
 
+        /// <summary>Pushed as <c>{dragging}</c> while files are dragged over the window, so the page can show its drop overlay.</summary>
+        public const string ShellDragState = "shell.dragState";
+
         /// <summary>Pushed with the new settings snapshot after any change to the protection settings.</summary>
         public const string SettingsChanged = AppEvents.SettingsChanged;
 

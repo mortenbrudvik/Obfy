@@ -33,6 +33,7 @@ public partial class ShellWindow : FluentWindow
     private DispatcherTimer? _revealTimer;
     private bool _cloaked;
     private bool _revealed;
+    private bool _dragging;
 
     public ShellWindow(
         ShellViewModel viewModel, ThemeController theme, AppReadyCoordinator ready, IMediator mediator, ILogger<ShellWindow> logger)
@@ -51,6 +52,7 @@ public partial class ShellWindow : FluentWindow
 
         // The web area takes no drop (WebViewHandler sets AllowExternalDrop = false), so the OS drop reaches the window.
         DragOver += OnDragOver;
+        DragLeave += OnDragLeave;
         Drop += OnDrop;
         Closed += (_, _) =>
         {
@@ -116,27 +118,47 @@ public partial class ShellWindow : FluentWindow
 
     private void OnReady() => Dispatcher.BeginInvoke(Reveal);
 
-    private static void OnDragOver(object sender, DragEventArgs e)
+    private void OnDragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        var files = e.Data.GetDataPresent(DataFormats.FileDrop);
+        e.Effects = files ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
+        SetDragging(files);
     }
 
-    private async void OnDrop(object sender, DragEventArgs e)
+    private void OnDragLeave(object sender, DragEventArgs e) => SetDragging(false);
+
+    /// <summary>Tells the page when the drag state changes (DragOver fires continuously; DragLeave also fires between child elements, and the next DragOver sets it again).</summary>
+    private void SetDragging(bool dragging)
+    {
+        if (_dragging == dragging)
+            return;
+
+        _dragging = dragging;
+        _viewModel.NotifyDragState(dragging);
+    }
+
+    private void OnDrop(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        SetDragging(false);
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } paths)
             return;
 
-        // An async void event handler must not let an exception escape: it would crash the process.
-        try
+        // Off the UI thread: dropping a solution makes the host read and analyse it, which must not freeze the window.
+        // Nothing waits for the answer; the page follows files.changed, which is published from here. An exception must
+        // not escape a fire-and-forget task, where it would only surface as an unobserved one.
+        _ = Task.Run(async () =>
         {
-            await _mediator.Send(new DropPathsRequest(paths));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Could not handle the dropped files");
-        }
+            try
+            {
+                await _mediator.Send(new DropPathsRequest(paths));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not handle the dropped files");
+            }
+        });
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

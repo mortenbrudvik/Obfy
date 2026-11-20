@@ -56,8 +56,11 @@ public sealed class InputSessionTests : IDisposable
         TimeSpan? delay = null) =>
         new(settings ?? _settings, analyzer, _shell, events, NullLogger<InputSession>.Instance, delay ?? TimeSpan.Zero);
 
-    private InputIntake Intake(InputSession input, ProtectionSession? protection = null) =>
-        new(input, protection ?? new ProtectionSession(), NullLogger<InputIntake>.Instance);
+    private InputIntake Intake(InputSession input, ProtectionSession? protection = null)
+    {
+        protection ??= new ProtectionSession();
+        return new(input, protection, IdleRun.For(input, protection), NullLogger<InputIntake>.Instance);
+    }
 
     private string CreateTestFile(string name, string? subDirectory = null)
     {
@@ -527,7 +530,7 @@ public sealed class InputSessionTests : IDisposable
         var session = Create();
         _dialogs.Files = [CreateTestFile("Program.cs")];
 
-        await new PickFilesRequestHandler(Intake(session), _dialogs, session).Handle(new PickFilesRequest(), default);
+        await new PickFilesRequestHandler(Intake(session), _dialogs, session, IdleRun.For(session, new ProtectionSession())).Handle(new PickFilesRequest(), default);
 
         Only(session).Kind.ShouldBe(FileKind.Source);
     }
@@ -539,7 +542,7 @@ public sealed class InputSessionTests : IDisposable
     {
         var session = Create();
 
-        await new PickFilesRequestHandler(Intake(session), _dialogs, session).Handle(new PickFilesRequest(), default);
+        await new PickFilesRequestHandler(Intake(session), _dialogs, session, IdleRun.For(session, new ProtectionSession())).Handle(new PickFilesRequest(), default);
 
         _dialogs.FilePicks.ShouldBe(1);
     }
@@ -550,7 +553,7 @@ public sealed class InputSessionTests : IDisposable
         var session = Create();
         _dialogs.Files = [CreateTestFile("selected1.dll"), CreateTestFile("selected2.dll")];
 
-        var snapshot = await new PickFilesRequestHandler(Intake(session), _dialogs, session).Handle(new PickFilesRequest(), default);
+        var snapshot = await new PickFilesRequestHandler(Intake(session), _dialogs, session, IdleRun.For(session, new ProtectionSession())).Handle(new PickFilesRequest(), default);
 
         snapshot.Files.Count.ShouldBe(2);
     }
@@ -1154,7 +1157,7 @@ public sealed class InputSessionTests : IDisposable
         var protection = new ProtectionSession(events);
         // Padding makes the read genuinely asynchronous, so there is a continuation to resume.
         var config = await WriteConfigAsync("big.json", """{ "level": "Aggressive" }""" + new string(' ', 4_000_000));
-        var intake = new InputIntake(input, protection, NullLogger<InputIntake>.Instance);
+        var intake = new InputIntake(input, protection, IdleRun.For(input, protection), NullLogger<InputIntake>.Instance);
 
         await pump.RunAsync(() => intake.ApplyStartupAsync([config, CreateTestFile("a.dll")]));
 

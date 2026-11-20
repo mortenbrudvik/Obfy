@@ -129,4 +129,28 @@ describe("Shell", () => {
       expect(calls("settings", "openConfig")).toHaveLength(1);
     });
   });
+
+  it("showsTheDropOverlay_whileTheHostSaysFilesAreDragged_andHidesItAfter", async () => {
+    const host = startHost(readyRun);
+    render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/2 of 3 files/);
+    expect(screen.queryByTestId("drop-overlay")).toBeNull();
+
+    host.push("shell.dragState", { dragging: true });
+    expect(screen.getByTestId("drop-overlay").textContent).toBe("Drop files to add them");
+
+    host.push("shell.dragState", { dragging: false });
+    expect(screen.queryByTestId("drop-overlay")).toBeNull();
+  });
+
+  it("saysFilesCannotBeAdded_inTheDropOverlay_whileARunGoes", async () => {
+    const running: RunSnapshot = { ...readyRun, canStart: false, status: "Running", currentFile: "a.dll", total: 2, progress: 10 };
+    const host = startHost(running);
+    render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/Processing a\.dll/);
+
+    host.push("shell.dragState", { dragging: true });
+
+    expect(screen.getByTestId("drop-overlay").textContent).toBe("Files can't be added while a run is in progress");
+  });
 });

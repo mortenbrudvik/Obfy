@@ -61,7 +61,7 @@ export default function PreviewTab({ paths, selectedPath, getPreview }: PreviewT
       </div>
       {current?.error && <Notice tone="error">{current.error}</Notice>}
       {current && !current.error && (
-        <pre className="code" tabIndex={0} aria-label={`${text.assembly}: ${baseName(current.path)}`}>
+        <pre className="code" role="region" tabIndex={0} aria-label={`${text.assembly}: ${baseName(current.path)}`}>
           {current.text || text.empty}
         </pre>
       )}

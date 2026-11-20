@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Obfy.App;
+using Obfy.App.Features.Files;
 using Obfy.App.Features.Run;
+using Obfy.App.Features.Settings;
+using Obfy.App.Services;
 using Obfy.App.Models;
 using Obfy.App.Sessions;
 using Obfy.App.Tests.Common;
@@ -989,6 +992,100 @@ public sealed class RunCoordinatorTests : IDisposable
 
         ex.Code.ShouldBe("run.blocked");
         ex.Message.ShouldBe("Add at least one included file.");
+    }
+
+    // ---- Input is refused during a run ----
+
+    [Fact]
+    public async Task Input_IsRefusedWhileARunGoes_AndAllowedWhenIdle()
+    {
+        var existing = AddFile("first.dll");
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finish = new TaskCompletionSource<ObfuscationResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _engine.Obfuscate = (_, _, _, _) =>
+        {
+            started.TrySetResult();
+            return finish.Task;
+        };
+        var dialogs = new FakeDialogs { Files = [Path.Combine(_tempDirectory, "picked.dll")] };
+        File.WriteAllBytes(dialogs.Files[0], []);
+        var dropped = Path.Combine(_tempDirectory, "dropped.dll");
+        File.WriteAllBytes(dropped, []);
+        var intake = new InputIntake(_input, _protection, _run, NullLogger<InputIntake>.Instance);
+        var rowId = Rows[0].Id;
+
+        var run = _run.Start();
+        await started.Task.WaitAsync(Guard);
+        _run.IsRunning.ShouldBeTrue();
+
+        // A native drop has no page caller: it is refused with a notice, and nothing joins the list.
+        await new DropPathsRequestHandler(intake).Handle(new DropPathsRequest([dropped]), default);
+        Rows.Select(r => r.Path).ShouldBe([existing]);
+        _input.GetSnapshot().Notices.ShouldContain(n => n.Level == NoticeLevel.Warning && n.Message == RunCoordinator.InputBlockedMessage);
+
+        // Everything else that changes the list or the configuration is an error the caller sees; the picker is not even opened.
+        async Task Blocked(Func<Task> call) =>
+            (await Should.ThrowAsync<ObfyApiException>(call)).Code.ShouldBe("run.blocked");
+
+        await Blocked(async () => await new PickFilesRequestHandler(intake, dialogs, _input, _run).Handle(new PickFilesRequest(), default));
+        dialogs.FilePicks.ShouldBe(0);
+        await Blocked(async () => await new RemoveFileRequestHandler(_input, _run).Handle(new RemoveFileRequest(rowId), default));
+        await Blocked(async () => await new ClearFilesRequestHandler(_input, _run).Handle(new ClearFilesRequest(), default));
+        await Blocked(async () => await new SetIncludedRequestHandler(_input, _run).Handle(new SetIncludedRequest(rowId, false), default));
+        await Blocked(async () => await new OpenConfigRequestHandler(_protection, dialogs, _run).Handle(new OpenConfigRequest(), default));
+        await Blocked(async () => await new LoadConfigRequestHandler(_protection, _run).Handle(new LoadConfigRequest(Path.Combine(_tempDirectory, "x.json")), default));
+        Rows.Select(r => r.Path).ShouldBe([existing]);
+        Rows[0].Included.ShouldBeTrue();
+
+        finish.SetResult(Ok());
+        await run.WaitAsync(Guard);
+        _run.IsRunning.ShouldBeFalse();
+
+        // Idle again: the same calls go through.
+        await new DropPathsRequestHandler(intake).Handle(new DropPathsRequest([dropped]), default);
+        Rows.Select(r => r.Path).ShouldBe([existing, dropped], ignoreOrder: true);
+        await new PickFilesRequestHandler(intake, dialogs, _input, _run).Handle(new PickFilesRequest(), default);
+        dialogs.FilePicks.ShouldBe(1);
+        Rows.Count.ShouldBe(3);
+        await new SetIncludedRequestHandler(_input, _run).Handle(new SetIncludedRequest(rowId, false), default);
+        Rows.Single(r => r.Id == rowId).Included.ShouldBeFalse();
+        await new RemoveFileRequestHandler(_input, _run).Handle(new RemoveFileRequest(rowId), default);
+        await new ClearFilesRequestHandler(_input, _run).Handle(new ClearFilesRequest(), default);
+        Rows.ShouldBeEmpty();
+    }
+
+    // ---- A cleanup that throws must not leave the coordinator Running ----
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Run_WhenTheCleanupAfterACancelOrFailureThrows_StillFinishes_AndTheNextStartWorks(bool cancel)
+    {
+        AddFile();
+        _engine.Obfuscate = (_, _, _, _) =>
+        {
+            // From here every push made while the run is still going fails, as a broken publisher would: the file rows
+            // and the results store are written during the cleanup. Finish publishes after the status has changed.
+            _events.OnPublish = () =>
+            {
+                if (_run.IsRunning)
+                    throw new InvalidOperationException("publish failed");
+            };
+            throw cancel ? new OperationCanceledException() : new InvalidOperationException("engine failed");
+        };
+
+        var run = _run.Start();
+        await run.WaitAsync(Guard);
+
+        var snapshot = _run.GetSnapshot();
+        snapshot.Status.ShouldBe(cancel ? RunStatus.Cancelled : RunStatus.Faulted);
+        snapshot.CanStart.ShouldBeTrue();
+        _run.IsRunning.ShouldBeFalse();
+
+        _events.OnPublish = null;
+        _engine.Obfuscate = (_, _, _, _) => Task.FromResult(Ok());
+        var after = await RunAsync();
+        after.Status.ShouldBe(RunStatus.Done);
     }
 
     // ---- Fakes ----

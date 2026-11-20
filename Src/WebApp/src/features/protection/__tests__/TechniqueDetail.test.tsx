@@ -137,7 +137,7 @@ describe("TechniqueDetail", () => {
     renderDetail("methodEncryption", protectionSnapshot({ level: "Aggressive", runtimeProfile: "NativeAot" }));
 
     expect(screen.getByText(/Not available for NativeAOT\./)).toBeTruthy();
-    expect((screen.getByRole("switch", { name: "Enable Method body encoding" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("switch", { name: "Enable Method body encryption" }) as HTMLInputElement).disabled).toBe(true);
   });
 
   it("labelsTheSwitchOnOrOff", () => {

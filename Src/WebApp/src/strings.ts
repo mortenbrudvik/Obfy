@@ -14,6 +14,8 @@ export const strings = {
     addFilesFailed: "Could not add files",
     saveConfigFailed: "Could not save the configuration",
     openConfigFailed: "Could not open the configuration",
+    dropOverlay: "Drop files to add them",
+    dropOverlayRunning: "Files can't be added while a run is in progress",
   },
   nav: {
     files: "Files",

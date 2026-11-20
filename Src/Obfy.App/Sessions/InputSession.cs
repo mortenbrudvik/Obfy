@@ -47,6 +47,7 @@ public sealed class InputSession
     private long _revision;
     private int _preferenceVersion;
     private Task _preferenceSave = Task.CompletedTask;
+    private CancellationTokenSource? _preferenceDebounce;
 
     /// <param name="settings">Where the preferences are kept.</param>
     /// <param name="analyzer">Expands a dropped solution or project; null refuses them with a notice.</param>
@@ -127,9 +128,13 @@ public sealed class InputSession
     /// </summary>
     public async Task PersistPreferencesAsync()
     {
+        // Cut a debounce short instead of waiting it out: the caller is usually shutting down.
         Task pending;
         lock (_preferenceGate)
+        {
+            _preferenceDebounce?.Cancel();
             pending = _preferenceSave;
+        }
         await pending.ConfigureAwait(false);
 
         lock (_gate)
@@ -146,16 +151,31 @@ public sealed class InputSession
     {
         lock (_preferenceGate)
         {
+            _preferenceDebounce?.Cancel();
             var version = ++_preferenceVersion;
-            _preferenceSave = _preferenceDelay <= TimeSpan.Zero
-                ? SavePreferencesSafeAsync()
-                : SavePreferencesDebouncedAsync(version);
+            if (_preferenceDelay <= TimeSpan.Zero)
+            {
+                _preferenceSave = SavePreferencesSafeAsync();
+                return;
+            }
+
+            var debounce = _preferenceDebounce = new CancellationTokenSource();
+            _preferenceSave = SavePreferencesDebouncedAsync(version, debounce.Token);
         }
     }
 
-    private async Task SavePreferencesDebouncedAsync(int version)
+    private async Task SavePreferencesDebouncedAsync(int version, CancellationToken cancel)
     {
-        await Task.Delay(_preferenceDelay).ConfigureAwait(false);
+        try
+        {
+            await Task.Delay(_preferenceDelay, cancel).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer change, or flushed by PersistPreferencesAsync, which writes the current state itself.
+            return;
+        }
+
         if (version != Volatile.Read(ref _preferenceVersion))
             return;
 

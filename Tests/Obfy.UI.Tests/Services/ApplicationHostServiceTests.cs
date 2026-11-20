@@ -18,18 +18,21 @@ public class ApplicationHostServiceTests
         {
             var settings = new Mock<ISettingsService>();
             settings.SetupAllProperties();
-            var session = new InputSession(settings.Object, preferenceDelay: TimeSpan.FromMilliseconds(20));
+            var session = new InputSession(settings.Object, preferenceDelay: TimeSpan.FromSeconds(5));
             session.SetOutputFolder(folder);
             session.SetWriteSymbolMap(true);
 
             var provider = new Mock<IServiceProvider>();
             provider.Setup(p => p.GetService(typeof(InputSession))).Returns(session);
 
+            // The debounce is far from firing: only the flush in StopAsync can have written before the process ends.
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             await new ApplicationHostService(provider.Object).StopAsync(CancellationToken.None);
+            stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(3));
 
             settings.Object.LastOutputDirectory.ShouldBe(folder);
             settings.Object.GenerateSymbolMap.ShouldBeTrue();
-            settings.Verify(s => s.SavePreferencesAsync(), Times.AtLeastOnce());
+            settings.Verify(s => s.SavePreferencesAsync(), Times.Once());
         }
         finally
         {

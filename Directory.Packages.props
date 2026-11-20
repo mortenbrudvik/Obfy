@@ -34,8 +34,6 @@
     <PackageVersion Include="System.ComponentModel.Annotations" Version="5.0.0" />
     <PackageVersion Include="System.Text.Json" Version="10.0.12" />
     <PackageVersion Include="WPF-UI" Version="4.3.0" />
-    <PackageVersion Include="WPF-UI.Abstractions" Version="4.3.0" />
-    <PackageVersion Include="WPF-UI.DependencyInjection" Version="4.3.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
   </ItemGroup>

@@ -52,7 +52,6 @@ public partial class App : Application
                 {
                     HybridBootstrap.AddMediatorServices(services);
                     services.AddHostedService<ApplicationHostService>();
-                    services.AddSingleton<ISnackbarService, SnackbarService>();
                     services.AddSingleton<IContentDialogService, ContentDialogService>();
                 })
                 .Build();
@@ -158,26 +157,42 @@ public partial class App : Application
         }
     }
 
-    protected override async void OnExit(ExitEventArgs e)
+    /// <summary>How long quitting waits for the host to stop (the last preference write runs in StopAsync).</summary>
+    private static readonly TimeSpan HostStopTimeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Blocks until the host has stopped. An <c>async void</c> OnExit would return to WPF at its first await and let the
+    /// process end while the preferences are still being written. <c>Task.Run</c> keeps the stop off the dispatcher, so
+    /// nothing in it can deadlock on the UI thread this method is blocking; the wait is bounded so a hung save cannot
+    /// keep the process alive.
+    /// </summary>
+    protected override void OnExit(ExitEventArgs e)
     {
         if (_host is not null)
         {
+            var host = _host;
+            var stopped = false;
             try
             {
-                await _host.StopAsync();
+                stopped = Task.Run(() => host.StopAsync()).Wait(HostStopTimeout);
+                if (!stopped)
+                    TryLog(new TimeoutException($"No stop within {HostStopTimeout.TotalSeconds:0} s"), "The host did not stop in time; exiting anyway");
             }
             catch (Exception ex)
             {
                 TryLog(ex, "Failed to stop host");
             }
 
-            try
+            if (stopped)
             {
-                _host.Dispose();
-            }
-            catch (Exception ex)
-            {
-                TryLog(ex, "Failed to dispose host");
+                try
+                {
+                    host.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    TryLog(ex, "Failed to dispose host");
+                }
             }
 
             _host = null;

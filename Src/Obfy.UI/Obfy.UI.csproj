@@ -22,8 +22,6 @@
     <PackageReference Include="Autofac.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="WPF-UI" />
-    <PackageReference Include="WPF-UI.Abstractions" />
-    <PackageReference Include="WPF-UI.DependencyInjection" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Mediator.Abstractions" />
     <!-- Generates IMediator and AddMediator at build time; it ships nothing at run time. It belongs only here, in the

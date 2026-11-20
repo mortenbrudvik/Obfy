@@ -1015,6 +1015,21 @@ public sealed class InputSessionTests : IDisposable
         _settings.LastOutputDirectory.ShouldBe(@"C:\Two");
     }
 
+    [Fact]
+    public async Task PersistPreferences_FlushesAPendingDebounceWithoutWaitingItOut()
+    {
+        var session = Create(delay: TimeSpan.FromSeconds(30));
+        session.SetOutputFolder(@"C:\One");
+        _settings.Saves.ShouldBe(0);
+
+        var persist = session.PersistPreferencesAsync();
+        (await Task.WhenAny(persist, Task.Delay(TimeSpan.FromSeconds(5)))).ShouldBe(persist);
+        await persist;
+
+        _settings.Saves.ShouldBe(1);
+        _settings.LastOutputDirectory.ShouldBe(@"C:\One");
+    }
+
     // ---- Reveal and open ----
 
     [Fact]

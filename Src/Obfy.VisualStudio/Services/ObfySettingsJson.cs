@@ -91,7 +91,7 @@ public static class ObfySettingsJson
 
     private static JsonObject? ParseObject(string? json)
     {
-        if (string.IsNullOrWhiteSpace(json))
+        if (json == null || string.IsNullOrWhiteSpace(json))
             return null;
         try
         {

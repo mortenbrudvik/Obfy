@@ -51,27 +51,32 @@ public sealed class ObfyPackage : ToolkitPackage
 
     protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
     {
-        await base.InitializeAsync(cancellationToken, progress);
+        // CVST005 throws if this method calls base.InitializeAsync directly: the
+        // receiver has no symbol, and the analyzer passes that null to ContainsKey.
+        await InitializeBaseAsync(cancellationToken, progress);
         Instance = this;
 
-        // Switch to main thread for UI operations
         await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+        await InitializeHostServicesAsync();
 
-        // Initialize services
-        OutputService = new OutputService();
-        await ((OutputService)OutputService).InitializeAsync();
-
-        ObfuscationService = new ObfuscationServiceWrapper(OutputService);
-        ProjectSettingsService = new ProjectSettingsService();
-
-        // Register commands
         await ObfuscateCommand.InitializeAsync(this);
         await TogglePostBuildCommand.InitializeAsync(this);
         await OpenSettingsCommand.InitializeAsync(this);
 
-        // Subscribe to build events
-        await BuildIntegration.BuildEvents.InitializeAsync(this);
+        OutputService!.Info("Obfy extension initialized successfully");
+    }
 
-        OutputService.Info("Obfy extension initialized successfully");
+    private Task InitializeBaseAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress) =>
+        base.InitializeAsync(cancellationToken, progress);
+
+    private async Task InitializeHostServicesAsync()
+    {
+        var output = new OutputService();
+        await output.InitializeAsync();
+        OutputService = output;
+
+        ObfuscationService = new ObfuscationServiceWrapper(output);
+        ProjectSettingsService = new ProjectSettingsService();
+        await BuildIntegration.BuildEvents.InitializeAsync(this);
     }
 }

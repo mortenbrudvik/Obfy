@@ -1,0 +1,39 @@
+/* The window frame: a 208px sidebar, the scrolling content, and a run bar that never leaves. The title bar is the
+   native WPF window's, so the page starts at the sidebar. Lifted from the approved mockup. */
+
+.shell { display: flex; height: 100vh; min-height: 0; background: var(--win); }
+
+.sidebar { flex: none; width: 208px; display: flex; flex-direction: column; gap: 2px; padding: 12px 8px; background: var(--side); border-right: 1px solid var(--hair); }
+.nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 12px; text-align: left; background: none; border: 0; border-radius: 6px; color: var(--muted); }
+.nav:hover { background: var(--hover); }
+.nav[aria-current="page"] { color: var(--strong); background: color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 600; }
+.nav:focus-visible { outline-offset: -2px; }
+.nav .meta { font-size: 12px; font-weight: 400; color: var(--dim); }
+.pill { min-width: 20px; padding: 0 6px; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; color: var(--strong); background: var(--track); border-radius: 9px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--dim); }
+.dot.running { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.dot.done { border-color: var(--ok); background: var(--ok); }
+.side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+.version { padding: 6px 12px 0; font-size: 12px; color: var(--dim); }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.content { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 28px 28px; scrollbar-color: var(--track) transparent; }
+
+.runbar { flex: none; height: 60px; display: flex; align-items: center; gap: 16px; padding: 0 20px 0 28px; border-top: 1px solid var(--border); background: var(--side); }
+.runbar .sum { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.runbar .sum.blocked { color: var(--text); }
+.runbar .sum.blocked::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: var(--warn); vertical-align: 1px; }
+.runbar .kbd { font-size: 12px; color: var(--dim); }
+.prog { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; font-size: 13px; }
+.prog > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar { flex: none; width: 180px; height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.bar.indeterminate > i { width: 40%; animation: indeterminate 1.4s ease-in-out infinite; }
+@keyframes indeterminate { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+
+.placeholder-screen { max-width: 520px; }
+
+@media (forced-colors: active) {
+  .nav[aria-current="page"] { outline: 2px solid Highlight; }
+  .bar > i { background: var(--accent); }
+}

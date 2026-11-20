@@ -1,5 +1,5 @@
 import type { WebView } from "../types/WebView";
-import type { AppInfo } from "../types/domain";
+import type { AppInfo, InputSnapshot, ResultsSnapshot, RunSnapshot, SettingsSnapshot } from "../types/domain";
 
 /** Answers one call; it gets the parsed params and returns the call's data. */
 export type MockHandler = (params: unknown) => unknown | Promise<unknown>;
@@ -7,8 +7,28 @@ export type MockHandler = (params: unknown) => unknown | Promise<unknown>;
 /** Handlers by `"service.method"`. */
 export type MockHandlers = Record<string, MockHandler>;
 
+/** A host with nothing added yet, for the shell in a plain browser: Obfuscate is blocked and nothing has run. */
 export const defaultMockHandlers: MockHandlers = {
   "app.info": (): AppInfo => ({ version: "0.0.0-mock" }),
+  "run.get": (): RunSnapshot => ({
+    revision: 1, canStart: false, blockedReason: "Add at least one included file.", mode: "None", modeExplanation: "",
+    outputHint: "", progress: 0, indeterminate: false, currentFile: null, completed: 0, total: 0, failed: 0,
+    status: "Idle", message: "",
+  }),
+  "files.get": (): InputSnapshot => ({
+    revision: 1, files: [], hasIncludedFiles: false, outputFolder: "", outputHint: "", mergeOutputHint: "",
+    outputWarning: null, writeSymbolMap: false, symbolMapPath: "", resolvedSymbolMapPath: null, notices: [],
+  }),
+  "settings.get": (): SettingsSnapshot => ({
+    revision: 1, level: "Standard", levelSummary: "", techniques: [], errors: [], configPath: null, dirty: false,
+    runtimeProfile: "Default", exclusions: { namespaces: [], types: [], methods: [] },
+    inclusions: { namespaces: [], types: [], methods: [] },
+    choices: { levels: [], algorithms: [], controlFlowModes: [], namingModes: [], runtimeProfiles: [], packingRids: [] },
+  }),
+  "results.summary": (): ResultsSnapshot => ({
+    revision: 1, state: "NotRun", groups: [], elapsedMs: 0, symbolCount: 0, hasReport: false, hasPreview: false,
+    previewPaths: [], selectedPreviewPath: null, previewError: null,
+  }),
 };
 
 /** An in-memory host: a WebView that answers in the host's envelope. */

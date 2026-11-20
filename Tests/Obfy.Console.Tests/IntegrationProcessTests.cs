@@ -180,6 +180,30 @@ public class IntegrationProcessTests : IDisposable
     }
 
     [Fact]
+    public void ConfigWizard_RedirectedInput_PrintsOneLineError()
+    {
+        var outputPath = Path.Combine(_tempDirectory, "wizard.json");
+        var previous = Program.IsWizardInteractive;
+        Program.IsWizardInteractive = static () => false;
+        try
+        {
+            var exitCode = CommandLineTestHelpers.Invoke(
+                Program.CreateRootCommand(),
+                $"config wizard -o \"{outputPath}\"",
+                out var output);
+
+            exitCode.ShouldBe(1);
+            output.ShouldContain("config wizard needs an interactive terminal.");
+            output.ShouldNotContain("InvalidOperationException");
+            File.Exists(outputPath).ShouldBeFalse();
+        }
+        finally
+        {
+            Program.IsWizardInteractive = previous;
+        }
+    }
+
+    [Fact]
     public async Task Help_ReturnsZeroExitCode()
     {
         var exitCode = await CommandLineTestHelpers.InvokeAsync(Program.CreateRootCommand(), "--help");

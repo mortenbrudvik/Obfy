@@ -306,8 +306,26 @@ public class Program
         {
             var output = parseResult.GetValue(wizardOutputOption);
             var quick = parseResult.GetValue(quickModeOption);
-            var wizard = new ConfigurationWizard();
-            await wizard.RunAsync(output!, quick).ConfigureAwait(false);
+            if (!IsWizardInteractive())
+            {
+                parseResult.InvocationConfiguration.Error.WriteLine(
+                    "config wizard needs an interactive terminal.");
+                AnsiConsole.MarkupLine("[red]config wizard needs an interactive terminal.[/]");
+                return 1;
+            }
+
+            try
+            {
+                var wizard = new ConfigurationWizard();
+                return await wizard.RunAsync(output!, quick).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException)
+            {
+                parseResult.InvocationConfiguration.Error.WriteLine(
+                    "config wizard needs an interactive terminal.");
+                AnsiConsole.MarkupLine("[red]config wizard needs an interactive terminal.[/]");
+                return 1;
+            }
         });
 
         var configCommand = new Command("config", "Configuration file operations")
@@ -322,6 +340,12 @@ public class Program
 
         return rootCommand;
     }
+
+    /// <summary>
+    /// Tests replace this when they need to simulate redirected stdin without blocking on a prompt.
+    /// </summary>
+    internal static Func<bool> IsWizardInteractive { get; set; } = static () =>
+        !System.Console.IsInputRedirected && !System.Console.IsOutputRedirected;
 
     public static async Task<int> Main(string[] args)
     {

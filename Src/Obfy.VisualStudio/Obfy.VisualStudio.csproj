@@ -22,14 +22,14 @@
 
   <ItemGroup>
     <!-- VS SDK -->
-    <PackageReference Include="Community.VisualStudio.Toolkit.17" Version="17.0.551" />
-    <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="build" />
-    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.14.2142">
+    <PackageReference Include="Community.VisualStudio.Toolkit.17" />
+    <PackageReference Include="Microsoft.VisualStudio.SDK" ExcludeAssets="build" />
+    <PackageReference Include="Microsoft.VSSDK.BuildTools">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.VisualStudio.SDK.Analyzers" Version="17.7.113" PrivateAssets="all" />
-    <PackageReference Include="System.Text.Json" Version="10.0.12" />
+    <PackageReference Include="Microsoft.VisualStudio.SDK.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="System.Text.Json" />
   </ItemGroup>
 
   <!--

@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-20T22:40:00Z",
+  "updated": "2026-11-20T23:10:00Z",
   "note": "Assembly-review fixes are on main (cbaa126). This board is the Nov 20 review backlog.",
   "items": [
     {"id": "C1", "section": "Critical", "title": "Constant encryption fails the run on int.MinValue or long.MinValue because Math.Abs throws.", "location": "ConstantEncryptionObfuscator.cs", "status": "fixed"},
@@ -23,7 +23,7 @@
     {"id": "R5", "section": "Release", "title": "Publish never rebuilds the native host stub, and the CI freshness check ends in exit 0.", "location": "publish.yml", "status": "fixed"},
     {"id": "R6", "section": "Release", "title": "Platform tests run weekly only, and the job can pass having run no MAUI or Blazor tests.", "location": "platform.yml", "status": "fixed"},
     {"id": "R7", "section": "Release", "title": "Tests in Category=UI run in no CI job.", "location": "ci.yml", "status": "fixed"},
-    {"id": "R8", "section": "Release", "title": "Package versions are repeated in every project file with nothing enforcing agreement.", "location": "csproj", "status": "open"},
+    {"id": "R8", "section": "Release", "title": "Package versions are repeated in every project file with nothing enforcing agreement.", "location": "csproj", "status": "fixed"},
     {"id": "M1", "section": "Minor", "title": "A closed-set run continues when a member assembly fails to load.", "location": "ClosedSetProcessor.cs", "status": "fixed"},
     {"id": "M2", "section": "Minor", "title": "Settings load falls back to full defaults when saving a corrected value fails.", "location": "SettingsServiceBase.cs", "status": "fixed"},
     {"id": "M3", "section": "Minor", "title": "The packing AES key is the cache digest, stored as plaintext hex in the sidecar.", "location": "IncrementalCache.cs", "status": "fixed"},

@@ -2,6 +2,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Mediator;
+using Obfy.App;
 using Obfy.Common;
 
 namespace Obfy.Interop;

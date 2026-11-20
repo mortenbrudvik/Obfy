@@ -3,6 +3,7 @@ using System.Text.Json;
 using Mediator;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Obfy.App;
 using Obfy.Interop;
 using Shouldly;
 

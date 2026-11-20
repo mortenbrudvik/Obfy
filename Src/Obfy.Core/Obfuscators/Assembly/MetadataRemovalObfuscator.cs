@@ -1,7 +1,9 @@
+using System.Text;
 using dnlib.DotNet;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Obfuscators.Assembly;
 
@@ -73,15 +75,10 @@ public class MetadataRemovalObfuscator : IObfuscator
     {
         var count = 0;
 
-        // Remove DebuggableAttribute
-        var debuggableAttr = module.CustomAttributes
-            .FirstOrDefault(a => a.TypeFullName == "System.Diagnostics.DebuggableAttribute");
-
-        if (debuggableAttr != null)
-        {
-            module.CustomAttributes.Remove(debuggableAttr);
-            count++;
-        }
+        // Compiler-built assemblies store DebuggableAttribute on the assembly, not the module.
+        count += RemoveDebuggableAttributes(module.CustomAttributes);
+        if (module.Assembly != null)
+            count += RemoveDebuggableAttributes(module.Assembly.CustomAttributes);
 
         // Remove debug symbols from methods
         foreach (var type in module.GetTypes())
@@ -133,43 +130,37 @@ public class MetadataRemovalObfuscator : IObfuscator
             "System.Diagnostics.CodeAnalysis.SuppressMessageAttribute"
         };
 
-        // Remove excluded attributes from the removal set
-        foreach (var attr in exclusions.Attributes)
-        {
-            attributesToRemove.Remove(attr);
-        }
-
         // Remove from assembly
-        count += RemoveAttributesFrom(module.CustomAttributes, attributesToRemove);
+        count += RemoveAttributesFrom(module.CustomAttributes, attributesToRemove, exclusions);
 
         // Remove from types and members
         foreach (var type in module.GetTypes())
         {
-            count += RemoveAttributesFrom(type.CustomAttributes, attributesToRemove);
+            count += RemoveAttributesFrom(type.CustomAttributes, attributesToRemove, exclusions);
 
             foreach (var method in type.Methods)
             {
-                count += RemoveAttributesFrom(method.CustomAttributes, attributesToRemove);
+                count += RemoveAttributesFrom(method.CustomAttributes, attributesToRemove, exclusions);
 
                 foreach (var param in method.Parameters)
                 {
-                    count += RemoveAttributesFrom(param.ParamDef?.CustomAttributes, attributesToRemove);
+                    count += RemoveAttributesFrom(param.ParamDef?.CustomAttributes, attributesToRemove, exclusions);
                 }
             }
 
             foreach (var field in type.Fields)
             {
-                count += RemoveAttributesFrom(field.CustomAttributes, attributesToRemove);
+                count += RemoveAttributesFrom(field.CustomAttributes, attributesToRemove, exclusions);
             }
 
             foreach (var property in type.Properties)
             {
-                count += RemoveAttributesFrom(property.CustomAttributes, attributesToRemove);
+                count += RemoveAttributesFrom(property.CustomAttributes, attributesToRemove, exclusions);
             }
 
             foreach (var evt in type.Events)
             {
-                count += RemoveAttributesFrom(evt.CustomAttributes, attributesToRemove);
+                count += RemoveAttributesFrom(evt.CustomAttributes, attributesToRemove, exclusions);
             }
         }
 
@@ -177,15 +168,12 @@ public class MetadataRemovalObfuscator : IObfuscator
         return count;
     }
 
-    private int RemoveAttributesFrom(CustomAttributeCollection? attributes, HashSet<string> toRemove)
+    private static int RemoveDebuggableAttributes(CustomAttributeCollection attributes)
     {
-        if (attributes == null)
-            return 0;
-
         var count = 0;
         for (var i = attributes.Count - 1; i >= 0; i--)
         {
-            if (toRemove.Contains(attributes[i].TypeFullName))
+            if (attributes[i].TypeFullName == "System.Diagnostics.DebuggableAttribute")
             {
                 attributes.RemoveAt(i);
                 count++;
@@ -195,15 +183,40 @@ public class MetadataRemovalObfuscator : IObfuscator
         return count;
     }
 
+    private int RemoveAttributesFrom(
+        CustomAttributeCollection? attributes,
+        HashSet<string> toRemove,
+        ExclusionRules exclusions)
+    {
+        if (attributes == null)
+            return 0;
+
+        var count = 0;
+        for (var i = attributes.Count - 1; i >= 0; i--)
+        {
+            var name = attributes[i].TypeFullName;
+            if (!toRemove.Contains(name))
+                continue;
+            if (exclusions.Attributes.Any(pattern => ObfuscatorHelpers.MatchesAttribute(name, pattern)))
+                continue;
+
+            attributes.RemoveAt(i);
+            count++;
+        }
+
+        return count;
+    }
+
     private int StripDocumentation(ModuleDef module)
     {
         var count = 0;
 
-        // Remove XML documentation resources
+        // Remove embedded XML documentation only. A resource whose name ends in .xml
+        // (config.xml, data.xml) is kept unless its content is a compiler doc file.
         for (var i = module.Resources.Count - 1; i >= 0; i--)
         {
             var resource = module.Resources[i];
-            if (resource.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+            if (IsXmlDocumentation(resource))
             {
                 module.Resources.RemoveAt(i);
                 count++;
@@ -212,5 +225,47 @@ public class MetadataRemovalObfuscator : IObfuscator
 
         _logger.LogDebug("Stripped documentation: {Count} items", count);
         return count;
+    }
+
+    private static bool IsXmlDocumentation(Resource resource)
+    {
+        if (resource is not EmbeddedResource embedded)
+            return false;
+        if (!embedded.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string text;
+        try
+        {
+            var data = embedded.CreateReader().ToArray();
+            var length = Math.Min(data.Length, 16 * 1024);
+            text = Encoding.UTF8.GetString(data, 0, length);
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+
+        return HasDocElement(text, "doc") && HasDocElement(text, "members");
+    }
+
+    private static bool HasDocElement(string text, string name)
+    {
+        var needle = "<" + name;
+        var index = 0;
+        while ((index = text.IndexOf(needle, index, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var after = index + needle.Length;
+            if (after >= text.Length)
+                return false;
+
+            var next = text[after];
+            if (next is '>' or ' ' or '\t' or '\r' or '\n' or '/')
+                return true;
+
+            index = after;
+        }
+
+        return false;
     }
 }

@@ -444,6 +444,7 @@ public class ControlFlowObfuscator : IObfuscator
                 Instruction.Create(OpCodes.Call, getTickCount64!),
                 Instruction.Create(OpCodes.Dup),
                 Instruction.Create(OpCodes.Xor),
+                Instruction.Create(OpCodes.Conv_I4),
                 Instruction.Create(OpCodes.Brfalse, target)
             ],
             _ =>

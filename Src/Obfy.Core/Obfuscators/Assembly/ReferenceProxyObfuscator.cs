@@ -13,6 +13,8 @@ namespace Obfy.Core.Obfuscators.Assembly;
 /// <see cref="ProtectionSettings.ReferenceProxy"/> is on. Out-of-module calls (BCL and third-party)
 /// are proxied only when <see cref="ProtectionSettings.ProxyExternalCalls"/> is also on;
 /// compiler/interop/pointer/value-type/generic/<c>constrained.</c> sites are skipped.
+/// Private, protected, and private-protected methods are trampolined from a nested type of the
+/// declaring type so <c>ldftn</c> is legal. External proxies are keyed by assembly identity.
 /// </summary>
 public class ReferenceProxyObfuscator : IObfuscator
 {
@@ -38,26 +40,21 @@ public class ReferenceProxyObfuscator : IObfuscator
 
         try
         {
-            var proxyType = new TypeDefUser(
-                "Obfy.Runtime",
-                "<RefProxy>",
-                module.CorLibTypes.Object.TypeDefOrRef)
-            {
-                Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract
-            };
-            RuntimeInjection.AddType(context, proxyType);
-
+            TypeDef? moduleProxy = null;
+            var nestedProxies = new Dictionary<TypeDef, TypeDef>();
             var proxies = new Dictionary<string, MethodDef>(StringComparer.Ordinal);
             var created = 0;
 
             foreach (var type in module.GetTypes().ToList())
             {
-                if (type == proxyType)
+                if (moduleProxy != null && type == moduleProxy)
                     continue;
                 // Do not rewrite calls inside helper types. CanProxy also rejects Vm.Run/Init
                 // so the interpreter entry stays a direct call; other helper entry points
                 // (decryptors) remain proxyable from user IL.
                 if (ObfuscatorHelpers.IsRuntimeHelper(type))
+                    continue;
+                if (type.Name == "<RefProxy>")
                     continue;
                 if (!ObfuscationAttributeRules.AllowType(type, context.Settings, ObfuscationFeature.All, context.Warnings))
                     continue;
@@ -85,13 +82,21 @@ public class ReferenceProxyObfuscator : IObfuscator
                         if (!CanProxy(called, module, context))
                             continue;
 
-                        var key = called.FullName + "|" + instr.OpCode.Code;
+                        var home = ClassifyProxy(called, module);
+                        if (home == ProxyHome.Skip)
+                            continue;
+
+                        var owner = home == ProxyHome.Nested
+                            ? GetNestedProxyType(called.ResolveMethodDef()!.DeclaringType, module, nestedProxies)
+                            : ModuleProxy();
+
+                        var key = ProxyKey(called, instr.OpCode.Code);
                         if (!proxies.TryGetValue(key, out var proxy))
                         {
-                            proxy = CreateProxy(module, proxyType, called, instr.OpCode == OpCodes.Callvirt);
+                            proxy = CreateProxy(called, instr.OpCode == OpCodes.Callvirt, owner.Methods.Count);
                             if (proxy == null)
                                 continue;
-                            proxyType.Methods.Add(proxy);
+                            owner.Methods.Add(proxy);
                             proxies[key] = proxy;
                             created++;
                         }
@@ -110,17 +115,146 @@ public class ReferenceProxyObfuscator : IObfuscator
                 }
             }
 
-            if (created == 0)
-                module.Types.Remove(proxyType);
-
             _logger.LogInformation("Created {Count} reference proxies", created);
             return Task.FromResult(ObfuscationResult.Successful(stats));
+
+            TypeDef ModuleProxy()
+            {
+                if (moduleProxy != null)
+                    return moduleProxy;
+
+                moduleProxy = new TypeDefUser(
+                    "Obfy.Runtime",
+                    "<RefProxy>",
+                    module.CorLibTypes.Object.TypeDefOrRef)
+                {
+                    Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract
+                };
+                RuntimeInjection.AddType(context, moduleProxy);
+                return moduleProxy;
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Reference proxy injection failed");
             return Task.FromResult(ObfuscationResult.Failed($"Reference proxy injection failed: {ex.Message}", ex));
         }
+    }
+
+    private enum ProxyHome { Skip, Module, Nested }
+
+    private static ProxyHome ClassifyProxy(IMethod called, ModuleDef module)
+    {
+        var resolved = called.ResolveMethodDef();
+        var inModule = resolved != null && resolved.Module == module;
+        if (!inModule)
+        {
+            if (resolved == null)
+                return ProxyHome.Module;
+            return CanReachFromModuleProxy(resolved, module) ? ProxyHome.Module : ProxyHome.Skip;
+        }
+
+        var access = AccessOf(resolved!);
+        if (access is MethodAttributes.Private or MethodAttributes.Family or MethodAttributes.FamANDAssem)
+        {
+            // A nested trampoline inside an open generic type is not a stable ldftn target.
+            // Leave the direct call so the original method still runs.
+            if (DeclaringTypeIsGeneric(resolved!.DeclaringType))
+                return ProxyHome.Skip;
+            return ProxyHome.Nested;
+        }
+
+        return ProxyHome.Module;
+    }
+
+    private static bool CanReachFromModuleProxy(MethodDef resolved, ModuleDef module)
+    {
+        var access = AccessOf(resolved);
+        if (access == MethodAttributes.Public)
+            return true;
+
+        if (!SameAssembly(resolved.Module, module))
+            return false;
+
+        return access is MethodAttributes.Assembly or MethodAttributes.FamORAssem;
+    }
+
+    private static MethodAttributes AccessOf(MethodDef method) =>
+        method.Attributes & MethodAttributes.MemberAccessMask;
+
+    private static bool SameAssembly(ModuleDef left, ModuleDef right)
+    {
+        if (ReferenceEquals(left.Assembly, right.Assembly) && left.Assembly != null)
+            return true;
+
+        var leftName = left.Assembly?.Name?.String;
+        var rightName = right.Assembly?.Name?.String;
+        return leftName != null &&
+               rightName != null &&
+               string.Equals(leftName, rightName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool DeclaringTypeIsGeneric(TypeDef? type)
+    {
+        for (var current = type; current != null; current = current.DeclaringType)
+        {
+            if (current.HasGenericParameters)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static TypeDef GetNestedProxyType(TypeDef declaring, ModuleDef module, Dictionary<TypeDef, TypeDef> cache)
+    {
+        if (cache.TryGetValue(declaring, out var existing))
+            return existing;
+
+        foreach (var nested in declaring.NestedTypes)
+        {
+            if (nested.Name == "<RefProxy>")
+            {
+                cache[declaring] = nested;
+                return nested;
+            }
+        }
+
+        var created = new TypeDefUser(
+            UTF8String.Empty,
+            "<RefProxy>",
+            module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            Attributes = TypeAttributes.NestedAssembly | TypeAttributes.Sealed | TypeAttributes.Abstract | TypeAttributes.BeforeFieldInit
+        };
+        declaring.NestedTypes.Add(created);
+        cache[declaring] = created;
+        return created;
+    }
+
+    /// <summary>
+    /// <see cref="IMethod.FullName"/> is not assembly-qualified. Two external methods that share
+    /// a display name must not share a trampoline.
+    /// </summary>
+    private static string ProxyKey(IMethod called, Code code) =>
+        ScopeKey(called) + "|" + called.FullName + "|" + (int)code;
+
+    private static string ScopeKey(IMethod called)
+    {
+        var declaring = called.DeclaringType;
+        if (declaring == null)
+            return "";
+
+        if (declaring.Scope is AssemblyRef assemblyRef && !UTF8String.IsNullOrEmpty(assemblyRef.Name))
+            return assemblyRef.FullName;
+
+        var defined = declaring.DefinitionAssembly;
+        if (defined != null && !UTF8String.IsNullOrEmpty(defined.Name))
+            return defined.FullName;
+
+        if (declaring.Scope is ModuleRef moduleRef)
+            return "module:" + moduleRef.Name;
+
+        return declaring.Scope?.ToString() ?? "";
     }
 
     private static bool CanProxy(IMethod called, ModuleDef module, PipelineContext context)
@@ -211,7 +345,7 @@ public class ReferenceProxyObfuscator : IObfuscator
         return false;
     }
 
-    private static MethodDef? CreateProxy(ModuleDef module, TypeDef proxyType, IMethod target, bool virt)
+    private static MethodDef? CreateProxy(IMethod target, bool virt, int nameIndex)
     {
         var sig = target.MethodSig;
         if (sig == null)
@@ -230,7 +364,7 @@ public class ReferenceProxyObfuscator : IObfuscator
 
         var proxySig = MethodSig.CreateStatic(sig.RetType, paramTypes.ToArray());
         var proxy = new MethodDefUser(
-            "P" + proxyType.Methods.Count,
+            "P" + nameIndex,
             proxySig,
             MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig);
 

@@ -8,6 +8,7 @@ using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Emit;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -2112,6 +2113,714 @@ public class EndToEndObfuscationTests
         finally
         {
             try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public async Task ReferenceProxy_PrivateAndProtectedCalls_ReturnOriginalValues()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get() => new Holder().Run() + new Derived().Via();
+            }
+
+            public class Holder
+            {
+                public int Run() => Secret(20) + Protected(21) + Virt(3);
+                private int Secret(int x) => x + 1;
+                protected int Protected(int x) => x + 2;
+                protected virtual int Virt(int x) => x + 4;
+            }
+
+            public class Derived : Holder
+            {
+                public int Via() => Protected(30) + Virt(5);
+                protected override int Virt(int x) => x + 6;
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-proxy-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "AccessProxy");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Protection = { ReferenceProxy = true }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            (await new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "AccessProxy.obf.dll");
+            module.Write(output);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(94);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task ReferenceProxy_SameNamedExternalMethods_StayDistinct()
+    {
+        const string leftSource = "namespace Duo; public static class Helper { public static int Value() => 10; }";
+        const string rightSource = "namespace Duo; public static class Helper { public static int Value() => 20; }";
+        const string appSource = """
+            extern alias Left;
+            extern alias Right;
+            public static class Lib
+            {
+                public static int Get() => Left::Duo.Helper.Value() * 100 + Right::Duo.Helper.Value();
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-extname-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var left = CompileToAssembly(leftSource, dir, "DuoLeft");
+            var right = CompileToAssembly(rightSource, dir, "DuoRight");
+            var app = CompileWithAliases(appSource, dir, "DuoApp", (left, "Left"), (right, "Right"));
+
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(app));
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Protection = { ReferenceProxy = true, ProxyExternalCalls = true }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            (await new ReferenceProxyObfuscator(new Mock<ILogger<ReferenceProxyObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "DuoApp.obf.dll");
+            module.Write(output);
+            LoadAndInvokeWithRefs(output, "Lib", "Get", left, right).ShouldBe(1020);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_PreservePublicApi_KeepsProtectedVirtualPropertyForSubclass()
+    {
+        const string baseSource = """
+            namespace Api;
+            public class Widget
+            {
+                private int _p;
+                protected virtual int Port
+                {
+                    get => _p;
+                    set => _p = value;
+                }
+                public Widget() { Port = 40; }
+            }
+            """;
+        const string childSource = """
+            namespace Api;
+            public class Child : Widget
+            {
+                protected override int Port
+                {
+                    get => base.Port + 2;
+                    set => base.Port = value;
+                }
+                public int Read() => Port;
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-prop-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var basePath = CompileToAssembly(baseSource, dir, "WidgetLib");
+            var childPath = CompileToAssemblyWithRef(childSource, dir, "ChildLib", basePath);
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(basePath));
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                SymbolRenaming = { Enabled = true, PreservePublicApi = true, Mode = NamingMode.Sequential }
+            });
+            (await new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var widget = module.Types.Single(t => t.Name == "Widget");
+            var port = widget.Properties.Single(p => p.GetMethod != null && p.SetMethod != null && p.Name != "Item");
+            port.Name.String.ShouldBe("Port");
+            port.GetMethod!.Name.String.ShouldBe("get_Port");
+            port.SetMethod!.Name.String.ShouldBe("set_Port");
+
+            var output = Path.Combine(dir, "WidgetLib.obf.dll");
+            module.Write(output);
+            LoadAndInvokeWithRefs(childPath, "Api.Child", "Read", output).ShouldBe(42);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_PreservePublicApi_KeepsProtectedVirtualEventForSubclass()
+    {
+        const string baseSource = """
+            namespace Api;
+            public class Source
+            {
+                protected virtual event System.EventHandler Ping;
+                public int Raise()
+                {
+                    var n = 0;
+                    Ping += (_, _) => n += 7;
+                    Ping?.Invoke(this, System.EventArgs.Empty);
+                    return n;
+                }
+            }
+            """;
+        const string childSource = """
+            namespace Api;
+            public class Child : Source
+            {
+                public int Arm()
+                {
+                    Ping += (_, _) => { };
+                    return Raise();
+                }
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-evt-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var basePath = CompileToAssembly(baseSource, dir, "EventLib");
+            var childPath = CompileToAssemblyWithRef(childSource, dir, "EventChild", basePath);
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(basePath));
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                SymbolRenaming = { Enabled = true, PreservePublicApi = true, Mode = NamingMode.Sequential }
+            });
+            (await new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var source = module.Types.Single(t => t.Name == "Source");
+            var ping = source.Events.Single();
+            ping.Name.String.ShouldBe("Ping");
+            ping.AddMethod!.Name.String.ShouldBe("add_Ping");
+            ping.RemoveMethod!.Name.String.ShouldBe("remove_Ping");
+
+            var output = Path.Combine(dir, "EventLib.obf.dll");
+            module.Write(output);
+            LoadAndInvokeWithRefs(childPath, "Api.Child", "Arm", output).ShouldBe(7);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_RenamesWinFormsResourcesWithType()
+    {
+        const string source = """
+            namespace Ns;
+            public class Outer
+            {
+                public class Form1
+                {
+                    public static int Get() => 7;
+                }
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-res-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "FormsLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            module.Resources.Add(new EmbeddedResource("Ns.Outer+Form1.resources", new byte[] { 1, 2, 3 }));
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                SymbolRenaming = { Enabled = true, PreservePublicApi = false, Mode = NamingMode.Sequential }
+            });
+            (await new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "FormsLib.obf.dll");
+            module.Write(output);
+
+            var alc = new AssemblyLoadContext($"res-{Guid.NewGuid():N}", isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromAssemblyPath(output);
+                var form = asm.GetTypes().Single(t =>
+                    t.DeclaringType != null &&
+                    t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+                        .Any(m => m.ReturnType == typeof(int) && m.GetParameters().Length == 0 && !m.IsConstructor));
+                form.FullName.ShouldNotBe("Ns.Outer+Form1");
+                asm.GetManifestResourceNames().ShouldContain(form.FullName + ".resources");
+                var get = form.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(m => m.ReturnType == typeof(int) && m.GetParameters().Length == 0 && !m.IsConstructor);
+                get.Invoke(null, null).ShouldBe(7);
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_RenamedIndexer_UpdatesDefaultMember()
+    {
+        const string source = """
+            public class Box
+            {
+                private int _v;
+                private int this[int i]
+                {
+                    get => _v + i;
+                    set => _v = value;
+                }
+                public int Get()
+                {
+                    this[0] = 40;
+                    return this[0] + 2;
+                }
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-idx-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "IndexLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                SymbolRenaming = { Enabled = true, PreservePublicApi = true, Mode = NamingMode.Sequential }
+            });
+            (await new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var box = module.Types.Single(t => t.Name == "Box");
+            var indexer = box.Properties.Single(p => p.PropertySig.Params.Count > 0);
+            indexer.Name.String.ShouldNotBe("Item");
+            var member = box.CustomAttributes.Single(a => a.TypeFullName.Contains("DefaultMemberAttribute"));
+            var text = member.ConstructorArguments[0].Value switch
+            {
+                UTF8String utf => utf.String,
+                string s => s,
+                _ => member.ConstructorArguments[0].Value?.ToString()
+            };
+            text.ShouldBe(indexer.Name.String);
+
+            var output = Path.Combine(dir, "IndexLib.obf.dll");
+            module.Write(output);
+            LoadAndInvoke(output, "Box", "Get").ShouldBe(42);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_OverloadSymbolMapEntries_StayDistinct()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get() => A(2) + A("hi");
+                private static int A(int x) => x + 1;
+                private static int A(string s) => s.Length;
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-map-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "MapLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                SymbolRenaming = { Enabled = true, PreservePublicApi = true, Mode = NamingMode.Sequential }
+            });
+            (await new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var keys = context.SymbolMap.Keys.Where(k => k.StartsWith("Method:") && k.Contains(".A(")).ToList();
+            keys.Count.ShouldBe(2);
+            keys[0].ShouldNotBe(keys[1]);
+
+            var output = Path.Combine(dir, "MapLib.obf.dll");
+            module.Write(output);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(5);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task MetadataRemoval_DebugAssembly_StripsAssemblyDebuggableAndKeepsNonDocXml()
+    {
+        const string source = "public static class Lib { public static int Get() => 3; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-meta-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileDebugAssembly(source, dir, "DebugLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            module.Assembly.ShouldNotBeNull();
+            module.Assembly!.CustomAttributes.ShouldContain(a =>
+                a.TypeFullName == "System.Diagnostics.DebuggableAttribute");
+
+            module.Resources.Add(new EmbeddedResource(
+                "DebugLib.xml",
+                System.Text.Encoding.UTF8.GetBytes("<doc><members></members></doc>")));
+            module.Resources.Add(new EmbeddedResource(
+                "config.xml",
+                System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><settings>keep</settings>")));
+
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Metadata = { RemoveDebugInfo = true, StripDocumentation = true, RemoveAttributes = true }
+            });
+            (await new MetadataRemovalObfuscator(new Mock<ILogger<MetadataRemovalObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            module.Assembly.CustomAttributes.ShouldNotContain(a =>
+                a.TypeFullName == "System.Diagnostics.DebuggableAttribute");
+            module.Resources.ShouldNotContain(r => r.Name == "DebugLib.xml");
+            module.Resources.ShouldContain(r => r.Name == "config.xml");
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task AntiDecompiler_JunkMethod_RunsWhenInvoked()
+    {
+        const string source = "public static class Lib { public static int Get() => 1; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-junk-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "JunkLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Protection =
+                {
+                    AntiDecompiler =
+                    {
+                        Enabled = true,
+                        InjectJunkTypes = true,
+                        JunkTypeCount = 1,
+                        JunkMethodsPerType = 1,
+                        AddSuppressIldasmAttribute = false,
+                        AddDecoyAttributes = false
+                    }
+                }
+            });
+            (await new AntiDecompilerObfuscator(new Mock<ILogger<AntiDecompilerObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "JunkLib.obf.dll");
+            module.Write(output);
+
+            var alc = new AssemblyLoadContext($"junk-{Guid.NewGuid():N}", isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromAssemblyPath(output);
+                MethodInfo? junk = null;
+                foreach (var type in asm.GetTypes())
+                {
+                    junk = type.GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static)
+                        .FirstOrDefault(m =>
+                            m.ReturnType == typeof(int) &&
+                            m.GetParameters().Length == 2 &&
+                            m.GetParameters().All(p => p.ParameterType == typeof(int)));
+                    if (junk != null)
+                        break;
+                }
+
+                junk.ShouldNotBeNull();
+                junk!.Invoke(null, new object[] { 0, 7 }).ShouldBe(1);
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task AntiDump_WindowsAssemblyStillStarts()
+    {
+        OperatingSystem.IsWindows().ShouldBeTrue();
+        const string source = "public static class Lib { public static int Get() => 42; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-dump-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "DumpLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Protection = { AntiDump = true }
+            });
+            (await new AntiDumpObfuscator(new Mock<ILogger<AntiDumpObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var wipe = module.Types.First(t => t.Name == "<AntiDump>").FindMethod("Wipe")!;
+            var call = wipe.Body.Instructions.Select((instruction, index) => (instruction, index))
+                .First(t => t.instruction.OpCode == OpCodes.Call &&
+                            t.instruction.Operand is IMethod m && m.Name == "NeutralizeDumpers").index;
+            wipe.Body.ExceptionHandlers.Any(eh =>
+            {
+                var start = wipe.Body.Instructions.IndexOf(eh.TryStart);
+                var end = wipe.Body.Instructions.IndexOf(eh.HandlerEnd);
+                return eh.HandlerType == ExceptionHandlerType.Catch &&
+                       eh.CatchType.FullName == "System.Object" &&
+                       call >= start && call < end;
+            }).ShouldBeTrue();
+
+            var output = Path.Combine(dir, "DumpLib.obf.dll");
+            module.Write(output);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(42);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task AntiDebug_DoesNotKillOnTickGap_AndStillReturns()
+    {
+        const string source = "public static class Lib { public static int Get() => 42; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-dbg-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "DbgLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Protection = { AntiDebug = true }
+            });
+            (await new AntiDebugObfuscator(new Mock<ILogger<AntiDebugObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var check = module.GetTypes().SelectMany(t => t.Methods).Single(m => m.Name == "Check");
+            var instructions = check.Body.Instructions;
+            for (var i = 0; i < instructions.Count - 1; i++)
+            {
+                if (!instructions[i].IsLdcI4() || instructions[i].GetLdcI4Value() != 1000)
+                    continue;
+                var next = instructions[i + 1].OpCode.Code;
+                (next is Code.Ble or Code.Ble_S or Code.Bgt or Code.Bgt_S or Code.Bge or Code.Bge_S or Code.Blt or Code.Blt_S)
+                    .ShouldBeFalse();
+            }
+
+            var output = Path.Combine(dir, "DbgLib.obf.dll");
+            module.Write(output);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(42);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task ControlFlow_TickCount64Predicate_BranchesOnInt32()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get(int n)
+                {
+                    try
+                    {
+                        var x = n;
+                        x = x + 1;
+                        x = x + 2;
+                        x = x + 3;
+                        x = x + 4;
+                        x = x + 5;
+                        x = x + 6;
+                        if (x < 0) throw new System.Exception("no");
+                        return x;
+                    }
+                    catch (System.Exception)
+                    {
+                        return -1;
+                    }
+                }
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-cf-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "FlowLib");
+            var bytes = File.ReadAllBytes(input);
+            ModuleDef? hit = null;
+            for (var attempt = 0; attempt < 40 && hit == null; attempt++)
+            {
+                var module = ModuleDefMD.Load(bytes);
+                var context = PipelineContext.ForAssembly(module, new ObfySettings
+                {
+                    Level = ObfuscationLevel.Custom,
+                    ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+                });
+                (await new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object)
+                    .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+                var get = module.Types.Single(t => t.Name == "Lib").Methods.Single(m => m.Name == "Get");
+                if (get.Body.Instructions.Any(i => i.Operand is IMethod called && called.Name == "get_TickCount64"))
+                    hit = module;
+                else
+                    module.Dispose();
+            }
+
+            hit.ShouldNotBeNull("TickCount64 predicate was not emitted");
+            using var chosen = hit!;
+            var method = chosen.Types.Single(t => t.Name == "Lib").Methods.Single(m => m.Name == "Get");
+            var body = method.Body.Instructions;
+            var saw = false;
+            for (var i = 0; i < body.Count; i++)
+            {
+                if (body[i].Operand is not IMethod called || called.Name != "get_TickCount64")
+                    continue;
+                saw = true;
+                var converted = false;
+                for (var j = i + 1; j < body.Count; j++)
+                {
+                    if (body[j].OpCode == OpCodes.Conv_I4 || body[j].OpCode == OpCodes.Conv_I)
+                        converted = true;
+                    if (body[j].OpCode.FlowControl == FlowControl.Cond_Branch)
+                    {
+                        converted.ShouldBeTrue();
+                        break;
+                    }
+                }
+            }
+
+            saw.ShouldBeTrue();
+            var output = Path.Combine(dir, "FlowLib.obf.dll");
+            chosen.Write(output);
+            LoadAndInvoke(output, "Lib", "Get", 1).ShouldBe(22);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    private static string CompileDebugAssembly(string source, string dir, string assemblyName)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var references = TrustedReferences();
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            [tree],
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, optimizationLevel: OptimizationLevel.Debug));
+
+        var path = Path.Combine(dir, assemblyName + ".dll");
+        var pdbPath = Path.Combine(dir, assemblyName + ".pdb");
+        using var pe = File.Create(path);
+        using var pdb = File.Create(pdbPath);
+        var emit = compilation.Emit(
+            pe,
+            pdb,
+            options: new EmitOptions(debugInformationFormat: DebugInformationFormat.PortablePdb));
+        emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        return path;
+    }
+
+    private static string CompileWithAliases(
+        string source, string dir, string assemblyName, params (string Path, string Alias)[] aliases)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var references = TrustedReferences();
+        foreach (var (path, alias) in aliases)
+            references = references.Append(MetadataReference.CreateFromFile(path).WithAliases([alias]));
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            [tree],
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var output = Path.Combine(dir, assemblyName + ".dll");
+        var emit = compilation.Emit(output);
+        emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        return output;
+    }
+
+    private static IEnumerable<MetadataReference> TrustedReferences() =>
+        ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+        .Split(Path.PathSeparator)
+        .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p));
+
+    private static object? LoadAndInvokeWithRefs(
+        string assemblyPath, string typeName, string methodName, params string[] extraAssemblies)
+    {
+        var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
+        try
+        {
+            foreach (var extra in extraAssemblies)
+                alc.LoadFromAssemblyPath(extra);
+            var asm = alc.LoadFromAssemblyPath(assemblyPath);
+            var type = asm.GetType(typeName);
+            type.ShouldNotBeNull();
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic |
+                                       BindingFlags.Static | BindingFlags.Instance;
+            var method = type!.GetMethod(methodName, flags);
+            method.ShouldNotBeNull();
+            object? target = null;
+            if (!method!.IsStatic)
+                target = Activator.CreateInstance(type);
+            return method.Invoke(target, null);
+        }
+        finally
+        {
+            alc.Unload();
         }
     }
 

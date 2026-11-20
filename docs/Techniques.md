@@ -524,7 +524,7 @@ PE32 vs PE32+ data-directory layouts are selected from the optional-header magic
 
 ### Reference Proxy
 
-Replaces in-module `call`/`callvirt` targets with small static `calli` trampolines so call sites no longer name the original method. Out-of-module calls (BCL and third-party) are left alone unless `protection.proxyExternalCalls` is true (opt-in; requires `referenceProxy`; skips compiler/interop/pointer/value-type/`constrained.`/generic-instantiation/vararg/ctor signatures). Assembly-visible runtime helper entry points (string/constant decrypt, anti-debug `Check`, and similar) are proxied from user code; private helper internals stay as direct calls because a trampoline in another type cannot invoke them.
+Replaces in-module `call`/`callvirt` targets with small static `calli` trampolines so call sites no longer name the original method. Out-of-module calls (BCL and third-party) are left alone unless `protection.proxyExternalCalls` is true (opt-in; requires `referenceProxy`; skips compiler/interop/pointer/value-type/`constrained.`/generic-instantiation/vararg/ctor signatures). Assembly-visible runtime helper entry points (string/constant decrypt, anti-debug `Check`, and similar) are proxied from user code. Private, protected, and private-protected methods are proxied from a nested type of the declaring type; methods on open generic types, and external methods this module cannot access, stay direct calls. External proxies are keyed by assembly so two methods that share a display name stay distinct.
 
 Enabled in the Aggressive preset (`proxyExternalCalls` stays off).
 
@@ -542,7 +542,7 @@ Makes reverse engineering harder by cluttering decompiler output with junk types
 
 **How It Works:**
 
-1. **SuppressIldasm Attribute**: Adds `[SuppressIldasm]` attribute to block ILDasm and some older tools
+1. **SuppressIldasm Attribute**: Adds `[SuppressIldasm]`. Current disassemblers (ILDasm, ILSpy, dnSpy) ignore it; the attribute is legacy metadata, not a block
 2. **Junk Types**: Injects decoy types with confusing names in generated namespaces (not a recognizable `Obfy.*` prefix)
 3. **Junk Methods**: Adds methods with complex-looking but dead code (loops, math, branches)
 4. **Junk Fields**: Adds fake fields to junk types
@@ -589,7 +589,7 @@ static int JunkMethod(int a, int b)
 
 | Decompiler | SuppressIldasm | Junk Types |
 |------------|----------------|------------|
-| ILDasm | Blocked | N/A |
+| ILDasm | Ignored | N/A |
 | dnSpy | Ignored | Visible (adds noise) |
 | ILSpy | Ignored | Visible (adds noise) |
 | dotPeek | Ignored | Visible (adds noise) |
@@ -621,7 +621,7 @@ static int JunkMethod(int a, int b)
 | `junkMethodsPerType` | 3 | Number of junk methods per type (1-20) |
 
 **Limitations:**
-- Modern decompilers (dnSpy, ILSpy) ignore SuppressIldasm
+- Current disassemblers (ILDasm, dnSpy, ILSpy) ignore SuppressIldasm
 - Junk code adds to assembly size
 - Experienced analysts can identify and filter junk types
 - Works best when combined with other obfuscation techniques

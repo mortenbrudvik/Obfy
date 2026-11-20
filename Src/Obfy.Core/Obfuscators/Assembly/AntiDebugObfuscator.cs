@@ -260,6 +260,7 @@ public class AntiDebugObfuscator : IObfuscator
             });
         }
 
+        // Tick reads stay as noise. A gap above one second must not terminate the process.
         body.Instructions.Add(afterTry);
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, tickLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, tickLocal));
@@ -267,13 +268,8 @@ public class AntiDebugObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Xor));
         body.Instructions.Add(Instruction.Create(OpCodes.Pop));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getTickCount));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, tickLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Sub));
-        var afterTiming = Instruction.Create(OpCodes.Ret);
-        body.Instructions.Add(Instruction.CreateLdcI4(1000));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ble, afterTiming));
-        EmitFail(body, module);
-        body.Instructions.Add(afterTiming);
+        body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 
         body.KeepOldMaxStack = true;
         body.MaxStack = 8;

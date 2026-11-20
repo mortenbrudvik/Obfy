@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded); per-build opcode permutation + XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset; deterrent, not confidentiality
 
 ### Fixed
+- Reference proxies for private and protected methods are nested in the declaring type, and external proxies are keyed by assembly so same-named methods stay distinct
+- Public-API preservation keeps protected virtual property and event accessor names; closed-set rename distinguishes same-named nested types; WinForms `.resources` names, indexer `DefaultMemberAttribute`, and overload symbol-map keys stay consistent after a rename
+- Debug-info removal strips assembly-level `DebuggableAttribute`; documentation stripping keeps non-doc `*.xml` resources; short attribute-name exclusions match
+- Junk methods are valid IL; anti-dump neutralization failures stay inside a handler; anti-debug no longer exits when the tick gap exceeds one second; `TickCount64` opaque predicates branch on a 32-bit int
+- Docs no longer claim `SuppressIldasmAttribute` blocks current disassemblers
 - Linux CLI solution analysis resolves Visual Studio `.sln` backslash paths (`Lib\Lib.csproj`) so `obfy App.sln` finds projects on Ubuntu
 - CI no longer installs a non-existent SDK `8.0.6`; `build.ps1` restores host pack `Microsoft.NETCore.App.Host.win-x64` 8.0.6 from NuGet and builds PackedBootstrap as AnyCPU so `Platform=x64` from the MSVC prompt does not hide the DLL
 - CI rebuilds the native host on windows-latest but does not fail when the EXE differs from the checked-in dist (MSVC 14.51 vs the committer's toolchain); the rebuild is uploaded as an artifact
@@ -304,7 +309,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configurable via `assemblyMerge` settings in obfy.json
 - Anti-decompiler protection to make reverse engineering harder (PF-04)
   - Injects junk types and methods to clutter decompiler output
-  - Adds SuppressIldasm attribute to block ILDasm
+  - Adds SuppressIldasm attribute (current disassemblers ignore it)
   - Configurable junk type count and methods per type
   - Uses confusing Unicode characters for junk names
 

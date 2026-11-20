@@ -578,7 +578,7 @@ public class AntiDecompilerSettings
     public bool InjectJunkTypes { get; set; } = true;
 
     /// <summary>
-    /// Whether to add the SuppressIldasm attribute to block ILDasm.
+    /// Whether to add the SuppressIldasm attribute. Current disassemblers ignore it.
     /// </summary>
     public bool AddSuppressIldasmAttribute { get; set; } = true;
 

@@ -446,13 +446,47 @@ public class ResultsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task GetPreviewHandler_ReturnsTheDecompile_ThroughTheTask()
+    public async Task GetPreviewHandler_KnownPath_Decompiles()
     {
         var path = typeof(ResultsStoreTests).Assembly.Location;
+        _store.SetPreviewPaths([path]);
 
         var result = await new GetPreviewRequestHandler(_store).Handle(new GetPreviewRequest(path), CancellationToken.None);
 
         result.HasPreview.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(@"C:\Windows\System32\kernel32.dll")]
+    [InlineData("")]
+    [InlineData(null)]
+    public async Task GetPreviewHandler_UnknownPath_IsRejected_WithoutDecompiling(string? unknown)
+    {
+        var decompiles = 0;
+        var store = new ResultsStore(_events, new FakeDecompiler(_ => { decompiles++; return "x"; }));
+        var known = Path.Combine(_tempDirectory, "known.dll");
+        File.WriteAllText(known, "x");
+        store.SetPreviewPaths([known]);
+
+        var error = await Should.ThrowAsync<ObfyApiException>(async () =>
+            await new GetPreviewRequestHandler(store).Handle(new GetPreviewRequest(unknown), CancellationToken.None));
+
+        error.Code.ShouldBe("preview.unknownPath");
+        decompiles.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetPreviewHandler_KnownPath_MatchesIgnoringCase()
+    {
+        var known = Path.Combine(_tempDirectory, "Known.dll");
+        File.WriteAllText(known, "x");
+        var store = new ResultsStore(_events, new FakeDecompiler(_ => "class K {}"));
+        store.SetPreviewPaths([known]);
+
+        var result = await new GetPreviewRequestHandler(store)
+            .Handle(new GetPreviewRequest(known.ToUpperInvariant()), CancellationToken.None);
+
+        result.Text.ShouldBe("class K {}");
     }
 
     [Fact]
@@ -641,17 +675,102 @@ public class ResultsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadResults_ParsesOnceOffTheCallingThread()
+    public async Task LoadResults_ParsesExactlyOnce_OffTheCallingThread()
     {
+        var callerThread = Environment.CurrentManagedThreadId;
+        var parseThreads = new List<int>();
+        var store = new ResultsStore(_events, onParse: () =>
+        {
+            lock (parseThreads)
+                parseThreads.Add(Environment.CurrentManagedThreadId);
+        });
         var map = new Dictionary<string, string>();
         for (var i = 0; i < 5000; i++)
             map[$"Type:Ns.T{i}"] = $"o{i}";
 
-        var load = _store.LoadResultsAsync(map, new ObfuscationStatistics(), TimeSpan.Zero);
-        typeof(ResultsStore).GetMethod(nameof(ResultsStore.LoadResultsAsync))!.ReturnType.ShouldBe(typeof(Task));
-        await load;
+        await store.LoadResultsAsync(map, new ObfuscationStatistics(), TimeSpan.Zero);
+        // Paging and searching filter the parsed model; they never parse again.
+        store.Query(null, null, 0, 10);
+        store.Query("T4", null, 0, 10);
+        await store.QueryAsync("o1", null, 0, 10);
 
-        _store.Query(null, null, 0, 1).TotalSymbols.ShouldBe(5000);
+        parseThreads.Count.ShouldBe(1);
+        parseThreads[0].ShouldNotBe(callerThread);
+        store.Query(null, null, 0, 1).TotalSymbols.ShouldBe(5000);
+    }
+
+    // ---- search matches display names, not raw keys ----
+
+    [Theory]
+    [InlineData("Type")]
+    [InlineData("Method")]
+    [InlineData("Field")]
+    public async Task Search_ByKeyPrefix_DoesNotMatchEverything(string word)
+    {
+        await LoadAsync(new Dictionary<string, string>
+        {
+            ["Type:Ns.Alpha"] = "q1",
+            ["Method:Ns.Alpha.Run(System.Void ())"] = "q2",
+            ["Field:Ns.Alpha.Count"] = "q3"
+        });
+
+        Roots(word).Items.ShouldBeEmpty();
+        Roots(word).HasNoSearchMatches.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Search_ByRealTypeName_FindsRenamedType()
+    {
+        await LoadAsync(new Dictionary<string, string>
+        {
+            ["Type:Ns.Alpha"] = "q1",
+            ["Field:Ns.Alpha.Count"] = "q3",
+            ["Type:Ns.Beta"] = "q4"
+        });
+
+        var roots = Roots("Alpha");
+
+        var type = roots.Items.ShouldHaveSingleItem();
+        type.OriginalName.ShouldBe("Ns.Alpha");
+        type.IsContainer.ShouldBeFalse();
+        // The type name matches, so all its members show under it.
+        type.ChildCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Search_ByContainerTypeName_FindsTheContainer()
+    {
+        // No Type: entry and no key of its own: only its Original, the full type name, can find it.
+        await LoadAsync(new Dictionary<string, string>
+        {
+            ["Method:Ns.Plain.Foo(System.Void ())"] = "m1",
+            ["Field:Ns.Plain.Bar"] = "f1"
+        });
+
+        var roots = Roots("Plain");
+
+        var container = roots.Items.ShouldHaveSingleItem();
+        container.IsContainer.ShouldBeTrue();
+        container.ChildCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Search_ByObfuscatedShortName_FindsItsNode()
+    {
+        await LoadAsync(new Dictionary<string, string>
+        {
+            ["Type:Ns.Alpha"] = "zq9",
+            ["Field:Ns.Alpha.Count"] = "k7x",
+            ["Type:Ns.Beta"] = "b1"
+        });
+
+        var byType = Roots("zq9").Items.ShouldHaveSingleItem();
+        byType.OriginalName.ShouldBe("Ns.Alpha");
+
+        var byMember = Roots("k7x");
+        var parent = byMember.Items.ShouldHaveSingleItem();
+        parent.OriginalName.ShouldBe("Ns.Alpha");
+        _store.Query("k7x", parent.Id, 0, 10).Items.ShouldHaveSingleItem().OriginalName.ShouldBe("Count");
     }
 
     [Fact]

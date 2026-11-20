@@ -27,6 +27,7 @@ public sealed class ResultsStore
     private readonly object _gate = new();
     private readonly IEventPublisher? _events;
     private readonly IAssemblyDecompiler _decompiler;
+    private readonly Action? _onParse;
 
     private long _revision;
     private ResultsState _state = ResultsState.NotRun;
@@ -45,8 +46,10 @@ public sealed class ResultsStore
 
     /// <param name="events">Where <c>results.changed</c> goes after every change; null for a store nobody listens to.</param>
     /// <param name="decompiler">What decompiles an assembly; null uses <see cref="AssemblyPreviewDecompiler"/>. Tests pass a fake to see which thread it runs on.</param>
-    public ResultsStore(IEventPublisher? events = null, IAssemblyDecompiler? decompiler = null)
+    /// <param name="onParse">Called on the parsing thread each time a symbol map is parsed, just before the tree is built. A seam for tests to see how often and where the parse runs; null in the app.</param>
+    public ResultsStore(IEventPublisher? events = null, IAssemblyDecompiler? decompiler = null, Action? onParse = null)
     {
+        _onParse = onParse;
         _events = events;
         _decompiler = decompiler ?? new AssemblyPreviewDecompiler();
     }
@@ -126,7 +129,11 @@ public sealed class ResultsStore
         lock (_gate)
             generation = ++_generation;
 
-        var (index, groups) = await Task.Run(() => (SymbolIndex.Build(map), BuildGroups(statistics))).ConfigureAwait(false);
+        var (index, groups) = await Task.Run(() =>
+        {
+            _onParse?.Invoke();
+            return (SymbolIndex.Build(map), BuildGroups(statistics));
+        }).ConfigureAwait(false);
 
         ResultsSnapshot snapshot;
         lock (_gate)
@@ -182,6 +189,16 @@ public sealed class ResultsStore
         Publish(snapshot);
     }
 
+    /// <summary>Whether <paramref name="assemblyPath"/> is one of the assemblies set with <see cref="SetPreviewPaths"/>. <c>preview.get</c> decompiles nothing else.</summary>
+    public bool IsKnownPreviewPath(string? assemblyPath)
+    {
+        if (string.IsNullOrWhiteSpace(assemblyPath))
+            return false;
+
+        lock (_gate)
+            return _previewPaths.Contains(assemblyPath, StringComparer.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Decompiles an output assembly (not a packed launcher) for the Preview tab, off the calling thread. Failures never
     /// throw: they come back, and are kept, as <see cref="PreviewResult.Error"/>. The text is cut by
@@ -225,10 +242,6 @@ public sealed class ResultsStore
         try
         {
             return new PreviewResult(assemblyPath, _decompiler.Decompile(assemblyPath), null);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
         }
         catch (Exception ex)
         {

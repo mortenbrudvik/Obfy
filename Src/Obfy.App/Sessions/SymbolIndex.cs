@@ -32,11 +32,9 @@ internal sealed class SymbolIndex
         var typeNodes = new Dictionary<string, Node>(StringComparer.Ordinal);
         var nextId = 0;
 
-        Node NewNode(string original, string? obfuscated, SymbolKind kind, bool hasEntry, string? key)
+        Node NewNode(string original, string? obfuscated, SymbolKind kind, bool hasEntry)
         {
             var node = new Node($"s{nextId++}", original, obfuscated, kind, hasEntry);
-            if (key is not null)
-                node.Keys.Add(key);
             byId[node.Id] = node;
             return node;
         }
@@ -52,11 +50,10 @@ internal sealed class SymbolIndex
                     // The type was first seen through one of its members: it is a real entry after all.
                     existing.Obfuscated = obfuscated;
                     existing.HasEntry = true;
-                    existing.Keys.Add(entry.Key);
                     continue;
                 }
 
-                var node = NewNode(entry.DisplayName, obfuscated, MapKind(entry.Kind), hasEntry: true, entry.Key);
+                var node = NewNode(entry.DisplayName, obfuscated, MapKind(entry.Kind), hasEntry: true);
                 if (entry.Kind == SymbolMapKey.TypeKind)
                     typeNodes[entry.DisplayName] = node;
 
@@ -67,12 +64,12 @@ internal sealed class SymbolIndex
             if (!typeNodes.TryGetValue(entry.TypeFullName, out var parent))
             {
                 // No Type: entry: the type was not renamed, only its members. It is a container, not a rename.
-                parent = NewNode(entry.TypeFullName, null, SymbolKind.Type, hasEntry: false, key: null);
+                parent = NewNode(entry.TypeFullName, null, SymbolKind.Type, hasEntry: false);
                 typeNodes[entry.TypeFullName] = parent;
                 roots.Add(parent);
             }
 
-            parent.Children.Add(NewNode(entry.DisplayName, obfuscated, MapKind(entry.Kind), hasEntry: true, entry.Key));
+            parent.Children.Add(NewNode(entry.DisplayName, obfuscated, MapKind(entry.Kind), hasEntry: true));
         }
 
         return new SymbolIndex(roots, byId, symbolMap.Count);
@@ -114,26 +111,14 @@ internal sealed class SymbolIndex
     // A member shows when its type matches (by entry or by name), or it matches itself.
     private static bool ChildVisible(Node parent, Node child, string query) =>
         SelfMatches(parent, query)
-        || parent.Original.Contains(query, StringComparison.OrdinalIgnoreCase)
         || SelfMatches(child, query);
 
-    private static bool SelfMatches(Node node, string query)
-    {
-        if (!node.HasEntry)
-            return false;
-
-        if (node.Original.Contains(query, StringComparison.OrdinalIgnoreCase)
-            || (node.Obfuscated?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
-            return true;
-
-        foreach (var key in node.Keys)
-        {
-            if (key.Contains(query, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
-    }
+    // Matches display names only (the original and the new name), never the raw map key: a key such as "Type:Foo" would
+    // make a search for "Type" match everything. A container has no new name; its original, the full type name, is what
+    // finds it.
+    private static bool SelfMatches(Node node, string query) =>
+        node.Original.Contains(query, StringComparison.OrdinalIgnoreCase)
+        || (node.Obfuscated?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
 
     private static SymbolKind MapKind(string kind) => kind switch
     {
@@ -158,8 +143,6 @@ internal sealed class SymbolIndex
 
         /// <summary>False for a type that exists only because members named it.</summary>
         public bool HasEntry { get; set; } = hasEntry;
-
-        public List<string> Keys { get; } = [];
 
         public List<Node> Children { get; } = [];
 

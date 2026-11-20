@@ -492,6 +492,64 @@ public sealed class RunCoordinatorTests : IDisposable
         Rows.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task Start_WhenAStepBeforeTheTaskThrows_DoesNotStayRunning_AndTheNextStartWorks()
+    {
+        AddFile();
+
+        // The first push the run makes (run.changed, Running) fails, as a broken event publisher would.
+        var thrown = false;
+        _events.OnPublish = () =>
+        {
+            if (thrown)
+                return;
+            thrown = true;
+            throw new InvalidOperationException("publish failed");
+        };
+
+        Should.Throw<InvalidOperationException>(() => _run.Start()).Message.ShouldBe("publish failed");
+
+        var stuck = _run.GetSnapshot();
+        stuck.Status.ShouldBe(RunStatus.Faulted);
+        stuck.Message.ShouldBe("publish failed");
+        stuck.CanStart.ShouldBeTrue();
+        stuck.BlockedReason.ShouldBeNull();
+        _engine.ObfuscateCalls.ShouldBeEmpty();
+        _results.GetSnapshot().State.ShouldNotBe(ResultsState.Running);
+        _run.Cancel(); // nothing to cancel, and it must not throw
+        Logs.ShouldContain(l => l.Level == LogLevel.Error && l.Message.Contains("publish failed"));
+
+        var after = await RunAsync();
+
+        after.Status.ShouldBe(RunStatus.Done);
+        _engine.ObfuscateCalls.ShouldHaveSingleItem();
+        Rows[0].Status.ShouldBe(FileStatus.Success);
+    }
+
+    [Fact]
+    public void CaptureRun_ReadsFilesAndPlanTogether()
+    {
+        AddFile("a.dll");
+        AddFile("b.dll");
+        AddSkippedFile("App.Tests.csproj", "Test project");
+
+        var capture = _input.CaptureRun(merge: true);
+
+        capture.Included.Select(f => Path.GetFileName(f.Path)).ShouldBe(["a.dll", "b.dll"]);
+        capture.Skipped.Select(r => r.Name).ShouldBe(["App.Tests.csproj"]);
+        capture.Plan.Mode.ShouldBe(OutputMode.Merge);
+        capture.Plan.MergePath!.ShouldContain("a.obfuscated.dll");
+        capture.OutputFolderChosen.ShouldBeFalse();
+        capture.SymbolMapPath.ShouldBeNull();
+
+        _input.SetWriteSymbolMap(true);
+        _input.SetOutputFolder(_tempDirectory);
+        var later = _input.CaptureRun(merge: false);
+        later.Plan.Mode.ShouldBe(OutputMode.ClosedSet);
+        later.OutputFolderChosen.ShouldBeTrue();
+        later.SymbolMapPath.ShouldBe(_input.ResolveSymbolMapPath());
+    }
+
     // ---- Merge ----
 
     [Fact]

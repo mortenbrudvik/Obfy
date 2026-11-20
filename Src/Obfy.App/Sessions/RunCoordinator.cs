@@ -133,10 +133,9 @@ public sealed class RunCoordinator : IDisposable
                 progress, indeterminate, current, completed, total, failed, status, message);
         }
 
-        var included = _input.IncludedInputs();
-        var merge = _protection.ToObfySettings().AssemblyMerge.Enabled;
-        var plan = Plan(included, merge);
-        var blocked = BlockedReasonFor(included.Count);
+        var capture = _input.CaptureRun(_protection.ToObfySettings().AssemblyMerge.Enabled);
+        var plan = Plan(capture);
+        var blocked = BlockedReasonFor(capture.Included.Count);
         return new RunSnapshot(
             revision, blocked is null, blocked, plan.Mode, Explain(plan.Mode), plan.Output.Hint,
             progress, indeterminate, current, completed, total, failed, status, message);
@@ -159,9 +158,10 @@ public sealed class RunCoordinator : IDisposable
     /// <summary>How a run treats the included files: the output plan the hint uses, and the mode that follows from it.</summary>
     private sealed record RunPlan(RunMode Mode, OutputPlan Output);
 
-    private RunPlan Plan(IReadOnlyList<InputFile> included, bool merge)
+    private static RunPlan Plan(RunInput input)
     {
-        var output = _input.PlanOutput(merge);
+        var output = input.Plan;
+        var included = input.Included;
         var mode = output.Mode switch
         {
             OutputMode.None => RunMode.None,
@@ -190,18 +190,15 @@ public sealed class RunCoordinator : IDisposable
     /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, nothing is included, or the settings are invalid; the message says which.</exception>
     public Task Start()
     {
-        var included = _input.IncludedInputs();
         var settings = _protection.ToObfySettings();
+        var input = _input.CaptureRun(settings.AssemblyMerge.Enabled);
+        var included = input.Included;
         var blocked = BlockedReasonFor(included.Count);
         if (blocked is not null)
             throw new ObfyApiException("run.blocked", blocked);
 
-        var snapshot = _input.GetSnapshot();
-        var plan = Plan(included, settings.AssemblyMerge.Enabled);
-        var skipped = snapshot.Files.Where(static f => f.Status == FileStatus.Skipped).ToList();
-        var context = new RunContext(
-            included, skipped, settings, plan, snapshot.OutputFolder.Length > 0,
-            snapshot.WriteSymbolMap ? _input.ResolveSymbolMapPath() : null);
+        var plan = Plan(input);
+        var context = new RunContext(included, input.Skipped, settings, plan, input.OutputFolderChosen, input.SymbolMapPath);
 
         var cts = new CancellationTokenSource();
         lock (_gate)
@@ -225,22 +222,62 @@ public sealed class RunCoordinator : IDisposable
             _revision++;
         }
 
-        _results.BeginRun();
-        _input.ResetStatus();
+        // From here the coordinator is Running with a token source and no run task. Whatever fails before the task
+        // exists (an event publisher, the log, the results store) must not leave it that way: CanStart would stay false
+        // and nothing could cancel a run that never began.
+        try
+        {
+            _results.BeginRun();
+            _input.ResetStatus();
 
-        _log.StartRunSeparator();
-        _log.Add(LogLevel.Info, "Starting obfuscation...");
-        _log.Add(LogLevel.Info, $"Level: {settings.Level}");
-        _log.Add(LogLevel.Info, $"Files: {included.Count}");
-        foreach (var file in skipped)
-            LogSkip(file);
+            _log.StartRunSeparator();
+            _log.Add(LogLevel.Info, "Starting obfuscation...");
+            _log.Add(LogLevel.Info, $"Level: {settings.Level}");
+            _log.Add(LogLevel.Info, $"Files: {included.Count}");
+            foreach (var file in input.Skipped)
+                LogSkip(file);
 
-        PublishChanged();
+            PublishChanged();
 
-        var task = Task.Run(() => RunAsync(context, cts.Token));
+            var task = Task.Run(() => RunAsync(context, cts.Token));
+            lock (_gate)
+                _runTask = task;
+            return task;
+        }
+        catch (Exception ex)
+        {
+            AbandonStart(cts, ex);
+            throw;
+        }
+    }
+
+    /// <summary>Puts a run that never began back to a state the page can recover from: Faulted, token source disposed.</summary>
+    private void AbandonStart(CancellationTokenSource cts, Exception ex)
+    {
         lock (_gate)
-            _runTask = task;
-        return task;
+        {
+            _cts = null;
+            _active = null;
+            _status = RunStatus.Faulted;
+            _message = ex.Message;
+            _currentFile = null;
+            _indeterminate = false;
+            _revision++;
+        }
+
+        cts.Dispose();
+
+        // Best effort: whatever failed may fail again, and the state is already recovered.
+        try
+        {
+            _results.Clear();
+            _log.Add(LogLevel.Error, $"Obfuscation could not start: {ex.Message}");
+            PublishChanged();
+        }
+        catch (Exception inner)
+        {
+            System.Diagnostics.Debug.WriteLine(inner);
+        }
     }
 
     /// <summary>Asks the running run to stop. Nothing happens when none is running.</summary>

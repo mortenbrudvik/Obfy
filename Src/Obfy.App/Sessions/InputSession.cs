@@ -521,6 +521,28 @@ public sealed class InputSession
             return PlanLocked(merge);
     }
 
+    /// <summary>
+    /// What a run reads from the list, in one read under one lock: the included rows, the skipped ones, the plan made from
+    /// exactly those rows, and the symbol-map location. Use this, not <see cref="IncludedInputs"/> and
+    /// <see cref="PlanOutput"/> one after the other, which a concurrent edit could split.
+    /// </summary>
+    public RunInput CaptureRun(bool merge)
+    {
+        lock (_gate)
+        {
+            var included = IncludedLocked()
+                .Select(e => new InputFile(e.Id, e.Path, e.Kind, e.Origin == FileOrigin.Solution, e.Hints))
+                .ToList();
+            var skipped = _entries.Where(e => e.Status == FileStatus.Skipped).Select(ToRow).ToList();
+            return new RunInput(
+                included,
+                skipped,
+                PlanLocked(merge),
+                _outputFolder.Length > 0,
+                _writeSymbolMap ? ResolveSymbolMapLocked() : null);
+        }
+    }
+
     /// <summary>The symbol map's file: the typed path (a relative one against the output folder), or the default name there.</summary>
     public string ResolveSymbolMapPath()
     {

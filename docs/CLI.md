@@ -149,6 +149,10 @@ obfy MyApp.dll -l minimal -o output/
 # Without -o, output goes to {first-assembly-dir}/obfy-out/.
 obfy MyApp.dll MyLibrary.dll -o output/
 
+# Two or more .cs files are renamed as one compilation, so a type shared
+# between files keeps one name. Without -o, output goes to {first-file-dir}/obfy-src/.
+obfy A.cs B.cs -o output/
+
 # Shell glob (cmd.exe expands *.dll; PowerShell does not unless you use Get-ChildItem)
 obfy *.dll -o output/
 ```

@@ -37,6 +37,15 @@ public interface IObfuscationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Obfuscates several C# files as one compilation so shared types keep one name.
+    /// </summary>
+    Task<ObfuscationResult> ObfuscateSourcesAsync(
+        IReadOnlyList<string> inputPaths,
+        string? outputDirectory,
+        ObfySettings settings,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Writes the symbol map to a file.
     /// </summary>
     /// <param name="symbolMap">The symbol map to write.</param>

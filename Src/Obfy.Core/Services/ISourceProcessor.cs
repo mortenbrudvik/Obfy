@@ -18,6 +18,14 @@ public interface ISourceProcessor
     Task<PipelineContext> LoadAsync(string path, ObfySettings settings, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Loads several C# files into one compilation so renaming stays consistent across them.
+    /// </summary>
+    Task<PipelineContext> LoadFilesAsync(
+        IReadOnlyList<string> paths,
+        ObfySettings settings,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Saves obfuscated source code.
     /// </summary>
     /// <param name="context">The pipeline context containing the obfuscated source.</param>

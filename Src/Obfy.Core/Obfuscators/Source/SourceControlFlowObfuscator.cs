@@ -56,7 +56,7 @@ public class SourceControlFlowObfuscator : IObfuscator
 
                 stats.MethodsControlFlowObfuscated += rewriter.MethodsObfuscated;
 
-                newTrees.Add(newRoot.SyntaxTree);
+                newTrees.Add(newRoot.SyntaxTree.WithFilePath(tree.FilePath));
             }
 
             context.Compilation = compilation

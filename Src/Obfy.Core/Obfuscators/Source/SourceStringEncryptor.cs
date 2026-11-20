@@ -61,7 +61,7 @@ public class SourceStringEncryptor : IObfuscator
 
                 stats.StringsEncrypted += rewriter.EncryptedCount;
 
-                newTrees.Add(newRoot.SyntaxTree);
+                newTrees.Add(newRoot.SyntaxTree.WithFilePath(tree.FilePath));
             }
 
             // Add decryption helper class if any strings were encrypted

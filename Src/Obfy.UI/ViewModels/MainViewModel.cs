@@ -237,11 +237,45 @@ public partial class MainViewModel : ObservableObject, IDisposable
         List<ObfuscationResult> successfulResults,
         CancellationToken cancellationToken)
     {
-        for (int i = 0; i < files.Count; i++)
+        var sourceFiles = files.Where(static f => f.IsSourceFile).ToList();
+        var separate = sourceFiles.Count >= 2
+            ? files.Where(static f => !f.IsSourceFile).ToList()
+            : files;
+        var completed = 0;
+
+        if (sourceFiles.Count >= 2)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var file in sourceFiles)
+            {
+                file.Status = FileStatus.Processing;
+                file.Progress = 0;
+            }
+
+            StatusMessage = $"Processing {sourceFiles.Count} source files...";
+            Output.Info($"Processing {sourceFiles.Count} source files as one compilation...");
+
+            var combined = await Task.Run(
+                () => _obfuscationService.ObfuscateSourcesAsync(
+                    sourceFiles.Select(static f => f.FilePath).ToList(),
+                    outputDir,
+                    settings,
+                    cancellationToken),
+                cancellationToken);
+
+            foreach (var file in sourceFiles)
+                file.Progress = 100;
+
+            ApplyCombinedSourceResult(sourceFiles, combined, allSymbols, totalStats, successfulResults);
+            completed = sourceFiles.Count;
+            OverallProgress = completed * 100.0 / files.Count;
+        }
+
+        for (int i = 0; i < separate.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var file = files[i];
+            var file = separate[i];
             file.Status = FileStatus.Processing;
             file.Progress = 0;
             StatusMessage = $"Processing {file.FileName}...";
@@ -261,8 +295,44 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             file.Progress = 100;
             ApplyResult(file, result, allSymbols, totalStats, successfulResults);
-            OverallProgress = (i + 1) * 100.0 / files.Count;
+            OverallProgress = (completed + i + 1) * 100.0 / files.Count;
         }
+    }
+
+    private void ApplyCombinedSourceResult(
+        List<AssemblyFile> files,
+        ObfuscationResult result,
+        Dictionary<string, string> allSymbols,
+        ObfuscationStatistics totalStats,
+        List<ObfuscationResult> successfulResults)
+    {
+        if (!result.Success)
+        {
+            foreach (var file in files)
+            {
+                file.Status = FileStatus.Error;
+                file.ErrorMessage = result.ErrorMessage;
+            }
+
+            Output.Error($"Failed source files: {result.ErrorMessage}");
+            return;
+        }
+
+        successfulResults.Add(result);
+        if (result.Statistics != null)
+            totalStats.Merge(result.Statistics);
+        foreach (var (key, value) in result.SymbolMap)
+            allSymbols[key] = value;
+
+        foreach (var file in files)
+        {
+            file.Status = FileStatus.Success;
+            file.OutputPath = result.OutputPath;
+        }
+
+        Output.Success($"Completed {files.Count} source files: {result.Statistics?.TotalTransformations ?? 0} transformations");
+        foreach (var warning in result.Warnings)
+            Output.Warning(warning);
     }
 
     private async Task MergeAndObfuscateAsync(

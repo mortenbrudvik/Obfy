@@ -232,18 +232,145 @@ public class ObfuscationService : IObfuscationService
         CancellationToken cancellationToken = default)
     {
         var results = new List<ObfuscationResult>();
+        var pendingSources = new List<string>();
 
         foreach (var inputPath in inputPaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (IsCSharpFile(inputPath))
+            {
+                pendingSources.Add(inputPath);
+                continue;
+            }
 
+            await FlushSourcesAsync().ConfigureAwait(false);
             var outputPath = Path.Combine(outputDirectory, Path.GetFileName(inputPath));
-            var result = await ObfuscateAsync(inputPath, outputPath, settings, cancellationToken).ConfigureAwait(false);
-            results.Add(result);
+            results.Add(await ObfuscateAsync(inputPath, outputPath, settings, cancellationToken).ConfigureAwait(false));
         }
 
+        await FlushSourcesAsync().ConfigureAwait(false);
         return results;
+
+        async Task FlushSourcesAsync()
+        {
+            if (pendingSources.Count == 0)
+                return;
+
+            if (pendingSources.Count == 1)
+            {
+                var single = pendingSources[0];
+                var outputPath = Path.Combine(outputDirectory, Path.GetFileName(single));
+                results.Add(await ObfuscateAsync(single, outputPath, settings, cancellationToken).ConfigureAwait(false));
+            }
+            else
+            {
+                results.Add(await ObfuscateSourcesAsync(
+                    pendingSources.ToArray(), outputDirectory, settings, cancellationToken).ConfigureAwait(false));
+            }
+
+            pendingSources.Clear();
+        }
     }
+
+    /// <inheritdoc/>
+    public async Task<ObfuscationResult> ObfuscateSourcesAsync(
+        IReadOnlyList<string> inputPaths,
+        string? outputDirectory,
+        ObfySettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        if (inputPaths == null || inputPaths.Count == 0)
+            return ObfuscationResult.Failed("No source files were provided.");
+
+        settings = settings.Clone();
+        if (settings.Level != ObfuscationLevel.Custom)
+            settings.ApplyLevel();
+
+        try
+        {
+            settings.Validate();
+        }
+        catch (ValidationException ex)
+        {
+            _logger.LogError(ex, "Invalid obfuscation settings");
+            return ObfuscationResult.Failed($"Invalid settings: {ex.Message}", ex);
+        }
+
+        var output = outputDirectory;
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(inputPaths[0])) ?? ".";
+            output = Path.Combine(directory, "obfy-src");
+        }
+
+        PipelineContext context;
+        try
+        {
+            context = await _sourceProcessor.LoadFilesAsync(inputPaths, settings, cancellationToken)
+                .ConfigureAwait(false);
+            context.OutputPath = output;
+            RuntimeProfileGating.Apply(settings, context);
+            foreach (var warning in context.Warnings)
+                _logger.LogWarning("{Warning}", warning);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to load source files");
+            return ObfuscationResult.Failed($"Failed to load input: {ex.Message}", ex);
+        }
+
+        ILifetimeScope? runScope = null;
+        var pipeline = _pipeline;
+        if (_lifetimeScope is not null)
+        {
+            runScope = _lifetimeScope.BeginLifetimeScope();
+            pipeline = runScope.Resolve<IObfuscationPipeline>();
+        }
+
+        try
+        {
+            var result = await pipeline.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
+            if (!result.Success)
+                return result;
+
+            try
+            {
+                await _sourceProcessor.SaveAsync(context, output, cancellationToken).ConfigureAwait(false);
+                if (settings.Packing.Enabled)
+                {
+                    context.Warnings.Add(
+                        "Packing skipped: it applies only to assemblies with an entry point, not source.");
+                }
+
+                return ObfuscationResult.Successful(
+                    context.Statistics,
+                    inputPath: inputPaths[0],
+                    outputPath: output,
+                    elapsedTime: result.ElapsedTime,
+                    processingTimes: context.ProcessingTimes.ToList(),
+                    skippedItems: context.SkippedItems.ToList(),
+                    symbolMap: new Dictionary<string, string>(context.SymbolMap),
+                    warnings: context.Warnings.ToList());
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Failed to save obfuscated source");
+                return ObfuscationResult.Failed($"Failed to save output: {ex.Message}", ex);
+            }
+        }
+        finally
+        {
+            runScope?.Dispose();
+            if (context.Module is IDisposable module)
+            {
+                module.Dispose();
+                context.Module = null;
+            }
+        }
+    }
+
+    private static bool IsCSharpFile(string path) =>
+        Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase);
 
     /// <inheritdoc/>
     public async Task WriteSymbolMapAsync(Dictionary<string, string> symbolMap, string outputPath)

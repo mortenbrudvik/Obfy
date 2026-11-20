@@ -173,7 +173,7 @@ public class SourceSymbolRenamer : IObfuscator
 
                 var rewriter = new TokenRenamingRewriter(tokenRenames);
                 var newRoot = rewriter.Visit(root);
-                newTrees.Add(newRoot.SyntaxTree);
+                newTrees.Add(newRoot.SyntaxTree.WithFilePath(tree.FilePath));
             }
 
             foreach (var (symbol, newName) in renames)

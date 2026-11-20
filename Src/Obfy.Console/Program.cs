@@ -666,7 +666,7 @@ public class Program
         }
         else
         {
-            anyFailed = await RunStandardObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun).ConfigureAwait(false);
+            anyFailed = await RunStandardObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun, cancellationToken).ConfigureAwait(false);
         }
 
         // Write symbol map if requested
@@ -1115,7 +1115,8 @@ public class Program
         Dictionary<string, string> allSymbols,
         List<(ObfuscationResult Result, ObfySettings Settings)> successfulResults,
         IObfuscationService service,
-        bool dryRun)
+        bool dryRun,
+        CancellationToken cancellationToken)
     {
         var failed = false;
         await AnsiConsole.Progress()
@@ -1127,8 +1128,44 @@ public class Program
                 new SpinnerColumn())
             .StartAsync(async ctx =>
             {
+                var presentSources = inputs
+                    .Where(static input => IsSourceFile(input.FullName) && input.Exists)
+                    .Select(static input => input.FullName)
+                    .ToArray();
+                if (presentSources.Length >= 2)
+                {
+                    var sourceTask = ctx.AddTask("[cyan]source files[/]");
+                    if (dryRun)
+                    {
+                        AnsiConsole.MarkupLine(
+                            $"[yellow]Dry run:[/] Would obfuscate {presentSources.Length} source files as one compilation");
+                    }
+                    else
+                    {
+                        var combined = await service.ObfuscateSourcesAsync(
+                            presentSources, output?.FullName, settings, cancellationToken).ConfigureAwait(false);
+                        if (combined.Success)
+                        {
+                            DisplaySuccess($"{presentSources.Length} source files", combined);
+                            successfulResults.Add((combined, settings));
+                            foreach (var (key, value) in combined.SymbolMap)
+                                allSymbols[key] = value;
+                        }
+                        else
+                        {
+                            DisplayError("source files", combined);
+                            failed = true;
+                        }
+                    }
+
+                    sourceTask.Increment(100);
+                }
+
                 foreach (var input in inputs)
                 {
+                    if (presentSources.Length >= 2 && IsSourceFile(input.FullName) && input.Exists)
+                        continue;
+
                     var task = ctx.AddTask($"[cyan]{input.Name}[/]");
 
                     if (!input.Exists)

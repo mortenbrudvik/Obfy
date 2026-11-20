@@ -54,7 +54,38 @@ public class SourceProcessor : ISourceProcessor
         }
 
         _logger.LogDebug("Loaded {Count} source files", syntaxTrees.Count);
+        return CreateContext(syntaxTrees, settings, path);
+    }
 
+    /// <inheritdoc/>
+    public async Task<PipelineContext> LoadFilesAsync(
+        IReadOnlyList<string> paths,
+        ObfySettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        if (paths == null || paths.Count == 0)
+            throw new ArgumentException("No source files were provided.", nameof(paths));
+
+        var syntaxTrees = new List<SyntaxTree>(paths.Count);
+        foreach (var file in paths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!File.Exists(file))
+                throw new FileNotFoundException($"Source path not found: {file}", file);
+
+            var sourceText = await File.ReadAllTextAsync(file, cancellationToken).ConfigureAwait(false);
+            syntaxTrees.Add(CSharpSyntaxTree.ParseText(sourceText, path: Path.GetFullPath(file)));
+        }
+
+        _logger.LogDebug("Loaded {Count} source files into one compilation", syntaxTrees.Count);
+        return CreateContext(syntaxTrees, settings, CommonDirectory(paths));
+    }
+
+    private static PipelineContext CreateContext(
+        IReadOnlyList<SyntaxTree> syntaxTrees,
+        ObfySettings settings,
+        string? inputPath)
+    {
         var compilation = CSharpCompilation.Create(
             "ObfuscatedAssembly",
             syntaxTrees,
@@ -62,9 +93,43 @@ public class SourceProcessor : ISourceProcessor
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         var context = PipelineContext.ForSourceCode(compilation, settings);
-        context.InputPath = path;
-
+        context.InputPath = inputPath;
         return context;
+    }
+
+    private static string? CommonDirectory(IReadOnlyList<string> paths)
+    {
+        string? root = null;
+        foreach (var path in paths)
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (string.IsNullOrEmpty(dir))
+                return null;
+
+            if (root == null)
+            {
+                root = dir;
+                continue;
+            }
+
+            while (!IsSameOrUnder(dir, root))
+            {
+                var parent = Path.GetDirectoryName(root);
+                if (string.IsNullOrEmpty(parent) ||
+                    string.Equals(parent, root, StringComparison.OrdinalIgnoreCase))
+                    return null;
+                root = parent;
+            }
+        }
+
+        return root;
+    }
+
+    private static bool IsSameOrUnder(string path, string root)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return relative == "."
+            || (!relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative));
     }
 
     /// <inheritdoc/>

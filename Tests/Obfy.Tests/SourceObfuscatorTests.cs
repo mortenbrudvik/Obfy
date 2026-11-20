@@ -153,6 +153,39 @@ public class SourceObfuscatorTests
     }
 
     [Fact]
+    public async Task SourceStringEncryptor_SkipsExcludedInterpolationsAndAttributeArguments()
+    {
+        var sourceCode = """
+            using System.Reflection;
+            class Test
+            {
+                const string Hole = "AttrHole";
+                [System.Obsolete($"Prefix {Hole} AttrText")]
+                [Obfuscation(Exclude = true, Feature = "strings")]
+                public string Hidden(string name) => $"Hello {name} HiddenValue";
+                public string Shown(string name) => $"Hello {name} ShownValue";
+            }
+            """;
+
+        var context = PipelineContext.ForSourceCode(CreateCompilation(sourceCode), new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 }
+        });
+        var result = await new SourceStringEncryptor(new Mock<ILogger<SourceStringEncryptor>>().Object)
+            .ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        result.Statistics.StringsEncrypted.ShouldBe(2);
+        var newSource = context.Compilation!.SyntaxTrees.First().ToString();
+        newSource.ShouldContain("HiddenValue");
+        newSource.ShouldContain("AttrText");
+        newSource.ShouldNotContain("ShownValue");
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Test", "Hidden", "Ada").ShouldBe("Hello Ada HiddenValue");
+        EmitAndInvoke(context.Compilation!, "Test", "Shown", "Ada").ShouldBe("Hello Ada ShownValue");
+    }
+
+    [Fact]
     public async Task SourceStringEncryptor_SkipsShortStrings()
     {
         // Arrange

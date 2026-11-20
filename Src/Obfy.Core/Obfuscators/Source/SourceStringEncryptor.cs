@@ -203,6 +203,13 @@ public class SourceStringEncryptor : IObfuscator
             if (!_settings.EncryptConstantStrings)
                 return base.VisitInterpolatedStringExpression(node);
 
+            if (node.Ancestors().Any(a => a is AttributeArgumentSyntax or AttributeSyntax))
+                return base.VisitInterpolatedStringExpression(node);
+
+            var enclosing = _model.GetEnclosingSymbol(node.SpanStart);
+            if (enclosing != null && ObfuscationAttributeRules.IsExcluded(enclosing, ObfuscationFeature.Strings))
+                return base.VisitInterpolatedStringExpression(node);
+
             if (MustRemainConstant(node))
                 return base.VisitInterpolatedStringExpression(node);
 

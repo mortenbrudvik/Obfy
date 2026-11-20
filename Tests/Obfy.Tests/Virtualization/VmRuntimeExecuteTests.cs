@@ -502,6 +502,19 @@ public class VmRuntimeExecuteTests
     }
 
     [Fact]
+    public void Run_CalledMethodException_KeepsCallerFrames()
+    {
+        const string src = """
+            public static class Lib {
+                public static int Boom() => int.Parse("nope");
+            }
+            """;
+        var ex = Should.Throw<FormatException>(() => EncodeImportInvoke(src, "Lib", "Boom"));
+        ex.StackTrace.ShouldNotBeNull();
+        ex.StackTrace!.ShouldContain("Parse");
+    }
+
+    [Fact]
     public void Run_Throw_Propagates()
     {
         const string src = "public static class Lib { public static int Boom() { throw new System.InvalidOperationException(\"x\"); } }";

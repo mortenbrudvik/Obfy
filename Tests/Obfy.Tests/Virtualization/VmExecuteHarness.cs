@@ -41,7 +41,11 @@ public static class VmExecuteHarness
             }
             catch (TargetInvocationException ex)
             {
-                throw ex.InnerException ?? ex;
+                var inner = ex.InnerException;
+                if (inner == null)
+                    throw;
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(inner).Throw();
+                return null!;
             }
         }
         finally

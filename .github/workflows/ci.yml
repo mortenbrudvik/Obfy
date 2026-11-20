@@ -15,10 +15,10 @@ jobs:
       pull-requests: write
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
       with:
         # 8.0.106 is the SDK that ships host pack 8.0.6 (used by NativeHost/build.ps1).
         # 8.0.6 is a runtime, not an SDK; setup-dotnet 404s on it.
@@ -27,14 +27,14 @@ jobs:
           8.0.106
 
     - name: Setup MSVC
-      uses: ilammy/msvc-dev-cmd@v1
+      uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
 
     - name: Build native packer host
       shell: pwsh
       run: pwsh -File Src/Obfy.NativeHost/build.ps1
 
     - name: Upload rebuilt native host
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: native-host
         path: Src/Obfy.NativeHost/dist/Obfy.NativeHost.exe
@@ -63,7 +63,7 @@ jobs:
       run: dotnet pack Src/Obfy.Console/Obfy.Console.csproj --no-build -c Release -o ./artifacts
 
     - name: Upload NuGet package
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: nuget-package
         path: ./artifacts/*.nupkg
@@ -74,7 +74,7 @@ jobs:
         reportgenerator "-reports:coverage/**/coverage.cobertura.xml" "-targetdir:coverage/report" "-reporttypes:Cobertura;HtmlInline;MarkdownSummaryGithub;Badges"
 
     - name: Upload Coverage Report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: coverage-report
         path: coverage/report
@@ -87,7 +87,7 @@ jobs:
       id: coverage_comment
       if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
       continue-on-error: true
-      uses: marocchino/sticky-pull-request-comment@v2
+      uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2
       with:
         recreate: true
         path: coverage/report/SummaryGithub.md
@@ -128,10 +128,10 @@ jobs:
     permissions:
       contents: read
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
       with:
         dotnet-version: '10.0.x'
 
@@ -143,9 +143,9 @@ jobs:
     permissions:
       contents: read
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-    - uses: actions/setup-java@v4
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
       with:
         distribution: temurin
         java-version: "21"

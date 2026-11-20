@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-20T20:45:00Z",
+  "updated": "2026-11-20T21:05:00Z",
   "note": "Assembly-review fixes are on main (cbaa126). This board is the Nov 20 review backlog.",
   "items": [
     {"id": "C1", "section": "Critical", "title": "Constant encryption fails the run on int.MinValue or long.MinValue because Math.Abs throws.", "location": "ConstantEncryptionObfuscator.cs", "status": "fixed"},
@@ -19,7 +19,7 @@
     {"id": "R1", "section": "Release", "title": "Publish uses a hardcoded version and --skip-duplicate, so a release without a bump reports success and publishes nothing.", "location": "publish.yml", "status": "fixed"},
     {"id": "R2", "section": "Release", "title": "No workflow builds the MSIX or the Inno installer.", "location": "build-msix.ps1", "status": "fixed"},
     {"id": "R3", "section": "Release", "title": "The installer build warns and then packages the original when self-obfuscation fails.", "location": "build-installer.ps1", "status": "fixed"},
-    {"id": "R4", "section": "Release", "title": "Third-party actions are pinned to floating tags in jobs that hold write and NuGet OIDC tokens.", "location": "ci.yml", "status": "open"},
+    {"id": "R4", "section": "Release", "title": "Third-party actions are pinned to floating tags in jobs that hold write and NuGet OIDC tokens.", "location": "ci.yml", "status": "fixed"},
     {"id": "R5", "section": "Release", "title": "Publish never rebuilds the native host stub, and the CI freshness check ends in exit 0.", "location": "publish.yml", "status": "open"},
     {"id": "R6", "section": "Release", "title": "Platform tests run weekly only, and the job can pass having run no MAUI or Blazor tests.", "location": "platform.yml", "status": "open"},
     {"id": "R7", "section": "Release", "title": "Tests in Category=UI run in no CI job.", "location": "ci.yml", "status": "open"},

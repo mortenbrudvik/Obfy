@@ -936,7 +936,7 @@ public class Program
         AnsiConsole.WriteLine();
         if (result.LoadFailures.Count > 0)
         {
-            AnsiConsole.MarkupLine("[red]Closed-set finished with load failures. Remaining modules were written.[/]");
+            AnsiConsole.MarkupLine("[red]Closed-set finished with load failures. No modules were written.[/]");
             return 1;
         }
 

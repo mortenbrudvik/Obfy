@@ -10,8 +10,8 @@ namespace Obfy.Core.Services.Solution;
 
 /// <summary>
 /// Default closed-set coordinator: one module context, one rename pass, per-module pipeline,
-/// all-or-nothing write. Pipeline/save/commit is all-or-nothing; modules that fail to load
-/// are omitted and the remaining set may still commit.
+/// all-or-nothing write. A member that fails to load fails the run before renaming, so the
+/// rest of the set is not rewritten against an incomplete assembly list.
 /// </summary>
 public class ClosedSetProcessor : IClosedSetProcessor
 {
@@ -56,6 +56,13 @@ public class ClosedSetProcessor : IClosedSetProcessor
             if (loaded.Count == 0)
             {
                 return ClosedSetResult.Failed("No assemblies could be loaded.", loadFailures);
+            }
+
+            if (loadFailures.Count > 0)
+            {
+                return ClosedSetResult.Failed(
+                    $"Closed-set obfuscation stopped because {loadFailures.Count} assembly(ies) failed to load.",
+                    loadFailures);
             }
 
             var hasEntryPoint = loaded.Any(static m => HasEntryPoint(m.Module));

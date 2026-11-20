@@ -8,9 +8,8 @@ namespace Obfy.Core.Models.Solution;
 public sealed class ClosedSetResult
 {
     /// <summary>
-    /// Whether every remaining loaded module was obfuscated and committed.
-    /// Pipeline/save/commit is all-or-nothing; modules that fail to load may be omitted
-    /// while the remaining set still succeeds.
+    /// Whether every input assembly was loaded, obfuscated, and committed.
+    /// A load failure fails the run and commits nothing.
     /// </summary>
     public bool Success { get; private init; }
 
@@ -39,7 +38,7 @@ public sealed class ClosedSetResult
     }
 
     /// <summary>
-    /// Remaining modules were obfuscated and committed. <see cref="LoadFailures"/> may still be non-empty.
+    /// Every input loaded and the obfuscated modules were committed.
     /// </summary>
     public static ClosedSetResult Succeeded(
         IReadOnlyList<ObfuscationResult> moduleResults,

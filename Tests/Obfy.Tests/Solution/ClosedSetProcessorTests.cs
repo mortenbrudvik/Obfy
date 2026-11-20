@@ -316,7 +316,7 @@ public class ClosedSetProcessorTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CorruptSecondInput_ListsLoadFailure_AndPreservesLibPublicApi()
+    public async Task ExecuteAsync_CorruptSecondInput_FailsTheRun_AndWritesNothing()
     {
         using var fixture = new ClosedSetEmit();
         var libPath = fixture.CompileLib();
@@ -333,16 +333,15 @@ public class ClosedSetProcessorTests
             outputDir,
             ClosedSetRenameSettings(preservePublicApi: false));
 
-        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage.ShouldContain("failed to load");
         result.LoadFailures.ShouldContain(f => f.Path == badPath);
         result.LoadFailures.ShouldContain(f => f.Path == badPath && !string.IsNullOrWhiteSpace(f.Message));
+        result.ModuleResults.ShouldBeEmpty();
 
-        var outLib = Path.Combine(outputDir, "Lib.dll");
-        File.Exists(outLib).ShouldBeTrue();
+        File.Exists(Path.Combine(outputDir, "Lib.dll")).ShouldBeFalse();
         File.Exists(Path.Combine(outputDir, "Bad.dll")).ShouldBeFalse();
-
-        using var libModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(outLib));
-        libModule.GetTypes().ShouldContain(t => t.Name == "Greeter");
     }
 
     [Fact]
@@ -566,7 +565,7 @@ public class ClosedSetProcessorTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CorruptExe_RemainingLibStaysLibraryMode()
+    public async Task ExecuteAsync_CorruptExe_FailsTheRun_AndWritesNothing()
     {
         using var fixture = new ClosedSetEmit();
         var (libPath, appPath) = fixture.CompileClosedSet();
@@ -582,10 +581,13 @@ public class ClosedSetProcessorTests
             outputDir,
             ClosedSetRenameSettings(preservePublicApi: false));
 
-        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.Success.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage.ShouldContain("failed to load");
         result.LoadFailures.ShouldContain(f => f.Path == appPath);
-        using var libModule = ModuleDefMD.Load(await File.ReadAllBytesAsync(Path.Combine(outputDir, "Lib.dll")));
-        libModule.GetTypes().ShouldContain(t => t.Name == "Greeter");
+        result.ModuleResults.ShouldBeEmpty();
+        File.Exists(Path.Combine(outputDir, "Lib.dll")).ShouldBeFalse();
+        File.Exists(Path.Combine(outputDir, "App.exe")).ShouldBeFalse();
     }
 
     [Fact]

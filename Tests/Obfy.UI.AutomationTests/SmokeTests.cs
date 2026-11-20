@@ -56,7 +56,7 @@ public class SmokeTests : TestBase
         MainWindow.FindFirstDescendant(cf => cf.ByName("About Obfy"))
             .ShouldNotBeNull("About ContentDialog should appear in the main window");
 
-        (MainWindow.FindFirstDescendant(cf => cf.ByName("Version 1.3.0"))
+        (MainWindow.FindFirstDescendant(cf => cf.ByName("Version 2.0.0"))
             ?? FindContainingName("Version"))
             .ShouldNotBeNull("About dialog should show the assembly version, not a hardcoded 1.2.0");
 

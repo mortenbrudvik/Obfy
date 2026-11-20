@@ -1,7 +1,6 @@
 <Application x:Class="Obfy.UI.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:converters="clr-namespace:Obfy.UI.Converters"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
     <Application.Resources>
         <ResourceDictionary>
@@ -15,16 +14,6 @@
             <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="{DynamicResource TextFillColorSecondary}" />
             <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="{DynamicResource ControlFillColorDefault}" />
             <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="{DynamicResource ControlStrongStrokeColorDefault}" />
-
-            <!-- Converters -->
-            <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
-            <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
-            <converters:SymbolTypeToIconConverter x:Key="SymbolTypeToIconConverter"/>
-            <converters:FileStatusToBrushConverter x:Key="FileStatusToBrushConverter"/>
-            <converters:EnumDescriptionConverter x:Key="EnumDescriptionConverter"/>
-            <converters:FileStatusToIconConverter x:Key="FileStatusToIconConverter"/>
-            <converters:FileKindToIconConverter x:Key="FileKindToIconConverter"/>
-            <converters:BoolToStarGridLengthConverter x:Key="BoolToStarGridLengthConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

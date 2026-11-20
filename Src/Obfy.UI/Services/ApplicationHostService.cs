@@ -1,13 +1,13 @@
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Obfy.App.Sessions;
 using Obfy.UI.Views;
 
 namespace Obfy.UI.Services;
 
 /// <summary>
-/// Hosted service that shows the hybrid shell window on the WPF UI thread. The old MainWindow and its view models stay
-/// registered (AppModule) until the hybrid UI replaces them, but nothing starts them.
+/// Hosted service that creates the hybrid shell window on the WPF UI thread and starts it cloaked.
 /// </summary>
 public sealed class ApplicationHostService : IHostedService
 {
@@ -31,5 +31,14 @@ public sealed class ApplicationHostService : IHostedService
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>
+    /// A last write of the preferences: InputSession saves on a short debounce, and a quit inside that window would
+    /// otherwise lose the latest output folder or symbol-map choice.
+    /// </summary>
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        var input = _serviceProvider.GetService<InputSession>();
+        if (input is not null)
+            await input.PersistPreferencesAsync().ConfigureAwait(false);
+    }
 }

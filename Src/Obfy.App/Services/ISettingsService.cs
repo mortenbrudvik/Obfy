@@ -1,6 +1,6 @@
 using Obfy.Core.Models;
 
-namespace Obfy.UI.Services;
+namespace Obfy.App.Services;
 
 /// <summary>
 /// Service for persisting UI settings and obfuscation configurations.

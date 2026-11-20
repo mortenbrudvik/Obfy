@@ -1,9 +1,8 @@
-using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
 
-namespace Obfy.UI.Services;
+namespace Obfy.App.Services;
 
 /// <summary>
 /// Implementation of settings service for persisting UI settings.

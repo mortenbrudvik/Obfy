@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Services.Solution;
 using Obfy.UI.Models;
+using Obfy.App.Services;
 using Obfy.UI.Services;
 
 namespace Obfy.UI.ViewModels;

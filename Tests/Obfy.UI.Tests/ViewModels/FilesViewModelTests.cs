@@ -3,6 +3,7 @@ using Moq;
 using Obfy.Core.Models.Solution;
 using Obfy.Core.Services.Solution;
 using Obfy.UI.Models;
+using Obfy.App.Services;
 using Obfy.UI.Services;
 using Obfy.UI.ViewModels;
 using Shouldly;

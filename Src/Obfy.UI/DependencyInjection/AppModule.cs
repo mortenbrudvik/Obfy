@@ -1,6 +1,7 @@
 using Autofac;
 using Logging.Core.DependencyInjection;
 using Obfy.Core.DependencyInjection;
+using Obfy.App.Services;
 using Obfy.UI.Services;
 using Obfy.UI.ViewModels;
 using Obfy.UI.Views;

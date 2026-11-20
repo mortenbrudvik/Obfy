@@ -586,7 +586,15 @@ public static class Vm
         var elemType = arr.GetType().GetElementType();
         if (elemType == null)
             throw Fault("type mismatch");
-        arr.SetValue(ToClr(value, elemType), index);
+        var stored = ToClr(value, elemType);
+        try
+        {
+            arr.SetValue(stored, index);
+        }
+        catch (InvalidCastException)
+        {
+            throw new ArrayTypeMismatchException();
+        }
     }
 
     static void DoThrow(ref Frame f)

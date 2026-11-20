@@ -502,6 +502,22 @@ public class VmRuntimeExecuteTests
     }
 
     [Fact]
+    public void Run_CovariantArrayStore_ThrowsArrayTypeMismatchException()
+    {
+        const string src = """
+            public static class Lib {
+                public static int Go() {
+                    string[] values = new string[1];
+                    object[] boxed = values;
+                    boxed[0] = new object();
+                    return 1;
+                }
+            }
+            """;
+        Should.Throw<ArrayTypeMismatchException>(() => EncodeImportInvoke(src, "Lib", "Go"));
+    }
+
+    [Fact]
     public void Run_NewarrNegativeLength_ThrowsOverflowException()
     {
         const string src = """

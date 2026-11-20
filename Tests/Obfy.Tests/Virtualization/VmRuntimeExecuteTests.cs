@@ -502,6 +502,20 @@ public class VmRuntimeExecuteTests
     }
 
     [Fact]
+    public void Run_NewarrNegativeLength_ThrowsOverflowException()
+    {
+        const string src = """
+            public static class Lib {
+                public static int Go(int n) {
+                    var a = new int[n];
+                    return a.Length;
+                }
+            }
+            """;
+        Should.Throw<OverflowException>(() => EncodeImportInvoke(src, "Lib", "Go", -1));
+    }
+
+    [Fact]
     public void Run_CalledMethodException_KeepsCallerFrames()
     {
         const string src = """

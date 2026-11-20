@@ -560,6 +560,8 @@ public static class Vm
     {
         var type = ReadType(ref f);
         var len = ToI4(Pop(ref f));
+        if (len < 0)
+            throw new OverflowException();
         Push(ref f, O(Array.CreateInstance(type, len)));
     }
 

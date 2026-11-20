@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-20T15:45:00Z",
+  "updated": "2026-11-20T15:55:00Z",
   "note": "Assembly-review fixes are on main (cbaa126). This board is the Nov 20 review backlog.",
   "items": [
     {"id": "C1", "section": "Critical", "title": "Constant encryption fails the run on int.MinValue or long.MinValue because Math.Abs throws.", "location": "ConstantEncryptionObfuscator.cs", "status": "fixed"},
@@ -34,7 +34,7 @@
     {"id": "M8", "section": "Minor", "title": "Encrypted blobs are emitted byte by byte into one static constructor.", "location": "DecryptorIl.cs", "status": "open"},
     {"id": "M9", "section": "Minor", "title": "String literals with a lone surrogate are corrupted by the UTF-8 round trip.", "location": "EncryptionHelper.cs", "status": "fixed"},
     {"id": "M10", "section": "Minor", "title": "Exceptions from called methods are rethrown with their stack trace reset.", "location": "Vm.cs", "status": "fixed"},
-    {"id": "M11", "section": "Minor", "title": "newarr with a negative length throws ArgumentOutOfRangeException, not OverflowException.", "location": "Vm.cs", "status": "open"},
+    {"id": "M11", "section": "Minor", "title": "newarr with a negative length throws ArgumentOutOfRangeException, not OverflowException.", "location": "Vm.cs", "status": "fixed"},
     {"id": "M12", "section": "Minor", "title": "A covariant array store throws InvalidCastException, not ArrayTypeMismatchException.", "location": "Vm.cs", "status": "open"},
     {"id": "M13", "section": "Minor", "title": "Multiple .cs inputs are renamed independently, so a shared type gets mismatched names.", "location": "SourceProcessor.cs", "status": "open"},
     {"id": "M14", "section": "Minor", "title": "The interpolated-string path ignores exclusion attributes that the plain-literal path honours.", "location": "SourceStringEncryptor.cs", "status": "open"},

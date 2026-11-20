@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Shouldly;
 
 namespace Obfy.Tests;
@@ -5,6 +6,8 @@ namespace Obfy.Tests;
 /// <summary>Static assertions on Obfy.UI.csproj: the frontend build must be wired into build and publish.</summary>
 public class HybridBuildTests
 {
+    private const string Guard = "Condition=\"'$(SkipFrontendBuild)' != 'true'\"";
+
     private static readonly string UiProjectPath = Path.Combine(FindRepoRoot(), "Src", "Obfy.UI", "Obfy.UI.csproj");
 
     [Fact]
@@ -12,14 +15,12 @@ public class HybridBuildTests
     {
         var csproj = File.ReadAllText(UiProjectPath);
 
-        csproj.ShouldContain("Name=\"NpmInstall\"");
-        csproj.ShouldContain("Name=\"BuildFrontend\"");
-        csproj.ShouldContain("Name=\"CopyFrontend\"");
-        csproj.ShouldContain("Name=\"IncludeFrontendInPublish\"");
-        csproj.ShouldContain("Condition=\"'$(SkipFrontendBuild)' != 'true'\"");
-        // The frontend build must not run on a SkipFrontendBuild build: both targets that call npm are guarded.
-        const string guard = "Condition=\"'$(SkipFrontendBuild)' != 'true'\"";
-        csproj.Split(guard).Length.ShouldBeGreaterThanOrEqualTo(3);
+        // Both targets that call npm carry the SkipFrontendBuild guard on their own opening tag.
+        OpeningTag(csproj, "NpmInstall").ShouldContain(Guard);
+        OpeningTag(csproj, "BuildFrontend").ShouldContain(Guard);
+        // The targets that move the output into the build and the publish exist.
+        TargetBlock(csproj, "CopyFrontend").ShouldContain("Assets\\");
+        TargetBlock(csproj, "IncludeFrontendInPublish").ShouldContain("ResolvedFileToPublish");
     }
 
     [Fact]
@@ -27,7 +28,23 @@ public class HybridBuildTests
     {
         var csproj = File.ReadAllText(UiProjectPath);
 
-        csproj.ShouldMatch(@"<Error\s+Condition=""'@\(_FrontendPublishFiles\)' == ''""");
+        // The empty-dist Error is inside the publish target, not just somewhere in the project.
+        TargetBlock(csproj, "IncludeFrontendInPublish")
+            .ShouldMatch(@"<Error\s+Condition=""'@\(_FrontendPublishFiles\)' == ''""[^>]*/>");
+    }
+
+    private static string TargetBlock(string csproj, string name)
+    {
+        var match = Regex.Match(csproj, $@"<Target\b[^>]*\bName=""{name}""[^>]*>.*?</Target>", RegexOptions.Singleline);
+        match.Success.ShouldBeTrue($"Expected a <Target Name=\"{name}\"> block in Obfy.UI.csproj");
+        return match.Value;
+    }
+
+    private static string OpeningTag(string csproj, string name)
+    {
+        var match = Regex.Match(csproj, $@"<Target\b[^>]*\bName=""{name}""[^>]*>", RegexOptions.Singleline);
+        match.Success.ShouldBeTrue($"Expected a <Target Name=\"{name}\"> element in Obfy.UI.csproj");
+        return match.Value;
     }
 
     private static string FindRepoRoot()

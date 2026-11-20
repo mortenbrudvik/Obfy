@@ -1,4 +1,5 @@
-﻿$ErrorActionPreference = "Stop"
+﻿#requires -Version 7
+$ErrorActionPreference = "Stop"
 
 # The process listening on the dev server's port, if any.
 function Get-PortOwner {

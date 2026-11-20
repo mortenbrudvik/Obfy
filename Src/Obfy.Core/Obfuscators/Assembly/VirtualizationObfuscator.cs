@@ -119,9 +119,23 @@ public class VirtualizationObfuscator : IObfuscator
             try
             {
                 var returnTypes = encoded.Select(e => e.Method.MethodSig.RetType.ToTypeDefOrRef()).ToList();
+                var argumentCounts = new int[encoded.Count];
+                var argumentTypes = new List<ITypeDefOrRef>();
+                for (var i = 0; i < encoded.Count; i++)
+                {
+                    var parameters = encoded[i].Method.Parameters;
+                    argumentCounts[i] = parameters.Count;
+                    foreach (var parameter in parameters)
+                    {
+                        var signature = parameter.Type.RemovePinnedAndModifiers() ?? parameter.Type;
+                        argumentTypes.Add(signature.ToTypeDefOrRef());
+                    }
+                }
+
                 var vmType = VmImporter.Import(
                     context, blob, starts, opMap, xorKey,
-                    tables.Methods, tables.Fields, tables.Types, returnTypes);
+                    tables.Methods, tables.Fields, tables.Types, returnTypes,
+                    argumentTypes, argumentCounts);
                 run = vmType.FindMethod("Run")
                     ?? throw new InvalidOperationException("Virtualization failed: Run missing.");
             }

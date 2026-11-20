@@ -167,10 +167,13 @@ public class SourceControlFlowObfuscator : IObfuscator
         /// </summary>
         private static bool CanWrapInPredicate(StatementSyntax statement)
         {
-            return statement is not (
-                LocalDeclarationStatementSyntax or
-                LocalFunctionStatementSyntax or
-                LabeledStatementSyntax);
+            if (statement is LocalDeclarationStatementSyntax or LocalFunctionStatementSyntax or LabeledStatementSyntax)
+                return false;
+
+            // `out var` and other declaration expressions are scoped to the enclosing block.
+            // A nested predicate block would hide those names from later statements.
+            return !statement.DescendantNodes().Any(n =>
+                n is DeclarationExpressionSyntax or LocalFunctionStatementSyntax);
         }
 
         private static bool MethodNeedsReturnValue(MethodDeclarationSyntax method)

@@ -4,7 +4,7 @@ $repo = Resolve-Path (Join-Path $here "..\..")
 
 function Restore-NetHostPack([string]$Version) {
     $restoreDir = Join-Path ([System.IO.Path]::GetTempPath()) "obfy-hostpack-$Version"
-    $extract = Join-Path $restoreDir "pkg"
+    $extract = Join-Path $restoreDir $Version
     $native = Join-Path $extract "runtimes\win-x64\native\libnethost.lib"
     if (-not (Test-Path $native)) {
         New-Item -ItemType Directory -Force -Path $restoreDir | Out-Null

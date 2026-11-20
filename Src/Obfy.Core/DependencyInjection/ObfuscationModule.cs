@@ -126,9 +126,11 @@ public class ObfuscationModule : Module
             .As<ISolutionAnalyzer>()
             .SingleInstance();
 
+        // Per scope, like the pipeline: a closed-set run opens a child scope so NameGenerator
+        // does not keep used names across runs.
         builder.RegisterType<ClosedSetProcessor>()
             .As<IClosedSetProcessor>()
-            .SingleInstance();
+            .InstancePerLifetimeScope();
 
         builder.RegisterType<MethodEncryptionPePostProcessor>()
             .As<IPePostProcessor>()

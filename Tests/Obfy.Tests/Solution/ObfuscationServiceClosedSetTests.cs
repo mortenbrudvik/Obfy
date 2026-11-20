@@ -1,4 +1,5 @@
 using Autofac;
+using dnlib.DotNet;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
@@ -72,6 +73,62 @@ public class ObfuscationServiceClosedSetTests : IDisposable
 
         result.ShouldBeSameAs(expected);
         processor.Verify(p => p.ExecuteAsync(inputs, outputDir, settings, true, cts.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task ObfuscateClosedSetAsync_SecondRun_RestartsSequentialNames()
+    {
+        var libA = CompileLibrary("LibA", "public class Alpha { internal static int Hidden() => 1; }");
+        var libB = CompileLibrary("LibB", "public class Beta { internal static int Hidden() => 2; }");
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            StringEncryption = { Enabled = false },
+            ControlFlow = { Enabled = false },
+            ConstantEncryption = { Enabled = false },
+            ResourceEncryption = { Enabled = false },
+            SymbolRenaming = { Enabled = true, Mode = NamingMode.Sequential, PreservePublicApi = false },
+            Metadata = { RemoveDebugInfo = false, RemoveAttributes = false, StripDocumentation = false },
+            Protection =
+            {
+                AntiDebug = false,
+                AntiTamper = { Enabled = false },
+                AntiDecompiler = { Enabled = false },
+                AntiDump = false,
+                ReferenceProxy = false,
+                MethodEncryption = false
+            }
+        };
+        var inputs = new List<ClosedSetInput>
+        {
+            new() { AssemblyPath = libA, Hints = new ProjectSettingsHints() },
+            new() { AssemblyPath = libB, Hints = new ProjectSettingsHints() }
+        };
+
+        using var container = BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var firstDir = Path.Combine(_tempDirectory, "out1");
+        var secondDir = Path.Combine(_tempDirectory, "out2");
+
+        var first = await service.ObfuscateClosedSetAsync(inputs, firstDir, settings);
+        var second = await service.ObfuscateClosedSetAsync(inputs, secondDir, settings);
+
+        first.Success.ShouldBeTrue(first.ErrorMessage);
+        second.Success.ShouldBeTrue(second.ErrorMessage);
+        var firstNames = MethodNames(Path.Combine(firstDir, "LibA.dll"));
+        var secondNames = MethodNames(Path.Combine(secondDir, "LibA.dll"));
+        firstNames.ShouldBe(secondNames);
+        firstNames.ShouldContain("Alpha.a");
+        firstNames.ShouldNotContain("Alpha.Hidden");
+    }
+
+    private static List<string> MethodNames(string path)
+    {
+        using var module = ModuleDefMD.Load(path);
+        return module.GetTypes()
+            .SelectMany(type => type.Methods.Select(method => type.Name + "." + method.Name))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
     }
 
     public void Dispose()

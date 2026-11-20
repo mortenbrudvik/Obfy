@@ -115,6 +115,33 @@ public class EncryptionHelperTests
         EncryptionHelper.DecryptFromBase64(encrypted, key, algorithm).ShouldBe(original);
     }
 
+    [Theory]
+    [InlineData(EncryptionAlgorithm.Xor)]
+    [InlineData(EncryptionAlgorithm.Aes256)]
+    public void Encrypt_RoundTrips_LoneSurrogate(EncryptionAlgorithm algorithm)
+    {
+        const string original = "A\uD800B";
+        var key = EncryptionHelper.GenerateKey(algorithm);
+
+        var decrypted = EncryptionHelper.Decrypt(
+            EncryptionHelper.Encrypt(original, key, algorithm),
+            key,
+            algorithm);
+
+        decrypted.ShouldBe(original);
+    }
+
+    [Fact]
+    public void DecryptAes_ShortPayload_ThrowsArgumentException()
+    {
+        var key = EncryptionHelper.GenerateKey(EncryptionAlgorithm.Aes256);
+
+        Should.Throw<ArgumentException>(() =>
+            EncryptionHelper.Decrypt(new byte[15], key, EncryptionAlgorithm.Aes256));
+        Should.Throw<ArgumentException>(() =>
+            EncryptionHelper.DecryptBytes(Array.Empty<byte>(), key, EncryptionAlgorithm.Aes256));
+    }
+
     [Fact]
     public void DecryptAes_WithWrongKey_DoesNotReturnOriginal()
     {

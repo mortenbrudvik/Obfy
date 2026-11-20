@@ -280,6 +280,11 @@ public class MethodEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
         body.Instructions.Add(Instruction.Create(OpCodes.Beq, leaveEnd));
+        // Marshal.GetHINSTANCE returns -1 for a dynamic module. That is not a mapped image.
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, addr));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_M1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, leaveEnd));
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsflda, blobField));
         body.Instructions.Add(Instruction.Create(OpCodes.Conv_U));

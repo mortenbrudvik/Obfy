@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using Obfy.Core.Models;
 using Obfy.Core.Utilities;
 using Shouldly;
@@ -160,6 +162,80 @@ public class IncrementalCacheTests : IDisposable
     }
 
     [Fact]
+    public void ComputeKey_ChangesWhenSigningKeyBytesChange()
+    {
+        var (input, _, settings) = Seed();
+        var keyFile = Path.Combine(_dir, "app.snk");
+        File.WriteAllBytes(keyFile, [1, 2, 3]);
+        settings.Signing.Enabled = true;
+        settings.Signing.KeyFile = keyFile;
+
+        var first = IncrementalCache.ComputeKey(input, settings);
+        File.WriteAllBytes(keyFile, [9, 9, 9]);
+
+        IncrementalCache.ComputeKey(input, settings).ShouldNotBe(first);
+        IncrementalCache.ToAes256Key(input, settings).Length.ShouldBe(32);
+    }
+
+    [Fact]
+    public void ComputeKey_ChangesWhenEmbeddedDependencyBytesChange()
+    {
+        var input = Path.Combine(_dir, "App.dll");
+        var dep = Path.Combine(_dir, "Lib.dll");
+        WriteModuleWithAssemblyRef(input, "App", "Lib");
+        File.WriteAllBytes(dep, [1, 2, 3]);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            DependencyEmbedding = { Enabled = true }
+        };
+
+        var first = IncrementalCache.ComputeKey(input, settings);
+        File.WriteAllBytes(dep, [1, 2, 4]);
+
+        IncrementalCache.ComputeKey(input, settings).ShouldNotBe(first);
+        IncrementalCache.ToAes256Key(input, settings).Length.ShouldBe(32);
+    }
+
+    [Fact]
+    public void ComputeKey_IgnoresSiblingBytesWhenEmbeddingIsOff()
+    {
+        var input = Path.Combine(_dir, "App.dll");
+        var dep = Path.Combine(_dir, "Lib.dll");
+        WriteModuleWithAssemblyRef(input, "App", "Lib");
+        File.WriteAllBytes(dep, [1, 2, 3]);
+        var settings = new ObfySettings { Level = ObfuscationLevel.Custom };
+
+        var first = IncrementalCache.ComputeKey(input, settings);
+        File.WriteAllBytes(dep, [1, 2, 4]);
+
+        IncrementalCache.ComputeKey(input, settings).ShouldBe(first);
+    }
+
+    [Fact]
+    public void ComputeKey_IgnoresExcludedEmbeddedDependency()
+    {
+        var input = Path.Combine(_dir, "App.dll");
+        var dep = Path.Combine(_dir, "Lib.dll");
+        WriteModuleWithAssemblyRef(input, "App", "Lib");
+        File.WriteAllBytes(dep, [1, 2, 3]);
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            DependencyEmbedding =
+            {
+                Enabled = true,
+                ExcludePatterns = { "Lib.dll" }
+            }
+        };
+
+        var first = IncrementalCache.ComputeKey(input, settings);
+        File.WriteAllBytes(dep, [1, 2, 4]);
+
+        IncrementalCache.ComputeKey(input, settings).ShouldBe(first);
+    }
+
+    [Fact]
     public void TryHit_CorruptCacheFile_IsFalse()
     {
         var (input, output, settings) = Seed();
@@ -181,5 +257,37 @@ public class IncrementalCacheTests : IDisposable
         File.WriteAllBytes(output, [5, 6, 7, 8]);
         var settings = new ObfySettings { Level = ObfuscationLevel.Custom };
         return (input, output, settings);
+    }
+
+    private static void WriteModuleWithAssemblyRef(string path, string assemblyName, string referencedName)
+    {
+        var module = new ModuleDefUser(
+            assemblyName + ".dll",
+            Guid.NewGuid(),
+            AssemblyRefUser.CreateMscorlibReferenceCLR40());
+        var assembly = new AssemblyDefUser(assemblyName, new Version(1, 0, 0, 0));
+        assembly.Modules.Add(module);
+        var type = new TypeDefUser("App", "Program", module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            Attributes = TypeAttributes.Public | TypeAttributes.Class
+        };
+        module.Types.Add(type);
+        var libRef = new AssemblyRefUser(referencedName, new Version(1, 0, 0, 0));
+        var libType = new TypeRefUser(module, "LibNs", "Lib", libRef);
+        var callee = new MemberRefUser(
+            module,
+            "N",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            libType);
+        var method = new MethodDefUser(
+            "Go",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Call, callee));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
+        module.Write(path);
     }
 }

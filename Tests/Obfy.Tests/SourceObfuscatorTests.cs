@@ -79,6 +79,80 @@ public class SourceObfuscatorTests
     }
 
     [Fact]
+    public async Task SourceStringEncryptor_KeepsCompileTimeConstants()
+    {
+        var sourceCode = """
+            class Test
+            {
+                public const string Name = "ConstantName";
+                public string PickDefault() => Pick();
+                public string Pick(string s = "DefaultValue")
+                {
+                    switch (s)
+                    {
+                        case "CaseLabel":
+                            return "CaseHit";
+                        default:
+                            return Name;
+                    }
+                }
+                public string Arm(string s) => s switch
+                {
+                    "ArmLabel" => "ArmHit",
+                    _ => "ArmMiss"
+                };
+            }
+            """;
+
+        var context = PipelineContext.ForSourceCode(CreateCompilation(sourceCode), new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 }
+        });
+        var result = await new SourceStringEncryptor(new Mock<ILogger<SourceStringEncryptor>>().Object)
+            .ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        var newSource = context.Compilation!.SyntaxTrees.First().ToString();
+        newSource.ShouldContain("\"ConstantName\"");
+        newSource.ShouldContain("\"DefaultValue\"");
+        newSource.ShouldContain("\"CaseLabel\"");
+        newSource.ShouldContain("\"ArmLabel\"");
+        newSource.ShouldNotContain("\"CaseHit\"");
+        newSource.ShouldNotContain("\"ArmHit\"");
+        newSource.ShouldNotContain("\"ArmMiss\"");
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Test", "PickDefault").ShouldBe("ConstantName");
+        EmitAndInvoke(context.Compilation!, "Test", "Pick", "CaseLabel").ShouldBe("CaseHit");
+        EmitAndInvoke(context.Compilation!, "Test", "Arm", "ArmLabel").ShouldBe("ArmHit");
+        EmitAndInvoke(context.Compilation!, "Test", "Arm", "other").ShouldBe("ArmMiss");
+    }
+
+    [Fact]
+    public async Task SourceStringEncryptor_NullInterpolation_PrintsEmptyHole()
+    {
+        var sourceCode = """
+            class Test
+            {
+                public string Greet(string name) => $"Hello {name}!";
+                public string Sum(int a, int b) => $"value {a + b} end";
+            }
+            """;
+
+        var context = PipelineContext.ForSourceCode(CreateCompilation(sourceCode), new ObfySettings
+        {
+            StringEncryption = { Enabled = true, MinStringLength = 3 }
+        });
+        var result = await new SourceStringEncryptor(new Mock<ILogger<SourceStringEncryptor>>().Object)
+            .ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Test", "Greet", new object[] { null! }).ShouldBe("Hello !");
+        EmitAndInvoke(context.Compilation!, "Test", "Greet", "Ada").ShouldBe("Hello Ada!");
+        EmitAndInvoke(context.Compilation!, "Test", "Sum", 20, 3).ShouldBe("value 23 end");
+    }
+
+    [Fact]
     public async Task SourceStringEncryptor_SkipsShortStrings()
     {
         // Arrange
@@ -961,6 +1035,69 @@ public class SourceObfuscatorTests
         GetErrors(context.Compilation!).ShouldBeEmpty();
         // a=11, b=22, c=19 => 52
         EmitAndInvoke(context.Compilation!, "Calc", "Compute", 10).ShouldBe(52);
+    }
+
+    [Fact]
+    public async Task SourceControlFlow_OpaquePredicate_KeepsOutVarInScope()
+    {
+        var sourceCode = """
+            public class Calc
+            {
+                public int Parse(string text)
+                {
+                    int.TryParse(text, out var n);
+                    return n + 1;
+                }
+            }
+            """;
+
+        var context = PipelineContext.ForSourceCode(CreateCompilation(sourceCode), new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.OpaquePredicate, Intensity = 100 }
+        });
+        var result = await new SourceControlFlowObfuscator(new Mock<ILogger<SourceControlFlowObfuscator>>().Object)
+            .ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Calc", "Parse", "41").ShouldBe(42);
+    }
+
+    [Fact]
+    public async Task SourceSymbolRenamer_RenamesExtensionCallSites()
+    {
+        var sourceCode = """
+            public static class TextExt
+            {
+                internal static int Len(this string text) => text.Length;
+            }
+            public class Calc
+            {
+                public int Measure(string text) => text.Len();
+            }
+            """;
+
+        var context = PipelineContext.ForSourceCode(CreateCompilation(sourceCode), new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            SymbolRenaming =
+            {
+                Enabled = true,
+                RenameMethods = true,
+                PreservePublicApi = true,
+                Mode = NamingMode.Sequential
+            }
+        });
+        var result = await new SourceSymbolRenamer(new NameGenerator(), new Mock<ILogger<SourceSymbolRenamer>>().Object)
+            .ObfuscateAsync(context);
+
+        result.Success.ShouldBeTrue();
+        var newSource = context.Compilation!.SyntaxTrees.First().ToString();
+        newSource.ShouldContain(".a()");
+        newSource.ShouldNotContain(".Len(");
+        GetErrors(context.Compilation!).ShouldBeEmpty();
+        EmitAndInvoke(context.Compilation!, "Calc", "Measure", "abcd").ShouldBe(4);
     }
 
     [Fact]

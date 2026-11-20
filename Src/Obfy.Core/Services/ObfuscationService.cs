@@ -337,19 +337,31 @@ public class ObfuscationService : IObfuscationService
     }
 
     /// <inheritdoc/>
-    public Task<ClosedSetResult> ObfuscateClosedSetAsync(
+    public async Task<ClosedSetResult> ObfuscateClosedSetAsync(
         IReadOnlyList<ClosedSetInput> inputs,
         string outputDirectory,
         ObfySettings settings,
         bool forcePreservePublic = false,
         CancellationToken cancellationToken = default)
     {
-        return _closedSetProcessor.ExecuteAsync(
+        if (_lifetimeScope is null)
+        {
+            return await _closedSetProcessor.ExecuteAsync(
+                inputs,
+                outputDirectory,
+                settings,
+                forcePreservePublic,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        using var runScope = _lifetimeScope.BeginLifetimeScope();
+        var processor = runScope.Resolve<IClosedSetProcessor>();
+        return await processor.ExecuteAsync(
             inputs,
             outputDirectory,
             settings,
             forcePreservePublic,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static string GenerateOutputPath(string inputPath)

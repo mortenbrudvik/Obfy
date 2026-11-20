@@ -250,12 +250,22 @@ public class ConstantEncryptionObfuscator : IObfuscator
 
     private static bool ShouldSkipInt32(int value, ConstantEncryptionSettings settings)
     {
-        return Math.Abs(value) < settings.IntegerThreshold;
+        // Math.Abs(int.MinValue) throws. That magnitude is above every int threshold.
+        if (value == int.MinValue)
+            return false;
+
+        var magnitude = value < 0 ? -value : value;
+        return magnitude < settings.IntegerThreshold;
     }
 
     private static bool ShouldSkipInt64(long value, ConstantEncryptionSettings settings)
     {
-        return Math.Abs(value) < settings.LongThreshold;
+        // Math.Abs(long.MinValue) throws. That magnitude is above every long threshold.
+        if (value == long.MinValue)
+            return false;
+
+        var magnitude = value < 0 ? -value : value;
+        return magnitude < settings.LongThreshold;
     }
 
     private static bool ShouldSkipSingle(float value, ConstantEncryptionSettings settings)

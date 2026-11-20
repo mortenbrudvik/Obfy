@@ -24,7 +24,9 @@ public static class VmImporter
         IReadOnlyList<IMethod> methods,
         IReadOnlyList<IField> fields,
         IReadOnlyList<ITypeDefOrRef> types,
-        IReadOnlyList<ITypeDefOrRef> returnTypes)
+        IReadOnlyList<ITypeDefOrRef> returnTypes,
+        IReadOnlyList<ITypeDefOrRef>? argumentTypes = null,
+        IReadOnlyList<int>? argumentCounts = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(code);
@@ -35,11 +37,25 @@ public static class VmImporter
         ArgumentNullException.ThrowIfNull(fields);
         ArgumentNullException.ThrowIfNull(types);
         ArgumentNullException.ThrowIfNull(returnTypes);
+        argumentCounts ??= new int[starts.Length];
+        argumentTypes ??= Array.Empty<ITypeDefOrRef>();
+        if (argumentCounts.Count != starts.Length)
+            throw new ArgumentException("argumentCounts length must match starts.", nameof(argumentCounts));
+        var declared = 0;
+        foreach (var count in argumentCounts)
+        {
+            if (count < 0)
+                throw new ArgumentException("argumentCounts cannot be negative.", nameof(argumentCounts));
+            declared += count;
+        }
+
+        if (argumentTypes.Count != declared)
+            throw new ArgumentException("argumentTypes length must equal the sum of argumentCounts.", nameof(argumentTypes));
 
         var dest = context.RequireModule();
         var vmType = CopyVmType(dest);
         RetargetCorlib(vmType, dest);
-        ReplaceCctor(vmType, dest, code, starts, opMap, xorKey, methods, fields, types, returnTypes);
+        ReplaceCctor(vmType, dest, code, starts, opMap, xorKey, methods, fields, types, returnTypes, argumentTypes, argumentCounts);
         RuntimeInjection.Register(context, vmType, new RuntimeHelperOptions
         {
             FlattenControlFlow = true,
@@ -431,7 +447,9 @@ public static class VmImporter
         IReadOnlyList<IMethod> methods,
         IReadOnlyList<IField> fields,
         IReadOnlyList<ITypeDefOrRef> types,
-        IReadOnlyList<ITypeDefOrRef> returnTypes)
+        IReadOnlyList<ITypeDefOrRef> returnTypes,
+        IReadOnlyList<ITypeDefOrRef> argumentTypes,
+        IReadOnlyList<int> argumentCounts)
     {
         var existing = vmType.FindStaticConstructor();
         if (existing is not null)
@@ -514,6 +532,12 @@ public static class VmImporter
             body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, returnTypes[i]));
             body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
         });
+        EmitTokenArray(body, argumentTypes.Count, typeType, i =>
+        {
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, argumentTypes[i]));
+            body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
+        });
+        EmitIntArray(body, dest, vmType, argumentCounts as int[] ?? argumentCounts.ToArray(), initArray, "rva_argCounts");
         body.Instructions.Add(Instruction.Create(OpCodes.Call, init));
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
         body.UpdateInstructionOffsets();

@@ -3710,6 +3710,39 @@ public class AssemblyObfuscatorTests
     }
 
     [Fact]
+    public async Task StringEncryption_UnreadableResource_DoesNotFailTheRun()
+    {
+        var module = CreateTestModule();
+        using var output = new MemoryStream();
+        using (var writer = new System.Resources.ResourceWriter(output))
+        {
+            writer.AddResource("keep", "KeepMePlain");
+            writer.Generate();
+        }
+
+        // A different reader type makes ResourceReader throw NotSupportedException.
+        var original = output.ToArray();
+        var marker = System.Text.Encoding.UTF8.GetBytes("System.Resources.ResourceReader");
+        var index = original.AsSpan().IndexOf(marker);
+        index.ShouldBeGreaterThanOrEqualTo(0);
+        original[index + marker.Length - 1] = (byte)'X';
+        module.Resources.Add(new EmbeddedResource("App.Form.resources", original));
+
+        var obfuscator = new StringEncryptionObfuscator(new Mock<ILogger<StringEncryptionObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            StringEncryption = { Enabled = true, EncryptResourceStrings = true, MinStringLength = 3 }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+
+        var resource = module.Resources.OfType<EmbeddedResource>().Single();
+        resource.CreateReader().ToArray().ShouldBe(original);
+        context.SkippedItems.ShouldContain(item => item.ItemName == "App.Form.resources");
+    }
+
+    [Fact]
     public async Task AntiDump_WipeTouchesMoreThanChecksum()
     {
         var module = CreateTestModule();
@@ -4286,6 +4319,8 @@ public class AssemblyObfuscatorTests
         catchNames.ShouldNotContain("Object");
         decrypt.Body.Instructions.Any(i => i.Operand is IMethod m && m.Name == "FailFast")
             .ShouldBeTrue("DecryptBodies must FailFast when VirtualProtect returns false");
+        decrypt.Body.Instructions.Count(i => i.OpCode.Code == Code.Ldc_I4_M1).ShouldBeGreaterThan(0);
+        decrypt.Body.Instructions.Count(i => i.OpCode.Code == Code.Beq).ShouldBeGreaterThanOrEqualTo(2);
     }
 
     [Fact]

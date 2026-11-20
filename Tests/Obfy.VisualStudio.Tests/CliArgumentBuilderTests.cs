@@ -42,6 +42,12 @@ public class CliArgumentBuilderTests
         CliArgumentBuilder.Quote(@"C:\src\My ""App"".dll").ShouldBe("\"C:\\src\\My \\\"App\\\".dll\"");
     }
 
+    [Fact]
+    public void Quote_DoublesATrailingBackslash()
+    {
+        CliArgumentBuilder.Quote(@"C:\").ShouldBe("\"C:\\\\\"");
+    }
+
     [Theory]
     [InlineData(@"C:\src\App.csproj", true)]
     [InlineData(@"C:\src\Lib.vbproj", true)]

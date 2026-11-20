@@ -126,7 +126,10 @@ public class SourceStringEncryptor : IObfuscator
                         Buffer.BlockCopy(data, iv.Length, ciphertext, 0, ciphertext.Length);
                         using var decryptor = aes.CreateDecryptor();
                         var decrypted = decryptor.TransformFinalBlock(ciphertext, 0, ciphertext.Length);
-                        return Encoding.UTF8.GetString(decrypted);
+                        var chars = new char[decrypted.Length / 2];
+                        for (int i = 0; i < chars.Length; i++)
+                            chars[i] = (char)(decrypted[i * 2] | (decrypted[(i * 2) + 1] << 8));
+                        return new string(chars);
             """;
     }
 
@@ -136,7 +139,10 @@ public class SourceStringEncryptor : IObfuscator
                         var result = new byte[data.Length];
                         for (int i = 0; i < data.Length; i++)
                             result[i] = (byte)(data[i] ^ _key[i % _key.Length]);
-                        return Encoding.UTF8.GetString(result);
+                        var chars = new char[result.Length / 2];
+                        for (int i = 0; i < chars.Length; i++)
+                            chars[i] = (char)(result[i * 2] | (result[(i * 2) + 1] << 8));
+                        return new string(chars);
             """;
     }
 
@@ -181,6 +187,9 @@ public class SourceStringEncryptor : IObfuscator
             if (string.IsNullOrEmpty(value) || value.Length < _settings.MinStringLength)
                 return base.VisitLiteralExpression(node);
 
+            if (MustRemainConstant(node))
+                return base.VisitLiteralExpression(node);
+
             // Encrypt the string
             var encrypted = EncryptionHelper.EncryptToBase64(value, _key, _settings.Algorithm);
             _encryptedStrings.Add((value, encrypted));
@@ -192,6 +201,9 @@ public class SourceStringEncryptor : IObfuscator
         public override SyntaxNode? VisitInterpolatedStringExpression(InterpolatedStringExpressionSyntax node)
         {
             if (!_settings.EncryptConstantStrings)
+                return base.VisitInterpolatedStringExpression(node);
+
+            if (MustRemainConstant(node))
                 return base.VisitInterpolatedStringExpression(node);
 
             if (node.Contents.OfType<InterpolationSyntax>().Any(i => i.AlignmentClause != null || i.FormatClause != null))
@@ -223,12 +235,10 @@ public class SourceStringEncryptor : IObfuscator
                 }
                 else if (content is InterpolationSyntax interpolation)
                 {
-                    piece = SyntaxFactory.InvocationExpression(
-                        SyntaxFactory.MemberAccessExpression(
-                            SyntaxKind.SimpleMemberAccessExpression,
-                            interpolation.Expression,
-                            SyntaxFactory.IdentifierName("ToString")))
-                        .WithArgumentList(SyntaxFactory.ArgumentList());
+                    // Parentheses keep "text {a + b}" as text + (a + b). A bare hole
+                    // would bind as string concatenation and drop the addition.
+                    // string.Concat treats a null hole as empty, matching interpolation.
+                    piece = SyntaxFactory.ParenthesizedExpression(interpolation.Expression);
                 }
                 else
                 {
@@ -244,6 +254,36 @@ public class SourceStringEncryptor : IObfuscator
                 return base.VisitInterpolatedStringExpression(node);
 
             return combined.WithTriviaFrom(node);
+        }
+
+        private static bool MustRemainConstant(SyntaxNode node)
+        {
+            foreach (var ancestor in node.Ancestors())
+            {
+                switch (ancestor)
+                {
+                    case CaseSwitchLabelSyntax:
+                    case ConstantPatternSyntax:
+                        return true;
+                    case EqualsValueClauseSyntax equals when IsConstInitializer(equals) || equals.Parent is ParameterSyntax:
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsConstInitializer(EqualsValueClauseSyntax equals)
+        {
+            if (equals.Parent is not VariableDeclaratorSyntax { Parent: VariableDeclarationSyntax declaration })
+                return false;
+
+            return declaration.Parent switch
+            {
+                LocalDeclarationStatementSyntax local => local.IsConst,
+                FieldDeclarationSyntax field => field.Modifiers.Any(SyntaxKind.ConstKeyword),
+                _ => false
+            };
         }
 
         private static InvocationExpressionSyntax CreateDecryptCall(string encrypted)

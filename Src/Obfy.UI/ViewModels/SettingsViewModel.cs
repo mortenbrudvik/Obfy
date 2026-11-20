@@ -106,6 +106,12 @@ public partial class SettingsViewModel : ObservableObject
     private List<string>? _dependencyEmbeddingIncludes;
     private List<string>? _dependencyEmbeddingExcludes;
 
+    /// <summary>
+    /// Settings last loaded from disk. <see cref="ToObfySettings"/> copies this and
+    /// overlays the panel fields, so values the panel does not edit survive Obfuscate and Save.
+    /// </summary>
+    private ObfySettings? _loadedSettings;
+
     // Protection
     [ObservableProperty]
     private bool _antiDebugEnabled = false;
@@ -387,126 +393,97 @@ public partial class SettingsViewModel : ObservableObject
 
     /// <summary>
     /// Converts the ViewModel settings to an ObfySettings instance.
+    /// Starts from the loaded configuration when one exists, then writes the panel fields
+    /// onto that copy. Fields the panel does not edit stay as loaded.
     /// </summary>
     public ObfySettings ToObfySettings()
     {
-        return new ObfySettings
-        {
-            Level = Level,
-            StringEncryption = new StringEncryptionSettings
-            {
-                Enabled = StringEncryptionEnabled,
-                Algorithm = StringEncryptionAlgorithm,
-                MinStringLength = MinStringLength
-            },
-            ControlFlow = new ControlFlowSettings
-            {
-                Enabled = ControlFlowEnabled,
-                Mode = ControlFlowMode,
-                Intensity = ControlFlowIntensity
-            },
-            SymbolRenaming = new SymbolRenamingSettings
-            {
-                Enabled = SymbolRenamingEnabled,
-                Mode = NamingMode,
-                RenameTypes = RenameTypes,
-                RenameMethods = RenameMethods,
-                RenameFields = RenameFields,
-                RenameProperties = RenameProperties,
-                RenameParameters = RenameParameters,
-                RenameEvents = RenameEvents,
-                RenameNamespaces = RenameNamespaces,
-                PreservePublicApi = PreservePublicApi,
-                PreserveXaml = PreserveXaml
-            },
-            Protection = new ProtectionSettings
-            {
-                AntiDebug = AntiDebugEnabled,
-                AntiTamper = new AntiTamperSettings
-                {
-                    Enabled = AntiTamperEnabled,
-                    CheckEntryPoint = TamperCheckEntryPoint,
-                    CheckModuleInitializer = TamperCheckModuleInit
-                },
-                AntiDecompiler = new AntiDecompilerSettings
-                {
-                    Enabled = AntiDecompilerEnabled,
-                    InjectJunkTypes = InjectJunkTypes,
-                    AddSuppressIldasmAttribute = AddSuppressIldasmAttribute,
-                    AddDecoyAttributes = AddDecoyAttributes,
-                    JunkTypeCount = JunkTypeCount,
-                    JunkMethodsPerType = JunkMethodsPerType
-                },
-                AntiDump = AntiDumpEnabled,
-                ReferenceProxy = ReferenceProxyEnabled,
-                ProxyExternalCalls = ProxyExternalCalls,
-                MethodEncryption = MethodEncryptionEnabled
-            },
-            Metadata = new MetadataSettings
-            {
-                RemoveDebugInfo = RemoveDebugInfo,
-                RemoveAttributes = RemoveAttributes,
-                StripDocumentation = StripDocumentation
-            },
-            ResourceEncryption = new ResourceEncryptionSettings
-            {
-                Enabled = ResourceEncryptionEnabled,
-                Algorithm = ResourceAlgorithm
-            },
-            AssemblyMerge = new AssemblyMergeSettings
-            {
-                Enabled = AssemblyMergeEnabled,
-                Internalize = InternalizeMergedTypes
-            },
-            DependencyEmbedding = new DependencyEmbeddingSettings
-            {
-                Enabled = DependencyEmbeddingEnabled,
-                IncludePatterns = _dependencyEmbeddingIncludes ?? new List<string> { "*.dll" },
-                ExcludePatterns = _dependencyEmbeddingExcludes ?? new List<string> { "*.resources.dll" }
-            },
-            ConstantEncryption = new ConstantEncryptionSettings
-            {
-                Enabled = ConstantEncryptionEnabled,
-                Algorithm = ConstantEncryptionAlgorithm,
-                EncryptIntegers = EncryptIntegers,
-                EncryptLongs = EncryptLongs,
-                EncryptFloats = EncryptFloats,
-                EncryptDoubles = EncryptDoubles,
-                IntegerThreshold = IntegerThreshold,
-                SkipCommonFloats = SkipCommonFloats,
-                SkipCommonDoubles = SkipCommonDoubles
-            },
-            Exclusions = new ExclusionRules
-            {
-                Namespaces = ExcludedNamespaces.ToList(),
-                Types = ExcludedTypes.ToList(),
-                Methods = ExcludedMethods.ToList(),
-                Attributes = new List<string>(new ExclusionRules().Attributes)
-            },
-            Inclusions = new InclusionRules
-            {
-                Namespaces = IncludedNamespaces.ToList(),
-                Types = IncludedTypes.ToList(),
-                Methods = IncludedMethods.ToList()
-            },
-            Watermark = new WatermarkSettings
-            {
-                Enabled = WatermarkEnabled,
-                Id = WatermarkId ?? string.Empty
-            },
-            RuntimeProfile = this.RuntimeProfile,
-            Signing = new SigningSettings
-            {
-                Enabled = SigningEnabled,
-                KeyFile = string.IsNullOrWhiteSpace(SigningKeyFile) ? null : SigningKeyFile,
-                PasswordEnvironmentVariable = string.IsNullOrWhiteSpace(SigningPasswordEnvironmentVariable)
-                    ? null
-                    : SigningPasswordEnvironmentVariable
-            },
-            Packing = new PackingSettings { Enabled = PackingEnabled, Rid = _packingRid },
-            Virtualization = new VirtualizationSettings { Enabled = VirtualizationEnabled },
-            Incremental = new IncrementalSettings { Enabled = IncrementalEnabled }
-        };
+        var settings = _loadedSettings?.Clone() ?? new ObfySettings();
+        settings.Level = Level;
+
+        settings.StringEncryption.Enabled = StringEncryptionEnabled;
+        settings.StringEncryption.Algorithm = StringEncryptionAlgorithm;
+        settings.StringEncryption.MinStringLength = MinStringLength;
+
+        settings.ControlFlow.Enabled = ControlFlowEnabled;
+        settings.ControlFlow.Mode = ControlFlowMode;
+        settings.ControlFlow.Intensity = ControlFlowIntensity;
+
+        settings.SymbolRenaming.Enabled = SymbolRenamingEnabled;
+        settings.SymbolRenaming.Mode = NamingMode;
+        settings.SymbolRenaming.RenameTypes = RenameTypes;
+        settings.SymbolRenaming.RenameMethods = RenameMethods;
+        settings.SymbolRenaming.RenameFields = RenameFields;
+        settings.SymbolRenaming.RenameProperties = RenameProperties;
+        settings.SymbolRenaming.RenameParameters = RenameParameters;
+        settings.SymbolRenaming.RenameEvents = RenameEvents;
+        settings.SymbolRenaming.RenameNamespaces = RenameNamespaces;
+        settings.SymbolRenaming.PreservePublicApi = PreservePublicApi;
+        settings.SymbolRenaming.PreserveXaml = PreserveXaml;
+
+        settings.Protection.AntiDebug = AntiDebugEnabled;
+        settings.Protection.AntiTamper.Enabled = AntiTamperEnabled;
+        settings.Protection.AntiTamper.CheckEntryPoint = TamperCheckEntryPoint;
+        settings.Protection.AntiTamper.CheckModuleInitializer = TamperCheckModuleInit;
+        settings.Protection.AntiDecompiler.Enabled = AntiDecompilerEnabled;
+        settings.Protection.AntiDecompiler.InjectJunkTypes = InjectJunkTypes;
+        settings.Protection.AntiDecompiler.AddSuppressIldasmAttribute = AddSuppressIldasmAttribute;
+        settings.Protection.AntiDecompiler.AddDecoyAttributes = AddDecoyAttributes;
+        settings.Protection.AntiDecompiler.JunkTypeCount = JunkTypeCount;
+        settings.Protection.AntiDecompiler.JunkMethodsPerType = JunkMethodsPerType;
+        settings.Protection.AntiDump = AntiDumpEnabled;
+        settings.Protection.ReferenceProxy = ReferenceProxyEnabled;
+        settings.Protection.ProxyExternalCalls = ProxyExternalCalls;
+        settings.Protection.MethodEncryption = MethodEncryptionEnabled;
+
+        settings.Metadata.RemoveDebugInfo = RemoveDebugInfo;
+        settings.Metadata.RemoveAttributes = RemoveAttributes;
+        settings.Metadata.StripDocumentation = StripDocumentation;
+
+        settings.ResourceEncryption.Enabled = ResourceEncryptionEnabled;
+        settings.ResourceEncryption.Algorithm = ResourceAlgorithm;
+
+        settings.AssemblyMerge.Enabled = AssemblyMergeEnabled;
+        settings.AssemblyMerge.Internalize = InternalizeMergedTypes;
+
+        settings.DependencyEmbedding.Enabled = DependencyEmbeddingEnabled;
+        if (_dependencyEmbeddingIncludes is not null)
+            settings.DependencyEmbedding.IncludePatterns = _dependencyEmbeddingIncludes.ToList();
+        if (_dependencyEmbeddingExcludes is not null)
+            settings.DependencyEmbedding.ExcludePatterns = _dependencyEmbeddingExcludes.ToList();
+
+        settings.ConstantEncryption.Enabled = ConstantEncryptionEnabled;
+        settings.ConstantEncryption.Algorithm = ConstantEncryptionAlgorithm;
+        settings.ConstantEncryption.EncryptIntegers = EncryptIntegers;
+        settings.ConstantEncryption.EncryptLongs = EncryptLongs;
+        settings.ConstantEncryption.EncryptFloats = EncryptFloats;
+        settings.ConstantEncryption.EncryptDoubles = EncryptDoubles;
+        settings.ConstantEncryption.IntegerThreshold = IntegerThreshold;
+        settings.ConstantEncryption.SkipCommonFloats = SkipCommonFloats;
+        settings.ConstantEncryption.SkipCommonDoubles = SkipCommonDoubles;
+
+        settings.Exclusions.Namespaces = ExcludedNamespaces.ToList();
+        settings.Exclusions.Types = ExcludedTypes.ToList();
+        settings.Exclusions.Methods = ExcludedMethods.ToList();
+
+        settings.Inclusions.Namespaces = IncludedNamespaces.ToList();
+        settings.Inclusions.Types = IncludedTypes.ToList();
+        settings.Inclusions.Methods = IncludedMethods.ToList();
+
+        settings.Watermark.Enabled = WatermarkEnabled;
+        settings.Watermark.Id = WatermarkId ?? string.Empty;
+
+        settings.RuntimeProfile = RuntimeProfile;
+        settings.Signing.Enabled = SigningEnabled;
+        settings.Signing.KeyFile = string.IsNullOrWhiteSpace(SigningKeyFile) ? null : SigningKeyFile;
+        settings.Signing.PasswordEnvironmentVariable = string.IsNullOrWhiteSpace(SigningPasswordEnvironmentVariable)
+            ? null
+            : SigningPasswordEnvironmentVariable;
+        settings.Packing.Enabled = PackingEnabled;
+        settings.Packing.Rid = _packingRid;
+        settings.Virtualization.Enabled = VirtualizationEnabled;
+        settings.Incremental.Enabled = IncrementalEnabled;
+        return settings;
     }
 
     /// <summary>
@@ -517,6 +494,7 @@ public partial class SettingsViewModel : ObservableObject
         _applyingPreset++;
         try
         {
+        _loadedSettings = settings.Clone();
         Level = settings.Level;
 
         // String Encryption

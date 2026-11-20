@@ -1047,8 +1047,10 @@ public static class VmEncoder
         if (called.MethodSig is { HasThis: false })
             return false;
         var resolved = called.ResolveMethodDef();
+        // An unresolved instance call (base.F() whose declaring type is not in this module)
+        // must not be encoded as a plain call. The VM would dispatch it virtually and can recurse.
         if (resolved is null)
-            return false;
+            return true;
         return resolved.IsVirtual && !resolved.IsFinal && !resolved.IsStatic;
     }
 

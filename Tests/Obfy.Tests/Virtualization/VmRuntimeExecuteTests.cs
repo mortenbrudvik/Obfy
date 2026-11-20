@@ -308,6 +308,37 @@ public class VmRuntimeExecuteTests
     }
 
     [Fact]
+    public void Run_EnumReturn_IsNotVirtualized()
+    {
+        const string src = """
+            public enum Color { Red = 1 }
+            public enum Small : byte { Red = 2 }
+            public static class Lib {
+                public static Color Get() => Color.Red;
+                public static Small GetSmall() => Small.Red;
+            }
+            """;
+        var dir = Path.Combine(Path.GetTempPath(), "obfy-vm-src-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(src, dir, "VmExecLib", OptimizationLevel.Debug);
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            foreach (var name in new[] { "Get", "GetSmall" })
+            {
+                var method = FindMethod(module, "Lib", name);
+                VmEncoder.TryEncode(method, new Dictionary<MethodDef, int>(), new VmMemberTables(), out _, out var skipReason)
+                    .ShouldBeFalse();
+                skipReason.ShouldBe(VmSkipReasons.NonPrimitiveValuetype);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public void Run_InstanceAndStaticEnumFields_RoundTrip()
     {
         const string src = """
@@ -419,6 +450,58 @@ public class VmRuntimeExecuteTests
     }
 
     [Fact]
+    public void Run_BoxedIntInObjectArgument_ToStringAndReferenceEquals()
+    {
+        EncodeImportInvoke(
+            "public static class Lib { public static string Show(object o) => o.ToString(); }",
+            "Lib", "Show", 42).ShouldBe("42");
+
+        object left = 42;
+        object right = 42;
+        EncodeImportInvoke(
+            "public static class Lib { public static bool Same(object a, object b) => a == b; }",
+            "Lib", "Same", left, right).ShouldBe(false);
+        EncodeImportInvoke(
+            "public static class Lib { public static bool Same(object a, object b) => a == b; }",
+            "Lib", "Same", left, left).ShouldBe(true);
+    }
+
+    [Fact]
+    public void Run_BoxedIntInObjectFieldArrayAndCall_ToString()
+    {
+        const string src = """
+            public class Holder { public object Value; }
+            public static class Lib {
+                public static string FromField() {
+                    var box = new Holder();
+                    box.Value = 42;
+                    return box.Value.ToString();
+                }
+                public static string FromArray() {
+                    object[] items = new object[1];
+                    items[0] = 42;
+                    return items[0].ToString();
+                }
+                public static string FromCall() {
+                    object o = System.Runtime.CompilerServices.RuntimeHelpers.GetObjectValue((object)42);
+                    return o.ToString();
+                }
+            }
+            """;
+        EncodeImportInvoke(src, "Lib", "FromField").ShouldBe("42");
+        EncodeImportInvoke(src, "Lib", "FromArray").ShouldBe("42");
+        EncodeImportInvoke(src, "Lib", "FromCall").ShouldBe("42");
+    }
+
+    [Fact]
+    public void Run_ConvU4_FromFloat_KeepsUnsignedRange()
+    {
+        EncodeImportInvoke(
+            "public static class Lib { public static uint Wide() => (uint)3_000_000_000f; }",
+            "Lib", "Wide").ShouldBe(3_000_000_000u);
+    }
+
+    [Fact]
     public void Run_Throw_Propagates()
     {
         const string src = "public static class Lib { public static int Boom() { throw new System.InvalidOperationException(\"x\"); } }";
@@ -519,6 +602,7 @@ public class VmRuntimeExecuteTests
             }
 
             var retType = method.MethodSig.RetType.ToTypeDefOrRef();
+            var argumentTypes = method.Parameters.Select(p => p.Type.ToTypeDefOrRef()).ToArray();
             var context = PipelineContext.ForAssembly(module, new ObfySettings());
             var vmType = VmImporter.Import(
                 context,
@@ -529,7 +613,9 @@ public class VmRuntimeExecuteTests
                 methods: tables.Methods,
                 fields: tables.Fields,
                 types: tables.Types,
-                returnTypes: new[] { retType });
+                returnTypes: new[] { retType },
+                argumentTypes: argumentTypes,
+                argumentCounts: new[] { method.Parameters.Count });
             var run = vmType.FindMethod("Run");
             run.ShouldNotBeNull();
             VmImporter.WriteStub(method, run!, id: 0);
@@ -620,6 +706,15 @@ public class VmRuntimeExecuteTests
                 VmSeed.Apply(code, opMap, xorKey);
             }
 
+            var argumentCounts = new int[selected.Count];
+            var argumentTypes = new List<ITypeDefOrRef>();
+            for (var i = 0; i < selected.Count; i++)
+            {
+                argumentCounts[i] = selected[i].Parameters.Count;
+                foreach (var parameter in selected[i].Parameters)
+                    argumentTypes.Add(parameter.Type.ToTypeDefOrRef());
+            }
+
             var context = PipelineContext.ForAssembly(module, new ObfySettings());
             var vmType = VmImporter.Import(
                 context,
@@ -630,7 +725,9 @@ public class VmRuntimeExecuteTests
                 methods: tables.Methods,
                 fields: tables.Fields,
                 types: tables.Types,
-                returnTypes: returnTypes);
+                returnTypes: returnTypes,
+                argumentTypes: argumentTypes,
+                argumentCounts: argumentCounts);
             var run = vmType.FindMethod("Run");
             run.ShouldNotBeNull();
             for (var i = 0; i < selected.Count; i++)

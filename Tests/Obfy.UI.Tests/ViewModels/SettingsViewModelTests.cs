@@ -787,6 +787,74 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void FromObfySettings_RoundTripsFieldsThePanelDoesNotEdit()
+    {
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            PostBuildEnabled = true,
+            StringEncryption = new StringEncryptionSettings
+            {
+                EncryptConstantStrings = false,
+                EncryptResourceStrings = false,
+                MinStringLength = 4
+            },
+            ConstantEncryption = new ConstantEncryptionSettings
+            {
+                LongThreshold = 40,
+                IntegerThreshold = 7
+            },
+            Virtualization = new VirtualizationSettings
+            {
+                Enabled = true,
+                MaxMethods = 9
+            },
+            ResourceEncryption = new ResourceEncryptionSettings
+            {
+                Enabled = true,
+                IncludePatterns = new List<string> { "App.*" },
+                ExcludePatterns = new List<string> { "skip.*" }
+            },
+            AssemblyMerge = new AssemblyMergeSettings
+            {
+                Enabled = true,
+                Internalize = false,
+                ExcludePatterns = new List<string> { "System.*" },
+                SearchDirectories = new List<string> { @"C:\libs" },
+                PreserveDebugInfo = true
+            },
+            Exclusions = new ExclusionRules
+            {
+                Attributes = new List<string> { "MyExcludeAttribute" },
+                Namespaces = new List<string> { "Kept.Ns" }
+            }
+        };
+
+        var viewModel = new SettingsViewModel();
+        viewModel.FromObfySettings(settings);
+        viewModel.MinStringLength = 8;
+        var roundTripped = viewModel.ToObfySettings();
+
+        roundTripped.PostBuildEnabled.ShouldBeTrue();
+        roundTripped.StringEncryption.EncryptConstantStrings.ShouldBeFalse();
+        roundTripped.StringEncryption.EncryptResourceStrings.ShouldBeFalse();
+        roundTripped.StringEncryption.MinStringLength.ShouldBe(8);
+        roundTripped.ConstantEncryption.LongThreshold.ShouldBe(40);
+        roundTripped.ConstantEncryption.IntegerThreshold.ShouldBe(7);
+        roundTripped.Virtualization.Enabled.ShouldBeTrue();
+        roundTripped.Virtualization.MaxMethods.ShouldBe(9);
+        roundTripped.ResourceEncryption.IncludePatterns.ShouldBe(new[] { "App.*" });
+        roundTripped.ResourceEncryption.ExcludePatterns.ShouldBe(new[] { "skip.*" });
+        roundTripped.AssemblyMerge.Enabled.ShouldBeTrue();
+        roundTripped.AssemblyMerge.Internalize.ShouldBeFalse();
+        roundTripped.AssemblyMerge.ExcludePatterns.ShouldBe(new[] { "System.*" });
+        roundTripped.AssemblyMerge.SearchDirectories.ShouldBe(new[] { @"C:\libs" });
+        roundTripped.AssemblyMerge.PreserveDebugInfo.ShouldBeTrue();
+        roundTripped.Exclusions.Attributes.ShouldBe(new[] { "MyExcludeAttribute" });
+        roundTripped.Exclusions.Namespaces.ShouldBe(new[] { "Kept.Ns" });
+    }
+
+    [Fact]
     public void ApplyPreset_DoesNotResetLoadedPortableRid()
     {
         var settings = new ObfySettings { Packing = { Enabled = true, Rid = "portable" } };

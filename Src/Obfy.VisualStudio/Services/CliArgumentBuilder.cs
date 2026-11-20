@@ -78,7 +78,41 @@ public static class CliArgumentBuilder
     {
         if (value.Length > 0 && value[0] == '-')
             return value;
-        return "\"" + value.Replace("\"", "\\\"") + "\"";
+
+        // CommandLineToArgvW treats a backslash before a quote as an escape.
+        // A trailing backslash must be doubled or "C:\" swallows the closing quote.
+        var sb = new StringBuilder();
+        sb.Append('"');
+        var slashes = 0;
+        foreach (var c in value)
+        {
+            if (c == '\\')
+            {
+                slashes++;
+                continue;
+            }
+
+            if (c == '"')
+            {
+                sb.Append('\\', (slashes * 2) + 1);
+                sb.Append('"');
+                slashes = 0;
+                continue;
+            }
+
+            if (slashes > 0)
+            {
+                sb.Append('\\', slashes);
+                slashes = 0;
+            }
+
+            sb.Append(c);
+        }
+
+        if (slashes > 0)
+            sb.Append('\\', slashes * 2);
+        sb.Append('"');
+        return sb.ToString();
     }
 
     /// <summary>

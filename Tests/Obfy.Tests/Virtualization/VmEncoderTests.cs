@@ -274,6 +274,89 @@ public class VmEncoderTests
     }
 
     [Fact]
+    public void TryEncode_UnresolvedInstanceCall_Skips()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var missing = new TypeRefUser(module, "Other", "Base", module.CorLibTypes.AssemblyRef);
+        missing.ResolveTypeDef().ShouldBeNull();
+        var callee = new MemberRefUser(
+            module,
+            "F",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32),
+            missing);
+        callee.ResolveMethodDef().ShouldBeNull();
+
+        var caller = new MethodDefUser(
+            "Use",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public);
+        caller.Body = new CilBody();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Call, callee));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(caller);
+
+        VmEncoder.TryEncode(caller, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeFalse();
+        skipReason.ShouldBe(VmSkipReasons.VirtualBaseCall);
+    }
+
+    [Fact]
+    public void TryEncode_UnresolvedStaticCall_StaysEligible()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var missing = new TypeRefUser(module, "Other", "Helpers", module.CorLibTypes.AssemblyRef);
+        var callee = new MemberRefUser(
+            module,
+            "F",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            missing);
+
+        var caller = new MethodDefUser(
+            "Use",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+        caller.Body = new CilBody();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Call, callee));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(caller);
+
+        VmEncoder.TryEncode(caller, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeTrue(skipReason);
+    }
+
+    [Fact]
+    public void TryEncode_UnresolvedCallvirt_StaysEligible()
+    {
+        var module = CreateTestModule();
+        var type = CreateTestType(module);
+        var missing = new TypeRefUser(module, "Other", "Base", module.CorLibTypes.AssemblyRef);
+        var callee = new MemberRefUser(
+            module,
+            "F",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32),
+            missing);
+
+        var caller = new MethodDefUser(
+            "Use",
+            MethodSig.CreateInstance(module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public);
+        caller.Body = new CilBody();
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, callee));
+        caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(caller);
+
+        VmEncoder.TryEncode(caller, EmptyIds, new VmMemberTables(), out _, out var skipReason)
+            .ShouldBeTrue(skipReason);
+    }
+
+    [Fact]
     public void TryEncode_MaxStackAboveVmLimit_Skips()
     {
         EncodeSkip(

@@ -6,6 +6,7 @@ using Obfy.Core.Obfuscators;
 using Obfy.Core.Pipeline;
 using Obfy.Core.Services;
 using Obfy.Core.Services.Reporting;
+using Obfy.Core.Services.Solution;
 using Shouldly;
 
 namespace Obfy.Tests;
@@ -93,5 +94,16 @@ public class DependencyInjectionTests
             .ShouldNotBeSameAs(second.Resolve<Obfy.Core.Utilities.INameGenerator>());
         first.Resolve<IObfuscationPipeline>()
             .ShouldNotBeSameAs(second.Resolve<IObfuscationPipeline>());
+    }
+
+    [Fact]
+    public void Module_ClosedSetProcessor_IsInstancePerLifetimeScope()
+    {
+        using var container = BuildContainer();
+        using var first = container.BeginLifetimeScope();
+        using var second = container.BeginLifetimeScope();
+
+        first.Resolve<IClosedSetProcessor>()
+            .ShouldNotBeSameAs(second.Resolve<IClosedSetProcessor>());
     }
 }

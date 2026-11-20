@@ -201,6 +201,81 @@ internal static class DecryptorIl
         return method;
     }
 
+    /// <summary>
+    /// Builds a string from raw UTF-16 code units. <c>Encoding.Unicode.GetString</c> replaces a lone surrogate.
+    /// </summary>
+    public static MethodDef CreateUtf16ToString(ModuleDef module)
+    {
+        var method = new MethodDefUser(
+            "Utf16",
+            MethodSig.CreateStatic(module.CorLibTypes.String, new SZArraySig(module.CorLibTypes.Byte)),
+            MethodAttributes.Private | MethodAttributes.Static);
+        var body = new CilBody { InitLocals = true };
+        method.Body = body;
+        var bytes = new Local(new SZArraySig(module.CorLibTypes.Byte));
+        var chars = new Local(new SZArraySig(module.CorLibTypes.Char));
+        var index = new Local(module.CorLibTypes.Int32);
+        body.Variables.Add(bytes);
+        body.Variables.Add(chars);
+        body.Variables.Add(index);
+
+        var ctor = new MemberRefUser(
+            module,
+            ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, new SZArraySig(module.CorLibTypes.Char)),
+            module.CorLibTypes.String.TypeDefOrRef);
+        var loop = Instruction.Create(OpCodes.Ldloc, chars);
+        var check = Instruction.Create(OpCodes.Ldloc, index);
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, bytes));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytes));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Div));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Char.TypeDefOrRef));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, chars));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, index));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, check));
+
+        body.Instructions.Add(loop);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, index));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytes));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, index));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Mul));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytes));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, index));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Mul));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_8));
+        body.Instructions.Add(Instruction.Create(OpCodes.Shl));
+        body.Instructions.Add(Instruction.Create(OpCodes.Or));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_U2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stelem_I2));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, index));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, index));
+
+        body.Instructions.Add(check);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, chars));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, loop));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, chars));
+        body.Instructions.Add(Instruction.Create(OpCodes.Newobj, ctor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        return method;
+    }
+
     public static MethodDef CreateStringDecrypt(
         ModuleDef module,
         FieldDef keyField,
@@ -208,6 +283,7 @@ internal static class DecryptorIl
         FieldDef cacheField,
         FieldDef indexXorField,
         MethodDef bytesDecrypt,
+        MethodDef utf16ToString,
         string name = "Decrypt")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -218,14 +294,6 @@ internal static class DecryptorIl
 
         var body = new CilBody { InitLocals = true };
         method.Body = body;
-
-        var encodingType = new TypeRefUser(module, "System.Text", "Encoding", module.CorLibTypes.AssemblyRef);
-
-        var getUtf8 = new MemberRefUser(module, "get_UTF8",
-            MethodSig.CreateStatic(new ClassSig(encodingType)), encodingType);
-        var getString = new MemberRefUser(module, "GetString",
-            MethodSig.CreateInstance(module.CorLibTypes.String, new SZArraySig(module.CorLibTypes.Byte)),
-            encodingType);
 
         var resultLocal = new Local(module.CorLibTypes.String);
         var indexLocal = new Local(module.CorLibTypes.Int32);
@@ -251,14 +319,13 @@ internal static class DecryptorIl
         body.Instructions.Add(Instruction.Create(OpCodes.Pop));
 
         body.Instructions.Add(decryptLabel);
-        // result = Encoding.UTF8.GetString(DecryptBytes(_s[index], _k))
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, getUtf8));
+        // result = Utf16(DecryptBytes(_s[index], _k))
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, stringsField));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, indexLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_Ref));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, bytesDecrypt));
-        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getString));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, utf16ToString));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, resultLocal));
 
         // if (_c == null) _c = new string[_s.Length];

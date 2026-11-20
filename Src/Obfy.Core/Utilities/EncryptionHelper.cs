@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text;
 using Obfy.Core.Models;
 
 namespace Obfy.Core.Utilities;
@@ -114,7 +113,7 @@ public static class EncryptionHelper
 
     private static byte[] EncryptXor(string plainText, byte[] key)
     {
-        var data = Encoding.UTF8.GetBytes(plainText);
+        var data = EncodeString(plainText);
         var result = new byte[data.Length];
 
         for (var i = 0; i < data.Length; i++)
@@ -134,7 +133,7 @@ public static class EncryptionHelper
             result[i] = (byte)(encryptedData[i] ^ key[i % key.Length]);
         }
 
-        return Encoding.UTF8.GetString(result);
+        return DecodeString(result);
     }
 
     private static byte[] EncryptAes(string plainText, byte[] key)
@@ -144,7 +143,7 @@ public static class EncryptionHelper
         aes.GenerateIV();
 
         using var encryptor = aes.CreateEncryptor();
-        var plainBytes = Encoding.UTF8.GetBytes(plainText);
+        var plainBytes = EncodeString(plainText);
         var encrypted = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
 
         // Prepend IV to encrypted data
@@ -157,22 +156,15 @@ public static class EncryptionHelper
 
     private static string DecryptAes(byte[] encryptedData, byte[] key)
     {
+        var encrypted = ReadAesPayload(encryptedData);
         using var aes = Aes.Create();
         aes.Key = key;
-
-        // Extract IV from beginning of data
-        var iv = new byte[aes.BlockSize / 8];
-        Buffer.BlockCopy(encryptedData, 0, iv, 0, iv.Length);
-        aes.IV = iv;
-
-        // Extract encrypted content
-        var encrypted = new byte[encryptedData.Length - iv.Length];
-        Buffer.BlockCopy(encryptedData, iv.Length, encrypted, 0, encrypted.Length);
+        aes.IV = encrypted.Iv;
 
         using var decryptor = aes.CreateDecryptor();
-        var decrypted = decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
+        var decrypted = decryptor.TransformFinalBlock(encrypted.Cipher, 0, encrypted.Cipher.Length);
 
-        return Encoding.UTF8.GetString(decrypted);
+        return DecodeString(decrypted);
     }
 
     private static byte[] EncryptBytesXor(byte[] data, byte[] key)
@@ -210,19 +202,52 @@ public static class EncryptionHelper
 
     private static byte[] DecryptBytesAes(byte[] encryptedData, byte[] key)
     {
+        var encrypted = ReadAesPayload(encryptedData);
         using var aes = Aes.Create();
         aes.Key = key;
-
-        // Extract IV from beginning of data
-        var iv = new byte[aes.BlockSize / 8];
-        Buffer.BlockCopy(encryptedData, 0, iv, 0, iv.Length);
-        aes.IV = iv;
-
-        // Extract encrypted content
-        var encrypted = new byte[encryptedData.Length - iv.Length];
-        Buffer.BlockCopy(encryptedData, iv.Length, encrypted, 0, encrypted.Length);
+        aes.IV = encrypted.Iv;
 
         using var decryptor = aes.CreateDecryptor();
-        return decryptor.TransformFinalBlock(encrypted, 0, encrypted.Length);
+        return decryptor.TransformFinalBlock(encrypted.Cipher, 0, encrypted.Cipher.Length);
+    }
+
+    /// <summary>
+    /// Raw UTF-16 code units. <see cref="Encoding.UTF8"/> and <see cref="Encoding.Unicode"/>
+    /// both replace a lone surrogate with U+FFFD.
+    /// </summary>
+    private static byte[] EncodeString(string plainText)
+    {
+        var bytes = new byte[plainText.Length * 2];
+        for (var i = 0; i < plainText.Length; i++)
+        {
+            bytes[i * 2] = (byte)plainText[i];
+            bytes[(i * 2) + 1] = (byte)(plainText[i] >> 8);
+        }
+
+        return bytes;
+    }
+
+    private static string DecodeString(byte[] data)
+    {
+        var chars = new char[data.Length / 2];
+        for (var i = 0; i < chars.Length; i++)
+            chars[i] = (char)(data[i * 2] | (data[(i * 2) + 1] << 8));
+        return new string(chars);
+    }
+
+    private readonly record struct AesPayload(byte[] Iv, byte[] Cipher);
+
+    private static AesPayload ReadAesPayload(byte[] encryptedData)
+    {
+        ArgumentNullException.ThrowIfNull(encryptedData);
+        const int ivLength = 16;
+        if (encryptedData.Length < ivLength)
+            throw new ArgumentException("AES payload is shorter than the 16-byte IV.", nameof(encryptedData));
+
+        var iv = new byte[ivLength];
+        Buffer.BlockCopy(encryptedData, 0, iv, 0, ivLength);
+        var cipher = new byte[encryptedData.Length - ivLength];
+        Buffer.BlockCopy(encryptedData, ivLength, cipher, 0, cipher.Length);
+        return new AesPayload(iv, cipher);
     }
 }

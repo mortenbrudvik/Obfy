@@ -18,6 +18,9 @@ public static class Vm
     static FieldInfo[] _fields = Array.Empty<FieldInfo>();
     static Type[] _types = Array.Empty<Type>();
     static Type[] _returnTypes = Array.Empty<Type>();
+    static Type[] _argumentTypes = Array.Empty<Type>();
+    static int[] _argumentCounts = Array.Empty<int>();
+    static int[] _argumentOffsets = Array.Empty<int>();
 
     enum VmType : byte { I4, I8, R4, R8, O }
 
@@ -250,7 +253,9 @@ public static class Vm
         MethodBase[] methods,
         FieldInfo[] fields,
         Type[] types,
-        Type[] returnTypes)
+        Type[] returnTypes,
+        Type[] argumentTypes,
+        int[] argumentCounts)
     {
         if (code == null) throw new ArgumentNullException(nameof(code));
         if (starts == null) throw new ArgumentNullException(nameof(starts));
@@ -260,12 +265,16 @@ public static class Vm
         if (fields == null) throw new ArgumentNullException(nameof(fields));
         if (types == null) throw new ArgumentNullException(nameof(types));
         if (returnTypes == null) throw new ArgumentNullException(nameof(returnTypes));
+        if (argumentTypes == null) throw new ArgumentNullException(nameof(argumentTypes));
+        if (argumentCounts == null) throw new ArgumentNullException(nameof(argumentCounts));
         if (xorKey.Length != 8)
             throw new ArgumentException("xorKey must be 8 bytes.", nameof(xorKey));
         if (opMap.Length != 256)
             throw new ArgumentException("opMap must be 256 bytes.", nameof(opMap));
         if (returnTypes.Length != starts.Length)
             throw new ArgumentException("returnTypes length must match starts.", nameof(returnTypes));
+        if (argumentCounts.Length != starts.Length)
+            throw new ArgumentException("argumentCounts length must match starts.", nameof(argumentCounts));
         for (var i = 0; i < starts.Length; i++)
         {
             if (starts[i] < 0 || starts[i] > code.Length)
@@ -282,13 +291,34 @@ public static class Vm
         _fields = fields;
         _types = types;
         _returnTypes = returnTypes;
+        _argumentTypes = argumentTypes;
+        _argumentCounts = argumentCounts;
+        var offsets = new int[argumentCounts.Length];
+        var total = 0;
+        for (var i = 0; i < argumentCounts.Length; i++)
+        {
+            if (argumentCounts[i] < 0)
+                throw new ArgumentException("argumentCounts cannot be negative.", nameof(argumentCounts));
+            offsets[i] = total;
+            total += argumentCounts[i];
+        }
+
+        if (argumentTypes.Length != total)
+            throw new ArgumentException("argumentTypes length must equal the sum of argumentCounts.", nameof(argumentTypes));
+        _argumentOffsets = offsets;
     }
 
     static Frame CreateFrame(int id, object[] args)
     {
         var vmArgs = new VmValue[args.Length];
+        var count = id < _argumentCounts.Length ? _argumentCounts[id] : 0;
+        var offset = id < _argumentOffsets.Length ? _argumentOffsets[id] : 0;
         for (var i = 0; i < args.Length; i++)
-            vmArgs[i] = UnboxArg(args[i]);
+        {
+            vmArgs[i] = i < count
+                ? FromClr(args[i], _argumentTypes[offset + i])
+                : UnboxArg(args[i]);
+        }
         return new Frame
         {
             MethodId = id,
@@ -336,6 +366,32 @@ public static class Vm
             default:
                 return O(arg);
         }
+    }
+
+    /// <summary>
+    /// Loads a CLR value into a slot of the IL type. Reference slots keep the
+    /// boxed object, so a boxed int in an <c>object</c> parameter, field, array
+    /// element, or call return stays a reference.
+    /// </summary>
+    static VmValue FromClr(object? value, Type? expected)
+    {
+        if (value == null || expected == null)
+            return O(value!);
+
+        if (expected.IsByRef || expected.IsPointer)
+            expected = expected.GetElementType() ?? expected;
+
+        if (!expected.IsValueType)
+            return O(value);
+
+        var nullable = Nullable.GetUnderlyingType(expected);
+        if (nullable != null)
+            return FromClr(value, nullable);
+
+        if (expected.IsEnum)
+            value = Convert.ChangeType(value, Enum.GetUnderlyingType(expected));
+
+        return UnboxArg(value);
     }
 
     static object BoxReturn(VmValue v, Type rt)
@@ -401,7 +457,7 @@ public static class Vm
     {
         var method = ReadMethod(ref f);
         var args = PopArgs(ref f, method.GetParameters());
-        Push(ref f, UnboxArg(Invoke(method, null!, args)));
+        Push(ref f, FromClr(Invoke(method, null!, args), method.DeclaringType!));
     }
 
     static void Call(ref Frame f)
@@ -420,7 +476,7 @@ public static class Vm
         var info = method as MethodInfo;
         if (info == null || info.ReturnType == typeof(void))
             return;
-        Push(ref f, UnboxArg(result!));
+        Push(ref f, FromClr(result!, info.ReturnType));
     }
 
     static void CallVm(ref Frame[] frames, ref int depth)
@@ -473,7 +529,7 @@ public static class Vm
                 throw new NullReferenceException();
             if (!type.IsInstanceOfType(v.Ref))
                 throw new InvalidCastException();
-            Push(ref f, UnboxArg(v.Ref));
+            Push(ref f, FromClr(v.Ref, type));
             return;
         }
 
@@ -516,7 +572,8 @@ public static class Vm
     {
         var index = ToI4(Pop(ref f));
         var arr = RequireArray(Pop(ref f));
-        Push(ref f, UnboxArg(arr.GetValue(index)!));
+        var elemType = arr.GetType().GetElementType();
+        Push(ref f, FromClr(arr.GetValue(index), elemType));
     }
 
     static void Stelem(ref Frame f)
@@ -560,7 +617,7 @@ public static class Vm
                 throw new NullReferenceException();
         }
 
-        Push(ref f, UnboxArg(field.GetValue(receiver)!));
+        Push(ref f, FromClr(field.GetValue(receiver), field.FieldType));
     }
 
     static void StFld(ref Frame f, bool isStatic)
@@ -1204,12 +1261,29 @@ public static class Vm
             case 31:
                 Push(ref f, R8(ToDouble(v)));
                 break;
-            case 32:
-                Push(ref f, I4(ToI4(v)));
+            case 32: // conv.u4
+                Push(ref f, I4(unchecked((int)ToU4(v))));
                 break;
             default:
                 Push(ref f, I8(ToI8(v, unsigned: true)));
                 break;
+        }
+    }
+
+    static uint ToU4(VmValue v)
+    {
+        switch (v.Type)
+        {
+            case VmType.I4:
+                return (uint)(int)v.Bits;
+            case VmType.I8:
+                return (uint)v.Bits;
+            case VmType.R4:
+                return (uint)ToR4(v);
+            case VmType.R8:
+                return (uint)ToR8(v);
+            default:
+                throw Fault("type mismatch");
         }
     }
 

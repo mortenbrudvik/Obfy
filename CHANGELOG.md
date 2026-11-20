@@ -14,6 +14,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded); per-build opcode permutation + XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset; deterrent, not confidentiality
 
 ### Fixed
+- Constant encryption no longer throws on `int.MinValue` or `long.MinValue`
+- Source string encryption leaves compile-time constants alone and parenthesizes interpolation holes instead of calling `ToString()`
+- The VM keeps a boxed int in an `object` slot as a reference, and `conv.u4` from a float keeps the unsigned range
+- Unreadable `.resources` files are skipped instead of failing string encryption; loaded `obfy.json` values the settings panel does not edit survive Obfuscate and Save
+- Source renaming updates extension-method call sites, and opaque predicates no longer hide `out var` declarations
+- An unresolved instance `call` is not virtualized; enum returns stay out of the VM
+- Each closed-set run gets a fresh name generator
+- The incremental cache key includes the signing key file and embedded dependency bytes
+- AES decrypt rejects a payload shorter than the IV; string encryption keeps lone surrogates as raw UTF-16
+- Method-body decryption treats a module handle of `-1` as unmapped
+- Visual Studio argument quoting keeps a trailing backslash; the installer build stops when self-obfuscation fails; the native host restore log names the host-pack version
 - Reference proxies for private and protected methods are nested in the declaring type, and external proxies are keyed by assembly so same-named methods stay distinct
 - Public-API preservation keeps protected virtual property and event accessor names; closed-set rename distinguishes same-named nested types; WinForms `.resources` names, indexer `DefaultMemberAttribute`, and overload symbol-map keys stay consistent after a rename
 - Debug-info removal strips assembly-level `DebuggableAttribute`; documentation stripping keeps non-doc `*.xml` resources; short attribute-name exclusions match

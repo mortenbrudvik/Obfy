@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache">
+  <title>Obfy review backlog</title>
+  <style>
+    :root {
+      --ink: #1c1915;
+      --muted: #5c564c;
+      --line: #d9d2c5;
+      --paper: #f6f3ec;
+      --card: #fffdf8;
+      --open: #9a3412;
+      --open-bg: #f8ebe3;
+      --work: #8a5a00;
+      --work-bg: #f8efd4;
+      --fixed: #1f6b4a;
+      --fixed-bg: #e5f3ec;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.45 "Segoe UI", sans-serif;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #1c1915;
+      color: #f6f3ec;
+      padding: 22px 28px 18px;
+    }
+    header h1 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 500;
+      font-size: 32px;
+      letter-spacing: -0.03em;
+    }
+    header p { margin: 6px 0 0; color: #d9d2c5; }
+    .counts { display: flex; gap: 18px; margin-top: 16px; flex-wrap: wrap; }
+    .counts div { min-width: 92px; }
+    .counts strong { display: block; font-size: 28px; font-variant-numeric: tabular-nums; }
+    .counts span { color: #d9d2c5; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .bar { height: 8px; background: #3a342c; margin-top: 16px; }
+    .bar i { display: block; height: 100%; background: #7dcea0; width: 0; }
+    main { max-width: 1080px; margin: 0 auto; padding: 22px 20px 48px; }
+    section { margin-top: 22px; }
+    h2 {
+      margin: 0 0 8px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 22px;
+      font-weight: 500;
+    }
+    article {
+      display: grid;
+      grid-template-columns: 64px 110px 1fr;
+      gap: 12px;
+      align-items: start;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-left-width: 4px;
+      padding: 12px 14px;
+      margin-top: 8px;
+    }
+    article.open { border-left-color: var(--open); }
+    article.in_progress { border-left-color: var(--work); }
+    article.fixed { border-left-color: var(--fixed); }
+    .id { font-weight: 650; font-variant-numeric: tabular-nums; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .open .pill { background: var(--open-bg); color: var(--open); }
+    .in_progress .pill { background: var(--work-bg); color: var(--work); }
+    .fixed .pill { background: var(--fixed-bg); color: var(--fixed); }
+    .title { margin: 0; }
+    .loc { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    footer { color: var(--muted); font-size: 13px; margin-top: 28px; }
+    @media (max-width: 700px) {
+      article { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Obfy review backlog</h1>
+    <p id="note">Loading…</p>
+    <div class="counts">
+      <div><strong id="n-fixed">–</strong><span>Fixed</span></div>
+      <div><strong id="n-work">–</strong><span>In progress</span></div>
+      <div><strong id="n-open">–</strong><span>Open</span></div>
+      <div><strong id="n-all">–</strong><span>Total</span></div>
+    </div>
+    <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+  </header>
+  <main id="board"></main>
+  <script>
+    const labels = { open: "Open", in_progress: "In progress", fixed: "Fixed" };
+    const order = ["Critical", "Important", "Release", "Minor", "Tests"];
+
+    function render(data) {
+      const items = data.items || [];
+      const counts = { open: 0, in_progress: 0, fixed: 0 };
+      for (const item of items) counts[item.status] = (counts[item.status] || 0) + 1;
+      document.getElementById("n-fixed").textContent = counts.fixed || 0;
+      document.getElementById("n-work").textContent = counts.in_progress || 0;
+      document.getElementById("n-open").textContent = counts.open || 0;
+      document.getElementById("n-all").textContent = items.length;
+      document.getElementById("bar").style.width = items.length
+        ? ((counts.fixed || 0) / items.length * 100) + "%"
+        : "0";
+      const when = data.updated ? new Date(data.updated).toLocaleString() : "unknown";
+      document.getElementById("note").textContent = (data.note || "") + " Updated " + when + ".";
+
+      const board = document.getElementById("board");
+      board.replaceChildren();
+      for (const section of order) {
+        const group = items.filter(i => i.section === section);
+        if (group.length === 0) continue;
+        const sec = document.createElement("section");
+        const heading = document.createElement("h2");
+        const done = group.filter(i => i.status === "fixed").length;
+        heading.textContent = section + " · " + done + "/" + group.length;
+        sec.appendChild(heading);
+        for (const item of group) {
+          const row = document.createElement("article");
+          row.className = item.status;
+          const id = document.createElement("div");
+          id.className = "id";
+          id.textContent = item.id;
+          const pill = document.createElement("div");
+          const badge = document.createElement("span");
+          badge.className = "pill";
+          badge.textContent = labels[item.status] || item.status;
+          pill.appendChild(badge);
+          const body = document.createElement("div");
+          const title = document.createElement("p");
+          title.className = "title";
+          title.textContent = item.title;
+          const loc = document.createElement("div");
+          loc.className = "loc";
+          loc.textContent = item.location || "";
+          body.append(title, loc);
+          row.append(id, pill, body);
+          sec.appendChild(row);
+        }
+        board.appendChild(sec);
+      }
+      const foot = document.createElement("footer");
+      foot.textContent = "This page reloads the list every few seconds.";
+      board.appendChild(foot);
+    }
+
+    async function load() {
+      const response = await fetch("progress.json?t=" + Date.now(), { cache: "no-store" });
+      if (!response.ok) throw new Error(response.statusText);
+      render(await response.json());
+    }
+
+    load().catch(err => {
+      document.getElementById("note").textContent = "Could not load progress.json (" + err.message + ").";
+    });
+    setInterval(() => load().catch(() => {}), 3000);
+  </script>
+</body>
+</html>

@@ -2833,6 +2833,49 @@ public class EndToEndObfuscationTests
 #pragma warning restore SYSLIB0028, CA1416
     }
 
+    [Fact]
+    public async Task ConstantEncryption_MinValues_RunOnRealAssembly()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int GetInt() => int.MinValue;
+                public static long GetLong() => long.MinValue;
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-min-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "MinLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var settings = new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                ConstantEncryption =
+                {
+                    Enabled = true,
+                    Algorithm = EncryptionAlgorithm.Xor,
+                    IntegerThreshold = 0,
+                    LongThreshold = 0
+                }
+            };
+            var context = PipelineContext.ForAssembly(module, settings);
+            (await new ConstantEncryptionObfuscator(new Mock<ILogger<ConstantEncryptionObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "MinLib.obf.dll");
+            module.Write(output);
+            LoadAndInvoke(output, "Lib", "GetInt").ShouldBe(int.MinValue);
+            LoadAndInvoke(output, "Lib", "GetLong").ShouldBe(long.MinValue);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
     [Theory]
     [InlineData(EncryptionAlgorithm.Aes256)]
     public async Task ConstantEncryption_Aes_RunsOnRealAssembly(EncryptionAlgorithm algorithm)

@@ -142,7 +142,10 @@ public class SourceSymbolRenamer : IObfuscator
                 foreach (var name in root.DescendantNodes().OfType<SimpleNameSyntax>())
                 {
                     var info = model.GetSymbolInfo(name, cancellationToken);
-                    var symbol = (info.Symbol ?? info.CandidateSymbols.FirstOrDefault())?.OriginalDefinition;
+                    var symbol = info.Symbol ?? info.CandidateSymbols.FirstOrDefault();
+                    if (symbol is IMethodSymbol { ReducedFrom: { } reduced })
+                        symbol = reduced;
+                    symbol = symbol?.OriginalDefinition;
                     if (symbol == null)
                         continue;
 

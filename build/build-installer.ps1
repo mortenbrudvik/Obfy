@@ -162,17 +162,13 @@ if (-not $SkipObfuscation -and -not $SkipPublish) {
     foreach ($asmName in $OurAssemblies) {
         $asmPath = Join-Path $PublishDir $asmName
         if (Test-Path $asmPath) {
+            $obfuscatedPath = Join-Path $ObfuscatedCliDir $asmName
             & $TempObfyExe $asmPath -o $ObfuscatedCliDir -l standard --string-encrypt --control-flow --rename --strip-metadata
-            if ($LASTEXITCODE -eq 0) {
-                # Copy obfuscated file back to publish directory
-                $obfuscatedPath = Join-Path $ObfuscatedCliDir $asmName
-                if (Test-Path $obfuscatedPath) {
-                    Copy-Item $obfuscatedPath $PublishDir -Force
-                    Write-Host "    Obfuscated: $asmName" -ForegroundColor Green
-                }
-            } else {
-                Write-Host "    WARNING: Failed to obfuscate $asmName" -ForegroundColor Yellow
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $obfuscatedPath)) {
+                throw "Self-obfuscation failed for $asmName (exit $LASTEXITCODE). The installer will not package the original assembly."
             }
+            Copy-Item $obfuscatedPath $PublishDir -Force
+            Write-Host "    Obfuscated: $asmName" -ForegroundColor Green
         }
     }
 
@@ -181,17 +177,13 @@ if (-not $SkipObfuscation -and -not $SkipPublish) {
     foreach ($asmName in $OurAssemblies) {
         $asmPath = Join-Path $PublishDirUI $asmName
         if (Test-Path $asmPath) {
+            $obfuscatedPath = Join-Path $ObfuscatedUiDir $asmName
             & $TempObfyExe $asmPath -o $ObfuscatedUiDir -l standard --string-encrypt --control-flow --rename --strip-metadata
-            if ($LASTEXITCODE -eq 0) {
-                # Copy obfuscated file back to publish-ui directory
-                $obfuscatedPath = Join-Path $ObfuscatedUiDir $asmName
-                if (Test-Path $obfuscatedPath) {
-                    Copy-Item $obfuscatedPath $PublishDirUI -Force
-                    Write-Host "    Obfuscated: $asmName" -ForegroundColor Green
-                }
-            } else {
-                Write-Host "    WARNING: Failed to obfuscate UI $asmName" -ForegroundColor Yellow
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $obfuscatedPath)) {
+                throw "Self-obfuscation failed for UI $asmName (exit $LASTEXITCODE). The installer will not package the original assembly."
             }
+            Copy-Item $obfuscatedPath $PublishDirUI -Force
+            Write-Host "    Obfuscated: $asmName" -ForegroundColor Green
         }
     }
 

@@ -189,13 +189,15 @@ public class StringEncryptionObfuscator : IObfuscator
             ? DecryptorIl.CreateAesDecryptBytes(module, "AesDecrypt", MethodAttributes.Private | MethodAttributes.Static)
             : DecryptorIl.CreateXorDecryptBytes(module, "XorDecrypt", MethodAttributes.Private | MethodAttributes.Static);
         typeDef.Methods.Add(bytesDecrypt);
+        var utf16 = DecryptorIl.CreateUtf16ToString(module);
+        typeDef.Methods.Add(utf16);
 
         const int variantCount = 3;
         for (var v = 0; v < variantCount; v++)
         {
             var name = v == 0 ? "Decrypt" : "Decrypt" + (v + 1);
             typeDef.Methods.Add(DecryptorIl.CreateStringDecrypt(
-                module, keyField, stringsField, cacheField, indexXorField, bytesDecrypt, name));
+                module, keyField, stringsField, cacheField, indexXorField, bytesDecrypt, utf16, name));
         }
 
         var cctor = new MethodDefUser(
@@ -312,7 +314,12 @@ public class StringEncryptionObfuscator : IObfuscator
             rewritten = output.ToArray();
             return count > 0;
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or BadImageFormatException or System.Resources.MissingManifestResourceException)
+        catch (Exception ex) when (ex is ArgumentException
+            or InvalidOperationException
+            or NotSupportedException
+            or IOException
+            or BadImageFormatException
+            or System.Resources.MissingManifestResourceException)
         {
             error = ex;
             return false;
@@ -326,7 +333,10 @@ public class StringEncryptionObfuscator : IObfuscator
         if (bytesDecrypt == null || keyField == null)
             return;
 
-        var decode = CreateResourceStringDecode(module, bytesDecrypt, keyField);
+        var utf16 = decryptorType.FindMethod("Utf16") ?? DecryptorIl.CreateUtf16ToString(module);
+        if (!decryptorType.Methods.Contains(utf16))
+            decryptorType.Methods.Add(utf16);
+        var decode = CreateResourceStringDecode(module, bytesDecrypt, keyField, utf16);
         decryptorType.Methods.Add(decode);
         var hook = CreateResourceStringHook(module, decode, paramCount: 1);
         var hook2 = CreateResourceStringHook(module, decode, paramCount: 2);
@@ -402,9 +412,9 @@ public class StringEncryptionObfuscator : IObfuscator
         return method;
     }
 
-    private static MethodDef CreateResourceStringDecode(ModuleDef module, MethodDef bytesDecrypt, FieldDef keyField)
+    private static MethodDef CreateResourceStringDecode(
+        ModuleDef module, MethodDef bytesDecrypt, FieldDef keyField, MethodDef utf16ToString)
     {
-        var encodingType = new TypeRefUser(module, "System.Text", "Encoding", module.CorLibTypes.AssemblyRef);
         var convertType = new TypeRefUser(module, "System", "Convert", module.CorLibTypes.AssemblyRef);
         var stringType = new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef);
 
@@ -421,10 +431,6 @@ public class StringEncryptionObfuscator : IObfuscator
 
         var fromBase64 = new MemberRefUser(module, "FromBase64String",
             MethodSig.CreateStatic(new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.String), convertType);
-        var getUtf8 = new MemberRefUser(module, "get_UTF8",
-            MethodSig.CreateStatic(new ClassSig(encodingType)), encodingType);
-        var getStringBytes = new MemberRefUser(module, "GetString",
-            MethodSig.CreateInstance(module.CorLibTypes.String, new SZArraySig(module.CorLibTypes.Byte)), encodingType);
         var getLength = new MemberRefUser(module, "get_Length",
             MethodSig.CreateInstance(module.CorLibTypes.Int32), stringType);
         var getChars = new MemberRefUser(module, "get_Chars",
@@ -434,7 +440,7 @@ public class StringEncryptionObfuscator : IObfuscator
 
         var retPlain = Instruction.Create(OpCodes.Ldloc, sLocal);
         var catchPop = Instruction.Create(OpCodes.Pop);
-        var tryStart = Instruction.Create(OpCodes.Call, getUtf8);
+        var tryStart = Instruction.Create(OpCodes.Ldloc, sLocal);
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, sLocal));
@@ -451,13 +457,12 @@ public class StringEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, retPlain));
 
         body.Instructions.Add(tryStart);
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, sLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, substring));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, fromBase64));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, bytesDecrypt));
-        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getStringBytes));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, utf16ToString));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, resultLocal));
         var afterTry = Instruction.Create(OpCodes.Ldloc, resultLocal);
         body.Instructions.Add(Instruction.Create(OpCodes.Leave, afterTry));

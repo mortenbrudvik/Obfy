@@ -24,7 +24,7 @@ public class VmImporterTests
         type.FindMethod("Run").ShouldNotBeNull();
         var init = type.FindMethod("Init");
         init.ShouldNotBeNull();
-        init!.MethodSig.Params.Count.ShouldBe(8);
+        init!.MethodSig.Params.Count.ShouldBe(10);
         type.FindStaticConstructor().ShouldNotBeNull();
         module.GetAssemblyRefs().ShouldNotContain(r => r.Name == "Obfy.VmRuntime");
         RuntimeInjection.ShouldRename(context, type).ShouldBeTrue();
@@ -84,13 +84,13 @@ public class VmImporterTests
 
         var init = type.FindMethod("Init");
         init.ShouldNotBeNull();
-        init!.MethodSig.Params.Count.ShouldBe(8);
+        init!.MethodSig.Params.Count.ShouldBe(10);
 
         var cctor = type.FindStaticConstructor();
         cctor.ShouldNotBeNull();
         var instructions = cctor!.Body.Instructions;
 
-        TypeArrayCount(instructions).ShouldBe(2);
+        TypeArrayCount(instructions).ShouldBe(3);
 
         var getMethod = Called(instructions, "GetMethodFromHandle").ShouldHaveSingleItem();
         getMethod.MethodSig.Params.Count.ShouldBe(2);

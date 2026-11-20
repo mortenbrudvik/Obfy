@@ -2625,6 +2625,49 @@ public class EndToEndObfuscationTests
     }
 
     [Fact]
+    public async Task Watermark_RunsUserMethod_AndAttributeConstructorStoresId()
+    {
+        const string source = "public static class Lib { public static int Get() => 42; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-wm-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "WmLib");
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var context = PipelineContext.ForAssembly(module, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                Watermark = { Enabled = true, Id = "customer-42" }
+            });
+            (await new WatermarkObfuscator(new Mock<ILogger<WatermarkObfuscator>>().Object)
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
+
+            var output = Path.Combine(dir, "WmLib.obf.dll");
+            module.Write(output);
+
+            var alc = new AssemblyLoadContext($"wm-{Guid.NewGuid():N}", isCollectible: true);
+            try
+            {
+                var asm = alc.LoadFromAssemblyPath(output);
+                asm.GetType("Lib")!.GetMethod("Get")!.Invoke(null, null).ShouldBe(42);
+
+                var watermark = asm.GetCustomAttributes(inherit: false)
+                    .Single(a => a.GetType().Name == WatermarkObfuscator.AttributeTypeName);
+                watermark.GetType().GetField(WatermarkObfuscator.IdFieldName)!
+                    .GetValue(watermark).ShouldBe("customer-42");
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
     public async Task AntiDebug_DoesNotKillOnTickGap_AndStillReturns()
     {
         const string source = "public static class Lib { public static int Get() => 42; }";

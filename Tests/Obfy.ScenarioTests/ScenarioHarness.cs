@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Autofac;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -126,9 +127,10 @@ internal static class ScenarioHarness
         };
         start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         start.Environment["DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER"] = "1";
-        // ilammy/msvc-dev-cmd and vcvars set Platform=x64; SDK-style projects then
-        // write to bin/x64/Release instead of bin/Release.
-        start.Environment.Remove("Platform");
+        // vcvars sets Platform=x64, and an SDK-style project then writes to bin/x64/Release.
+        // Drop that inherited value only for dotnet when the command does not set Platform itself.
+        if (ShouldStripInheritedPlatform(fileName, arguments))
+            start.Environment.Remove("Platform");
         timeoutMs = ScaleTimeout(timeoutMs);
 
         using var process = Process.Start(start);
@@ -162,6 +164,18 @@ internal static class ScenarioHarness
         var scaled = (long)timeoutMs * multiplier;
         return scaled > int.MaxValue ? int.MaxValue : (int)scaled;
     }
+
+    internal static bool ShouldStripInheritedPlatform(string fileName, string arguments)
+    {
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        if (!name.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return !PlatformProperty.IsMatch(arguments);
+    }
+
+    private static readonly Regex PlatformProperty = new(
+        @"(?:^|\s)(?:--property:|-p:|/p:)Platform(?:=|\s|$)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public static void CopyDirectory(string source, string dest)
     {

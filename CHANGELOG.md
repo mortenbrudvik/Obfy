@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded); per-build opcode permutation + XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset; deterrent, not confidentiality
 
 ### Fixed
+- Scenario builds strip the inherited `Platform` variable only for `dotnet` commands that do not set it themselves
 - Scenario builds, publishes, and runs wait longer by default, and `OBFY_SCENARIO_TIMEOUT_FACTOR` can stretch those timeouts
 - Source string encryption skips excluded interpolated strings and attribute arguments, matching plain literals
 - A watermarked assembly still runs, and the watermark attribute constructor stores its id

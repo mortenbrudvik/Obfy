@@ -1064,4 +1064,185 @@ public sealed class InputSessionTests : IDisposable
         session.OpenOutputFolder();
         _shell.Opened.Last().ShouldBe(Path.GetDirectoryName(output));
     }
+
+    // ---- Startup configuration, and where its publish happens ----
+
+    private async Task<string> WriteConfigAsync(string name, string json)
+    {
+        var path = CreateTestFile(name);
+        await File.WriteAllTextAsync(path, json);
+        return path;
+    }
+
+    [Fact]
+    public async Task ApplyStartupAsync_ValidConfig_LoadsIntoProtection_AndAddsTheFilesInTheSameSet()
+    {
+        var input = Create();
+        var protection = new ProtectionSession();
+        var config = await WriteConfigAsync("startup.json", """{ "level": "Aggressive" }""");
+        var dll = CreateTestFile("startup.dll");
+        var output = Path.Combine(_tempDirectory, "out");
+
+        await Intake(input, protection).ApplyStartupAsync([config, dll, "-o", output]);
+
+        protection.Level.ShouldBe(ObfuscationLevel.Aggressive);
+        protection.ConfigPath.ShouldBe(config);
+        var snapshot = input.GetSnapshot();
+        snapshot.Files.Single().Path.ShouldBe(dll);
+        snapshot.OutputFolder.ShouldBe(output);
+        snapshot.Notices.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ApplyStartupAsync_InvalidConfig_IsAnErrorNotice_AndStartupGoesOn()
+    {
+        var input = Create();
+        var protection = new ProtectionSession();
+        var config = await WriteConfigAsync("broken.json", "{ this is not json");
+        var dll = CreateTestFile("startup.dll");
+
+        await Should.NotThrowAsync(async () => await Intake(input, protection).ApplyStartupAsync([config, dll]));
+
+        protection.Level.ShouldBe(ObfuscationLevel.Standard);
+        protection.ConfigPath.ShouldBeNull();
+        var snapshot = input.GetSnapshot();
+        snapshot.Files.Single().Path.ShouldBe(dll);
+        var notice = snapshot.Notices.ShouldHaveSingleItem();
+        notice.Level.ShouldBe(NoticeLevel.Error);
+        notice.Title.ShouldBe("Could not load configuration");
+    }
+
+    [Fact]
+    public async Task ApplyStartupAsync_UnreadableConfig_IsAnErrorNotice_NotACrash()
+    {
+        var input = Create();
+        var config = await WriteConfigAsync("locked.json", """{ "level": "Aggressive" }""");
+        using var hold = new FileStream(config, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        await Should.NotThrowAsync(async () => await Intake(input).ApplyStartupAsync([config, CreateTestFile("a.dll")]));
+
+        input.GetSnapshot().Notices.ShouldHaveSingleItem().Level.ShouldBe(NoticeLevel.Error);
+        input.GetSnapshot().Files.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ApplyStartupAsync_PublishesTheConfigLoadOnTheCallersContext()
+    {
+        // The startup publish is what builds the web view, and it must happen on the UI thread. The intake therefore
+        // resumes on the caller's SynchronizationContext after reading the file; a ConfigureAwait(false) on that path
+        // would resume on a pool thread and fail this test.
+        using var pump = new PumpContext();
+        var events = new FakeEvents();
+        var publishedOn = new List<int>();
+        events.OnPublish = () => { lock (publishedOn) publishedOn.Add(Environment.CurrentManagedThreadId); };
+        var input = Create();
+        var protection = new ProtectionSession(events);
+        // Padding makes the read genuinely asynchronous, so there is a continuation to resume.
+        var config = await WriteConfigAsync("big.json", """{ "level": "Aggressive" }""" + new string(' ', 4_000_000));
+        var intake = new InputIntake(input, protection, NullLogger<InputIntake>.Instance);
+
+        await pump.RunAsync(() => intake.ApplyStartupAsync([config, CreateTestFile("a.dll")]));
+
+        protection.Level.ShouldBe(ObfuscationLevel.Aggressive);
+        pump.Posts.ShouldBeGreaterThan(0, "the read should have been asynchronous, resuming through the context");
+        publishedOn.ShouldNotBeEmpty();
+        publishedOn.ShouldAllBe(id => id == pump.ThreadId);
+    }
+
+    /// <summary>A single-thread message pump standing in for the UI thread's SynchronizationContext.</summary>
+    private sealed class PumpContext : SynchronizationContext, IDisposable
+    {
+        private readonly System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback Callback, object? State)> _queue = [];
+        private readonly Thread _thread;
+        private int _posts;
+
+        public PumpContext()
+        {
+            _thread = new Thread(() =>
+            {
+                SetSynchronizationContext(this);
+                foreach (var (callback, state) in _queue.GetConsumingEnumerable())
+                    callback(state);
+            })
+            { IsBackground = true };
+            _thread.Start();
+            ThreadId = _thread.ManagedThreadId;
+        }
+
+        public int ThreadId { get; }
+
+        /// <summary>How many continuations were posted back to the pump.</summary>
+        public int Posts => Volatile.Read(ref _posts);
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            Interlocked.Increment(ref _posts);
+            _queue.Add((d, state));
+        }
+
+        /// <summary>Starts <paramref name="work"/> on the pump thread and completes when it does.</summary>
+        public Task RunAsync(Func<Task> work)
+        {
+            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _queue.Add((_ =>
+            {
+                try
+                {
+                    work().ContinueWith(
+                        t =>
+                        {
+                            if (t.IsFaulted)
+                                done.SetException(t.Exception!.InnerExceptions);
+                            else
+                                done.SetResult();
+                        },
+                        TaskScheduler.Default);
+                }
+                catch (Exception ex)
+                {
+                    done.SetException(ex);
+                }
+            }, null));
+            return done.Task;
+        }
+
+        public void Dispose()
+        {
+            _queue.CompleteAdding();
+            _thread.Join();
+        }
+    }
+
+    // ---- GetSnapshot can not be broken by a typed path ----
+
+    [Fact]
+    public void SetSymbolMapPath_RejectsAPathGetFullPathWouldReject_AndGetSnapshotStillWorks()
+    {
+        var session = Create();
+        session.SetWriteSymbolMap(true);
+
+        Should.Throw<ObfyApiException>(() => session.SetSymbolMapPath(new string('a', 40_000)))
+            .Code.ShouldBe("output.invalidPath");
+
+        var snapshot = Should.NotThrow(session.GetSnapshot);
+        snapshot.SymbolMapPath.ShouldBeEmpty();
+        snapshot.ResolvedSymbolMapPath.ShouldNotBeNull().ShouldEndWith("symbolmap.json");
+    }
+
+    [Fact]
+    public void GetSnapshot_NeverThrows_WhenATypedSymbolMapPathCannotBeCombinedWithTheOutputFolder()
+    {
+        // Each part is a usable path alone (so the setters accept them); together they are too long for GetFullPath.
+        var session = Create();
+        var longFolder = Path.Combine(_tempDirectory, new string('f', 20_000));
+        session.SetOutputFolder(longFolder);
+        session.SetWriteSymbolMap(true);
+        session.SetSymbolMapPath(new string('m', 20_000));
+
+        var snapshot = Should.NotThrow(session.GetSnapshot);
+
+        snapshot.SymbolMapPath.Length.ShouldBe(20_000);
+        snapshot.ResolvedSymbolMapPath.ShouldBe(Path.Combine(longFolder, "symbolmap.json"));
+        Should.NotThrow(session.ResolveSymbolMapPath);
+    }
 }

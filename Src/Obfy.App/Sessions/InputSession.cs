@@ -470,6 +470,8 @@ public sealed class InputSession
                 throw new ObfyApiException("output.symbolMapOff", "Turn on the symbol map before choosing where it goes.");
             if (value.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
                 throw new ObfyApiException("output.invalidPath", "The symbol map path contains characters a path cannot hold.");
+            if (!IsUsablePath(value))
+                throw new ObfyApiException("output.invalidPath", "That is not a usable symbol map path.");
             if (value == _symbolMapPath)
                 return;
 
@@ -575,13 +577,45 @@ public sealed class InputSession
         return new OutputPlan(OutputMode.Each, folder, null, hint);
     }
 
+    /// <summary>
+    /// Runs on every snapshot, so it must never throw on what the user typed: a typed path that cannot be made absolute
+    /// against the output folder (set-time checks cannot know the folder it will be combined with) falls back to the
+    /// default name in that folder.
+    /// </summary>
     private string ResolveSymbolMapLocked()
     {
         var baseDirectory = _outputFolder.Length > 0
             ? _outputFolder
             : IncludedLocked() is [var first, ..] ? DirectoryOf(first) : ".";
         var name = _symbolMapPath.Length > 0 ? _symbolMapPath : DefaultSymbolMapName;
-        return Path.GetFullPath(Path.Combine(baseDirectory, name));
+        try
+        {
+            return Path.GetFullPath(Path.Combine(baseDirectory, name));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or IOException)
+        {
+            try
+            {
+                return Path.GetFullPath(Path.Combine(baseDirectory, DefaultSymbolMapName));
+            }
+            catch (Exception inner) when (inner is ArgumentException or NotSupportedException or PathTooLongException or IOException)
+            {
+                return DefaultSymbolMapName;
+            }
+        }
+    }
+
+    private static bool IsUsablePath(string value)
+    {
+        try
+        {
+            Path.GetFullPath(value);
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or IOException)
+        {
+            return false;
+        }
     }
 
     private static string DirectoryOf(Entry entry) => Path.GetDirectoryName(entry.Path) ?? ".";

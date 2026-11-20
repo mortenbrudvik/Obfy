@@ -21,6 +21,7 @@ public partial class FilesViewModel : ObservableObject
     private readonly ILogger<FilesViewModel>? _logger;
     private readonly IUserNotificationService? _notifications;
     private bool _suppressPreferenceSave;
+    private Task _preferenceSave = Task.CompletedTask;
 
     /// <summary>
     /// Input rows (included outputs and skipped session projects).
@@ -145,22 +146,14 @@ public partial class FilesViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task BrowseOutputDirectoryAsync()
+    private Task BrowseOutputDirectoryAsync()
     {
         var folder = _fileDialogService.ShowFolderBrowserDialog();
-        if (!string.IsNullOrEmpty(folder))
-        {
-            OutputDirectory = folder;
-            _settingsService.LastOutputDirectory = folder;
-            try
-            {
-                await _settingsService.SavePreferencesAsync();
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                _logger?.LogWarning(ex, "Failed to save UI preferences");
-            }
-        }
+        if (string.IsNullOrEmpty(folder))
+            return Task.CompletedTask;
+
+        OutputDirectory = folder;
+        return _preferenceSave;
     }
 
     /// <summary>
@@ -301,12 +294,39 @@ public partial class FilesViewModel : ObservableObject
         }
     }
 
+    partial void OnOutputDirectoryChanged(string value)
+    {
+        if (_suppressPreferenceSave)
+            return;
+
+        _settingsService.LastOutputDirectory = string.IsNullOrWhiteSpace(value) ? null : value;
+        QueuePreferenceSave();
+    }
+
     partial void OnGenerateSymbolMapChanged(bool value)
     {
         if (_suppressPreferenceSave)
             return;
 
         _settingsService.GenerateSymbolMap = value;
+        QueuePreferenceSave();
+    }
+
+    private void QueuePreferenceSave()
+    {
+        _preferenceSave = SavePreferencesSafeAsync();
+    }
+
+    private async Task SavePreferencesSafeAsync()
+    {
+        try
+        {
+            await _settingsService.SavePreferencesAsync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger?.LogWarning(ex, "Failed to save UI preferences");
+        }
     }
 
     public string ResolveSymbolMapPath()

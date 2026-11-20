@@ -24,6 +24,7 @@ public class FilesViewModelTests : IDisposable
         // Setup default return values
         _mockSettingsService.Setup(s => s.LastOutputDirectory).Returns((string?)null);
         _mockSettingsService.Setup(s => s.GenerateSymbolMap).Returns(false);
+        _mockSettingsService.Setup(s => s.SavePreferencesAsync()).Returns(Task.CompletedTask);
 
         _viewModel = new FilesViewModel(_mockFileDialogService.Object, _mockSettingsService.Object);
 
@@ -199,6 +200,25 @@ public class FilesViewModelTests : IDisposable
         // Assert
         viewModel.OutputDirectory.ShouldBe(@"C:\Loaded\Output");
         viewModel.GenerateSymbolMap.ShouldBeTrue();
+        mockSettings.Verify(s => s.SavePreferencesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public void TypingOutputDirectory_SavesPreferences()
+    {
+        _viewModel.OutputDirectory = @"C:\Typed\Output";
+
+        _mockSettingsService.VerifySet(s => s.LastOutputDirectory = @"C:\Typed\Output", Times.Once);
+        _mockSettingsService.Verify(s => s.SavePreferencesAsync(), Times.Once);
+    }
+
+    [Fact]
+    public void TogglingSymbolMap_SavesPreferences()
+    {
+        _viewModel.GenerateSymbolMap = true;
+
+        _mockSettingsService.VerifySet(s => s.GenerateSymbolMap = true);
+        _mockSettingsService.Verify(s => s.SavePreferencesAsync(), Times.Once);
     }
 
     #endregion

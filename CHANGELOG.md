@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded); per-build opcode permutation + XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset; deterrent, not confidentiality
 
 ### Fixed
+- A typed output directory and the symbol-map toggle are saved when they change, not only when the app exits
 - The Visual Studio project builds without CS8604 or the CVST005 analyzer crash
 - Scenario builds strip the inherited `Platform` variable only for `dotnet` commands that do not set it themselves
 - Scenario builds, publishes, and runs wait longer by default, and `OBFY_SCENARIO_TIMEOUT_FACTOR` can stretch those timeouts

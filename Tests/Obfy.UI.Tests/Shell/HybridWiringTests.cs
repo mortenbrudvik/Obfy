@@ -4,6 +4,7 @@ using Mediator;
 using Shouldly;
 using Obfy.App.Features.App;
 using Obfy.App.Features.Files;
+using Obfy.App.Features.Log;
 using Obfy.App.Sessions;
 using Obfy.Interop;
 using Obfy.UI.DependencyInjection;
@@ -188,5 +189,45 @@ public class HybridWiringTests
         registry.GetRequestType(IpcNames.Services.Files, "dropPaths").ShouldBeNull();
         IpcNames.Events.FilesChanged.ShouldBe(Obfy.App.AppEvents.FilesChanged);
         IpcNames.Events.FilesChanged.ShouldBe("files.changed");
+    }
+
+    [Fact]
+    public void ApiBridge_LogEndpoints_ReachTheSharedLogBuffer()
+    {
+        OnSta(() =>
+        {
+            using var container = Build();
+            ApiRegistrations.RegisterAll(container.Resolve<ApiRegistry>());
+            var bridge = container.Resolve<IApiBridge>();
+            container.Resolve<ApiEventAggregator>();
+            var log = container.Resolve<LogBuffer>();
+            log.ShouldBeSameAs(container.Resolve<LogBuffer>());
+            log.Add(Obfy.App.Models.LogLevel.Error, "wiring line");
+
+            var read = bridge.InvokeMethod(IpcNames.Services.Log, IpcNames.Methods.LogGet, "{}").GetAwaiter().GetResult();
+            read.ShouldContain("\"success\":true");
+            read.ShouldContain("wiring line");
+            read.ShouldContain("\"level\":\"Error\"");
+
+            var cleared = bridge.InvokeMethod(IpcNames.Services.Log, IpcNames.Methods.LogClear, "{}").GetAwaiter().GetResult();
+            cleared.ShouldContain("\"success\":true");
+            log.Get().ShouldBeEmpty();
+            return true;
+        });
+    }
+
+    [Fact]
+    public void LogMethodsAreRegistered_AndLogEventsUseTheAppEventNames()
+    {
+        using var container = Build();
+        var registry = container.Resolve<ApiRegistry>();
+        ApiRegistrations.RegisterAll(registry);
+
+        registry.GetRequestType(IpcNames.Services.Log, IpcNames.Methods.LogGet).ShouldBe(typeof(GetLogRequest));
+        registry.GetRequestType(IpcNames.Services.Log, IpcNames.Methods.LogClear).ShouldBe(typeof(ClearLogRequest));
+        IpcNames.Events.LogAppended.ShouldBe(Obfy.App.AppEvents.LogAppended);
+        IpcNames.Events.LogAppended.ShouldBe("log.appended");
+        IpcNames.Events.LogCleared.ShouldBe(Obfy.App.AppEvents.LogCleared);
+        IpcNames.Events.LogCleared.ShouldBe("log.cleared");
     }
 }

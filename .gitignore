@@ -7,6 +7,8 @@ x86/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+# The log endpoints live in a folder named Log
+!Src/Obfy.App/Features/Log/
 
 # Visual Studio
 .vs/

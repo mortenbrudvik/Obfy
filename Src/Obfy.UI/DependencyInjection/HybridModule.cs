@@ -43,6 +43,9 @@ public class HybridModule : Module
         // configuration into the protection session).
         builder.RegisterType<InputSession>().AsSelf().SingleInstance();
         builder.RegisterType<InputIntake>().AsSelf().SingleInstance();
+        // The run log. The run loop adds lines from a pool thread; the page reads it and follows batched pushes.
+        builder.RegisterType<LogBuffer>().AsSelf().SingleInstance();
+
         builder.RegisterType<ShellLauncher>().As<IShellLauncher>().SingleInstance();
 
         builder.RegisterType<FileDialogs>()

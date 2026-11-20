@@ -11,6 +11,7 @@ public static class IpcNames
         public const string Settings = "settings";
         public const string Files = "files";
         public const string Output = "output";
+        public const string Log = "log";
     }
 
     public static class Methods
@@ -33,6 +34,8 @@ public static class IpcNames
         public const string OutputSet = "set";
         public const string OutputPickFolder = "pickFolder";
         public const string OutputSetSymbolMap = "setSymbolMap";
+        public const string LogGet = "get";
+        public const string LogClear = "clear";
     }
 
     public static class Events
@@ -45,5 +48,11 @@ public static class IpcNames
 
         /// <summary>Pushed with the new input snapshot (file list, output folder, symbol map) after any change to it.</summary>
         public const string FilesChanged = AppEvents.FilesChanged;
+
+        /// <summary>Pushed with the lines added to the run log since the last push.</summary>
+        public const string LogAppended = AppEvents.LogAppended;
+
+        /// <summary>Pushed with the empty log snapshot after the log is cleared.</summary>
+        public const string LogCleared = AppEvents.LogCleared;
     }
 }

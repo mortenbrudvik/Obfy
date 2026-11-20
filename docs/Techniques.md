@@ -863,7 +863,7 @@ On the win-x64 success path:
 
 Set `packing.rid` to `portable` for the previous managed `{name}.launcher.exe` + `.runtimeconfig.json` (run with `dotnet`). The managed PE is left in place.
 
-This is **not** Pre-JIT, **not** self-contained, and **not** ARM64. Packing hides the managed PE on disk; the decryption key is in the overlay. Anyone who runs or inspects the EXE can recover IL. This is obfuscation, not confidentiality.
+This is **not** Pre-JIT, **not** self-contained, and **not** ARM64. Packing hides the managed PE on disk; the decryption key is in the overlay and is chosen at random for that pack. The `.obfycache` sidecar is not that key. Anyone who runs or inspects the EXE can recover IL. This is obfuscation, not confidentiality.
 
 The payload stays in memory (`AssemblyLoadContext.LoadFromStream`); anti-tamper skips ALC loads instead of hashing the host. Sibling assemblies next to the packed EXE are resolved from the load context. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning. NativeAOT / Unity IL2CPP / Blazor WASM turn packing off with a warning. Closed-set / solution / multi-assembly runs pack each entry-point output and leave libraries managed. Merge packs the merged entry-point assembly. Signing hashes the managed PE **before** pack, so the native EXE is not strong-named. GUI vs console is a PE Subsystem patch on the same stub. Runtimeconfig TFM prefers the assembly `TargetFrameworkAttribute` (then the input sibling JSON), otherwise the Obfy process version.
 

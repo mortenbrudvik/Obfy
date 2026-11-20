@@ -174,7 +174,6 @@ public class IncrementalCacheTests : IDisposable
         File.WriteAllBytes(keyFile, [9, 9, 9]);
 
         IncrementalCache.ComputeKey(input, settings).ShouldNotBe(first);
-        IncrementalCache.ToAes256Key(input, settings).Length.ShouldBe(32);
     }
 
     [Fact]
@@ -194,7 +193,6 @@ public class IncrementalCacheTests : IDisposable
         File.WriteAllBytes(dep, [1, 2, 4]);
 
         IncrementalCache.ComputeKey(input, settings).ShouldNotBe(first);
-        IncrementalCache.ToAes256Key(input, settings).Length.ShouldBe(32);
     }
 
     [Fact]

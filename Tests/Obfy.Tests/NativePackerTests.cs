@@ -76,7 +76,7 @@ public class NativePackerTests
     }
 
     [Fact]
-    public void Pack_SameInputSettings_ProducesIdenticalOverlay()
+    public void Pack_SameInputSettings_UsesAFreshKey_NotTheCacheDigest()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"obfy-native-pack-ident-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
@@ -93,7 +93,16 @@ public class NativePackerTests
             NativePacker.Pack(output1, settings, input);
             NativePacker.Pack(output2, settings, input);
 
-            File.ReadAllBytes(output1).ShouldBe(File.ReadAllBytes(output2));
+            var packed1 = File.ReadAllBytes(output1);
+            var packed2 = File.ReadAllBytes(output2);
+            var cacheHex = IncrementalCache.ComputeKey(input, settings);
+            var key1 = Convert.ToHexString(ReadOverlayKey(packed1));
+            var key2 = Convert.ToHexString(ReadOverlayKey(packed2));
+            key1.ShouldNotBe(cacheHex);
+            key2.ShouldNotBe(cacheHex);
+            key1.ShouldNotBe(key2);
+            DecryptOverlay(packed1).ShouldBe(managed);
+            DecryptOverlay(packed2).ShouldBe(managed);
         }
         finally
         {
@@ -200,9 +209,13 @@ public class NativePackerTests
                 header[NativePacker.OverlayHeader.PayloadLengthOffset..]);
             payloadLength.ShouldBeGreaterThan(0u);
 
-            var key = IncrementalCache.ToAes256Key(input, settings);
+            var key = header.Slice(NativePacker.OverlayHeader.KeyOffset, 32).ToArray();
+            var cacheHex = IncrementalCache.ComputeKey(input, settings);
+            Convert.ToHexString(key).ShouldNotBe(cacheHex);
+            IncrementalCache.Write(input, output, settings);
+            File.ReadAllText(IncrementalCache.CachePath(output)).Trim().ShouldBe(cacheHex);
+
             var iv = HMACSHA256.HashData(key, "obfy-pack-iv"u8)[..16];
-            header.Slice(NativePacker.OverlayHeader.KeyOffset, 32).SequenceEqual(key).ShouldBeTrue();
             header.Slice(NativePacker.OverlayHeader.IvOffset, 16).SequenceEqual(iv).ShouldBeTrue();
 
             var ciphertext = packed[(overlayOffset + NativePacker.OverlayHeader.Size)..];
@@ -375,6 +388,37 @@ public class NativePackerTests
         var index = packed.AsSpan().IndexOf(NativePacker.Magic);
         index.ShouldBeGreaterThanOrEqualTo(0);
         return packed[(index + NativePacker.Magic.Length)..];
+    }
+
+    private static byte[] ReadOverlayKey(byte[] packed)
+    {
+        var index = OverlayMagicIndex(packed);
+        return packed.AsSpan(index + NativePacker.OverlayHeader.KeyOffset, 32).ToArray();
+    }
+
+    private static byte[] DecryptOverlay(byte[] packed)
+    {
+        var index = OverlayMagicIndex(packed);
+        var header = packed.AsSpan(index, NativePacker.OverlayHeader.Size);
+        var key = header.Slice(NativePacker.OverlayHeader.KeyOffset, 32).ToArray();
+        var iv = header.Slice(NativePacker.OverlayHeader.IvOffset, 16).ToArray();
+        var payloadLength = BinaryPrimitives.ReadUInt32LittleEndian(
+            header[NativePacker.OverlayHeader.PayloadLengthOffset..]);
+        var ciphertext = packed.AsSpan(index + NativePacker.OverlayHeader.Size, (int)payloadLength).ToArray();
+        using var aes = Aes.Create();
+        aes.Key = key;
+        aes.IV = iv;
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.PKCS7;
+        using var decryptor = aes.CreateDecryptor();
+        return decryptor.TransformFinalBlock(ciphertext, 0, ciphertext.Length);
+    }
+
+    private static int OverlayMagicIndex(byte[] packed)
+    {
+        var index = packed.AsSpan().IndexOf(NativePacker.Magic);
+        index.ShouldBeGreaterThanOrEqualTo(0);
+        return index;
     }
 
     private static void TryDeleteDir(string dir)

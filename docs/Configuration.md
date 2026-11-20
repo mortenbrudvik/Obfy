@@ -497,7 +497,7 @@ Signing runs after PE patches (method-IL XOR, anti-tamper hash) by refreshing th
 |----------|------|---------|-------------|
 | `enabled` | bool | `false` | Skip re-obfuscation when the Obfy version, input file, and settings JSON are unchanged |
 
-Cache file: `{outputPath}.obfycache` (SHA-256 of Obfy assembly version + input bytes + serialized settings). A version bump is a miss. A hit requires the output file to exist. If packing is on, a hit also requires `{name}.runtimeconfig.json` (win-x64) or the managed `{name}.launcher.exe` plus its `.runtimeconfig.json` (portable). Written only after a successful write. Off in every preset. CLI: `--incremental` turns `enabled` on; cache path and packing extras stay in the config.
+Cache file: `{outputPath}.obfycache` (SHA-256 of Obfy assembly version + input bytes + serialized settings). That digest is the cache identity only. It is not the native packing key. A version bump is a miss. A hit requires the output file to exist. If packing is on, a hit also requires `{name}.runtimeconfig.json` (win-x64) or the managed `{name}.launcher.exe` plus its `.runtimeconfig.json` (portable). Written only after a successful write. Off in every preset. CLI: `--incremental` turns `enabled` on; cache path and packing extras stay in the config.
 
 ### virtualization
 

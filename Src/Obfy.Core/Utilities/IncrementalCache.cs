@@ -12,8 +12,8 @@ namespace Obfy.Core.Utilities;
 /// embedding would pack, so a rotated key or a rebuilt sibling is a miss.
 /// A locked or corrupt <c>{output}.obfycache</c> is a miss, not a failed run.
 /// A packing hit also requires the native sibling <c>{name}.runtimeconfig.json</c> (win-x64)
-/// or the portable launcher files. <see cref="ComputeKey"/> hex is the native overlay AES-256
-/// key and must remain 32 bytes.
+/// or the portable launcher files. The hex stored here is only the cache identity. It is not
+/// the native overlay AES key.
 /// </summary>
 public static class IncrementalCache
 {
@@ -123,13 +123,6 @@ public static class IncrementalCache
             return false;
         return includes.Count == 0 || includes.Any(pattern => WildcardMatcher.IsMatch(fileName, pattern));
     }
-
-    /// <summary>
-    /// 32-byte AES-256 key for the native overlay: hex-decoded <see cref="ComputeKey"/> with
-    /// no second hash.
-    /// </summary>
-    public static byte[] ToAes256Key(string inputPath, ObfySettings settings) =>
-        Convert.FromHexString(ComputeKey(inputPath, settings));
 
     public static bool TryHit(string inputPath, string outputPath, ObfySettings settings)
     {

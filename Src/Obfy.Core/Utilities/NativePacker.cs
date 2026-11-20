@@ -77,10 +77,9 @@ public static class NativePacker
 
     /// <summary>
     /// Encrypts the obfuscated PE at <paramref name="assemblyPath"/> into an overlay, stamps the
-    /// embedded native host, and replaces the managed PE in place. The AES key is
-    /// <see cref="IncrementalCache.ToAes256Key"/> (hex of <see cref="IncrementalCache.ComputeKey"/>,
-    /// no second hash). Throws <see cref="InvalidOperationException"/> without a
-    /// <c>Packing failed:</c> prefix.
+    /// embedded native host, and replaces the managed PE in place. The AES key is random for
+    /// this pack and is not the <c>.obfycache</c> digest. Throws
+    /// <see cref="InvalidOperationException"/> without a <c>Packing failed:</c> prefix.
     /// </summary>
     public static string Pack(string assemblyPath, ObfySettings settings, string inputPath)
     {
@@ -107,7 +106,7 @@ public static class NativePacker
                 subsystem = (ushort)peHeader.Subsystem;
             }
 
-            var key = IncrementalCache.ToAes256Key(inputPath, settings);
+            var key = RandomNumberGenerator.GetBytes(32);
             var iv = HMACSHA256.HashData(key, "obfy-pack-iv"u8)[..16];
             var ciphertext = EncryptAes(managed, key, iv);
             var tfmMajor = ResolveTfmMajor(managed, inputPath);

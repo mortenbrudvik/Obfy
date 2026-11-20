@@ -39,6 +39,7 @@ x86/
 !Src/Obfy.NativeHost/dist/
 Src/Obfy.NativeHost/dist/*
 !Src/Obfy.NativeHost/dist/Obfy.NativeHost.exe
+!Src/Obfy.NativeHost/dist/sources.sha256
 
 # Native packer host intermediates (dist EXE is checked in)
 Src/Obfy.NativeHost/host.generated.rc

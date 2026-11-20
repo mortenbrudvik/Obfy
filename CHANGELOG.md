@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - General IL virtualization of eligible instance and static methods (`--virtualize` / `virtualization.enabled`): objects, non-generic calls, fields, `newobj`, `ldstr`, i4/i8/r4/r8; skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, `typeof` (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded); per-build opcode permutation + XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset; deterrent, not confidentiality
 
 ### Fixed
+- NuGet publish rebuilds the native host before packing, and CI fails when that host's sources do not match the committed stamp
 - CI and publish pin third-party actions to commit SHAs, and Dependabot updates those actions
 - Windows CI builds the MSIX and the Inno installer
 - NuGet publish takes its version from the release tag and fails when that version is already on NuGet

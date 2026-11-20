@@ -23,7 +23,21 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
       with:
-        dotnet-version: '10.0.x'
+        # 8.0.106 ships host pack 8.0.6 (NativeHost/build.ps1). 8.0.6 is a runtime, not an SDK.
+        dotnet-version: |
+          10.0.x
+          8.0.106
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+
+    # Obfy.Core embeds dist/Obfy.NativeHost.exe at build time. Rebuild before
+    # dotnet build so the packed tool does not ship a stale checked-in stub.
+    - name: Rebuild native packer host
+      shell: pwsh
+      run: |
+        pwsh -File Src/Obfy.NativeHost/build.ps1
+        if ($LASTEXITCODE -ne 0) { throw "Native host build failed ($LASTEXITCODE)" }
 
     - name: Resolve package version
       id: version

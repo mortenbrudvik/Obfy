@@ -39,14 +39,18 @@ jobs:
         name: native-host
         path: Src/Obfy.NativeHost/dist/Obfy.NativeHost.exe
 
-    # Byte-identity fails across MSVC versions (windows-2025-vs2026 is 14.51).
-    # Tests use the rebuild; the artifact is the binary to commit if sources changed.
-    - name: Native host dist is current
+    # MSVC versions rewrite the exe without a source change (windows-2025-vs2026 is 14.51).
+    # Fail when host.c, build.ps1, or PackedBootstrap disagree with the committed
+    # stamp. build.ps1 rewrites the working-tree stamp, so the check reads HEAD.
+    # A compiler-only byte diff stays a warning. Tests still use the rebuild.
+    - name: Native host sources match the committed stamp
       shell: pwsh
       run: |
-        git diff --exit-code -- Src/Obfy.NativeHost/dist
+        ./build/Test-NativeHostSourceStamp.ps1 -FromGitHead
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        git diff --exit-code -- Src/Obfy.NativeHost/dist/Obfy.NativeHost.exe
         if ($LASTEXITCODE -ne 0) {
-          Write-Host "::warning::Rebuilt Obfy.NativeHost.exe differs from the checked-in dist (compiler/PackedBootstrap). This job uses the rebuild. Download the native-host artifact and commit it if host.c or PackedBootstrap changed."
+          Write-Host "::warning::Rebuilt Obfy.NativeHost.exe differs from the checked-in binary, and the source stamp still matches. This is compiler output, not a source change. Download the native-host artifact and commit the exe to refresh the checked-in stub."
         }
         exit 0
 

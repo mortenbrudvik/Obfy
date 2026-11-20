@@ -104,4 +104,15 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to statically link libnethost.lib from Microsoft.NETCore.App.Host.win-x64 $($pack.Name) (exit $LASTEXITCODE)"
 }
 if (-not (Test-Path $exe)) { throw "Native host exe missing: $exe" }
+
+$stampScript = Join-Path $repo "build\Get-NativeHostSourceStamp.ps1"
+$stamp = & $stampScript -RepoRoot "$repo"
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace("$stamp")) {
+    throw "Native host source stamp failed"
+}
+$stampPath = Join-Path $dist "sources.sha256"
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($stampPath, ("$stamp".Trim() + "`n"), $utf8NoBom)
+
 Write-Host "Built $exe (pack $($pack.Name), static libnethost)"
+Write-Host "Stamped $stampPath"

@@ -331,6 +331,19 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void TypingAnExclusion_KeepsTheSelectedPreset()
+    {
+        var viewModel = new SettingsViewModel { Level = ObfuscationLevel.Standard };
+
+        viewModel.NewExcludedNamespace = "MyApp.Generated";
+        viewModel.NewExcludedType = "Secret";
+        viewModel.NewExcludedMethod = "Hidden";
+
+        viewModel.Level.ShouldBe(ObfuscationLevel.Standard);
+        viewModel.StringEncryptionEnabled.ShouldBeTrue();
+    }
+
+    [Fact]
     public void ToObfySettings_ConvertsLevel()
     {
         // Arrange

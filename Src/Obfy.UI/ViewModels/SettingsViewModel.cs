@@ -369,7 +369,10 @@ public partial class SettingsViewModel : ObservableObject
         base.OnPropertyChanged(e);
         if (_applyingPreset > 0)
             return;
-        if (e.PropertyName is null or nameof(Level))
+        if (e.PropertyName is null or nameof(Level)
+            or nameof(NewExcludedNamespace)
+            or nameof(NewExcludedType)
+            or nameof(NewExcludedMethod))
             return;
         if (Level != ObfuscationLevel.Custom)
             Level = ObfuscationLevel.Custom;

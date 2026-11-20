@@ -2,6 +2,7 @@ using Autofac;
 using Mediator;
 using Shouldly;
 using Obfy.App.Features.App;
+using Obfy.App.Features.Files;
 using Obfy.Interop;
 using Obfy.UI.DependencyInjection;
 
@@ -63,6 +64,16 @@ public class HybridWiringTests
 
         info.Version.ShouldNotBeNullOrWhiteSpace();
         info.Version.ShouldNotContain("+");
+    }
+
+    [Fact]
+    public async Task DropPaths_IsHandledThroughMediator()
+    {
+        using var container = Build();
+
+        var result = await container.Resolve<IMediator>().Send(new DropPathsRequest(["C:\\x\\a.dll"]));
+
+        result.ShouldBe(Unit.Value);
     }
 
     [Fact]

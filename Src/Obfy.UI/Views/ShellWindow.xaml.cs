@@ -3,8 +3,10 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using Mediator;
 using Microsoft.Extensions.Logging;
 using Obfy.App.Features.App;
+using Obfy.App.Features.Files;
 using Obfy.UI.Services;
 using Obfy.UI.ViewModels;
 using Wpf.Ui.Controls;
@@ -26,15 +28,18 @@ public partial class ShellWindow : FluentWindow
 
     private readonly ShellViewModel _viewModel;
     private readonly AppReadyCoordinator _ready;
+    private readonly IMediator _mediator;
     private readonly ILogger<ShellWindow> _logger;
     private DispatcherTimer? _revealTimer;
     private bool _cloaked;
     private bool _revealed;
 
-    public ShellWindow(ShellViewModel viewModel, ThemeController theme, AppReadyCoordinator ready, ILogger<ShellWindow> logger)
+    public ShellWindow(
+        ShellViewModel viewModel, ThemeController theme, AppReadyCoordinator ready, IMediator mediator, ILogger<ShellWindow> logger)
     {
         _viewModel = viewModel;
         _ready = ready;
+        _mediator = mediator;
         _logger = logger;
         DataContext = viewModel;
         InitializeComponent();
@@ -43,6 +48,10 @@ public partial class ShellWindow : FluentWindow
         // The page says it is ready on a pool thread.
         _ready.Ready += OnReady;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
+
+        // The web area takes no drop (WebViewHandler sets AllowExternalDrop = false), so the OS drop reaches the window.
+        DragOver += OnDragOver;
+        Drop += OnDrop;
         Closed += (_, _) =>
         {
             _ready.Ready -= OnReady;
@@ -106,6 +115,29 @@ public partial class ShellWindow : FluentWindow
     }
 
     private void OnReady() => Dispatcher.BeginInvoke(Reveal);
+
+    private static void OnDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void OnDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } paths)
+            return;
+
+        // An async void event handler must not let an exception escape: it would crash the process.
+        try
+        {
+            await _mediator.Send(new DropPathsRequest(paths));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not handle the dropped files");
+        }
+    }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

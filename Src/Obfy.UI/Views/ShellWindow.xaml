@@ -9,6 +9,7 @@
         WindowBackdropType="None"
         WindowCornerPreference="Round"
         Icon="/Images/app.png"
+        AllowDrop="True"
         WindowStartupLocation="CenterScreen">
   <Grid>
     <Grid.RowDefinitions>

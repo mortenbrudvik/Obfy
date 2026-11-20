@@ -1102,6 +1102,7 @@ public class Program
                     if (!input.Exists)
                     {
                         AnsiConsole.MarkupLine($"[red]File not found: {input.FullName}[/]");
+                        WriteProblem(input.FullName, "error", "File not found");
                         task.Increment(100);
                         failed = true;
                         continue;
@@ -1187,6 +1188,7 @@ public class Program
         foreach (var warning in result.Warnings)
         {
             AnsiConsole.MarkupLine($"[yellow]⚠ {Markup.Escape(warning)}[/]");
+            WriteProblem(result.InputPath ?? fileName, "warning", warning);
         }
     }
 
@@ -1194,11 +1196,17 @@ public class Program
     {
         AnsiConsole.MarkupLine($"[red]Failed to obfuscate {Markup.Escape(fileName)}[/]");
         AnsiConsole.MarkupLine($"[red]Error: {Markup.Escape(result.ErrorMessage ?? "")}[/]");
+        WriteProblem(result.InputPath ?? fileName, "error", result.ErrorMessage ?? "Obfuscation failed.");
 
         if (result.Exception != null)
         {
             AnsiConsole.WriteException(result.Exception);
         }
+    }
+
+    private static void WriteProblem(string file, string severity, string message)
+    {
+        System.Console.WriteLine(ProblemMatcherLine.Format(file, severity, message));
     }
 
     private static async Task GenerateConfigAsync(FileInfo output, string level)

@@ -18,9 +18,12 @@
         "name": "obfy",
         "owner": "obfy",
         "pattern": {
-          "regexp": "^(?:\\[[\\w]+\\])?(error|warning|Error|⚠)\\s*:?\\s+(.*)$",
-          "severity": 1,
-          "message": 2
+          "regexp": "^(.*)\\((\\d+),(\\d+)\\):\\s+(error|warning):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
         }
       }
     ]

@@ -1,6 +1,6 @@
 # Obfy for Visual Studio Code
 
-JSON schema validation for `obfy.json` and a problem matcher for CLI `Error:` / `⚠` lines. There is no custom task type; add a shell task as shown below.
+JSON schema validation for `obfy.json` and a problem matcher for CLI lines of the form `path(line,column): error|warning: message`. There is no custom task type; add a shell task as shown below.
 
 ## Setup
 

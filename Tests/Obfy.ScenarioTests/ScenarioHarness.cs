@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Autofac;
@@ -45,11 +46,16 @@ internal static class ScenarioHarness
         return dest;
     }
 
+    internal const int DefaultBuildTimeoutMs = 180_000;
+    internal const int DefaultPublishTimeoutMs = 300_000;
+    internal const int DefaultRunTimeoutMs = 60_000;
+    internal const string TimeoutFactorVariable = "OBFY_SCENARIO_TIMEOUT_FACTOR";
+
     public static void DotnetBuild(
         string projectOrSln,
         string configuration = "Release",
         string extraArgs = "",
-        int timeoutMs = 60_000)
+        int timeoutMs = DefaultBuildTimeoutMs)
     {
         var args = $"build \"{projectOrSln}\" -c {configuration} --nologo";
         if (!string.IsNullOrWhiteSpace(extraArgs))
@@ -58,7 +64,7 @@ internal static class ScenarioHarness
         result.ExitCode.ShouldBe(0, result.StdOut + Environment.NewLine + result.StdErr);
     }
 
-    public static ProcessResult DotnetPublish(string project, string extraArgs = "", int timeoutMs = 180_000)
+    public static ProcessResult DotnetPublish(string project, string extraArgs = "", int timeoutMs = DefaultPublishTimeoutMs)
     {
         var args = $"publish \"{project}\" --nologo {extraArgs}".Trim();
         return RunProcess("dotnet", args, Path.GetDirectoryName(project)!, timeoutMs);
@@ -98,7 +104,7 @@ internal static class ScenarioHarness
         return Path.Combine(stage, assemblyFileName);
     }
 
-    public static ProcessResult RunDotnet(string assemblyPath, string extraArgs = "", int timeoutMs = 20_000)
+    public static ProcessResult RunDotnet(string assemblyPath, string extraArgs = "", int timeoutMs = DefaultRunTimeoutMs)
     {
         File.Exists(assemblyPath).ShouldBeTrue(assemblyPath);
         var args = string.IsNullOrWhiteSpace(extraArgs)
@@ -123,6 +129,7 @@ internal static class ScenarioHarness
         // ilammy/msvc-dev-cmd and vcvars set Platform=x64; SDK-style projects then
         // write to bin/x64/Release instead of bin/Release.
         start.Environment.Remove("Platform");
+        timeoutMs = ScaleTimeout(timeoutMs);
 
         using var process = Process.Start(start);
         process.ShouldNotBeNull();
@@ -137,6 +144,23 @@ internal static class ScenarioHarness
         var stdout = stdoutTask.GetAwaiter().GetResult();
         var stderr = stderrTask.GetAwaiter().GetResult();
         return new ProcessResult(process.ExitCode, stdout, stderr);
+    }
+
+    /// <summary>
+    /// <c>OBFY_SCENARIO_TIMEOUT_FACTOR</c> from 2 to 10 stretches every scenario timeout.
+    /// </summary>
+    internal static int ScaleTimeout(int timeoutMs) =>
+        ScaleTimeout(timeoutMs, Environment.GetEnvironmentVariable(TimeoutFactorVariable));
+
+    internal static int ScaleTimeout(int timeoutMs, string? factor)
+    {
+        if (!int.TryParse(factor, NumberStyles.Integer, CultureInfo.InvariantCulture, out var multiplier) ||
+            multiplier <= 1)
+            return timeoutMs;
+        if (multiplier > 10)
+            multiplier = 10;
+        var scaled = (long)timeoutMs * multiplier;
+        return scaled > int.MaxValue ? int.MaxValue : (int)scaled;
     }
 
     public static void CopyDirectory(string source, string dest)

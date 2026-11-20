@@ -8,12 +8,19 @@ Obfy is a professional .NET obfuscation tool that protects C# assemblies and sou
 Obfy/
 ├── Src/
 │   ├── Obfy.Console/          # CLI entry point (System.CommandLine)
-│   ├── Obfy.UI/               # WPF desktop application (Fluent Design)
-│   │   ├── Views/             # XAML views and controls
-│   │   ├── ViewModels/        # MVVM ViewModels
-│   │   ├── Models/            # UI-specific models
-│   │   ├── Services/          # UI services (dialogs, settings)
-│   │   └── Converters/        # XAML value converters
+│   ├── Obfy.UI/               # WPF shell hosting WebView2; composition root
+│   │   ├── Views/             # ShellWindow (title bar, WebView2, native failure panel)
+│   │   ├── ViewModels/        # ShellViewModel (the only ViewModel)
+│   │   ├── Services/          # Theme sync, native file dialogs, startup command line
+│   │   └── DependencyInjection/ # Autofac modules, HybridBootstrap (Mediator + bridge wiring)
+│   ├── Obfy.App/              # WPF-free UI logic: sessions and Mediator requests/handlers
+│   │   ├── Sessions/          # ProtectionSession, InputSession, LogBuffer, ResultsStore, RunCoordinator
+│   │   └── Features/<Area>/   # One folder per bridge area: App, Files, Log, Output, Preview, Results, Run, Settings
+│   ├── Obfy.Interop/          # The bridge: ApiBridge, ApiRegistry, ApiRegistrations, IpcNames, event aggregator
+│   ├── Obfy.WebView/          # WebView2 control + handler (virtual host, allowed origins, host object)
+│   ├── Obfy.Common/           # JsonUtils (camelCase IPC/config JSON)
+│   ├── WebApp/                # React + Vite + TypeScript page (not a .NET project)
+│   │   └── src/               # features/{files,protection,results,guide,shell}, components, interop, content
 │   ├── Obfy.Core/             # Core obfuscation logic
 │   │   ├── DependencyInjection/  # Autofac module registration
 │   │   ├── Models/            # Settings and result models
@@ -33,10 +40,14 @@ Obfy/
 ├── Tests/
 │   ├── Obfy.Tests/            # Core unit tests
 │   ├── Obfy.Console.Tests/    # CLI parsing & integration tests
-│   ├── Obfy.UI.Tests/         # ViewModel unit tests
+│   ├── Obfy.App.Tests/        # Session + handler unit tests (UI logic, no WPF)
+│   ├── Obfy.Interop.Tests/    # Bridge, registry, events, request JSON + content contract tests
+│   ├── Obfy.UI.Tests/         # Shell wiring, startup command line, host service
 │   ├── Obfy.ScenarioTests/    # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
 │   ├── Obfy.VisualStudio.Tests/ # VS helpers without a hive
 │   └── Obfy.UI.AutomationTests/ # Locator tests + Playwright-over-WebView2 e2e + one FlaUI smoke (Category=UI)
+├── scripts/
+│   └── dev.ps1                # Dev loop: Vite dev server + the shell
 ├── docs/                      # Documentation
 ├── package/                   # MSIX manifest and Store assets
 ├── build/                     # Build scripts and installer
@@ -60,10 +71,13 @@ dotnet build Obfy.sln -c Release
 # Run tests
 dotnet test Tests/Obfy.Tests/Obfy.Tests.csproj
 dotnet test Tests/Obfy.Console.Tests/Obfy.Console.Tests.csproj
+dotnet test Tests/Obfy.App.Tests/Obfy.App.Tests.csproj
+dotnet test Tests/Obfy.Interop.Tests/Obfy.Interop.Tests.csproj
 dotnet test Tests/Obfy.UI.Tests/Obfy.UI.Tests.csproj
 dotnet test Tests/Obfy.ScenarioTests/Obfy.ScenarioTests.csproj
 dotnet test Tests/Obfy.VisualStudio.Tests/Obfy.VisualStudio.Tests.csproj
-dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI   # needs a Release build of Src/Obfy.UI
+(cd Src/WebApp && npm run test:run)   # web (Vitest) tests; also: npm run lint
 
 # Run CLI
 dotnet run --project Src/Obfy.Console/Obfy.Console.csproj -- --help
@@ -73,8 +87,15 @@ dotnet tool install --global Obfy
 # or: dotnet pack Src/Obfy.Console/Obfy.Console.csproj -c Release -o ./artifacts
 #     dotnet tool install --global Obfy --add-source ./artifacts
 
-# Run UI
-dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
+# Run UI for development (Node 24 + PowerShell 7): starts Vite on :5250, then the shell with
+# -p:SkipFrontendBuild=true. The Debug shell loads http://localhost:5250 (hot reload, DevTools)
+.\scripts\dev.ps1
+
+# Run UI from a Release build (serves the built page from Assets\ beside ObfyUI.exe)
+dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -c Release
+
+# .NET-only work: skip the npm steps (Obfy.UI.csproj otherwise runs npm ci + npm run build before Build)
+dotnet build Obfy.sln -p:SkipFrontendBuild=true
 
 # Build MSIX (sideload identity)
 .\build\build-msix.ps1
@@ -113,18 +134,31 @@ obfy App.dll Lib.dll --merge -o output/
 
 ## UI Application
 
-The WPF desktop application provides a visual interface for obfuscation:
+The desktop app is a hybrid: a thin WPF shell hosts WebView2, which shows a React page. All UI state and rules live in WPF-free `Obfy.App` sessions; the page renders snapshots and sends commands over the bridge. WPF-UI is used only for the window frame (`FluentWindow` + `TitleBar`).
 
-- **Layout**: Settings (left); compact output row (directory, browse, symbol-map toggle, symbol-map path); file list; tabs Output, Results, and Preview. A successful run selects Results. Preview decompiles only after a file is chosen
+- **Shell** (`Obfy.UI`): `ShellWindow` is the title bar, the WebView2 and a native failure panel (Restart / Open log folder / Quit) shown instead of a blank page when WebView2 cannot start or fails for good. `ShellViewModel` is the only ViewModel. `ThemeController` follows the Windows light/dark mode for the window and the page. Native file drop is forwarded into the bridge (`files.dropPaths`; the page never calls it). The shell blocks navigation outside its own origin
+- **WebView2 Runtime**: the Evergreen runtime is required. `App` shows a message with the download link when it is missing; the installer bootstraps it (`build/ObfySetup.iss`, `build-installer.ps1` downloads it into `build\redist`)
+- **Sessions** (`Obfy.App/Sessions`): `ProtectionSession` (settings, levels, the Custom snapshot, profile gates, config open/save), `InputSession` (files, solution/project expansion, include flags, output folder, symbol-map path, mode hint, drops), `LogBuffer` (run log, batched pushes), `ResultsStore` (summary, paged/searchable symbol index, preview decompile, exports), `RunCoordinator` (start/cancel, blockers with reasons, progress). They carry the rules the old ViewModels held; `Obfy.App.Tests` covers them
+- **Screens** (`Src/WebApp/src/features`): a sidebar with **Files** (first-launch empty state, file table, output card with the symbol-map option), **Protection** (level cards, technique list and detail, scope), **Results** (Summary, Symbols, Preview and Log tabs; a running view while obfuscating) and **Guide** (F1), plus a persistent **run bar** (Obfuscate / Cancel, merge, blockers with reasons, progress). A successful run selects Results. Shortcuts: Ctrl+Enter obfuscate, F1 guide, add files, open/save configuration
 - **Drag-and-drop**: The window accepts `.dll`, `.exe`, `.cs`, `.sln`, `.slnx`, `.csproj`, `.vbproj`, `.fsproj`, and `.json`. Solutions and projects expand into included outputs and skipped rows. A `.json` file loads that configuration
 - **Closed-set**: Obfuscate runs a closed set when two or more included assemblies are listed, or when files came from a session (Merge still wins)
-- **Empty output**: One file writes `*.obfuscated.*` next to the input. A closed set writes `obfy-out` next to the first input. Merge writes `*.obfuscated.*` next to the first input
-- **Level presets**: Minimal, Standard, Aggressive, or Custom. The closed combo shows the level name. Choosing Custom restores the snapshot taken when leaving Custom. Profile gates disable unavailable protections and keep the stored values
-- **Progress**: Indeterminate for one included file, a merge, and a closed set. Color-coded logs keep earlier runs and insert `———` when the log is not empty. Timestamps, auto-scroll, wrap, and problems-only are in the log-options menu
-- **Results**: `SymbolMapKey` nests members under the longest matching `Type:` name. Method keys include the signature (`Method:Ns.MyType.Foo(System.Void ())`). Zero counters are hidden
+- **Empty output**: One file writes `*.obfuscated.*` next to the input. A closed set writes `obfy-out` next to the first input. Merge writes `*.obfuscated.*` next to the first input. The run bar's hint and the run use one rule (`InputSession`)
+- **Level presets**: Minimal, Standard, Aggressive, or Custom. Choosing Custom restores the snapshot taken when leaving Custom. Profile gates disable unavailable protections and keep the stored values
+- **Results**: `SymbolMapKey` nests members under the longest matching `Type:` name. Method keys include the signature (`Method:Ns.MyType.Foo(System.Void ())`). Symbols are paged and searched, and previews decompiled, off the UI thread
 - **Preferences**: `%APPDATA%\Obfy\ui-preferences.json` stores the last output folder and the symbol-map option (`OBFY_UI_PREFERENCES` overrides the path). A missing restored folder is cleared. A session `-o` path is not written as the default; editing the box clears that flag
+- **Dev loop**: `scripts/dev.ps1` (PowerShell 7, Node 24) starts Vite on port 5250 (`strictPort`), waits for it, then runs the shell with `-p:SkipFrontendBuild=true` and stops Vite on exit. The Debug shell loads `http://localhost:5250` and enables DevTools; the Release shell loads the built page
+- **Frontend in MSBuild** (`Obfy.UI.csproj`): `NpmInstall` (`npm ci` when `package-lock.json` is newer than the last install) and `BuildFrontend` (`npm run build`, skipped while `Src/WebApp/dist/index.html` is newer than every input) run before Build; `CopyFrontend` copies `dist` to `Assets\` beside `ObfyUI.exe`; `IncludeFrontendInPublish` adds it to `dotnet publish` (an empty `dist` fails the publish). `-p:SkipFrontendBuild=true` skips the npm steps, for .NET-only work. There is no committed `Assets\` folder. The Release shell serves `Assets\` from the virtual host `https://obfy.localassets.invalid`. The installer (`{app}\UI\Assets`) and the MSIX layout carry `Assets\` (the MSIX merges the Store logos into it)
 
-Tech stack: WPF-UI 4.3.0 (Fluent Design), CommunityToolkit.Mvvm, Autofac
+Tech stack: WPF + WebView2, React 19 + Vite + TypeScript (Vitest, Testing Library, ESLint), Mediator (source-generated; the generator is referenced only by `Obfy.UI`), WPF-UI 4.3.0 (window frame), CommunityToolkit.Mvvm (shell ViewModel), Autofac, NLog
+
+### Hybrid architecture
+
+- **IPC**: JS calls the `apibridge` host object (`window.chrome.webview.hostObjects.apibridge`; typed wrappers in `Src/WebApp/src/interop/api.ts`) → `ApiBridge` → `ApiRegistry` (service.method → request type) → Mediator handler in `Obfy.App/Features/<Area>`. The reply is `{"success":true,"data":...}` or `{"success":false,"error":{"code","message"}}`. The bridge never throws; handlers signal user-facing failures with `ObfyApiException`
+- **Events**: pushed host → page through `ApiEventAggregator`. Sessions publish through `IEventPublisher` (in `Obfy.App`, so they do not reference the bridge). Names: `settings.changed`, `files.changed`, `log.appended`, `log.cleared`, `results.changed`, `run.changed`, `run.completed`, `app.revealed`. Each carries its service's snapshot; publishing is safe from worker threads
+- **Registering**: each endpoint is registered in `ApiRegistrations`; service, method and event names live in `IpcNames`
+- **Adding an endpoint**: request + handler in `Obfy.App/Features/<Area>` → register in `ApiRegistrations` (add the `IpcNames` constants) → wrapper in `api.ts` (and the types/mock bridge) → tests (`Obfy.App.Tests`, `Obfy.Interop.Tests`, Vitest)
+- **JSON**: DTOs are camelCase via `Obfy.Common.JsonUtils` (case-insensitive reads, enums as strings)
+- **Content as data**: technique and guide copy is in `Src/WebApp/src/content/techniques.json` and `guide.json`. `TechniqueContentContractTests` (Obfy.Interop.Tests) pins the technique ids and option keys to the host's technique list, so a technique cannot ship without content
 
 ## Obfuscation Techniques
 
@@ -183,10 +217,18 @@ Uses Autofac with module-based registration (`ObfuscationModule`).
 | `Obfy.Core/Pipeline/ObfuscationPipeline.cs` | Orchestrates obfuscator execution |
 | `Obfy.Core/Models/ObfySettings.cs` | Complete configuration model |
 | `Obfy.Console/Program.cs` | CLI entry point |
-| `Obfy.UI/Views/MainWindow.xaml` | UI main window (settings, output row, files, Output/Results/Preview tabs) |
+| `Obfy.UI/Views/ShellWindow.xaml` | Shell window: title bar, WebView2, native failure panel |
+| `Obfy.UI/ViewModels/ShellViewModel.cs` | Shell VM: WebView2 setup (dev server vs `Assets\`), profile folder, failure-panel commands |
+| `Obfy.UI/DependencyInjection/HybridBootstrap.cs` | Wires Mediator, the bridge and the sessions |
+| `Obfy.App/Sessions/*.cs` | ProtectionSession, InputSession, LogBuffer, ResultsStore, RunCoordinator (all UI logic) |
+| `Obfy.Interop/ApiBridge.cs` | The `apibridge` host object |
+| `Obfy.Interop/ApiRegistrations.cs`, `IpcNames.cs` | Every endpoint the page may call, and the names it uses |
+| `Obfy.Interop/ApiEventAggregator.cs` | Host-to-page event push |
+| `Src/WebApp/src/main.tsx`, `App.tsx` | Page entry points; `features/shell/Shell.tsx` is the layout |
+| `Src/WebApp/src/interop/api.ts` | Typed client for every bridge endpoint |
+| `Src/WebApp/src/content/techniques.json` | Technique and option copy (contract-tested against the host) |
+| `scripts/dev.ps1` | Dev loop: Vite on 5250 + the shell |
 | `Obfy.Core/Models/SymbolMapKey.cs` | Parses symbol-map keys for the Results tree |
-| `Obfy.UI/ViewModels/MainViewModel.cs` | UI orchestration and obfuscation logic |
-| `Obfy.UI/ViewModels/SettingsViewModel.cs` | UI settings binding to ObfySettings |
 | `package/AppxManifest.xml` | MSIX identity, full-trust capability, CLI alias |
 | `package/store-identity.json` | Partner Center Name / Publisher / Product ID for `-Store` packs |
 | `PRIVACY.md` | Privacy policy for Microsoft Store listing |
@@ -217,6 +259,7 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 ## Data Storage
 
 - Settings: user-chosen `obfy.json` (`obfy config generate` / Save Configuration); UI prefs at `%APPDATA%\Obfy\ui-preferences.json` (override with `OBFY_UI_PREFERENCES`). A session `-o` path is not saved
+- WebView2 profile: `%LOCALAPPDATA%\Obfy\WebView2\` (override with `OBFY_WEBVIEW2_USER_DATA`; the e2e tests give each launch its own)
 - Logs: `%LOCALAPPDATA%\Obfy\Logs\`
 
 ## Code Reuse

@@ -17,13 +17,13 @@ These techniques raise the cost of casual reverse engineering. They are **not** 
 
 ![Obfy desktop application](docs/images/ui-overview.png)
 
-*Earlier window. The current layout is described under [Desktop Application](#desktop-application).*
+*Screenshot of the earlier WPF window. The desktop app is now a WebView2 + React UI, described under [Desktop Application](#desktop-application).*
 
 ## Why Obfy?
 
 - **Easy to Use** - Single command to obfuscate your assemblies
 - **Configurable** - From minimal to aggressive protection levels, plus an interactive `config wizard`
-- **Modern** - Built for .NET 10; CLI runs cross-platform, WPF UI is Windows
+- **Modern** - Built for .NET 10; CLI runs cross-platform, the desktop UI is Windows
 - **Extensible** - JSON configuration for fine-grained control
 - **IDE Integration** - Visual Studio 2022 and JetBrains Rider extensions with right-click obfuscation
 - **Fast** - Efficient obfuscation with minimal overhead
@@ -39,7 +39,7 @@ These techniques raise the cost of casual reverse engineering. They are **not** 
   </picture>
 </a>
 
-Free download for Windows. The Store package installs the WPF UI and adds the `obfy` command to your PATH.
+Free download for Windows. The Store package installs the desktop app and adds the `obfy` command to your PATH.
 
 Direct download (no Store): [ObfySetup-1.3.0.exe](https://github.com/mortenbrudvik/Obfy/releases/latest) from GitHub Releases.
 
@@ -97,17 +97,20 @@ obfy config wizard -o obfy.json
 
 ### Desktop Application
 
-Obfy also includes a modern WPF desktop application with Fluent Design:
+Obfy also includes a Windows desktop application: a native WPF window that hosts a React interface in WebView2. It needs the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (the installer includes it; it is already present on current Windows 10/11). Building it from source also needs [Node.js](https://nodejs.org/) 24.
 
 ```bash
-# Run the UI
-dotnet run --project Src/Obfy.UI/Obfy.UI.csproj
+# Run from a Release build (builds the web UI with npm, then starts the app)
+dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -c Release
 
 # Open with files already loaded
-dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -- MyApp.dll -o output/
+dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -c Release -- MyApp.dll -o output/
+
+# Development with hot reload (Vite dev server + the app; PowerShell 7)
+.\scripts\dev.ps1
 ```
 
-The screenshots on this page show an earlier window: Output Directory sat in the file column, and Output was stacked under the files. Settings stay on the left. Output directory, browse, the symbol-map toggle, and the symbol-map path sit in a compact row. Output, Results, and Preview are tabs under the file list.
+The window has a sidebar with four screens: **Files** (drop or add inputs, choose the output folder and symbol map), **Protection** (level presets and a detail view for every technique), **Results** (summary, symbol map, decompiled preview, and the run log), and **Guide** (F1). A run bar along the bottom starts or cancels a run and says why it cannot start when it cannot. The screenshots on this page show the earlier WPF window.
 
 ![Obfy with assemblies loaded](docs/images/ui-ready.png)
 
@@ -115,16 +118,16 @@ The screenshots on this page show an earlier window: Output Directory sat in the
 - Drag and drop assemblies, source files, a solution or project, or a `.json` configuration onto the window. A solution or project expands into included outputs and skipped rows
 - Closed-set protection when two or more *included* assemblies are listed, or when files came from a solution/project session (the Merge toggle still wins)
 - An empty Output Directory writes one file next to the input as `*.obfuscated.*`, a closed set to an `obfy-out` folder next to the first input, and a merge next to the first input as `*.obfuscated.*`
-- Level presets. The closed dropdown shows the level name, and choosing Custom again restores the switches from before the preset. Protection switches stay visible when a card is collapsed
+- Level presets (Minimal, Standard, Aggressive, Custom). Choosing Custom again restores the switches from before the preset
 - Runtime profiles disable protections that profile cannot use and keep the stored values
-- In-app Help (toolbar Help and F1). The article fits the dialog
+- An in-app Guide (F1) and a description and options for every technique on the Protection screen
 - A path passed with `-o` applies to that session and is not saved as the default. A saved folder that no longer exists is cleared, with a warning
-- Indeterminate progress for one file, a merge, and a closed set. The log keeps earlier runs
+- Indeterminate progress for one file, a merge, and a closed set. The log keeps earlier runs. Obfuscate stays disabled, with the reason shown, until the settings and inputs allow a run
 - Results group symbols under their types, hide zero counters, and export the symbol map. Preview decompiles only after you pick a file
 
 ![Obfuscation results and symbol map](docs/images/ui-results.png)
 
-*Earlier results pane: symbols were a flat list, and Preview was a tab inside that pane.*
+*Earlier results pane (WPF window).*
 
 ### Visual Studio Extension
 

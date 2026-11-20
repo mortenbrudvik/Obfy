@@ -8,6 +8,8 @@ Thank you for your interest in contributing to Obfy! This document provides guid
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) or later
 - Git
+- [Node.js](https://nodejs.org/) 24 (builds the web UI that `Src/Obfy.UI` hosts; CI uses 24) and [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (for `scripts/dev.ps1`)
+- The [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (Windows; to run the desktop UI)
 - A code editor (VS Code, Visual Studio, Rider, etc.)
 - [Java 21](https://adoptium.net/) (required for Rider plugin development only)
 
@@ -26,6 +28,12 @@ Thank you for your interest in contributing to Obfy! This document provides guid
    dotnet build
    ```
 
+   Building `Src/Obfy.UI` also builds the web UI (`npm ci` and `npm run build` in `Src/WebApp`). For .NET-only work, skip the npm steps (the Debug app loads the dev server instead, see below):
+
+   ```bash
+   dotnet build -p:SkipFrontendBuild=true
+   ```
+
 3. **Run the tests**
 
    ```bash
@@ -38,7 +46,15 @@ Thank you for your interest in contributing to Obfy! This document provides guid
    dotnet run --project Src/Obfy.Console -- --help
    ```
 
-5. **Build the Rider plugin** (optional, requires Java 21)
+5. **Run the desktop UI** (Windows)
+
+   ```powershell
+   .\scripts\dev.ps1
+   ```
+
+   The script starts the Vite dev server on `http://localhost:5250` (hot reload), then runs `Src/Obfy.UI` with `-p:SkipFrontendBuild=true`; the Debug app loads the dev server and has DevTools. It stops Vite when the app closes and refuses to start if port 5250 is taken. Without the script, `dotnet run --project Src/Obfy.UI -c Release` builds the page and serves it from `Assets\` beside the exe.
+
+6. **Build the Rider plugin** (optional, requires Java 21)
 
    ```bash
    cd Src/Obfy.Rider
@@ -54,7 +70,12 @@ Obfy/
 ├── Src/
 │   ├── Obfy.Console/       # CLI application
 │   ├── Obfy.Core/          # Core obfuscation logic
-│   ├── Obfy.UI/            # WPF desktop application
+│   ├── Obfy.Common/        # JsonUtils (camelCase IPC/config JSON)
+│   ├── Obfy.App/           # WPF-free UI logic: sessions + Mediator requests/handlers (Features/<Area>)
+│   ├── Obfy.Interop/       # The bridge: ApiBridge, ApiRegistry, ApiRegistrations, IpcNames, events
+│   ├── Obfy.WebView/       # WebView2 control + handler
+│   ├── Obfy.UI/            # WPF shell (ShellWindow) hosting WebView2
+│   ├── WebApp/             # React + Vite + TypeScript page (tests: npm run test:run)
 │   ├── Obfy.VisualStudio/  # Visual Studio 2022 extension (C#)
 │   ├── Obfy.Rider/         # JetBrains Rider plugin (Kotlin)
 │   ├── Obfy.VSCode/        # VS Code stub (schema + problem matcher)
@@ -63,10 +84,13 @@ Obfy/
 ├── Tests/
 │   ├── Obfy.Tests/              # Core unit tests
 │   ├── Obfy.Console.Tests/      # CLI parsing tests
-│   ├── Obfy.UI.Tests/           # ViewModel unit tests
+│   ├── Obfy.App.Tests/          # Session + handler unit tests
+│   ├── Obfy.Interop.Tests/      # Bridge, registry, events, JSON + content contract tests
+│   ├── Obfy.UI.Tests/           # Shell wiring, startup command line
 │   ├── Obfy.ScenarioTests/      # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
 │   ├── Obfy.VisualStudio.Tests/ # VS helpers without a hive
-│   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
+│   └── Obfy.UI.AutomationTests/ # Locator tests + Playwright-over-WebView2 e2e + one FlaUI smoke (Category=UI)
+├── scripts/                # dev.ps1
 ├── docs/                   # Documentation
 └── examples/               # Example projects
 ```
@@ -114,16 +138,19 @@ Examples:
 
 ### Testing
 
-We have six test projects:
+We have eight .NET test projects plus the web app's Vitest suite:
 
 | Project | Purpose | Tests |
 |---------|---------|-------|
 | `Obfy.Tests` | Core obfuscation logic | see [docs/Testing.md](docs/Testing.md) |
 | `Obfy.Console.Tests` | CLI argument parsing, help output | see [docs/Testing.md](docs/Testing.md) |
-| `Obfy.UI.Tests` | ViewModel logic and commands | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.App.Tests` | UI sessions (protection, input, log, results, run) and endpoint handlers | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.Interop.Tests` | Bridge, registry, events, request JSON and technique-content contracts | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.UI.Tests` | Shell wiring, startup command line, host service | see [docs/Testing.md](docs/Testing.md) |
 | `Obfy.ScenarioTests` | SDK fixtures (examples, WPF, console, WinForms, MSBuild, Unity) + platform | see [docs/Testing.md](docs/Testing.md) |
 | `Obfy.VisualStudio.Tests` | VS JSON / CLI args / in-place copy / output path (no hive) | see [docs/Testing.md](docs/Testing.md) |
-| `Obfy.UI.AutomationTests` | Locator unit tests + FlaUI live window (`Category=UI`, local) | see [docs/Testing.md](docs/Testing.md) |
+| `Obfy.UI.AutomationTests` | Locator unit tests + Playwright-over-WebView2 e2e + one FlaUI smoke (`Category=UI`) | see [docs/Testing.md](docs/Testing.md) |
+| `Src/WebApp` (Vitest) | Page components, screens, interop client, content | `npm run test:run` |
 
 ```bash
 # Default suite (skips Category=UI and Category=Platform)
@@ -135,10 +162,17 @@ dotnet test Tests/Obfy.ScenarioTests --filter Category=Platform
 # Run specific test project
 dotnet test Tests/Obfy.Tests
 dotnet test Tests/Obfy.Console.Tests
+dotnet test Tests/Obfy.App.Tests
+dotnet test Tests/Obfy.Interop.Tests
 dotnet test Tests/Obfy.UI.Tests
 dotnet test Tests/Obfy.ScenarioTests
 dotnet test Tests/Obfy.VisualStudio.Tests
-dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
+dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj -c Release --filter Category=UI   # build Src/Obfy.UI -c Release first
+
+# Web app tests and lint
+cd Src/WebApp
+npm run test:run
+npm run lint
 
 # Run with coverage
 dotnet test --collect:"XPlat Code Coverage"
@@ -146,10 +180,26 @@ dotnet test --collect:"XPlat Code Coverage"
 
 When adding new features:
 - CLI changes → Add tests to `Obfy.Console.Tests`
-- ViewModel changes → Add tests to `Obfy.UI.Tests`
+- UI behaviour (what a button does, what a setting implies) → a session in `Obfy.App/Sessions`, with tests in `Obfy.App.Tests`. The page only renders snapshots
+- Page changes → Vitest tests next to the component (`Src/WebApp/src/**/__tests__`)
 - Core obfuscation → Add tests to `Obfy.Tests`
 
 See [docs/Testing.md](docs/Testing.md) for how to run tests. Scenario fixtures live in `Obfy.ScenarioTests`; remaining platform/IDE gaps are in [docs/Testing-Roadmap.md](docs/Testing-Roadmap.md).
+
+## Working on the Desktop UI
+
+The UI is a WPF shell hosting WebView2 and a React page (`Src/WebApp`); see the Hybrid architecture section of [CLAUDE.md](CLAUDE.md). Run it with `.\scripts\dev.ps1`. Use `-p:SkipFrontendBuild=true` for .NET-only builds and tests that do not need the page.
+
+### Adding a bridge endpoint
+
+The page talks to the host through the `apibridge` host object (`JS -> ApiBridge -> ApiRegistry -> Mediator handler`). To add a call:
+
+1. **Request and handler** in `Src/Obfy.App/Features/<Area>/`: a Mediator request record and its handler. Put the rule in a session (`Src/Obfy.App/Sessions`), not the handler. Throw `ObfyApiException` for failures the user can act on.
+2. **Register it** in `Src/Obfy.Interop/ApiRegistrations.cs`, with the service and method names added to `IpcNames`. If the host pushes something new, add the event name to `IpcNames.Events` and publish it through `IEventPublisher`. DTOs are camelCase through `JsonUtils`.
+3. **Call it from the page**: add a typed wrapper to `Src/WebApp/src/interop/api.ts` (and the types and mock bridge it needs), then use it from a hook or component.
+4. **Tests**: handler and session behaviour in `Tests/Obfy.App.Tests`; registration and JSON shape in `Tests/Obfy.Interop.Tests` (`ApiRegistrationsTests`, `RequestJsonContractTests`); the page side in Vitest.
+
+User-facing copy for techniques and the guide lives in `Src/WebApp/src/content/*.json`. `TechniqueContentContractTests` fails when a technique id or option key in the host has no matching entry, so a new technique needs its entry in `techniques.json`.
 
 ## Pull Request Process
 

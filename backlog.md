@@ -29,7 +29,7 @@ The sections for UI-001 to UI-035 keep the original problem statements.
 
 Each item has:
 
-- **Status** — Done, Reopened (marked Done but the second review found it not met), or Open
+- **Status** — Done, Reopened (marked Done but the second review found it not met), or Open. After the hybrid rewrite also: Closed (rewrite), Fixed (hybrid), Partly fixed (hybrid), Re-verify (hybrid) — see [Hybrid UI rewrite](#hybrid-ui-rewrite)
 - **Priority** — P1 (wrong or broken behaviour a user will hit), P2 (clear usability cost),
   P3 (polish or cleanup)
 - **Evidence** — *Observed* (seen in the running app), *Code* (follows from reading the code,
@@ -38,6 +38,28 @@ Each item has:
 
 UI-011 was fixed by shrinking the toolbar, not by moving buttons into the title bar.
 UI-022 uses an indeterminate bar. It does not add pipeline progress.
+
+## Hybrid UI rewrite
+
+The WPF screen these findings describe was replaced by a WPF shell hosting WebView2 and a React page
+(design and plan: `docs/superpowers/specs/2026-11-20-hybrid-ui-redesign-design.md` and `docs/superpowers/plans/2026-11-20-hybrid-ui-redesign.md`). Paths in the items below point at the
+removed WPF code. What happened to the second-review items (UI-036 to UI-059):
+
+- **Closed (rewrite):** UI-036, 037, 038, 041, 042, 043, 046, 047, 048, 049, 051, 057. They described WPF
+  layout or controls that no longer exist. UI-036 is moot: the log is now a tab on the Results screen.
+- **Fixed (hybrid):** the logic defects were fixed while the rules were lifted into the WPF-free
+  `Obfy.App` sessions, each with a regression test: UI-039, 040, 055 (`ProtectionSession`, plan Task 9);
+  UI-053, 054, 058 (`InputSession`, Task 10); UI-044, 050, 056, 059 (`ResultsStore`, Task 12);
+  UI-052, 053 (`RunCoordinator`, Task 13).
+- **Partly fixed:** UI-045. The path box is only live while the symbol map is on and a relative path
+  resolves against the output folder. The Browse button is a tracked follow-up: it needs an
+  `output.pickSymbolMap` endpoint (host save dialog), which has not been added.
+- **Re-verify (hybrid):** UI-006, 010, 024 and 034 (reopened in the second review). The code they point at
+  is gone and the new screens address them, but nobody has re-checked them by hand.
+- UI-001 to UI-035 were fixed in the WPF app. Where a screen was rebuilt, those fixes were not carried over
+  by code; the behaviour that mattered (symbol tree, closed-set rules, output defaults, level restore) is in
+  the sessions and covered by `Obfy.App.Tests`. The new page has not had a fresh manual review (light theme,
+  high contrast, screen reader), and the first review's "not covered" list still applies.
 
 ## Index
 
@@ -48,11 +70,11 @@ UI-022 uses an indeterminate bar. It does not add pipeline progress.
 | UI-003 | P1 | Done | Accessibility | Status bar message is hidden from screen readers |
 | UI-004 | P1 | Done | Files | Output directory preference is polluted and never validated |
 | UI-005 | P1 | Done | Help | Help dialog clips at the minimum window size |
-| UI-006 | P1 | Reopened | Help | Help text is out of date |
+| UI-006 | P1 | Re-verify (hybrid) | Help | Help text is out of date |
 | UI-007 | P1 | Done | Files | Output directory placeholder is wrong for closed-set runs |
 | UI-008 | P1 | Done | Layout | Files, Results and Output do not fit in one column |
 | UI-009 | P2 | Done | Layout | Results panel cannot be dismissed |
-| UI-010 | P2 | Reopened | Layout | Empty-state drop zone is clipped at the minimum size |
+| UI-010 | P2 | Re-verify (hybrid) | Layout | Empty-state drop zone is clipped at the minimum size |
 | UI-011 | P3 | Done | Layout | Title bar and toolbar use two rows of chrome |
 | UI-012 | P2 | Done | Settings | Collapsed expanders do not show whether a technique is on |
 | UI-013 | P2 | Done | Settings | Obfuscation level dropdown text is truncated |
@@ -66,7 +88,7 @@ UI-022 uses an indeterminate bar. It does not add pipeline progress.
 | UI-021 | P3 | Done | Settings | Choosing a preset silently overwrites Custom settings |
 | UI-022 | P2 | Done | Progress | Progress bar sits at 0% for closed-set and merge runs |
 | UI-023 | P2 | Done | Files | File status icons are monochrome and rows hide the output path |
-| UI-024 | P2 | Reopened | Toolbar | Open output folder is always enabled and its icon is ambiguous |
+| UI-024 | P2 | Re-verify (hybrid) | Toolbar | Open output folder is always enabled and its icon is ambiguous |
 | UI-025 | P3 | Done | Files | File list has no keyboard or bulk actions |
 | UI-026 | P3 | Done | Files | Files can only be dropped on the Files panel |
 | UI-027 | P3 | Done | Files | Typed output directory may be ignored on Ctrl+Enter |
@@ -76,32 +98,32 @@ UI-022 uses an indeterminate bar. It does not add pipeline progress.
 | UI-031 | P3 | Done | Results | Symbol search rebuilds the whole tree on every keystroke |
 | UI-032 | P3 | Done | Results | Preview shows only the last output |
 | UI-033 | P3 | Done | Output | Log is cleared at the start of every run |
-| UI-034 | P3 | Reopened | Output | Log lines cannot be copied individually and never wrap |
+| UI-034 | P3 | Re-verify (hybrid) | Output | Log lines cannot be copied individually and never wrap |
 | UI-035 | P3 | Done | Cleanup | Dead code and unused dependencies |
-| UI-036 | P1 | Open | Output | Log options menu never opens |
-| UI-037 | P1 | Open | Settings | Protection toggle labels overlap their card titles |
-| UI-038 | P1 | Open | Tests | Two UI smoke tests fail |
-| UI-039 | P2 | Open | Settings | Settings outside the presets switch the level to Custom |
-| UI-040 | P2 | Open | Settings | Turning a technique on does not reveal its required options |
-| UI-041 | P2 | Open | Settings | Cards are tall, titles are cut off and toggles are misaligned |
-| UI-042 | P2 | Open | Accessibility | Expander cards have no accessible name |
-| UI-043 | P2 | Open | Layout | Output directory box has no visible label |
-| UI-044 | P2 | Open | Results | Preview decompiles on the UI thread |
-| UI-045 | P2 | Open | Files | Symbol map path is always editable and relative paths go to the working directory |
-| UI-046 | P3 | Open | Settings | Cards expand to an empty body |
-| UI-047 | P3 | Open | Visual | Disabled buttons look emphasised |
-| UI-048 | P3 | Open | Files | File list scrolls sideways instead of trimming paths |
-| UI-049 | P3 | Open | Results | Statistics strip labels are malformed |
-| UI-050 | P3 | Open | Results | Unrenamed types show as a rename to themselves |
-| UI-051 | P3 | Open | Layout | Tabs repeat their own heading and Preview shows the path twice |
-| UI-052 | P3 | Open | Commands | Commands are enabled with nothing to act on |
-| UI-053 | P3 | Open | Files | Merge output name and symbol map folder ignore the include checkbox |
-| UI-054 | P3 | Open | Files | Re-including a skipped solution row loses its reason |
-| UI-055 | P3 | Open | Settings | Choosing Custom again discards exclusions added on a preset |
-| UI-056 | P3 | Open | Results | Symbol parsing and search run on the UI thread and scale badly |
-| UI-057 | P3 | Open | Layout | No splitter between the file list and the tabs |
-| UI-058 | P3 | Open | Files | Drop overlay omits .json and appears during a run |
-| UI-059 | P3 | Open | Results | Results tab has no before-run state |
+| UI-036 | P1 | Closed (rewrite) | Output | Log options menu never opens |
+| UI-037 | P1 | Closed (rewrite) | Settings | Protection toggle labels overlap their card titles |
+| UI-038 | P1 | Closed (rewrite) | Tests | Two UI smoke tests fail |
+| UI-039 | P2 | Fixed (hybrid) | Settings | Settings outside the presets switch the level to Custom |
+| UI-040 | P2 | Fixed (hybrid) | Settings | Turning a technique on does not reveal its required options |
+| UI-041 | P2 | Closed (rewrite) | Settings | Cards are tall, titles are cut off and toggles are misaligned |
+| UI-042 | P2 | Closed (rewrite) | Accessibility | Expander cards have no accessible name |
+| UI-043 | P2 | Closed (rewrite) | Layout | Output directory box has no visible label |
+| UI-044 | P2 | Fixed (hybrid) | Results | Preview decompiles on the UI thread |
+| UI-045 | P2 | Partly fixed (hybrid) | Files | Symbol map path is always editable and relative paths go to the working directory |
+| UI-046 | P3 | Closed (rewrite) | Settings | Cards expand to an empty body |
+| UI-047 | P3 | Closed (rewrite) | Visual | Disabled buttons look emphasised |
+| UI-048 | P3 | Closed (rewrite) | Files | File list scrolls sideways instead of trimming paths |
+| UI-049 | P3 | Closed (rewrite) | Results | Statistics strip labels are malformed |
+| UI-050 | P3 | Fixed (hybrid) | Results | Unrenamed types show as a rename to themselves |
+| UI-051 | P3 | Closed (rewrite) | Layout | Tabs repeat their own heading and Preview shows the path twice |
+| UI-052 | P3 | Fixed (hybrid) | Commands | Commands are enabled with nothing to act on |
+| UI-053 | P3 | Fixed (hybrid) | Files | Merge output name and symbol map folder ignore the include checkbox |
+| UI-054 | P3 | Fixed (hybrid) | Files | Re-including a skipped solution row loses its reason |
+| UI-055 | P3 | Fixed (hybrid) | Settings | Choosing Custom again discards exclusions added on a preset |
+| UI-056 | P3 | Fixed (hybrid) | Results | Symbol parsing and search run on the UI thread and scale badly |
+| UI-057 | P3 | Closed (rewrite) | Layout | No splitter between the file list and the tabs |
+| UI-058 | P3 | Fixed (hybrid) | Files | Drop overlay omits .json and appears during a run |
+| UI-059 | P3 | Fixed (hybrid) | Results | Results tab has no before-run state |
 
 ---
 
@@ -242,7 +264,8 @@ bar.
 
 ### UI-006 — Help text is out of date
 
-- **Status:** Reopened
+- **Status:** Re-verify (hybrid)
+- **Hybrid UI:** The Help dialog is gone; the Guide screen and technique copy (`Src/WebApp/src/content/*.json`) are new, with a contract test for the technique ids. The text has not been re-reviewed against the product.
 - **Reopened (second review, `912ecf6`, Observed):** the content now covers solutions, closed
   sets and skipped rows, but the "Getting started" output paragraph is assembled from
   placeholder constants and reads wrong: "one file is written Next to the input as
@@ -353,7 +376,8 @@ button to the results header and do not show the panel when there are no success
 
 ### UI-010 — Empty-state drop zone is clipped at the minimum size
 
-- **Status:** Reopened
+- **Status:** Re-verify (hybrid)
+- **Hybrid UI:** The WPF empty-state drop zone is gone; the Files screen has a new empty state (`EmptyState.tsx`). Not re-measured at 900x600.
 - **Reopened (second review, `912ecf6`, Observed):** still clipped at 900×600 before a run. The
   icon is cut off at the top and the extensions line at the bottom. The file list row is `*`
   against a `2*` tab area (`Src/Obfy.UI/Views/MainWindow.xaml:155-159`), which leaves the drop
@@ -608,7 +632,8 @@ Explorer, Copy path. Add a tooltip with the full path for trimmed text.
 
 ### UI-024 — Open output folder is always enabled and its icon is ambiguous
 
-- **Status:** Reopened
+- **Status:** Re-verify (hybrid)
+- **Hybrid UI:** The WPF toolbar is gone; `files.openOutput` and the run bar replace it. Whether the action is enabled only when an output exists has not been re-checked.
 - **Reopened (second review, `912ecf6`, Observed):** the command now has a `CanExecute` and a
   distinct Load icon, but nothing re-evaluates it when the output directory changes. With an
   empty box and no run, typing (or browsing to) an existing folder leaves the button disabled
@@ -790,7 +815,8 @@ toggle. The Clear button already covers manual clearing.
 
 ### UI-034 — Log lines cannot be copied individually and never wrap
 
-- **Status:** Reopened
+- **Status:** Re-verify (hybrid)
+- **Hybrid UI:** The WPF output log is gone; the Results Log tab is new (`LogTab.tsx`, `LogLines.tsx`). Per-line copy and wrapping have not been re-checked.
 - **Reopened (second review, `912ecf6`):** copying selected lines is in place (Ctrl+C and a
   context menu; read from code, not exercised). Wrapping is not:
   - *Observed:* the Wrap option cannot be reached at all, because the options menu never opens
@@ -867,7 +893,8 @@ UI-042.
 
 ### UI-036 — Log options menu never opens
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** Moot. The WPF log options menu is gone; the Results screen has a Log tab (`features/results/LogTab.tsx`).
 - **Priority:** P1 · **Evidence:** Observed (not clicked by hand — see below)
 - **Where:** `Src/Obfy.UI/Views/Controls/OutputPanel.xaml:29-50`,
   `Tests/Obfy.UI.AutomationTests/TestBase.cs:41-59`
@@ -898,7 +925,8 @@ for the toggles passes.
 
 ### UI-037 — Protection toggle labels overlap their card titles
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF protection cards are gone. The Protection screen is a technique list with a detail pane.
 - **Priority:** P1 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:226-229,247-249,262-267,297-299,320-322,335-340`
 
@@ -919,7 +947,8 @@ itself.
 
 ### UI-038 — Two UI smoke tests fail
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** `SmokeTests.cs` and the controls it located are gone. `Tests/Obfy.UI.AutomationTests` now has one FlaUI window smoke and five Playwright-over-WebView2 end-to-end tests (`Category=UI`).
 - **Priority:** P1 · **Evidence:** Observed
 - **Where:** `Tests/Obfy.UI.AutomationTests/SmokeTests.cs:38,104`
 
@@ -944,7 +973,8 @@ merging UI changes. Find out why CI was already red on `7805545` and `60f5caa`.
 
 ### UI-039 — Settings outside the presets switch the level to Custom
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `ProtectionSession` (plan Task 9), with a regression test in `Tests/Obfy.App.Tests/Sessions/ProtectionSessionTests.cs`.
 - **Priority:** P2 · **Evidence:** Observed (runtime profile); Code (the others)
 - **Where:** `Src/Obfy.UI/ViewModels/SettingsViewModel.cs:446-466`,
   `Src/Obfy.UI/ViewModels/SettingsViewModel.Extras.cs:15-40`
@@ -968,7 +998,8 @@ Custom. Covered by unit tests.
 
 ### UI-040 — Turning a technique on does not reveal its required options
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `ProtectionSession` (plan Task 9): the page shows a technique's required options with the technique; regression test in `ProtectionSessionTests`.
 - **Priority:** P2 · **Evidence:** Observed (failing smoke test); status text from code
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:375-402`,
   `Src/Obfy.UI/ViewModels/MainViewModel.cs:121-133`
@@ -989,7 +1020,8 @@ message could also scroll to and focus the field.
 
 ### UI-041 — Cards are tall, titles are cut off and toggles are misaligned
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF cards are gone; the Protection screen lays out a list and a detail pane.
 - **Priority:** P2 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:57-521`
 
@@ -1018,7 +1050,8 @@ in both states, and at least ten cards are visible at 1400×900.
 
 ### UI-042 — Expander cards have no accessible name
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF expander cards are gone. The Protection screen is new markup with named switches. Accessibility on the new page (keyboard, names) has not been re-reviewed by hand.
 - **Priority:** P2 · **Evidence:** Observed (UI Automation tree)
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:57-545,50-55`
 
@@ -1039,7 +1072,8 @@ boxes, set the item container's automation name through `EnumDescriptionConverte
 
 ### UI-043 — Output directory box has no visible label
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF output row is gone. The Files screen has an output card with a visible label.
 - **Priority:** P2 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/MainWindow.xaml:173-178`
 
@@ -1054,7 +1088,8 @@ labelled form of the text box. Keep the placeholder as the hint.
 
 ### UI-044 — Preview decompiles on the UI thread
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `ResultsStore.LoadPreviewAsync` decompiles in `Task.Run` (plan Task 12); the test asserts the decompiler does not run on the calling thread.
 - **Priority:** P2 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:166-217`
 
@@ -1074,7 +1109,8 @@ selection mid-decompile shows the newly selected file.
 
 ### UI-045 — Symbol map path is always editable and relative paths go to the working directory
 
-- **Status:** Open
+- **Status:** Partly fixed (hybrid)
+- **Hybrid UI:** `InputSession` (plan Task 10): the symbol-map path box is shown only while "Write symbol map" is on, `output.setSymbolMap` refuses a path while it is off, and a relative path resolves against the output folder that will be used (`SymbolMapPath_IsEditableOnlyWhileTheOptionIsOn_AndResolvesAgainstTheOutputFolder`). **Not done:** the Browse button. It needs a new `output.pickSymbolMap` endpoint (a save-file dialog on the host, like `output.pickFolder`), which is a tracked follow-up and has not been added. The path is still not saved between sessions.
 - **Priority:** P2 · **Evidence:** Observed (always editable); Code (path resolution)
 - **Where:** `Src/Obfy.UI/Views/MainWindow.xaml:203-216`,
   `Src/Obfy.UI/ViewModels/FilesViewModel.cs:476-488`
@@ -1094,7 +1130,8 @@ location as the placeholder.
 
 ### UI-046 — Cards expand to an empty body
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF expander cards are gone.
 - **Priority:** P3 · **Evidence:** Observed (Incremental cache, Constant encryption)
 - **Where:** `Src/Obfy.UI/Views/Controls/SettingsPanel.xaml:58-68,87-88,217-225,253-261,326-334,344-352,362-373`
 
@@ -1111,7 +1148,8 @@ what turning it on would offer.
 
 ### UI-047 — Disabled buttons look emphasised
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF button styles are gone; the page has its own button styles.
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/App.xaml:13-17`
 
@@ -1127,7 +1165,8 @@ for the border, and lower the content opacity slightly.
 
 ### UI-048 — File list scrolls sideways instead of trimming paths
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF file list is gone; the Files screen has a new table (`FileTable.tsx`).
 - **Priority:** P3 · **Evidence:** Observed (900×600)
 - **Where:** `Src/Obfy.UI/Views/Controls/FilesPanel.xaml:64-73,124-130`
 
@@ -1142,7 +1181,8 @@ paths trim with an ellipsis; the row tooltip already carries the full path.
 
 ### UI-049 — Statistics strip labels are malformed
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF statistics strip is gone; the Results Summary tab is new.
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:59-76`,
   `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:226-264`
@@ -1158,7 +1198,8 @@ metadata chip "Items removed" and show Total as a single value without a chip la
 
 ### UI-050 — Unrenamed types show as a rename to themselves
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `ResultsStore` / `SymbolIndex` (plan Task 12): an unrenamed parent is a container, not a rename; tests in `ResultsStoreTests` ("UI-050").
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:302-308`,
   `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:140-145`
@@ -1176,7 +1217,8 @@ side in the accent colour, which looks like a rename.
 
 ### UI-051 — Tabs repeat their own heading and Preview shows the path twice
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF tabs are gone; Results has Summary, Symbols, Preview and Log tabs.
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/OutputPanel.xaml:26`,
   `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:28`,
@@ -1194,7 +1236,8 @@ tooltip, and remove the second line once a file is selected.
 
 ### UI-052 — Commands are enabled with nothing to act on
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `RunCoordinator` (plan Task 13) exposes each blocker as explicit state with its reason, which the run bar shows; tests in `RunCoordinatorTests` ("UI-052"). The row-menu part is replaced by the new file table, whose actions are enabled only when they apply; re-verify the row actions on the page.
 - **Priority:** P3 · **Evidence:** Observed (Export Map, Clear files); Code (the rest)
 - **Where:** `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:393-410`,
   `Src/Obfy.UI/ViewModels/FilesViewModel.cs:149-153,205-218,252-257`,
@@ -1218,7 +1261,8 @@ a log entry or an output. Split the menu item into "Copy input path" and "Copy o
 
 ### UI-053 — Merge output name and symbol map folder ignore the include checkbox
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `InputSession` (plan Task 10) and `RunCoordinator` (plan Task 13): the output name, symbol-map location, mode hint and the run follow the included files by one rule; tests in `InputSessionTests` and `RunCoordinatorTests` ("UI-053").
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/ViewModels/FilesViewModel.cs:476-500`,
   `Src/Obfy.UI/ViewModels/MainViewModel.cs:143-154,550-553`
@@ -1243,7 +1287,8 @@ first row.
 
 ### UI-054 — Re-including a skipped solution row loses its reason
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `InputSession` (plan Task 10): a skipped row keeps the reason the analysis gave it when re-excluded; test in `InputSessionTests` ("UI-054").
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/Models/AssemblyFile.cs:79-99`,
   `Src/Obfy.UI/ViewModels/MainViewModel.cs:579-584`
@@ -1262,7 +1307,8 @@ the checkbox on rows that cannot be included and show why.
 
 ### UI-055 — Choosing Custom again discards exclusions added on a preset
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `ProtectionSession` (plan Task 9): choosing Custom again keeps the exclusions added on a preset; regression test in `ProtectionSessionTests`.
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/ViewModels/SettingsViewModel.cs:338-357,655,673`
 
@@ -1281,7 +1327,8 @@ UI-039), and leave lists, watermark, signing and profile alone.
 
 ### UI-056 — Symbol parsing and search run on the UI thread and scale badly
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `ResultsStore` / `SymbolIndex` (plan Task 12): symbols are indexed and searched off the calling thread and served in pages; tests in `ResultsStoreTests` ("UI-056").
 - **Priority:** P3 · **Evidence:** Code (not measured)
 - **Where:** `Src/Obfy.Core/Models/SymbolMapKey.cs:33-66`,
   `Src/Obfy.UI/ViewModels/ResultsViewModel.cs:98-109,276-375`
@@ -1304,7 +1351,8 @@ swap it in once. Measure with a 50,000-entry map before and after.
 
 ### UI-057 — No splitter between the file list and the tabs
 
-- **Status:** Open
+- **Status:** Closed (rewrite)
+- **Hybrid UI:** The WPF layout is gone; the Results screen has its own layout.
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/Views/MainWindow.xaml:154-159`
 
@@ -1319,7 +1367,8 @@ the list more room, and one reading a long log cannot shrink it.
 
 ### UI-058 — Drop overlay omits .json and appears during a run
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `InputSession` (plan Task 10): `.json` is a drop type and a configuration loads instead of being added as an input; test in `InputSessionTests` ("UI-058"). The drop overlay itself is gone with WPF; re-verify drops during a run on the page.
 - **Priority:** P3 · **Evidence:** Code
 - **Where:** `Src/Obfy.UI/Help/HelpCatalog.cs:12-13`,
   `Src/Obfy.UI/Views/MainWindow.xaml.cs:28-67`,
@@ -1343,7 +1392,8 @@ progress, load only the last configuration dropped, and remove the panel-level h
 
 ### UI-059 — Results tab has no before-run state
 
-- **Status:** Open
+- **Status:** Fixed (hybrid)
+- **Hybrid UI:** `ResultsStore` (plan Task 12): an explicit before-run state; test in `ResultsStoreTests` ("UI-059"), and `RunningView.tsx` / the Results screen show it.
 - **Priority:** P3 · **Evidence:** Observed
 - **Where:** `Src/Obfy.UI/Views/Controls/ResultsPanel.xaml:28-33,84-98`
 

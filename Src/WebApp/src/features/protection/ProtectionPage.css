@@ -1,0 +1,87 @@
+/* The Protection screen, lifted from the approved mockup (Protection). Colours come from the tokens in index.css. */
+
+.protection-page { display: flex; flex-direction: column; }
+
+/* ---- Header ---- */
+.phead { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.cfg { display: flex; align-items: center; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.chip.saved::before { background: var(--ok); }
+.chip b { font-family: var(--font-mono); font-weight: 400; color: var(--strong); font-size: 12px; }
+.sec { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 18px 0 8px; }
+
+/* ---- Level cards ---- */
+.levels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.lvl { text-align: left; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
+.lvl:hover { background: color-mix(in srgb, var(--accent) 4%, var(--card)); }
+.lvl[aria-checked="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--card)); box-shadow: inset 0 0 0 1px var(--accent); }
+.lvl .t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; color: var(--strong); }
+.lvl .d { font-size: 12px; color: var(--muted); flex: 1; }
+.meters { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--hair); }
+
+/* ---- Target runtime ---- */
+.rtrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 16px; }
+.rtrow label { font-size: 13px; font-weight: 600; color: var(--strong); }
+
+/* ---- Techniques: the list ---- */
+.split { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; height: 600px; }
+.mlist { display: flex; flex-direction: column; min-height: 0; background: var(--card); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.mlist .find { padding: 10px; border-bottom: 1px solid var(--hair); }
+.mlist .find .field { width: 100%; }
+.mscroll { flex: 1; overflow-y: auto; min-height: 0; padding-bottom: 8px; scrollbar-color: var(--track) transparent; }
+.mscroll ul { list-style: none; }
+.mscroll .label { padding: 14px 12px 4px; }
+.trow { display: flex; align-items: flex-start; gap: 10px; padding: 0 8px 0 12px; margin: 0 4px; border-radius: 6px; }
+.trow .sw { margin-top: 9px; }
+.trow .swgap { width: 32px; flex: none; }
+.trow.sel { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.trow:not(.sel):hover { background: var(--hover); }
+.tmain { flex: 1; min-width: 0; padding: 6px 0; text-align: left; background: none; border: 0; color: inherit; border-radius: 4px; }
+.tmain:focus-visible { outline-offset: 1px; }
+.tmain .n { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 13px; font-weight: 600; color: var(--strong); }
+.tmain .s { display: block; font-size: 12px; color: var(--muted); line-height: 1.35; }
+.trow.na .tmain .n { color: var(--muted); }
+.empty-find { padding: 20px 14px; font-size: 13px; color: var(--muted); }
+
+/* ---- Techniques: the detail ---- */
+.detail { min-height: 0; overflow-y: auto; padding: 18px 20px 22px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; scrollbar-color: var(--track) transparent; }
+.dhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dhead h2 { font-size: 16px; font-weight: 600; color: var(--strong); }
+.dhead label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.dsum { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.dsec { margin-top: 18px; }
+.dsec > .label { margin-bottom: 6px; }
+.dsec p { font-size: 13px; max-width: 68ch; }
+.dsec ul { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; max-width: 68ch; }
+.secnote { margin-top: 10px; max-width: 68ch; }
+.guide-link { margin-top: 18px; }
+.guide-link .linkbtn { padding-left: 0; }
+.unavail { padding: 10px 12px; font-size: 13px; color: var(--text); background: var(--hover); border: 1px solid var(--border); border-radius: 6px; }
+
+/* ---- Options: each with its help always shown beneath ---- */
+.opts { display: flex; flex-direction: column; border: 1px solid var(--hair); border-radius: 6px; }
+.opt { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; }
+.opt + .opt { border-top: 1px solid var(--hair); }
+.opt > .lab { font-size: 13px; font-weight: 600; color: var(--strong); }
+.opt .ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.opt .ctl label, .opt .cgrid label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.opt .help { max-width: 62ch; }
+.opt .err { font-size: 12px; font-weight: 600; color: var(--err); }
+.opt input.num { width: 90px; }
+.opt input.field.mono:not(.num) { width: 280px; max-width: 100%; }
+.opt textarea.field { width: 100%; max-width: 460px; resize: vertical; }
+.opt .rowfield { display: flex; gap: 8px; }
+.opt .rowfield .field { flex: 1; max-width: 460px; }
+.cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 14px; }
+
+/* ---- Before and after ---- */
+.ba { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ba div { padding: 8px 10px; background: var(--code); border: 1px solid var(--hair); border-radius: 6px; min-width: 0; }
+.ba span { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ba code { display: block; font: 12.5px/1.5 var(--font-mono); color: var(--strong); overflow-x: auto; white-space: pre; }
+.ba div.after code { color: var(--accent); }
+
+@media (forced-colors: active) {
+  .lvl[aria-checked="true"], .trow.sel { outline: 2px solid Highlight; }
+}

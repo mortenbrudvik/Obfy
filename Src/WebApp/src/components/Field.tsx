@@ -14,11 +14,13 @@ interface FieldProps {
   help?: string;
   /** What is wrong with the value; the control is marked invalid. */
   error?: string | null;
+  /** The value must be given: "(required)" follows the label. */
+  required?: boolean;
   children: (control: FieldControlProps) => ReactNode;
 }
 
 /** A labelled control with its help text always shown beneath it. */
-export default function Field({ label, help, error, children }: FieldProps) {
+export default function Field({ label, help, error, required, children }: FieldProps) {
   const id = useId();
   const helpId = `${id}-help`;
   const errorId = `${id}-error`;
@@ -26,7 +28,10 @@ export default function Field({ label, help, error, children }: FieldProps) {
 
   return (
     <div className="fl">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id}>
+        {label}
+        {required && <span className="help"> (required)</span>}
+      </label>
       {children({ id, "aria-describedby": describedBy, ...(error ? { "aria-invalid": true as const } : {}) })}
       {help && (
         <p className="help" id={helpId}>

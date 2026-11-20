@@ -35,6 +35,9 @@ input[type="range"] { accent-color: var(--accent); width: 100%; max-width: 320px
 .seg button + button { border-left: 1px solid var(--border); }
 .seg button[aria-pressed="true"] { color: var(--strong); background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 600; }
 
+/* Text for a screen reader only (a label that the design leaves out). */
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 .title { font-size: 20px; font-weight: 600; color: var(--strong); text-wrap: balance; }
 .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }

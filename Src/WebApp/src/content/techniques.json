@@ -1,0 +1,496 @@
+{
+  "groups": ["Names", "Data", "Code", "Runtime checks", "Packaging", "Housekeeping", "Scope"],
+
+  "runtimeProfiles": {
+    "Default": ".NET (desktop or server)",
+    "NativeAot": "NativeAOT",
+    "UnityIl2Cpp": "Unity IL2CPP",
+    "BlazorWasm": "Blazor WebAssembly"
+  },
+
+  "choiceSets": {
+    "algorithm": {
+      "source": "algorithms",
+      "values": {
+        "Xor": { "label": "XOR", "help": "Fastest. Easy to undo for someone who looks." },
+        "Aes256": { "label": "AES-256", "help": "More work to undo, and slower at run time." }
+      }
+    },
+    "controlFlowMode": {
+      "source": "controlFlowModes",
+      "values": {
+        "Switch": { "label": "Switch flattening", "help": "Splits each method into blocks that a dispatcher runs in a shuffled order." },
+        "OpaquePredicate": { "label": "Opaque conditions", "help": "Adds checks whose outcome is fixed but not obvious to a reader." },
+        "Combined": { "label": "Combined", "help": "Applies both. The hardest to read, and the biggest cost." }
+      }
+    },
+    "namingMode": {
+      "source": "namingModes",
+      "values": {
+        "Unreadable": { "label": "Unreadable", "help": "Look-alike or non-printing characters. Hard to read and to retype." },
+        "Sequential": { "label": "Sequential", "help": "Short names in order, such as a, b, c. Small output and easy to follow in a symbol map." },
+        "Hash": { "label": "Hash", "help": "Names made from a hash of the original, so the same name gets the same result on every build." },
+        "Random": { "label": "Random", "help": "Random letters and digits that change on every build." }
+      }
+    },
+    "packingRid": {
+      "source": "packingRids",
+      "values": {
+        "win-x64": { "label": "Native (win-x64)", "help": "A native launcher replaces the managed file. Needs the .NET runtime installed on the target machine." },
+        "portable": { "label": "Portable", "help": "Keeps a managed launcher next to the output, so the result runs wherever .NET runs." }
+      }
+    }
+  },
+
+  "techniques": {
+    "symbolRenaming": {
+      "group": "Names",
+      "name": "Symbol renaming",
+      "summary": "Replaces type, member and namespace names",
+      "what": "Replaces the names of types, methods, fields, properties, events and namespaces with names that carry no meaning. Your code behaves exactly as before, but a reader of the output sees a.c instead of OrderService.CalculateTotal. Every level starts from this protection.",
+      "good": [
+        "It can break code that looks names up as text: reflection, serialization and XAML bindings.",
+        "Keep the symbol map. You need it to read stack traces from the protected build.",
+        "Public names are renamed too, unless you preserve the public API."
+      ],
+      "beforeAfter": { "before": "OrderService.CalculateTotal(Order order)", "after": "a.c(b A_0)" },
+      "guideTopic": "tech",
+      "options": [
+        { "key": "mode", "type": "select", "label": "Naming style", "choiceSet": "namingMode" },
+        {
+          "key": "rename", "type": "group", "label": "Rename these",
+          "help": "Turn off a kind to leave those names as they are.",
+          "members": [
+            { "key": "renameTypes", "label": "Types" },
+            { "key": "renameMethods", "label": "Methods" },
+            { "key": "renameFields", "label": "Fields" },
+            { "key": "renameProperties", "label": "Properties" },
+            { "key": "renameEvents", "label": "Events" },
+            { "key": "renameParameters", "label": "Parameters" },
+            { "key": "renameNamespaces", "label": "Namespaces" }
+          ]
+        },
+        {
+          "key": "preservePublicApi", "type": "check", "label": "Preserve public API",
+          "help": "Leave public names alone. Turn this on for libraries other code compiles against."
+        },
+        {
+          "key": "preserveXaml", "type": "check", "label": "Preserve XAML bindings",
+          "help": "Keeps names that XAML files refer to by text, so bindings and resource keys still resolve."
+        }
+      ]
+    },
+
+    "stringEncryption": {
+      "group": "Data",
+      "name": "String encoding",
+      "summary": "Hides string literals",
+      "what": "Replaces each string literal with a call that decodes it when the program runs. The text no longer appears in the file, so a quick search through the binary finds nothing readable.",
+      "good": ["A small start-up and memory cost, because strings are decoded as they are used."],
+      "securityNote": {
+        "title": "This hides strings from casual inspection; it is not confidentiality.",
+        "text": "The key ships inside the assembly, so a determined person can recover the text. Never embed real secrets such as keys or passwords."
+      },
+      "beforeAfter": { "before": "\"Order not found\"", "after": "c.a(1482)" },
+      "guideTopic": "tech",
+      "options": [
+        { "key": "algorithm", "type": "select", "label": "Algorithm", "choiceSet": "algorithm" },
+        {
+          "key": "minStringLength", "type": "number", "label": "Minimum length", "min": 1, "max": 100, "unit": "characters",
+          "help": "Shorter strings are left as they are."
+        }
+      ]
+    },
+
+    "constantEncryption": {
+      "group": "Data",
+      "name": "Constant encoding",
+      "summary": "Hides numeric constants",
+      "what": "Replaces numeric constants in your code with expressions that are worked out when the program runs.",
+      "good": [
+        "Constants in hot loops are worked out every time, so those loops run slower.",
+        "Very common values such as 0, 1 and -1 are skipped by default, since hiding them costs more than it protects."
+      ],
+      "securityNote": {
+        "title": "This hides numbers from casual inspection; it is not confidentiality.",
+        "text": "The key ships inside the assembly, so a determined person can recover the values. Never embed real secrets such as keys or passwords."
+      },
+      "guideTopic": "tech",
+      "options": [
+        { "key": "algorithm", "type": "select", "label": "Algorithm", "choiceSet": "algorithm" },
+        {
+          "key": "kinds", "type": "group", "label": "Hide these kinds",
+          "help": "Turn off a kind to leave those constants as they are.",
+          "members": [
+            { "key": "encryptIntegers", "label": "Integers" },
+            { "key": "encryptLongs", "label": "Long integers" },
+            { "key": "encryptFloats", "label": "Floats" },
+            { "key": "encryptDoubles", "label": "Doubles" }
+          ]
+        },
+        {
+          "key": "integerThreshold", "type": "number", "label": "Integer threshold", "min": 0, "max": 1000,
+          "help": "Integers whose size is below this are left as they are. The default of 2 skips -1, 0 and 1."
+        },
+        {
+          "key": "skipCommonFloats", "type": "check", "label": "Skip common float values",
+          "help": "Leaves 0.0f, 1.0f and -1.0f as they are."
+        },
+        {
+          "key": "skipCommonDoubles", "type": "check", "label": "Skip common double values",
+          "help": "Leaves 0.0, 1.0 and -1.0 as they are."
+        }
+      ]
+    },
+
+    "resourceEncryption": {
+      "group": "Data",
+      "name": "Resource encoding",
+      "summary": "Hides embedded resources",
+      "what": "Encodes embedded resources such as images and text files, and decodes them on first use.",
+      "good": [
+        "Large resources take longer to load the first time they are used.",
+        "Tools that read resources straight from the file, without running your program, will no longer find them."
+      ],
+      "securityNote": {
+        "title": "This hides resources from casual inspection; it is not confidentiality.",
+        "text": "The key ships inside the assembly, so a determined person can recover the content. Never embed real secrets such as keys or passwords."
+      },
+      "guideTopic": "tech",
+      "options": [{ "key": "algorithm", "type": "select", "label": "Algorithm", "choiceSet": "algorithm" }]
+    },
+
+    "controlFlow": {
+      "group": "Code",
+      "name": "Control flow",
+      "summary": "Rearranges method bodies so they are hard to read",
+      "what": "Rewrites the structure of each method so that its steps no longer read top to bottom. The method still does the same work, but a decompiler shows a loop around a large switch instead of the logic you wrote.",
+      "good": [
+        "Slower in hot loops, since every step goes through the dispatcher.",
+        "The output file is larger.",
+        "Stack traces are harder to read. Keep the symbol map."
+      ],
+      "beforeAfter": {
+        "before": "if (total > limit) Reject();\nSave(order);",
+        "after": "int s = 3;\nwhile (s != 0) switch (s) {\n  case 3: s = total > limit ? 1 : 2; break;\n  case 1: Reject(); s = 2; break;\n  case 2: Save(order); s = 0; break;\n}"
+      },
+      "guideTopic": "tech",
+      "options": [
+        { "key": "mode", "type": "select", "label": "Mode", "choiceSet": "controlFlowMode" },
+        {
+          "key": "intensity", "type": "range", "label": "Intensity", "min": 0, "max": 100,
+          "help": "How much of each method is rearranged. Higher is harder to read and slower."
+        }
+      ]
+    },
+
+    "referenceProxy": {
+      "group": "Code",
+      "name": "Reference proxy",
+      "summary": "Routes calls through generated helper methods",
+      "what": "Replaces direct calls with calls to generated helper methods, which hides which method calls which.",
+      "good": [
+        "Adds one extra call to every proxied call.",
+        "Calls into your own code are proxied by default. Calls into other libraries are an option."
+      ],
+      "guideTopic": "tech",
+      "options": [
+        {
+          "key": "proxyExternalCalls", "type": "check", "label": "Proxy calls to other libraries",
+          "help": "Also hides calls into the .NET libraries and third-party code. Turning this on turns the reference proxy on too."
+        }
+      ]
+    },
+
+    "methodEncryption": {
+      "group": "Code",
+      "name": "Method body encoding",
+      "summary": "Stores method bodies encoded in the file",
+      "what": "Keeps method bodies encoded in the file and decodes each one just before it first runs.",
+      "good": [
+        "Windows only. The protected file will not work with this on other systems.",
+        "Each method has its own key. Generic methods are left as they are.",
+        "Not available for NativeAOT, Unity IL2CPP or Blazor WebAssembly."
+      ],
+      "securityNote": {
+        "title": "This hides code from casual inspection; it is not confidentiality.",
+        "text": "The key ships inside the assembly, so a determined person can recover the code. Never rely on it to protect a secret."
+      },
+      "windowsOnly": true,
+      "guideTopic": "tech",
+      "options": []
+    },
+
+    "virtualization": {
+      "group": "Code",
+      "name": "Virtualization",
+      "summary": "Runs selected methods in a small interpreter",
+      "what": "Translates chosen methods into instructions for a small interpreter that ships with the output.",
+      "good": [
+        "Only some methods can be translated. Methods with exception handling, generics, by-reference parameters or constructors are left as they are.",
+        "Translated methods run slower. Use it on a few sensitive methods, not on hot paths.",
+        "It is off at every level. Turning it on moves you to Custom.",
+        "A deterrent that raises the effort for a reader. It does not keep anything confidential."
+      ],
+      "guideTopic": "tech",
+      "options": []
+    },
+
+    "antiDebug": {
+      "group": "Runtime checks",
+      "name": "Debugger check",
+      "summary": "Notices an attached debugger",
+      "what": "Adds a check that notices a debugger attached to the running program.",
+      "good": [
+        "Your own debugger will trip it too. Test the protected build without one attached.",
+        "On NativeAOT, Unity IL2CPP and Blazor WebAssembly the check still works, without the Windows-only part."
+      ],
+      "guideTopic": "tech",
+      "options": []
+    },
+
+    "antiTamper": {
+      "group": "Runtime checks",
+      "name": "Integrity check",
+      "summary": "Verifies the file has not been modified",
+      "what": "Adds a check at start-up that the file has not been changed since it was protected.",
+      "good": [
+        "Changing the protected file afterwards, for example by patching it, makes the check fail.",
+        "The check runs at the points you choose below."
+      ],
+      "guideTopic": "tech",
+      "options": [
+        {
+          "key": "checkEntryPoint", "type": "check", "label": "Check at the entry point",
+          "help": "Verifies the file when the program's main method starts."
+        },
+        {
+          "key": "checkModuleInitializer", "type": "check", "label": "Check at module start-up",
+          "help": "Verifies the file as soon as the assembly loads, before any of your code runs. Works for libraries too."
+        }
+      ]
+    },
+
+    "antiDump": {
+      "group": "Runtime checks",
+      "name": "Memory image guard",
+      "summary": "Makes in-process memory snapshots less useful",
+      "what": "Clears header information from memory so a snapshot of the running process is harder to analyse. It also disables the dump function inside your own process.",
+      "good": [
+        "Windows only, on x86 and x64.",
+        "Tools that dump the process from outside are not affected.",
+        "Not available for NativeAOT, Unity IL2CPP or Blazor WebAssembly."
+      ],
+      "windowsOnly": true,
+      "guideTopic": "tech",
+      "options": []
+    },
+
+    "antiDecompiler": {
+      "group": "Runtime checks",
+      "name": "Decompiler resistance",
+      "summary": "Adds decoy types that clutter decompiler output",
+      "what": "Adds decoy types and methods that make decompiler output longer and harder to follow.",
+      "good": [
+        "The output file grows with every decoy you add.",
+        "Decoys do not stop a determined reader. They add noise.",
+        "The decoy attributes make name-based detectors report another tool. They do not block tools that undo obfuscation."
+      ],
+      "guideTopic": "tech",
+      "options": [
+        {
+          "key": "injectJunkTypes", "type": "check", "label": "Add decoy types and methods",
+          "help": "Adds types and methods that do nothing, so real code is harder to find."
+        },
+        {
+          "key": "junkTypeCount", "type": "number", "label": "Decoy types", "min": 1, "max": 50,
+          "help": "How many decoy types to add."
+        },
+        {
+          "key": "junkMethodsPerType", "type": "number", "label": "Decoy methods per type", "min": 1, "max": 20,
+          "help": "How many decoy methods to put in each decoy type."
+        },
+        {
+          "key": "addSuppressIldasmAttribute", "type": "check", "label": "Mark as not for disassembly",
+          "help": "Adds the attribute that asks IL disassemblers not to open the file. Current tools ignore it."
+        },
+        {
+          "key": "addDecoyAttributes", "type": "check", "label": "Add look-alike tool attributes",
+          "help": "Adds attributes that other obfuscators leave behind, to mislead tools that detect which obfuscator was used."
+        }
+      ]
+    },
+
+    "assemblyMerge": {
+      "group": "Packaging",
+      "name": "Merge assemblies",
+      "summary": "Combines the inputs into one file",
+      "what": "Combines all included assemblies into one file.",
+      "good": [
+        "Needs two or more included assemblies.",
+        "With no output folder set, the result is written next to the first input."
+      ],
+      "guideTopic": "files",
+      "options": [
+        {
+          "key": "internalize", "type": "check", "label": "Make merged types internal",
+          "help": "Hides the merged types from other code. Turn this off if other code must still use them."
+        }
+      ]
+    },
+
+    "dependencyEmbedding": {
+      "group": "Packaging",
+      "name": "Embed dependencies",
+      "summary": "Packs referenced DLLs inside the output",
+      "what": "Packs the DLLs your program references into the output and loads them from there.",
+      "good": [
+        "Only DLLs that sit next to the input and that the input refers to are packed.",
+        "Not available for NativeAOT, Unity IL2CPP or Blazor WebAssembly."
+      ],
+      "guideTopic": "tech",
+      "options": [
+        {
+          "key": "includePatterns", "type": "list", "label": "Include", "placeholder": "*.dll",
+          "help": "File names to pack, one pattern per line. * matches any characters."
+        },
+        {
+          "key": "excludePatterns", "type": "list", "label": "Exclude", "placeholder": "*.resources.dll",
+          "help": "File names to leave out, one pattern per line. These win over the include list."
+        }
+      ]
+    },
+
+    "packing": {
+      "group": "Packaging",
+      "name": "Native packing",
+      "summary": "Wraps the result in a native launcher",
+      "what": "Replaces the managed file with a small native launcher that starts your program.",
+      "good": [
+        "Needs an input with an entry point, so it suits applications, not libraries.",
+        "The result still needs the .NET runtime on the machine. It is not self-contained and not compiled ahead of time.",
+        "It is off at every level. Turning it on moves you to Custom."
+      ],
+      "guideTopic": "tech",
+      "options": [
+        { "key": "rid", "type": "select", "label": "Target", "choiceSet": "packingRid" }
+      ]
+    },
+
+    "signing": {
+      "group": "Packaging",
+      "name": "Strong-name signing",
+      "summary": "Signs the output with your key file",
+      "what": "Signs the protected output with the key file you choose.",
+      "good": [
+        "Use an .snk, .pfx or .p12 file.",
+        "A .pfx or .p12 file needs the name of an environment variable that holds its password. The password itself is never stored in the settings."
+      ],
+      "guideTopic": "tech",
+      "options": [
+        {
+          "key": "keyFile", "type": "file", "label": "Key file", "placeholder": "C:\\keys\\company.snk", "required": true,
+          "help": "The .snk, .pfx or .p12 file to sign with."
+        },
+        {
+          "key": "passwordEnvironmentVariable", "type": "text", "label": "Password variable", "placeholder": "for example: OBFY_KEY_PASSWORD",
+          "help": "The name of an environment variable that holds the password. Needed for .pfx and .p12 files, not for .snk."
+        }
+      ]
+    },
+
+    "metadataRemoval": {
+      "group": "Housekeeping",
+      "name": "Metadata removal",
+      "summary": "Strips debug information and attributes",
+      "what": "Removes debug information and attributes the program does not need at run time.",
+      "good": [
+        "Without debug information a protected build cannot be debugged line by line.",
+        "Code that reads its own attributes by reflection can stop working when attributes are removed.",
+        "This protection is on while any of its options is on."
+      ],
+      "switch": {
+        "on": ["removeDebugInfo", "removeAttributes"],
+        "off": ["removeDebugInfo", "removeAttributes", "stripDocumentation"]
+      },
+      "guideTopic": "tech",
+      "options": [
+        { "key": "removeDebugInfo", "type": "check", "label": "Remove debug information", "help": "Drops the references to the .pdb file." },
+        { "key": "removeAttributes", "type": "check", "label": "Remove attributes", "help": "Drops custom attributes that the program does not need at run time." },
+        { "key": "stripDocumentation", "type": "check", "label": "Remove documentation", "help": "Drops the XML documentation." }
+      ]
+    },
+
+    "watermark": {
+      "group": "Housekeeping",
+      "name": "Watermark",
+      "summary": "Stamps a customer or build id into the output",
+      "what": "Stamps an id of your choice into the output assembly, so you can tell which customer or build a copy came from. The stamp is stored as an attribute that renaming and metadata removal leave alone.",
+      "good": [
+        "Anyone who inspects the assembly can read the id. Do not put anything private in it.",
+        "One id per customer means one build per customer.",
+        "It does not stop copying. It lets you trace a copy."
+      ],
+      "guideTopic": "tech",
+      "options": [
+        {
+          "key": "id", "type": "text", "label": "Id", "required": true, "placeholder": "for example: acme-2025-03",
+          "help": "A customer name or build number. Anyone who inspects the assembly can read it."
+        }
+      ]
+    },
+
+    "incremental": {
+      "group": "Housekeeping",
+      "name": "Incremental cache",
+      "summary": "Skips inputs that have not changed",
+      "what": "Remembers the result for each input and skips inputs that have not changed since the last run.",
+      "good": [
+        "An input counts as changed when its bytes, the settings or the Obfy version change.",
+        "It is off at every level. Turning it on moves you to Custom.",
+        "A cache file that is locked or damaged is treated as no cache."
+      ],
+      "guideTopic": "tech",
+      "options": []
+    }
+  },
+
+  "scope": {
+    "group": "Scope",
+    "name": "Inclusions and exclusions",
+    "summary": "Choose what is left alone",
+    "what": "Rules decide which types and members protection leaves alone, and optionally which ones it is limited to.",
+    "good": [
+      "Patterns match short names. * matches any characters.",
+      "A name that matches an exclusion is always left alone.",
+      "Leave the inclusions empty to protect everything that is not excluded."
+    ],
+    "guideTopic": "tech",
+    "lists": [
+      {
+        "set": "exclusions", "key": "namespaces", "label": "Leave these namespaces alone", "placeholder": "MyApp.Generated",
+        "help": "One pattern per line. Generated code that other tools refer to by name is a good fit."
+      },
+      {
+        "set": "exclusions", "key": "types", "label": "Leave these types alone", "placeholder": "MyApp.Models.*",
+        "help": "One pattern per line. Keeps names of the data types your API sends over the wire."
+      },
+      {
+        "set": "exclusions", "key": "methods", "label": "Leave these methods alone", "placeholder": "OnPropertyChanged",
+        "help": "One pattern per line. Keeps method names that are looked up as text."
+      },
+      {
+        "set": "inclusions", "key": "namespaces", "label": "Only these namespaces", "placeholder": "MyApp.Secrets",
+        "help": "One pattern per line. When any inclusion is listed, only matching names are protected."
+      },
+      {
+        "set": "inclusions", "key": "types", "label": "Only these types", "placeholder": "MyApp.Licensing.*",
+        "help": "One pattern per line. A type matches when its namespace or its name matches."
+      },
+      {
+        "set": "inclusions", "key": "methods", "label": "Only these methods", "placeholder": "Validate*",
+        "help": "One pattern per line. A method matches when its name matches."
+      }
+    ]
+  }
+}

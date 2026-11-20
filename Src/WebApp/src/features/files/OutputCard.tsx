@@ -1,6 +1,7 @@
-import { useState, type KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
 import Field from "../../components/Field";
 import Toggle from "../../components/Toggle";
+import { useDraft } from "../../hooks/useDraft";
 import { strings } from "../../strings";
 import type { InputSnapshot } from "../../types/domain";
 
@@ -11,17 +12,6 @@ interface OutputCardProps {
   onSetOutput: (folder: string) => void;
   onPickFolder: () => void;
   onSetSymbolMap: (change: { enabled?: boolean; path?: string }) => void;
-}
-
-/** A text box the user types in and the host also changes: it follows the host's value, and commits when left. */
-function useDraft(value: string): [string, (draft: string) => void] {
-  const [draft, setDraft] = useState(value);
-  const [seen, setSeen] = useState(value);
-  if (seen !== value) {
-    setSeen(value);
-    setDraft(value);
-  }
-  return [draft, setDraft];
 }
 
 /** Where the output goes, and whether to write the symbol map. */

@@ -85,6 +85,15 @@ export interface InputSnapshot {
 
 // ---- Settings (Obfy.App/Models/SettingsSnapshot.cs). Answers `settings.get`; pushed with `settings.changed`. ----
 
+/** The levels the host knows (ObfuscationLevel); `SettingsSnapshot.level` is one of these. */
+export type ProtectionLevel = "Minimal" | "Standard" | "Aggressive" | "Custom";
+
+/** The runtimes the host knows (RuntimeProfile); `SettingsSnapshot.runtimeProfile` is one of these. */
+export type RuntimeProfileName = "Default" | "NativeAot" | "UnityIl2Cpp" | "BlazorWasm";
+
+/** A change to some settings: `{ "technique.option": value }`, as `settings.update` takes it. Values are bool, number, text or a list of text. */
+export type SettingsPatch = Record<string, boolean | number | string | string[] | null>;
+
 /** One technique or output option (TechniqueState). A patch key is `id.optionName`. */
 export interface TechniqueState {
   id: string;

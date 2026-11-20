@@ -27,4 +27,14 @@ describe("Field", () => {
     expect(input.getAttribute("aria-invalid")).toBe("true");
     expect(screen.getByText("Watermark needs an id.")).toBeTruthy();
   });
+
+  it("marksARequiredField_inItsLabel", () => {
+    render(
+      <Field label="Id" required>
+        {(props) => <input {...props} />}
+      </Field>,
+    );
+
+    expect(screen.getByLabelText("Id (required)")).toBeTruthy();
+  });
 });

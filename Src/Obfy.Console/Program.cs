@@ -433,6 +433,12 @@ public class Program
         var output = parseResult.GetValue(OutputOption);
         var config = parseResult.GetValue(ConfigOption);
         var level = parseResult.GetValue(LevelOption);
+        if (config != null && parseResult.GetResult(LevelOption) is { Implicit: false })
+        {
+            const string ignored = "--level is ignored because --config was given. The config file sets the options.";
+            parseResult.InvocationConfiguration.Output.WriteLine(ignored);
+            AnsiConsole.MarkupLine($"[yellow]{ignored}[/]");
+        }
         var stringEncrypt = parseResult.GetValue(StringEncryptOption);
         var controlFlow = parseResult.GetValue(ControlFlowOption);
         var rename = parseResult.GetValue(RenameOption);

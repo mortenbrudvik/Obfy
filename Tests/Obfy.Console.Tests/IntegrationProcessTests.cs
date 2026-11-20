@@ -110,6 +110,43 @@ public class IntegrationProcessTests : IDisposable
     }
 
     [Fact]
+    public void ConfigAndExplicitLevel_WarnsThatLevelIsIgnored()
+    {
+        var input = ConsoleTestAssembly.Create(_tempDirectory, "LevelIgnored.dll");
+        var config = Path.Combine(_tempDirectory, "level-ignored.json");
+        File.WriteAllText(config, """{"level":"minimal"}""");
+        var outputDir = Path.Combine(_tempDirectory, "level-ignored-out");
+        Directory.CreateDirectory(outputDir);
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            Program.CreateRootCommand(),
+            $"\"{input}\" -c \"{config}\" -l aggressive -o \"{outputDir}\" --dry-run --no-logo",
+            out var output);
+
+        exitCode.ShouldBe(0);
+        output.ShouldContain("--level is ignored because --config was given");
+        File.Exists(Path.Combine(outputDir, "LevelIgnored.dll")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ConfigWithoutExplicitLevel_DoesNotWarn()
+    {
+        var input = ConsoleTestAssembly.Create(_tempDirectory, "LevelDefault.dll");
+        var config = Path.Combine(_tempDirectory, "level-default.json");
+        File.WriteAllText(config, """{"level":"minimal"}""");
+        var outputDir = Path.Combine(_tempDirectory, "level-default-out");
+        Directory.CreateDirectory(outputDir);
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            Program.CreateRootCommand(),
+            $"\"{input}\" -c \"{config}\" -o \"{outputDir}\" --dry-run --no-logo",
+            out var output);
+
+        exitCode.ShouldBe(0);
+        output.ShouldNotContain("--level is ignored");
+    }
+
+    [Fact]
     public async Task Obfuscate_WithDryRun_DoesNotWriteOutput()
     {
         var assemblyPath = ConsoleTestAssembly.Create(_tempDirectory, "DryRunTest.dll");

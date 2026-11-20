@@ -33,7 +33,7 @@ obfy <input>... [options]
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
 | `--output <dir>` | `-o` | Output directory for obfuscated files | Single file: sibling `{name}.obfuscated{ext}`. `--merge` without `-o`: sibling `{name}.merged{ext}`. Solution/project or two+ loose assemblies: `{dir}/obfy-out/` |
-| `--config <file>` | `-c` | Path to JSON configuration file. Technique flags in the file are used as-is; `--level` is ignored when `-c` is set, and `level` inside the file is not re-applied as a preset (`obfy config generate -l …` writes fully resolved flags) | None |
+| `--config <file>` | `-c` | Path to JSON configuration file. Technique flags in the file are used as-is; `--level` is ignored when `-c` is set (a warning is printed), and `level` inside the file is not re-applied as a preset (`obfy config generate -l …` writes fully resolved flags) | None |
 | `--level <level>` | `-l` | Obfuscation level: `minimal`, `standard`, `aggressive`, `custom`. Applied only when `-c` is omitted | `standard` |
 | `--string-encrypt` | | Enable string encryption | Off |
 | `--control-flow` | | Enable control flow obfuscation | Off |

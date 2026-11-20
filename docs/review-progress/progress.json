@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-20T15:05:00Z",
+  "updated": "2026-11-20T15:15:00Z",
   "note": "Assembly-review fixes are on main (cbaa126). This board is the Nov 20 review backlog.",
   "items": [
     {"id": "C1", "section": "Critical", "title": "Constant encryption fails the run on int.MinValue or long.MinValue because Math.Abs throws.", "location": "ConstantEncryptionObfuscator.cs", "status": "fixed"},
@@ -40,7 +40,7 @@
     {"id": "M14", "section": "Minor", "title": "The interpolated-string path ignores exclusion attributes that the plain-literal path honours.", "location": "SourceStringEncryptor.cs", "status": "open"},
     {"id": "M15", "section": "Minor", "title": "config generate --level with an invalid value prints a stack trace.", "location": "Program.cs", "status": "fixed"},
     {"id": "M16", "section": "Minor", "title": "config wizard on redirected stdin prints a stack trace.", "location": "Program.cs", "status": "fixed"},
-    {"id": "M17", "section": "Minor", "title": "--level is silently ignored when --config is given.", "location": "Program.cs", "status": "open"},
+    {"id": "M17", "section": "Minor", "title": "--level is silently ignored when --config is given.", "location": "Program.cs", "status": "fixed"},
     {"id": "M18", "section": "Minor", "title": "--report on a multi-file standard run covers only the first file.", "location": "Program.cs", "status": "open"},
     {"id": "M19", "section": "Minor", "title": "Typing in an exclusion input box flips the selected preset to Custom.", "location": "SettingsViewModel.cs", "status": "open"},
     {"id": "M20", "section": "Minor", "title": "A typed output directory and the symbol-map toggle are saved only at exit.", "location": "App.xaml.cs", "status": "open"},

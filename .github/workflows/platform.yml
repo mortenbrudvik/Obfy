@@ -1,12 +1,43 @@
 name: Platform
 
 on:
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1"
 
 jobs:
+  native-aot:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      with:
+        dotnet-version: "10.0.x"
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --no-restore -c Release
+
+    - name: NativeAOT tests
+      shell: pwsh
+      run: |
+        dotnet test --no-build -c Release --filter "Category=Platform&FullyQualifiedName~NativeAotTests" --nologo --results-directory ./artifacts/native-aot --logger trx
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        ./build/Assert-NoSkippedTests.ps1 -ResultsDirectory ./artifacts/native-aot
+
   platform:
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
@@ -21,7 +52,6 @@ jobs:
         dotnet-version: "10.0.x"
 
     - name: Install MAUI Windows workload
-      continue-on-error: true
       run: dotnet workload install maui-windows
 
     - name: Restore dependencies
@@ -31,6 +61,8 @@ jobs:
       run: dotnet build --no-restore -c Release
 
     - name: Platform tests
-      run: dotnet test --no-build -c Release --filter "Category=Platform" --nologo
-      # Blazor WASM skips at discovery if the BlazorWebAssembly SDK is missing.
-      # NativeAOT always runs. MAUI Windows runs when the workload install above succeeded.
+      shell: pwsh
+      run: |
+        dotnet test --no-build -c Release --filter "Category=Platform" --nologo --results-directory ./artifacts/platform --logger trx
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        ./build/Assert-NoSkippedTests.ps1 -ResultsDirectory ./artifacts/platform

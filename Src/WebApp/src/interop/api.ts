@@ -7,6 +7,7 @@ import type {
   ResultsSnapshot,
   RunSnapshot,
   SettingsSnapshot,
+  SymbolsPage,
 } from "../types/domain";
 import { apiClient } from "./WebViewApiClient";
 
@@ -31,7 +32,7 @@ function call<T>(service: string, method: string, params: object = {}, options?:
 
 /**
  * One typed wrapper per host endpoint (Obfy.Interop/ApiRegistrations.cs), each answering the snapshot the host
- * answers with. A screen's task adds what it needs here: `results.symbols` is not wrapped yet.
+ * answers with.
  */
 export const api = {
   app: {
@@ -73,6 +74,9 @@ export const api = {
 
   results: {
     summary: () => call<ResultsSnapshot>("results", "summary"),
+    /** One window of the symbol tree: the roots, or the children of `parentId`, filtered by `text`. */
+    symbols: (text: string | null, parentId: string | null, offset: number, limit: number) =>
+      call<SymbolsPage>("results", "symbols", { text, parentId, offset, limit }),
     exportMap: () => call<ExportResult>("results", "exportMap", {}, forUser),
     exportReport: () => call<ExportResult>("results", "exportReport", {}, forUser),
   },

@@ -172,6 +172,40 @@ export interface ResultsSnapshot {
   previewError: string | null;
 }
 
+/** What a symbol-map entry names (SymbolKind). */
+export type SymbolKind = "Namespace" | "Type" | "Method" | "Field" | "Property" | "Parameter" | "Event";
+
+/** One row of the symbol-map tree (SymbolNode). Its children are asked for with `id` as `parentId`. */
+export interface SymbolNode {
+  /** Stable until the results are reloaded; the same node keeps its id across searches. */
+  id: string;
+  originalName: string;
+  /** Null for a container, which only groups renamed members and is not a rename: show the name once. */
+  obfuscatedName: string | null;
+  kind: SymbolKind;
+  isContainer: boolean;
+  /** How many children the node has under the current search. */
+  childCount: number;
+  /** A search is active and the node has matching children, so the page opens it. */
+  expanded: boolean;
+}
+
+/** A window of nodes at one level of the tree (SymbolsPage). Answers `results.symbols`. */
+export interface SymbolsPage {
+  /** The global results revision the page was served from. It rises with every results change, so it says nothing about whether the symbols themselves changed. */
+  revision: number;
+  parentId: string | null;
+  /** How many nodes the level has under the search, not just in this window. */
+  total: number;
+  /** Index of the first node of `items` within the level. */
+  offset: number;
+  items: SymbolNode[];
+  /** Entries in the whole map, whatever the search. */
+  totalSymbols: number;
+  hasNoSymbols: boolean;
+  hasNoSearchMatches: boolean;
+}
+
 /** Answers an export (ExportResult): `exported` is false when the user cancelled the save dialog. */
 export interface ExportResult {
   exported: boolean;
@@ -188,6 +222,13 @@ export interface LogLine {
   timestamp: string;
   level: LogLevel;
   message: string;
+}
+
+/** The lines added since the last push, pushed with `log.appended` (LogAppended). */
+export interface LogAppended {
+  /** The log's revision after the last line of the batch. */
+  revision: number;
+  lines: LogLine[];
 }
 
 /** The whole log (LogSnapshot). Answers `log.get` and `log.clear`; pushed with `log.cleared`. */

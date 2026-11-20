@@ -1,0 +1,75 @@
+/* The Results screen, lifted from the approved mockup (Results: running, finished, nothing yet). Colours come from the tokens in index.css. */
+
+.results-page { display: flex; flex-direction: column; }
+.rhead { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.rhead .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.saved { margin-top: 8px; }
+.results-page > .note, .results-page > .info { margin-top: 12px; }
+
+/* ---- Summary ---- */
+.groups { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+.tiles-group { min-width: 0; }
+.tiles { display: grid; gap: 10px; margin-top: 8px; }
+.tile { padding: 12px 14px; }
+.tile b { display: block; font-size: 22px; font-weight: 600; color: var(--strong); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.tile span { font-size: 12px; color: var(--muted); }
+.rfiles-label { margin-bottom: 8px; }
+
+/* ---- File list (summary and running) ---- */
+.flist { list-style: none; }
+.flist li { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--hair); font-size: 13px; }
+.flist li:last-child { border-bottom: 0; }
+.flist .grow { flex: 1; min-width: 0; }
+.flist .path { font-size: 12px; color: var(--muted); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ico { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--dim); color: var(--dim); }
+.ico svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2; }
+.ico.done { border-color: var(--ok); background: var(--ok); color: var(--card); }
+.ico.fail { border-color: var(--err); background: var(--err); color: var(--card); }
+.ico.run { border-color: var(--accent); }
+.ico.run::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+/* ---- Symbols ---- */
+.symsearch { margin-bottom: 10px; }
+.symsearch .field { max-width: 360px; }
+.tree { padding: 6px; font-size: 13px; }
+.tree ul { list-style: none; }
+.tnode { display: flex; align-items: baseline; gap: 8px; padding: 3px 8px; border-radius: 4px; width: 100%; background: none; border: 0; text-align: left; }
+button.tnode:hover { background: var(--hover); }
+.tnode .chev { flex: none; width: 12px; color: var(--muted); font-size: 10px; }
+.tnode .kind { flex: none; width: 72px; font-size: 11px; color: var(--dim); }
+.tnode .o { color: var(--text); font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.tnode .arrow { color: var(--dim); }
+.tnode .nn { color: var(--accent); font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; }
+.tree ul ul { margin-left: 22px; border-left: 1px solid var(--hair); }
+.more-symbols { margin: 4px 8px; }
+
+/* ---- Preview ---- */
+.previewbar { flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; }
+.previewlabel { font-weight: 600; color: var(--strong); }
+.code { padding: 14px 16px; font: 12.5px/1.6 var(--font-mono); background: var(--code); border: 1px solid var(--hair); border-radius: 6px; overflow: auto; white-space: pre; color: var(--text); max-height: 400px; }
+
+/* ---- Log ---- */
+.log { padding: 10px 12px; font: 12.5px/1.65 var(--font-mono); background: var(--code); border: 1px solid var(--hair); border-radius: 6px; overflow: auto; }
+.log.tall { max-height: 420px; }
+.log.short { max-height: 230px; }
+.log.nowrap .ll { white-space: pre; }
+.log.wrap .ll { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ll { display: flex; gap: 10px; }
+.ll .ts { flex: none; color: var(--dim); }
+.ll .lv { flex: none; width: 56px; font-weight: 600; }
+.ll .lv.lv-info, .ll .lv.lv-debug { color: var(--muted); }
+.ll .lv.lv-success { color: var(--ok); }
+.ll .lv.lv-warning { color: var(--warn); }
+.ll .lv.lv-error { color: var(--err); }
+.ll .ms { min-width: 0; }
+.sepline { padding: 4px 0; color: var(--dim); text-align: center; letter-spacing: 0.3em; }
+.logbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 10px; }
+.logbar label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+
+/* ---- Nothing yet ---- */
+.nothing { max-width: 420px; margin: 80px auto 0; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.nothing h2 { font-size: 16px; font-weight: 600; color: var(--strong); }
+
+@media (forced-colors: active) {
+  .ico.done, .ico.fail { forced-color-adjust: none; border-color: CanvasText; background: Canvas; color: CanvasText; }
+}

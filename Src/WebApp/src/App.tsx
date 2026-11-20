@@ -1,25 +1,20 @@
 import { useState } from "react";
 import FilesPage from "./features/files/FilesPage";
 import ProtectionPage from "./features/protection/ProtectionPage";
+import ResultsPage from "./features/results/ResultsPage";
 import Shell from "./features/shell/Shell";
 import type { Screen } from "./features/shell/Sidebar";
 
-const placeholders: Record<Exclude<Screen, "files" | "protection">, { title: string; text: string }> = {
-  results: { title: "Results", text: "What the last run did." },
-  guide: { title: "Guide", text: "How Obfy works, and the keyboard shortcuts." },
-};
-
-function Placeholder({ screen }: { screen: Exclude<Screen, "files" | "protection"> }) {
-  const placeholder = placeholders[screen];
+function GuidePlaceholder() {
   return (
     <div className="placeholder-screen">
-      <h1 className="title">{placeholder.title}</h1>
-      <p className="sub">{placeholder.text}</p>
+      <h1 className="title">Guide</h1>
+      <p className="sub">How Obfy works, and the keyboard shortcuts.</p>
     </div>
   );
 }
 
-/** The shell hosting the current screen. Files and Protection are built; the other screens are placeholders until their tasks fill them in. */
+/** The shell hosting the current screen. Files, Protection and Results are built; the Guide is a placeholder until its task fills it in. */
 export default function App() {
   const [screen, setScreen] = useState<Screen>("files");
 
@@ -30,8 +25,10 @@ export default function App() {
       ) : screen === "protection" ? (
         // The Guide opens at its first topic until it takes a topic of its own.
         <ProtectionPage onOpenGuide={() => setScreen("guide")} />
+      ) : screen === "results" ? (
+        <ResultsPage />
       ) : (
-        <Placeholder screen={screen} />
+        <GuidePlaceholder />
       )}
     </Shell>
   );

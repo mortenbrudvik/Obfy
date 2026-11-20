@@ -9,6 +9,8 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Images\app.ico</ApplicationIcon>
     <Version>2.0.0</Version>
+    <!-- Project-relative, so it also works for "dotnet run" and single-project builds, not only solution builds. -->
+    <WebAppDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\WebApp'))</WebAppDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -46,8 +48,64 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Placeholder page for the hybrid shell until the frontend build fills Assets\ (the page the Release shell loads). -->
-    <Content Include="Assets\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Anything that makes the frontend output stale -->
+    <FrontendSource Include="$(WebAppDir)\src\**\*;$(WebAppDir)\build\**\*;$(WebAppDir)\index.html;$(WebAppDir)\vite.config.ts;$(WebAppDir)\tsconfig*.json;$(WebAppDir)\package.json;$(WebAppDir)\package-lock.json" />
   </ItemGroup>
+
+  <!-- There is deliberately no committed Assets\ folder: the page the Release shell loads is the frontend build output,
+       copied to $(TargetDir)Assets\ by CopyFrontend (build) and added by IncludeFrontendInPublish (publish). A committed
+       placeholder would collide with the real index.html at the same publish path. With -p:SkipFrontendBuild=true and no
+       earlier build there is no Assets\ at all, which the Debug shell does not need (it loads the Vite dev server). -->
+
+  <!-- npm ci only when package-lock.json is newer than the last install (npm rewrites node_modules\.package-lock.json
+       on every install). -->
+  <Target Name="NpmInstall"
+          Condition="'$(SkipFrontendBuild)' != 'true'"
+          Inputs="$(WebAppDir)\package-lock.json"
+          Outputs="$(WebAppDir)\node_modules\.package-lock.json">
+    <Exec Command="npm ci" WorkingDirectory="$(WebAppDir)" />
+  </Target>
+
+  <!-- Build the frontend before the .NET build; skipped while its index.html is newer than every input. Debug runs load
+       the UI from the Vite dev server, so scripts\dev.ps1 passes -p:SkipFrontendBuild=true (as do .NET-only builds). -->
+  <Target Name="BuildFrontend" BeforeTargets="Build" DependsOnTargets="NpmInstall"
+          Condition="'$(SkipFrontendBuild)' != 'true'"
+          Inputs="@(FrontendSource)"
+          Outputs="$(WebAppDir)\dist\index.html">
+    <Exec Command="npm run build" WorkingDirectory="$(WebAppDir)" />
+  </Target>
+
+  <!-- Copy the frontend build output next to the executable, where the Release shell maps its virtual host. -->
+  <Target Name="CopyFrontend" AfterTargets="Build">
+    <ItemGroup>
+      <!-- **\* not **\*.* so extensionless files are not silently skipped -->
+      <FrontendFiles Include="$(WebAppDir)\dist\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FrontendFiles)"
+          DestinationFolder="$(TargetDir)Assets\%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- dotnet publish computes its own file set, so the frontend has to be added to it as well. -->
+  <Target Name="IncludeFrontendInPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <_FrontendPublishFiles Include="$(WebAppDir)\dist\**\*" />
+      <ResolvedFileToPublish Include="@(_FrontendPublishFiles)">
+        <RelativePath>Assets\%(_FrontendPublishFiles.RecursiveDir)%(_FrontendPublishFiles.Filename)%(_FrontendPublishFiles.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    <!-- Publishing an app whose UI would be missing at run time fails here, not as a broken install. -->
+    <Error Condition="'@(_FrontendPublishFiles)' == ''"
+           Text="The frontend output is empty at $(WebAppDir)\dist. Publish without -p:SkipFrontendBuild=true, which builds it." />
+  </Target>
+
+  <!-- The WebView2 package ships loaders for x86, x64 and arm64; a win-x64 publish only needs its own. -->
+  <Target Name="RemoveForeignNativeRuntimes" AfterTargets="ComputeFilesToPublish" Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('/', '\').StartsWith('runtimes\')) And !$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Contains('win-x64'))" />
+    </ItemGroup>
+  </Target>
 
 </Project>

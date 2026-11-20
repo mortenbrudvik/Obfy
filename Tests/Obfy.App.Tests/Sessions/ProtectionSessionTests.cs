@@ -936,6 +936,69 @@ public class ProtectionSessionTests
         settings.DependencyEmbedding.ExcludePatterns.ShouldBe(new[] { "Skip.dll" });
     }
 
+    [Theory]
+    [InlineData("packing")]
+    [InlineData("incremental")]
+    [InlineData("virtualization")]
+    public void FromObfySettings_PresetConfigWithAnOptionThePresetsTurnOff_BecomesCustom_SoTheRunHonoursIt(string option)
+    {
+        var settings = new ObfySettings { Level = ObfuscationLevel.Standard };
+        switch (option)
+        {
+            case "packing": settings.Packing.Enabled = true; break;
+            case "incremental": settings.Incremental.Enabled = true; break;
+            default: settings.Virtualization.Enabled = true; break;
+        }
+
+        var session = new ProtectionSession();
+        session.FromObfySettings(settings, @"C:\cfg\obfy.json");
+
+        session.Level.ShouldBe(ObfuscationLevel.Custom);
+        var run = session.ToObfySettings();
+        run.Level.ShouldBe(ObfuscationLevel.Custom);
+        run.Packing.Enabled.ShouldBe(option == "packing");
+        run.Incremental.Enabled.ShouldBe(option == "incremental");
+        run.Virtualization.Enabled.ShouldBe(option == "virtualization");
+        session.GetSnapshot().Dirty.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void FromObfySettings_PresetConfigWithoutThoseOptions_KeepsItsLevel()
+    {
+        var session = new ProtectionSession();
+
+        session.FromObfySettings(new ObfySettings { Level = ObfuscationLevel.Aggressive });
+
+        session.Level.ShouldBe(ObfuscationLevel.Aggressive);
+    }
+
+    [Fact]
+    public void FromObfySettings_PromotedToCustom_RestoresItsChoicesAfterAPreset()
+    {
+        var session = new ProtectionSession();
+        session.FromObfySettings(new ObfySettings { Level = ObfuscationLevel.Standard, Packing = { Enabled = true } });
+
+        session.ApplyLevel(ObfuscationLevel.Minimal);
+        Settings(session).Packing.Enabled.ShouldBeFalse();
+        session.ApplyLevel(ObfuscationLevel.Custom);
+
+        Settings(session).Packing.Enabled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void CustomRestore_KeepsThePackingTargetChosenBeforeEnteringCustom()
+    {
+        var session = new ProtectionSession();
+        session.UpdateSetting("controlFlow.enabled", true); // Custom, remembered with the default rid
+        session.ApplyLevel(ObfuscationLevel.Minimal);
+        session.UpdateSetting("packing.rid", "portable");
+        session.Level.ShouldBe(ObfuscationLevel.Minimal); // the target does not flip the level
+
+        session.ApplyLevel(ObfuscationLevel.Custom);
+
+        Settings(session).Packing.Rid.ShouldBe("portable");
+    }
+
     [Fact]
     public void Watermark_On_EmptyId_ProducesValidationError()
     {

@@ -180,9 +180,18 @@ public sealed class ProtectionSession
         {
             var loaded = settings.Clone();
             Normalize(loaded);
+            var preset = loaded.Level;
+
+            // The engine re-applies a non-Custom level on every run and turns packing, incremental cache and virtualization
+            // off. A file that has one of them on under a preset would lose it silently, so it is Custom, as if the
+            // user had switched it on here.
+            if (preset != ObfuscationLevel.Custom
+                && (loaded.Packing.Enabled || loaded.Incremental.Enabled || loaded.Virtualization.Enabled))
+                loaded.Level = ObfuscationLevel.Custom;
+
             _settings = loaded;
             _customSnapshot = loaded.Level == ObfuscationLevel.Custom ? loaded.Clone() : null;
-            _basePreset = loaded.Level == ObfuscationLevel.Custom ? ObfuscationLevel.Standard : loaded.Level;
+            _basePreset = preset == ObfuscationLevel.Custom ? ObfuscationLevel.Standard : preset;
             _configPath = configPath;
             _dirty = false;
             _revision++;
@@ -264,7 +273,8 @@ public sealed class ProtectionSession
 
     /// <summary>
     /// The remembered choices with the current level-independent options laid over them, so selecting Custom never
-    /// reverts the profile, watermark, signing, packing, merge, embedding, incremental cache or the name lists.
+    /// reverts the profile, watermark, signing, packing target (rid), merge, embedding or the name lists.
+    /// Packing, incremental cache and virtualization are governed, not level-independent: they come back with the snapshot.
     /// </summary>
     private static ObfySettings RestoreCustomChoices(ObfySettings snapshot, ObfySettings current)
     {

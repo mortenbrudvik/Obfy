@@ -253,6 +253,57 @@ public class NativePackerTests
     }
 
     [Fact]
+    public void Pack_WithoutTargetFrameworkAttribute_UsesFrameworkReferenceNotHost()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-native-pack-ref-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe("public static class Program { public static int Main() => 11; }", dir, "RefApp");
+            var stripped = Path.Combine(dir, "RefApp.stripped.exe");
+            using (var module = ModuleDefMD.Load(input))
+            {
+                var assembly = module.Assembly;
+                assembly.ShouldNotBeNull();
+                for (var i = assembly.CustomAttributes.Count - 1; i >= 0; i--)
+                {
+                    if (assembly.CustomAttributes[i].TypeFullName == "System.Runtime.Versioning.TargetFrameworkAttribute")
+                        assembly.CustomAttributes.RemoveAt(i);
+                }
+
+                var updated = false;
+                var names = new List<string>();
+                foreach (var reference in module.GetAssemblyRefs())
+                {
+                    names.Add(reference.Name.String);
+                    if (reference.Name == "System.Runtime" || reference.Name == "System.Private.CoreLib")
+                    {
+                        reference.Version = new Version(8, 0, 0, 0);
+                        updated = true;
+                    }
+                }
+
+                updated.ShouldBeTrue(string.Join(", ", names));
+                module.Write(stripped);
+            }
+
+            var output = Path.Combine(dir, "RefApp.obf.exe");
+            File.Copy(stripped, output);
+            NativePacker.Pack(output, PackingSettings(), stripped);
+
+            var json = File.ReadAllText(NativePacker.RuntimeConfigPathFor(output));
+            json.ShouldContain("\"tfm\": \"net8.0\"");
+            json.ShouldContain("\"version\": \"8.0.0\"");
+            if (Environment.Version.Major != 8)
+                json.ShouldNotContain($"\"tfm\": \"net{Environment.Version.Major}.0\"");
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
     public void LooksLikePackedHost_RejectsManagedPe()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"obfy-native-pack-looks-{Guid.NewGuid():N}");

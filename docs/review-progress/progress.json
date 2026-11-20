@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-20T16:15:00Z",
+  "updated": "2026-11-20T16:30:00Z",
   "note": "Assembly-review fixes are on main (cbaa126). This board is the Nov 20 review backlog.",
   "items": [
     {"id": "C1", "section": "Critical", "title": "Constant encryption fails the run on int.MinValue or long.MinValue because Math.Abs throws.", "location": "ConstantEncryptionObfuscator.cs", "status": "fixed"},
@@ -27,7 +27,7 @@
     {"id": "M1", "section": "Minor", "title": "A closed-set run continues when a member assembly fails to load.", "location": "ClosedSetProcessor.cs", "status": "fixed"},
     {"id": "M2", "section": "Minor", "title": "Settings load falls back to full defaults when saving a corrected value fails.", "location": "SettingsServiceBase.cs", "status": "fixed"},
     {"id": "M3", "section": "Minor", "title": "The packing AES key is the cache digest, stored as plaintext hex in the sidecar.", "location": "IncrementalCache.cs", "status": "open"},
-    {"id": "M4", "section": "Minor", "title": "The packed runtimeconfig can declare a newer framework than the payload targets.", "location": "NativePacker.cs", "status": "open"},
+    {"id": "M4", "section": "Minor", "title": "The packed runtimeconfig can declare a newer framework than the payload targets.", "location": "NativePacker.cs", "status": "fixed"},
     {"id": "M5", "section": "Minor", "title": "AES decrypt helpers have no length guard for input shorter than the IV.", "location": "EncryptionHelper.cs", "status": "fixed"},
     {"id": "M6", "section": "Minor", "title": "ObfuscateBatchAsync renames each assembly independently.", "location": "ObfuscationService.cs", "status": "open"},
     {"id": "M7", "section": "Minor", "title": "The MethodEncryption base-address guard checks 0 but not -1.", "location": "MethodEncryptionObfuscator.cs", "status": "fixed"},

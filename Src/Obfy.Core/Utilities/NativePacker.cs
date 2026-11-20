@@ -230,7 +230,39 @@ public static class NativePacker
             return major;
         if (TryTfmFromRuntimeConfig(Path.ChangeExtension(inputPath, ".runtimeconfig.json"), out major))
             return major;
-        return (uint)Environment.Version.Major;
+        if (TryTfmFromFrameworkReference(managed, out major))
+            return major;
+        throw new InvalidOperationException(
+            "Cannot determine the payload target framework. Packing will not write a runtimeconfig from the Obfy host version.");
+    }
+
+    private static bool TryTfmFromFrameworkReference(byte[] managed, out uint major)
+    {
+        major = 0;
+        try
+        {
+            using var module = ModuleDefMD.Load(managed);
+            uint runtime = 0;
+            uint coreLib = 0;
+            foreach (var reference in module.GetAssemblyRefs())
+            {
+                var name = reference.Name.String;
+                var referenceMajor = (uint)reference.Version.Major;
+                if (referenceMajor == 0)
+                    continue;
+                if (name == "System.Runtime")
+                    runtime = referenceMajor;
+                else if (name == "System.Private.CoreLib")
+                    coreLib = referenceMajor;
+            }
+
+            major = runtime != 0 ? runtime : coreLib;
+            return major > 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private static bool TryTfmFromAttribute(byte[] managed, out uint major)

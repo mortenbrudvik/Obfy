@@ -1,55 +1,35 @@
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Obfy.UI.ViewModels;
 using Obfy.UI.Views;
-using Wpf.Ui.Appearance;
 
 namespace Obfy.UI.Services;
 
 /// <summary>
-/// Hosted service that initializes the main window on the WPF UI thread.
+/// Hosted service that shows the hybrid shell window on the WPF UI thread. The old MainWindow and its view models stay
+/// registered (AppModule) until the hybrid UI replaces them, but nothing starts them.
 /// </summary>
 public sealed class ApplicationHostService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly FilesViewModel _files;
 
-    public ApplicationHostService(IServiceProvider serviceProvider, FilesViewModel files)
+    public ApplicationHostService(IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
-        _files = files;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        if (Application.Current.Windows.OfType<MainWindow>().Any())
-        {
-            return;
-        }
+        if (Application.Current.Windows.OfType<ShellWindow>().Any())
+            return Task.CompletedTask;
 
-        ApplicationThemeManager.ApplySystemTheme();
+        // ThemeController.Start runs when ShellViewModel is built, so the window's first paint is in the right theme.
+        var shell = _serviceProvider.GetRequiredService<ShellWindow>();
 
-        var mainViewModel = _serviceProvider.GetRequiredService<MainViewModel>();
-        await mainViewModel.InitializeAsync();
-        ApplyCommandLineInputs();
-
-        var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
-        mainWindow.DataContext = mainViewModel;
-        mainWindow.Show();
+        // The window is shown cloaked until the page says app.ready (see ShellWindow.Preload).
+        shell.Preload();
+        return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Opens assemblies, source files, or a solution/project passed on the command line, e.g.
-    /// <c>ObfyUI.exe MyApp.dll -o output</c> or <c>ObfyUI.exe MyApp.sln</c>. Unknown flags are ignored.
-    /// </summary>
-    private void ApplyCommandLineInputs()
-    {
-        _files.ApplyStartup(StartupCommandLine.Parse(Environment.GetCommandLineArgs().Skip(1).ToArray()));
-    }
-
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        await _files.PersistPreferencesAsync();
-    }
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

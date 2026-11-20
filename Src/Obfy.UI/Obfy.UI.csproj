@@ -23,6 +23,13 @@
     <PackageReference Include="WPF-UI.Abstractions" />
     <PackageReference Include="WPF-UI.DependencyInjection" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Mediator.Abstractions" />
+    <!-- Generates IMediator and AddMediator at build time; it ships nothing at run time. It belongs only here, in the
+         outermost project: it scans Obfy.App and Obfy.Interop for requests and handlers (HybridBootstrap). -->
+    <PackageReference Include="Mediator.SourceGenerator">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -32,6 +39,15 @@
   <ItemGroup>
     <ProjectReference Include="..\Obfy.Core\Obfy.Core.csproj" />
     <ProjectReference Include="..\Logging.Core\Logging.Core.csproj" />
+    <ProjectReference Include="..\Obfy.Common\Obfy.Common.csproj" />
+    <ProjectReference Include="..\Obfy.App\Obfy.App.csproj" />
+    <ProjectReference Include="..\Obfy.Interop\Obfy.Interop.csproj" />
+    <ProjectReference Include="..\Obfy.WebView\Obfy.WebView.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Placeholder page for the hybrid shell until the frontend build fills Assets\ (the page the Release shell loads). -->
+    <Content Include="Assets\**\*.*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

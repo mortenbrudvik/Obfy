@@ -5,6 +5,8 @@ using Autofac.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Web.WebView2.Core;
+using Obfy.Interop;
 using Obfy.UI.DependencyInjection;
 using Obfy.UI.Services;
 using Wpf.Ui;
@@ -27,18 +29,34 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
+        if (!WebView2RuntimeIsInstalled())
+        {
+            MessageBox.Show(
+                "Obfy needs the Microsoft Edge WebView2 Runtime to draw its window, and it is not installed." + Environment.NewLine + Environment.NewLine +
+                $"Download it from {WebView2DownloadUrl}, install it, and start Obfy again.",
+                "Obfy", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Shutdown(1);
+            return;
+        }
+
         try
         {
+            // Mediator's generated registrations go into the host's services; the Autofac factory populates the container
+            // from them, so handlers are built by Autofac with everything the modules register.
             _host = Host.CreateDefaultBuilder()
                 .UseServiceProviderFactory(new AutofacServiceProviderFactory())
-                .ConfigureContainer<ContainerBuilder>(builder => builder.RegisterModule<AppModule>())
+                .ConfigureContainer<ContainerBuilder>(HybridBootstrap.RegisterModules)
                 .ConfigureServices(services =>
                 {
+                    HybridBootstrap.AddMediatorServices(services);
                     services.AddHostedService<ApplicationHostService>();
                     services.AddSingleton<ISnackbarService, SnackbarService>();
                     services.AddSingleton<IContentDialogService, ContentDialogService>();
                 })
                 .Build();
+
+            // Before the host starts the shell: the page may call as soon as it loads.
+            ApiRegistrations.RegisterAll(_host.Services.GetRequiredService<ApiRegistry>());
 
             await _host.StartAsync();
         }
@@ -46,6 +64,21 @@ public partial class App : Application
         {
             MessageBox.Show($"Failed to start Obfy: {ex.Message}", "Obfy", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
+        }
+    }
+
+    /// <summary>Where a user without the WebView2 Runtime gets it.</summary>
+    private const string WebView2DownloadUrl = "https://go.microsoft.com/fwlink/p/?LinkId=2124703";
+
+    private static bool WebView2RuntimeIsInstalled()
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(CoreWebView2Environment.GetAvailableBrowserVersionString());
+        }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            return false;
         }
     }
 

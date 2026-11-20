@@ -1,0 +1,71 @@
+<!-- The hybrid shell: a title bar, the WebView2 that hosts the page, and a native panel that replaces it when WebView2
+     fails. WPF-UI paints its own colour on a FluentWindow's Background; ThemeController (Attach) puts the ground back. -->
+<ui:FluentWindow x:Class="Obfy.UI.Views.ShellWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Obfy" Width="1280" Height="800" MinWidth="900" MinHeight="600"
+        ExtendsContentIntoTitleBar="True"
+        WindowBackdropType="None"
+        WindowCornerPreference="Round"
+        Icon="/Images/app.png"
+        WindowStartupLocation="CenterScreen">
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <ui:TitleBar Grid.Row="0" Title="Obfy">
+      <ui:TitleBar.Icon>
+        <ui:ImageIcon Source="/Images/app.png" Width="16" Height="16" />
+      </ui:TitleBar.Icon>
+    </ui:TitleBar>
+
+    <!-- Collapsed when WebView2 failed: its window would otherwise be drawn over the failure panel. -->
+    <ContentPresenter Grid.Row="1" Content="{Binding WebView}">
+      <ContentPresenter.Style>
+        <Style TargetType="ContentPresenter">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding WebViewFailed}" Value="True">
+              <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </ContentPresenter.Style>
+    </ContentPresenter>
+
+    <!-- Shown instead of the web UI when WebView2 could not start or failed for good. -->
+    <StackPanel Grid.Row="1" Margin="24" MaxWidth="560" VerticalAlignment="Center" HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="WebViewFailurePanel">
+      <StackPanel.Style>
+        <Style TargetType="StackPanel">
+          <Setter Property="Visibility" Value="Collapsed" />
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding WebViewFailed}" Value="True">
+              <Setter Property="Visibility" Value="Visible" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </StackPanel.Style>
+
+      <TextBlock Text="Obfy's window couldn't load."
+                 FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"
+                 Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                 AutomationProperties.HeadingLevel="Level1" />
+      <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
+                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                 Text="The web view that draws Obfy's interface did not start or stopped working. Restarting Obfy usually brings it back. If it doesn't, the log explains what went wrong, and the Microsoft Edge WebView2 Runtime may need repairing." />
+      <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
+                 Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+        <Run Text="The log is in " /><Run Text="{Binding LogsDirectory, Mode=OneWay}" /><Run Text="." />
+      </TextBlock>
+
+      <WrapPanel Margin="0,20,0,0">
+        <ui:Button Content="Restart Obfy" Appearance="Primary" Command="{Binding RestartCommand}" Margin="0,0,8,8" />
+        <ui:Button Content="Open log folder" Command="{Binding OpenLogFolderCommand}" Margin="0,0,8,8" />
+        <ui:Button Content="Quit" Command="{Binding QuitCommand}" Margin="0,0,8,8" />
+      </WrapPanel>
+    </StackPanel>
+  </Grid>
+</ui:FluentWindow>

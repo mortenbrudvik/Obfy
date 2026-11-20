@@ -23,7 +23,9 @@ public interface IObfuscationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Obfuscates multiple files.
+    /// Obfuscates multiple files. Two or more assemblies share one closed set so a
+    /// name used across them stays consistent. Two or more C# files share one compilation.
+    /// A single file uses the per-file path.
     /// </summary>
     /// <param name="inputPaths">Paths to the input files.</param>
     /// <param name="outputDirectory">Directory to write obfuscated outputs.</param>

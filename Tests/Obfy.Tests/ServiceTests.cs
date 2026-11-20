@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Obfy.Core.Models;
+using Obfy.Core.Models.Solution;
 using Obfy.Core.Pipeline;
 using Obfy.Core.Services;
 using Obfy.Core.Services.Solution;
@@ -637,6 +638,20 @@ namespace Test
 
         var assemblyMerger = new Mock<IAssemblyMerger>();
         var logger = new Mock<ILogger<ObfuscationService>>();
+        var moduleResults = new[]
+        {
+            ObfuscationResult.Successful(new ObfuscationStatistics(), inputPath: assembly1),
+            ObfuscationResult.Successful(new ObfuscationStatistics(), inputPath: assembly2)
+        };
+        var closedSet = new Mock<IClosedSetProcessor>();
+        closedSet
+            .Setup(p => p.ExecuteAsync(
+                It.IsAny<IReadOnlyList<ClosedSetInput>>(),
+                outputDir,
+                It.IsAny<ObfySettings>(),
+                false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ClosedSetResult.Succeeded(moduleResults));
 
         var service = new ObfuscationService(
             assemblyProcessor.Object,
@@ -644,7 +659,7 @@ namespace Test
             pipeline.Object,
             assemblyMerger.Object,
             logger.Object,
-            new Mock<IClosedSetProcessor>().Object);
+            closedSet.Object);
 
         var settings = new ObfySettings();
 
@@ -657,6 +672,17 @@ namespace Test
         // Assert
         results.Count.ShouldBe(2);
         results.ShouldAllBe(r => r.Success);
+        closedSet.Verify(p => p.ExecuteAsync(
+            It.Is<IReadOnlyList<ClosedSetInput>>(inputs => inputs.Count == 2
+                && inputs[0].AssemblyPath == assembly1
+                && inputs[1].AssemblyPath == assembly2),
+            outputDir,
+            It.IsAny<ObfySettings>(),
+            false,
+            It.IsAny<CancellationToken>()), Times.Once);
+        assemblyProcessor.Verify(
+            p => p.LoadAsync(It.IsAny<string>(), It.IsAny<ObfySettings>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]

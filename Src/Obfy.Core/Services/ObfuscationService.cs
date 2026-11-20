@@ -231,8 +231,9 @@ public class ObfuscationService : IObfuscationService
         ObfySettings settings,
         CancellationToken cancellationToken = default)
     {
-        var results = new List<ObfuscationResult>();
+        var slots = new List<(ObfuscationResult? Source, int AssemblyIndex)>();
         var pendingSources = new List<string>();
+        var assemblies = new List<string>();
 
         foreach (var inputPath in inputPaths)
         {
@@ -244,11 +245,56 @@ public class ObfuscationService : IObfuscationService
             }
 
             await FlushSourcesAsync().ConfigureAwait(false);
+            if (IsAssemblyFile(inputPath))
+            {
+                assemblies.Add(inputPath);
+                slots.Add((null, assemblies.Count - 1));
+                continue;
+            }
+
             var outputPath = Path.Combine(outputDirectory, Path.GetFileName(inputPath));
-            results.Add(await ObfuscateAsync(inputPath, outputPath, settings, cancellationToken).ConfigureAwait(false));
+            var single = await ObfuscateAsync(inputPath, outputPath, settings, cancellationToken).ConfigureAwait(false);
+            slots.Add((single, -1));
         }
 
         await FlushSourcesAsync().ConfigureAwait(false);
+
+        IReadOnlyList<ObfuscationResult> assemblyResults = [];
+        if (assemblies.Count == 1)
+        {
+            var single = assemblies[0];
+            var outputPath = Path.Combine(outputDirectory, Path.GetFileName(single));
+            assemblyResults =
+            [
+                await ObfuscateAsync(single, outputPath, settings, cancellationToken).ConfigureAwait(false)
+            ];
+        }
+        else if (assemblies.Count > 1)
+        {
+            var closed = await ObfuscateClosedSetAsync(
+                assemblies.Select(path => ClosedSetInput.From(path)).ToList(),
+                outputDirectory,
+                settings,
+                forcePreservePublic: false,
+                cancellationToken).ConfigureAwait(false);
+
+            if (closed.Success && closed.ModuleResults.Count == assemblies.Count)
+            {
+                assemblyResults = closed.ModuleResults;
+            }
+            else
+            {
+                var message = string.IsNullOrWhiteSpace(closed.ErrorMessage)
+                    ? "Closed-set obfuscation failed."
+                    : closed.ErrorMessage;
+                assemblyResults = assemblies.Select(_ => ObfuscationResult.Failed(message)).ToList();
+            }
+        }
+
+        var results = new List<ObfuscationResult>(slots.Count);
+        foreach (var (source, assemblyIndex) in slots)
+            results.Add(source ?? assemblyResults[assemblyIndex]);
+
         return results;
 
         async Task FlushSourcesAsync()
@@ -260,12 +306,14 @@ public class ObfuscationService : IObfuscationService
             {
                 var single = pendingSources[0];
                 var outputPath = Path.Combine(outputDirectory, Path.GetFileName(single));
-                results.Add(await ObfuscateAsync(single, outputPath, settings, cancellationToken).ConfigureAwait(false));
+                var result = await ObfuscateAsync(single, outputPath, settings, cancellationToken).ConfigureAwait(false);
+                slots.Add((result, -1));
             }
             else
             {
-                results.Add(await ObfuscateSourcesAsync(
-                    pendingSources.ToArray(), outputDirectory, settings, cancellationToken).ConfigureAwait(false));
+                var result = await ObfuscateSourcesAsync(
+                    pendingSources.ToArray(), outputDirectory, settings, cancellationToken).ConfigureAwait(false);
+                slots.Add((result, -1));
             }
 
             pendingSources.Clear();
@@ -371,6 +419,13 @@ public class ObfuscationService : IObfuscationService
 
     private static bool IsCSharpFile(string path) =>
         Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAssemblyFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".dll", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".exe", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <inheritdoc/>
     public async Task WriteSymbolMapAsync(Dictionary<string, string> symbolMap, string outputPath)

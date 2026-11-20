@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.Loader;
 using Autofac;
 using dnlib.DotNet;
 using Microsoft.CodeAnalysis;
@@ -122,6 +124,66 @@ public class ObfuscationServiceClosedSetTests : IDisposable
         firstNames.ShouldNotContain("Alpha.Hidden");
     }
 
+    [Fact]
+    public async Task ObfuscateBatchAsync_AppAndLib_RenamesTogetherAndStillRuns()
+    {
+        var libPath = CompileLibrary("Lib", """
+            namespace Lib.Api;
+            public class Greeter
+            {
+                public static string Hello() => "hi";
+            }
+            """);
+        var appPath = CompileExe("App", """
+            using Lib.Api;
+            public static class Program
+            {
+                public static void Main() { }
+                public static string Run() => Greeter.Hello();
+            }
+            """, libPath);
+        var outputDir = Path.Combine(_tempDirectory, "batch-out");
+        var settings = new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            StringEncryption = { Enabled = false },
+            ControlFlow = { Enabled = false },
+            ConstantEncryption = { Enabled = false },
+            ResourceEncryption = { Enabled = false },
+            SymbolRenaming =
+            {
+                Enabled = true,
+                Mode = NamingMode.Sequential,
+                PreservePublicApi = false,
+                RenameTypes = true,
+                RenameMethods = true
+            },
+            Metadata = { RemoveDebugInfo = false, RemoveAttributes = false, StripDocumentation = false },
+            Protection =
+            {
+                AntiDebug = false,
+                AntiTamper = { Enabled = false },
+                AntiDecompiler = { Enabled = false },
+                AntiDump = false,
+                ReferenceProxy = false,
+                MethodEncryption = false
+            }
+        };
+
+        using var container = BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var results = await service.ObfuscateBatchAsync([libPath, appPath], outputDir, settings);
+
+        results.Count.ShouldBe(2);
+        results.ShouldAllBe(r => r.Success, string.Join("; ", results.Select(r => r.ErrorMessage)));
+        var outLib = Path.Combine(outputDir, "Lib.dll");
+        var outApp = Path.Combine(outputDir, "App.exe");
+        using (var libModule = ModuleDefMD.Load(outLib))
+            libModule.GetTypes().ShouldNotContain(t => t.Name == "Greeter");
+
+        InvokeProgramRun(outApp, outLib).ShouldBe("hi");
+    }
+
     private static List<string> MethodNames(string path)
     {
         using var module = ModuleDefMD.Load(path);
@@ -155,22 +217,54 @@ public class ObfuscationServiceClosedSetTests : IDisposable
     }
 
     private string CompileLibrary(string assemblyName, string source)
+        => Compile(assemblyName, source, OutputKind.DynamicallyLinkedLibrary);
+
+    private string CompileExe(string assemblyName, string source, string referencePath)
+        => Compile(assemblyName, source, OutputKind.ConsoleApplication, referencePath);
+
+    private string Compile(string assemblyName, string source, OutputKind kind, string? referencePath = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source);
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator)
             .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p));
+        if (referencePath != null)
+            references = references.Append(MetadataReference.CreateFromFile(referencePath));
 
         var compilation = CSharpCompilation.Create(
             assemblyName,
             [tree],
             references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(kind));
 
-        var path = Path.Combine(_tempDirectory, assemblyName + ".dll");
+        var extension = kind == OutputKind.ConsoleApplication ? ".exe" : ".dll";
+        var path = Path.Combine(_tempDirectory, assemblyName + extension);
         var emit = compilation.Emit(path);
         emit.Success.ShouldBeTrue(string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
         return path;
     }
+
+    private static string InvokeProgramRun(string appPath, string libPath)
+    {
+        var alc = new AssemblyLoadContext($"batch-{Guid.NewGuid():N}", isCollectible: true);
+        try
+        {
+            alc.LoadFromAssemblyPath(libPath);
+            var asm = alc.LoadFromAssemblyPath(appPath);
+            var program = asm.GetTypes().Single(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static).Any(IsRunLike));
+            var run = program.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static).Single(IsRunLike);
+            return (string)run.Invoke(null, null)!;
+        }
+        finally
+        {
+            alc.Unload();
+        }
+    }
+
+    private static bool IsRunLike(MethodInfo method) =>
+        method.IsStatic
+        && method.ReturnType == typeof(string)
+        && method.GetParameters().Length == 0
+        && method.Name != "Main";
 }

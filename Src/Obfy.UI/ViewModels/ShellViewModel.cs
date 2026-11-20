@@ -78,9 +78,17 @@ public partial class ShellViewModel : ObservableObject
         };
     }
 
-    /// <summary>Where the page's WebView2 profile lives.</summary>
+    /// <summary>
+    /// Names the environment variable that moves the page's WebView2 profile. The end-to-end tests give each launch its
+    /// own profile, so a running Obfy (whose browser has other arguments) cannot clash with the test's debug port.
+    /// </summary>
+    public const string UserDataFolderVariable = "OBFY_WEBVIEW2_USER_DATA";
+
+    /// <summary>Where the page's WebView2 profile lives (<see cref="UserDataFolderVariable"/> overrides the default).</summary>
     public static string UserDataFolder { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obfy", "WebView2");
+        Environment.GetEnvironmentVariable(UserDataFolderVariable) is { Length: > 0 } overridden
+            ? overridden
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obfy", "WebView2");
 
     /// <summary>Where the logs are, for the failure panel (an instance property: bindings do not reach static ones).</summary>
     public string LogsDirectory { get; } =

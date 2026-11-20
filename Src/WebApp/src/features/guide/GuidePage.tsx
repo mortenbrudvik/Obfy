@@ -97,7 +97,7 @@ export default function GuidePage({ topic, onTopicChange }: GuidePageProps) {
   }, [current.id]);
 
   return (
-    <div className="guide">
+    <div className="guide" data-testid="guide-page">
       <nav className="topics" aria-label={strings.guide.topics}>
         <h1 className="label topics-title">{strings.guide.title}</h1>
         {guideTopics.map((candidate) => (

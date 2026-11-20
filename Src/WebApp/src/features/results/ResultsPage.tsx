@@ -79,7 +79,7 @@ export default function ResultsPage() {
     <div className="results-page">
       <div className="rhead">
         <div>
-          <h1 className="title">{text.finished}</h1>
+          <h1 className="title" data-testid="results-finished">{text.finished}</h1>
           <p className="sub">{summary}</p>
         </div>
         <div className="acts">

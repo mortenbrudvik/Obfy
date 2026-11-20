@@ -111,7 +111,7 @@ function TechniqueRow({ row, selected, onSelect, onSwitch }: TechniqueRowProps) 
   return (
     <li className={classes}>
       {technique ? (
-        <Toggle label={row.name} checked={technique.enabled && technique.available} disabled={unavailable} onChange={onSwitch} />
+        <Toggle label={row.name} testId={`toggle-${row.id}`} checked={technique.enabled && technique.available} disabled={unavailable} onChange={onSwitch} />
       ) : (
         <span className="swgap" />
       )}

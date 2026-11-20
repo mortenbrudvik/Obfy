@@ -54,6 +54,27 @@ jobs:
         }
         exit 0
 
+    # Node must be on PATH before "Build": Obfy.UI.csproj runs npm (ci + run build) for the web app, which the Release
+    # exe serves. Lint and the web tests run here too, so a broken page fails before the .NET build starts.
+    - name: Setup Node
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: Src/WebApp/package-lock.json
+
+    - name: Web app install
+      working-directory: Src/WebApp
+      run: npm ci
+
+    - name: Web app lint
+      working-directory: Src/WebApp
+      run: npm run lint
+
+    - name: Web app tests
+      working-directory: Src/WebApp
+      run: npm run test:run
+
     - name: Restore dependencies
       run: dotnet restore
 
@@ -129,6 +150,8 @@ jobs:
 
     # windows-latest has an interactive session. Default dotnet test still
     # excludes Category=UI; this step is the opt-in run against the Release exe.
+    # The web UI tests drive the WebView2 page with Playwright over a remote-debugging port (CDP), so they need no
+    # Playwright browser download; the WebView2 runtime ships with windows-latest.
     - name: UI tests
       shell: pwsh
       run: |

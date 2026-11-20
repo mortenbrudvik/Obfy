@@ -79,7 +79,7 @@ export default function RunBar({ run, unreachable, fileCount, includedCount, lev
         <div className="sum">{summary}</div>
       )}
       <span className="kbd">Ctrl+Enter</span>
-      <button type="button" className="btn primary" disabled={!run.canStart} onClick={onStart}>
+      <button type="button" className="btn primary" data-testid="run-button" disabled={!run.canStart} onClick={onStart}>
         {strings.run.obfuscate}
       </button>
     </div>

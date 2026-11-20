@@ -7,17 +7,20 @@ interface ToggleProps {
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   id?: string;
+  /** A stable hook for end-to-end tests. */
+  testId?: string;
   "aria-describedby"?: string;
 }
 
 /** An on/off switch: a real checkbox with the switch role. */
-export default function Toggle({ label, checked, onChange, disabled, id, "aria-describedby": describedBy }: ToggleProps) {
+export default function Toggle({ label, checked, onChange, disabled, id, testId, "aria-describedby": describedBy }: ToggleProps) {
   return (
     <input
       type="checkbox"
       role="switch"
       className="sw"
       id={id}
+      data-testid={testId}
       aria-label={label}
       aria-describedby={describedBy}
       checked={checked}

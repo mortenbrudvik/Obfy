@@ -35,7 +35,7 @@ interface NavItemProps {
 
 function NavItem({ screen, current, label, onNavigate, children }: NavItemProps) {
   return (
-    <button type="button" className="nav" aria-current={screen === current ? "page" : undefined} onClick={() => onNavigate(screen)}>
+    <button type="button" className="nav" data-testid={`nav-${screen}`} aria-current={screen === current ? "page" : undefined} onClick={() => onNavigate(screen)}>
       <span>{label}</span>
       {children}
     </button>

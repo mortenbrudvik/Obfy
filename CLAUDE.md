@@ -36,7 +36,7 @@ Obfy/
 │   ├── Obfy.UI.Tests/         # ViewModel unit tests
 │   ├── Obfy.ScenarioTests/    # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
 │   ├── Obfy.VisualStudio.Tests/ # VS helpers without a hive
-│   └── Obfy.UI.AutomationTests/ # Locator tests + FlaUI (Category=UI, local)
+│   └── Obfy.UI.AutomationTests/ # Locator tests + Playwright-over-WebView2 e2e + one FlaUI smoke (Category=UI)
 ├── docs/                      # Documentation
 ├── package/                   # MSIX manifest and Store assets
 ├── build/                     # Build scripts and installer

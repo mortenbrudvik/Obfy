@@ -1,0 +1,50 @@
+name: Package
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Install Inno Setup 6
+      run: choco install innosetup --no-progress -y
+
+    - name: Build MSIX
+      shell: pwsh
+      run: |
+        ./build/build-msix.ps1
+        if ($LASTEXITCODE -ne 0) { throw "MSIX build failed ($LASTEXITCODE)" }
+        $msix = Get-ChildItem ./build/msix-output -Filter *.msix
+        if (-not $msix) { throw "MSIX output is missing" }
+
+    - name: Build Inno installer
+      shell: pwsh
+      run: |
+        ./build/build-installer.ps1
+        if ($LASTEXITCODE -ne 0) { throw "Installer build failed ($LASTEXITCODE)" }
+        $setup = Get-ChildItem ./build/output -Filter ObfySetup-*.exe
+        if (-not $setup) { throw "Installer output is missing" }
+
+    - name: Upload packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: packages
+        path: |
+          build/msix-output/*.msix
+          build/output/ObfySetup-*.exe

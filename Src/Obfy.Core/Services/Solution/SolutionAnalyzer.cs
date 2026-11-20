@@ -9,6 +9,12 @@ namespace Obfy.Core.Services.Solution;
 /// </summary>
 public class SolutionAnalyzer : ISolutionAnalyzer
 {
+    /// <summary>
+    /// Project paths are case-insensitive on Windows and case-sensitive on Linux.
+    /// </summary>
+    internal static StringComparer ProjectPathComparer { get; } =
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
     private static readonly HashSet<string> SupportedProjectExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".csproj",
@@ -178,7 +184,7 @@ public class SolutionAnalyzer : ISolutionAnalyzer
 
     private static HashSet<string> BuildReferencedByIncludedExe(List<AnalyzedProject> included)
     {
-        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var referenced = new HashSet<string>(ProjectPathComparer);
 
         foreach (var project in included)
         {

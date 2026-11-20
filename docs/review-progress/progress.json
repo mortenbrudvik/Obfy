@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-20T14:15:00Z",
+  "updated": "2026-11-20T14:25:00Z",
   "note": "Assembly-review fixes are on main (cbaa126). This board is the Nov 20 review backlog.",
   "items": [
     {"id": "C1", "section": "Critical", "title": "Constant encryption fails the run on int.MinValue or long.MinValue because Math.Abs throws.", "location": "ConstantEncryptionObfuscator.cs", "status": "fixed"},
@@ -47,7 +47,7 @@
     {"id": "M21", "section": "Minor", "title": "The VS Code problem matcher has no file or line group.", "location": "package.json", "status": "open"},
     {"id": "M22", "section": "Minor", "title": "Visual Studio argument quoting breaks on a path ending in a backslash.", "location": "CliArgumentBuilder.cs", "status": "fixed"},
     {"id": "M23", "section": "Minor", "title": "Two Visual Studio build warnings: CS8604 and a crashing analyzer (AD0001).", "location": "ObfySettingsJson.cs", "status": "open"},
-    {"id": "M24", "section": "Minor", "title": "Project path sets use a case-insensitive comparer on Linux.", "location": "SolutionAnalyzer.cs", "status": "open"},
+    {"id": "M24", "section": "Minor", "title": "Project path sets use a case-insensitive comparer on Linux.", "location": "SolutionAnalyzer.cs", "status": "fixed"},
     {"id": "M25", "section": "Minor", "title": "The native host build script logs \"pack pkg\" instead of the version on the NuGet-restore path.", "location": "build.ps1", "status": "fixed"},
     {"id": "M26", "section": "Minor", "title": "The scenario harness strips the inherited Platform variable for every scenario build.", "location": "ScenarioHarness.cs", "status": "open"},
     {"id": "T1", "section": "Tests", "title": "AntiDump, Watermark, and AntiDecompiler have no test that runs the output. AntiDump and AntiDecompiler now have a run; Watermark does not.", "location": "Tests/Obfy.Tests", "status": "open"},

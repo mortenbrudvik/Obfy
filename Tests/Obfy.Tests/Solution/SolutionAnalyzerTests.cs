@@ -230,6 +230,38 @@ public class SolutionAnalyzerTests
     }
 
     [Fact]
+    public void Analyze_ProjectReference_MatchesPathCaseOnlyOnWindows()
+    {
+        using var fixture = new TempDir();
+        var sln = WriteSln(fixture, "App.sln",
+            ("App", @"App\App.csproj"),
+            ("LibA", @"LibA\LibA.csproj"));
+
+        WriteProject(fixture, @"App\App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net8.0</TargetFramework>
+              </PropertyGroup>
+              <ItemGroup>
+                <ProjectReference Include="..\liba\LibA.csproj" />
+              </ItemGroup>
+            </Project>
+            """);
+        WriteLibrary(fixture, @"LibA\LibA.csproj");
+        fixture.WriteEmpty(@"App\bin\Release\net8.0\App.dll");
+        fixture.WriteEmpty(@"LibA\bin\Release\net8.0\LibA.dll");
+
+        var session = new SolutionAnalyzer().Analyze(sln);
+        var preserve = session.Entries.Single(e => e.ProjectName == "LibA").Hints.PreservePublicApi;
+
+        if (OperatingSystem.IsWindows())
+            preserve.ShouldBeFalse();
+        else
+            preserve.ShouldBeTrue();
+    }
+
+    [Fact]
     public void Analyze_BlazorUnityAndWeb_SetRuntimeHints()
     {
         using var fixture = new TempDir();

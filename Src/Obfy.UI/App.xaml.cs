@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Web.WebView2.Core;
+using Obfy.App.Services;
+using Obfy.App.Sessions;
 using Obfy.Interop;
 using Obfy.UI.DependencyInjection;
 using Obfy.UI.Services;
@@ -58,12 +60,33 @@ public partial class App : Application
             // Before the host starts the shell: the page may call as soon as it loads.
             ApiRegistrations.RegisterAll(_host.Services.GetRequiredService<ApiRegistry>());
 
+            await ApplyStartupStateAsync(e.Args);
+
             await _host.StartAsync();
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Failed to start Obfy: {ex.Message}", "Obfy", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
+        }
+    }
+
+    /// <summary>
+    /// The last session's preferences, then the files and <c>-o</c> folder the process was started with. Runs on the UI
+    /// thread (the awaits resume here) before the shell exists: the file list changes without publishing, and a
+    /// configuration among the arguments publishes <c>settings.changed</c> from this thread, so the web view is first
+    /// built on the UI thread, as the shell would build it. A failure here costs the starting state, not the start.
+    /// </summary>
+    private async Task ApplyStartupStateAsync(string[] args)
+    {
+        try
+        {
+            await _host!.Services.GetRequiredService<InputSession>().InitializeAsync();
+            await _host.Services.GetRequiredService<InputIntake>().ApplyStartupAsync(args);
+        }
+        catch (Exception ex)
+        {
+            TryLog(ex, "Could not apply the saved preferences or the start-up arguments");
         }
     }
 

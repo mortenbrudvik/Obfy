@@ -1,4 +1,6 @@
 using Obfy.App.Features.App;
+using Obfy.App.Features.Files;
+using Obfy.App.Features.Output;
 using Obfy.App.Features.Settings;
 
 namespace Obfy.Interop;
@@ -17,5 +19,18 @@ public static class ApiRegistrations
         registry.Register<OpenConfigRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsOpenConfig);
         registry.Register<SaveConfigRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsSaveConfig);
         registry.Register<PickSigningKeyRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsPickSigningKey);
+
+        // files.dropPaths is not here: the window's native drop sends DropPathsRequest, the page never calls it.
+        registry.Register<GetFilesRequest>(IpcNames.Services.Files, IpcNames.Methods.FilesGet);
+        registry.Register<PickFilesRequest>(IpcNames.Services.Files, IpcNames.Methods.FilesPick);
+        registry.Register<RemoveFileRequest>(IpcNames.Services.Files, IpcNames.Methods.FilesRemove);
+        registry.Register<ClearFilesRequest>(IpcNames.Services.Files, IpcNames.Methods.FilesClear);
+        registry.Register<SetIncludedRequest>(IpcNames.Services.Files, IpcNames.Methods.FilesSetIncluded);
+        registry.Register<RevealFileRequest>(IpcNames.Services.Files, IpcNames.Methods.FilesReveal);
+        registry.Register<OpenOutputRequest>(IpcNames.Services.Files, IpcNames.Methods.FilesOpenOutput);
+
+        registry.Register<SetOutputRequest>(IpcNames.Services.Output, IpcNames.Methods.OutputSet);
+        registry.Register<PickOutputFolderRequest>(IpcNames.Services.Output, IpcNames.Methods.OutputPickFolder);
+        registry.Register<SetSymbolMapRequest>(IpcNames.Services.Output, IpcNames.Methods.OutputSetSymbolMap);
     }
 }

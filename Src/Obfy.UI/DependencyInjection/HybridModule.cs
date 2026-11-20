@@ -39,6 +39,12 @@ public class HybridModule : Module
         // The one set of protection settings the page edits. Handlers are transient; this is what they share.
         builder.RegisterType<ProtectionSession>().AsSelf().SingleInstance();
 
+        // The file list, output folder and symbol-map option; and the one place paths from outside go (it loads a dropped
+        // configuration into the protection session).
+        builder.RegisterType<InputSession>().AsSelf().SingleInstance();
+        builder.RegisterType<InputIntake>().AsSelf().SingleInstance();
+        builder.RegisterType<ShellLauncher>().As<IShellLauncher>().SingleInstance();
+
         builder.RegisterType<FileDialogs>()
             .As<IFileDialogs>()
             .SingleInstance();

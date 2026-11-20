@@ -5,4 +5,7 @@ public static class AppEvents
 {
     /// <summary>Pushed with the new settings snapshot after any change to the protection settings.</summary>
     public const string SettingsChanged = "settings.changed";
+
+    /// <summary>Pushed with the new input snapshot (file list, output folder, symbol map) after any change to it.</summary>
+    public const string FilesChanged = "files.changed";
 }

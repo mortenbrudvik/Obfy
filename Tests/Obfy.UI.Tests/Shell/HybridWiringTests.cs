@@ -1,3 +1,4 @@
+using System.IO;
 using Autofac;
 using Mediator;
 using Shouldly;
@@ -128,5 +129,64 @@ public class HybridWiringTests
             container.Resolve<ProtectionSession>().Level.ShouldBe(Obfy.Core.Models.ObfuscationLevel.Custom);
             return true;
         });
+    }
+
+    [Fact]
+    public void ApiBridge_FilesEndpoints_ReachTheSharedInputSession()
+    {
+        // On the UI thread, as in the app: a change publishes files.changed, which builds the web view there.
+        OnSta(() =>
+        {
+            using var container = Build();
+            ApiRegistrations.RegisterAll(container.Resolve<ApiRegistry>());
+            var bridge = container.Resolve<IApiBridge>();
+            container.Resolve<ApiEventAggregator>();
+            var dll = Path.Combine(Path.GetTempPath(), $"wiring-{Guid.NewGuid():N}.dll");
+            File.WriteAllBytes(dll, []);
+            try
+            {
+                container.Resolve<IMediator>().Send(new DropPathsRequest([dll])).AsTask().GetAwaiter().GetResult();
+
+                var read = bridge.InvokeMethod(IpcNames.Services.Files, IpcNames.Methods.FilesGet, "{}").GetAwaiter().GetResult();
+                var bad = bridge.InvokeMethod(
+                    IpcNames.Services.Files, IpcNames.Methods.FilesSetIncluded, """{"id":"nope","included":false}""").GetAwaiter().GetResult();
+
+                read.ShouldContain("\"success\":true");
+                read.ShouldContain(Path.GetFileName(dll));
+                read.ShouldContain("\"hasIncludedFiles\":true");
+                bad.ShouldContain("\"success\":false");
+                bad.ShouldContain("files.notFound");
+                container.Resolve<InputSession>().GetSnapshot().Files.Count.ShouldBe(1);
+            }
+            finally
+            {
+                File.Delete(dll);
+            }
+
+            return true;
+        });
+    }
+
+    [Fact]
+    public void EveryFilesAndOutputMethod_IsRegistered_AndFilesChangedUsesTheAppEventName()
+    {
+        using var container = Build();
+        var registry = container.Resolve<ApiRegistry>();
+        ApiRegistrations.RegisterAll(registry);
+
+        foreach (var method in new[]
+        {
+            IpcNames.Methods.FilesGet, IpcNames.Methods.FilesPick, IpcNames.Methods.FilesRemove, IpcNames.Methods.FilesClear,
+            IpcNames.Methods.FilesSetIncluded, IpcNames.Methods.FilesReveal, IpcNames.Methods.FilesOpenOutput
+        })
+            registry.GetRequestType(IpcNames.Services.Files, method).ShouldNotBeNull(method);
+
+        foreach (var method in new[] { IpcNames.Methods.OutputSet, IpcNames.Methods.OutputPickFolder, IpcNames.Methods.OutputSetSymbolMap })
+            registry.GetRequestType(IpcNames.Services.Output, method).ShouldNotBeNull(method);
+
+        // The native drop is not a page method.
+        registry.GetRequestType(IpcNames.Services.Files, "dropPaths").ShouldBeNull();
+        IpcNames.Events.FilesChanged.ShouldBe(Obfy.App.AppEvents.FilesChanged);
+        IpcNames.Events.FilesChanged.ShouldBe("files.changed");
     }
 }

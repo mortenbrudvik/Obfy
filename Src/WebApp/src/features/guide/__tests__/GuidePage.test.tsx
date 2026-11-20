@@ -80,7 +80,7 @@ describe("GuidePage", () => {
 
     expect(screen.getByRole("heading", { level: 2, name: "Techniques" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Techniques" }).getAttribute("aria-current")).toBe("true");
-    expect(screen.getByText("Obfuscation is not encryption")).toBeTruthy();
+    expect(screen.getByText("Obfuscation is not confidentiality")).toBeTruthy();
   });
 
   it("fallsBackToTheFirstTopic_whenTheIdIsUnknown", () => {

@@ -106,7 +106,7 @@ describe("TechniqueDetail", () => {
   it("setsApartTheSecurityNote_onlyOnTheEncryptionTechniques", () => {
     const { unmount } = renderDetail("stringEncryption");
     expect(screen.getByText(/not confidentiality/)).toBeTruthy();
-    expect(screen.getByText(/Never embed real secrets/)).toBeTruthy();
+    expect(screen.getByText(/Do not ship real secrets/)).toBeTruthy();
     unmount();
 
     renderDetail("controlFlow");

@@ -20,7 +20,7 @@ const levels: LevelInfo[] = [
     id: "Aggressive",
     name: "Aggressive",
     description:
-      "Everything in Standard, plus control flow, constant and resource encoding, call proxies and runtime integrity checks. Test your app thoroughly.",
+      "Everything in Standard, plus control flow, constant, resource and method body encoding, reference proxies, debugger, integrity and memory checks, and decompiler decoys. Test your app thoroughly.",
     meters: [3, 2, 3],
   },
   { id: "Custom", name: "Custom", description: "Your own mix. Changing any option below moves you here.", meters: null },

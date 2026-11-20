@@ -1,7 +1,7 @@
 import raw from "./guide.json";
 
 // The Guide's copy. A paragraph, list item or note is plain text with a little inline markup:
-// **bold**, `monospace`, and {Ctrl+Enter} for keycaps (one per key, split on "+"). PROVISIONAL until Task 20 finalizes the copy.
+// **bold**, `monospace`, and {Ctrl+Enter} for keycaps (one per key, split on "+").
 
 export interface Shortcut {
   label: string;

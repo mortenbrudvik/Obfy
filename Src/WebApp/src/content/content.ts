@@ -2,7 +2,7 @@ import raw from "./techniques.json";
 
 // The human copy for the Protection screen: what each technique is called, what it does, and what each option means.
 // The ids are the ids of the host's technique list (Obfy.App ProtectionSession), so a technique with no entry here is
-// still shown, with its id as its name. Task 20 pins the ids to the host's.
+// still shown, with its id as its name. TechniqueContentContractTests (Obfy.Interop.Tests) pins the ids and option keys to the host's.
 
 export type OptionType = "select" | "number" | "range" | "check" | "text" | "list" | "file" | "group";
 

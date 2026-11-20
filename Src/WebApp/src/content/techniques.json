@@ -36,8 +36,8 @@
     "packingRid": {
       "source": "packingRids",
       "values": {
-        "win-x64": { "label": "Native (win-x64)", "help": "A native launcher replaces the managed file. Needs the .NET runtime installed on the target machine." },
-        "portable": { "label": "Portable", "help": "Keeps a managed launcher next to the output, so the result runs wherever .NET runs." }
+        "win-x64": { "label": "Native (win-x64)", "help": "A native launcher for Windows x64 replaces the managed file. The .NET runtime must be installed on the target machine." },
+        "portable": { "label": "Portable", "help": "Uses a managed launcher instead of the native one." }
       }
     }
   },
@@ -86,10 +86,13 @@
       "name": "String encoding",
       "summary": "Hides string literals",
       "what": "Replaces each string literal with a call that decodes it when the program runs. The text no longer appears in the file, so a quick search through the binary finds nothing readable.",
-      "good": ["A small start-up and memory cost, because strings are decoded as they are used."],
+      "good": [
+        "A small run-time cost, because strings are decoded as they are used.",
+        "Standard and Aggressive turn this on. Minimal leaves strings as they are."
+      ],
       "securityNote": {
-        "title": "This hides strings from casual inspection; it is not confidentiality.",
-        "text": "The key ships inside the assembly, so a determined person can recover the text. Never embed real secrets such as keys or passwords."
+        "title": "Obfuscation, not confidentiality.",
+        "text": "The key to decode each string ships inside the output assembly, so anyone who runs or inspects it can recover the text: XOR trivially, AES-256 with a little more effort. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
       },
       "beforeAfter": { "before": "\"Order not found\"", "after": "c.a(1482)" },
       "guideTopic": "tech",
@@ -106,14 +109,14 @@
       "group": "Data",
       "name": "Constant encoding",
       "summary": "Hides numeric constants",
-      "what": "Replaces numeric constants in your code with expressions that are worked out when the program runs.",
+      "what": "Replaces integer, long, float and double constants in your code with expressions that are worked out when the program runs.",
       "good": [
         "Constants in hot loops are worked out every time, so those loops run slower.",
         "Very common values such as 0, 1 and -1 are skipped by default, since hiding them costs more than it protects."
       ],
       "securityNote": {
-        "title": "This hides numbers from casual inspection; it is not confidentiality.",
-        "text": "The key ships inside the assembly, so a determined person can recover the values. Never embed real secrets such as keys or passwords."
+        "title": "Obfuscation, not confidentiality.",
+        "text": "The key to decode each constant ships inside the output assembly, so anyone who runs or inspects it can recover the values: XOR trivially, AES-256 with a little more effort. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
       },
       "guideTopic": "tech",
       "options": [
@@ -147,14 +150,14 @@
       "group": "Data",
       "name": "Resource encoding",
       "summary": "Hides embedded resources",
-      "what": "Encodes embedded resources such as images and text files, and decodes them on first use.",
+      "what": "Encodes the resources embedded in the assembly, such as images and text files, and decodes them when the program reads them.",
       "good": [
         "Large resources take longer to load the first time they are used.",
         "Tools that read resources straight from the file, without running your program, will no longer find them."
       ],
       "securityNote": {
-        "title": "This hides resources from casual inspection; it is not confidentiality.",
-        "text": "The key ships inside the assembly, so a determined person can recover the content. Never embed real secrets such as keys or passwords."
+        "title": "Obfuscation, not confidentiality.",
+        "text": "The key to decode the resources ships inside the output assembly, so anyone who runs or inspects it can recover the content: XOR trivially, AES-256 with a little more effort. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
       },
       "guideTopic": "tech",
       "options": [{ "key": "algorithm", "type": "select", "label": "Algorithm", "choiceSet": "algorithm" }]
@@ -206,15 +209,15 @@
       "group": "Code",
       "name": "Method body encoding",
       "summary": "Stores method bodies encoded in the file",
-      "what": "Keeps method bodies encoded in the file and decodes each one just before it first runs.",
+      "what": "Keeps method bodies encoded in the file. A start-up routine decodes them in memory when the assembly loads, before the methods are compiled to run.",
       "good": [
-        "Windows only. The protected file will not work with this on other systems.",
         "Each method has its own key. Generic methods are left as they are.",
-        "Not available for NativeAOT, Unity IL2CPP or Blazor WebAssembly."
+        "If a body cannot be decoded, the method stays unreadable. Run your tests against the protected build.",
+        "The protected file works on Windows only."
       ],
       "securityNote": {
-        "title": "This hides code from casual inspection; it is not confidentiality.",
-        "text": "The key ships inside the assembly, so a determined person can recover the code. Never rely on it to protect a secret."
+        "title": "Obfuscation, not confidentiality.",
+        "text": "The keys to decode the method bodies ship inside the output assembly, so anyone who runs or inspects it can recover the code. This raises the cost of casual reverse engineering. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on it."
       },
       "windowsOnly": true,
       "guideTopic": "tech",
@@ -225,9 +228,9 @@
       "group": "Code",
       "name": "Virtualization",
       "summary": "Runs selected methods in a small interpreter",
-      "what": "Translates chosen methods into instructions for a small interpreter that ships with the output.",
+      "what": "Translates eligible methods into instructions for a small interpreter that ships with the output. The instruction set is shuffled and masked differently on every build.",
       "good": [
-        "Only some methods can be translated. Methods with exception handling, generics, by-reference parameters or constructors are left as they are.",
+        "Only some methods can be translated. Methods with exception handling, generics, by-reference parameters, constructors, switch statements or typeof are left as they are.",
         "Translated methods run slower. Use it on a few sensitive methods, not on hot paths.",
         "It is off at every level. Turning it on moves you to Custom.",
         "A deterrent that raises the effort for a reader. It does not keep anything confidential."
@@ -243,7 +246,7 @@
       "what": "Adds a check that notices a debugger attached to the running program.",
       "good": [
         "Your own debugger will trip it too. Test the protected build without one attached.",
-        "On NativeAOT, Unity IL2CPP and Blazor WebAssembly the check still works, without the Windows-only part."
+        "On NativeAOT, Unity IL2CPP and Blazor WebAssembly it stays available, but leaves out the Windows-specific check."
       ],
       "guideTopic": "tech",
       "options": []
@@ -275,11 +278,10 @@
       "group": "Runtime checks",
       "name": "Memory image guard",
       "summary": "Makes in-process memory snapshots less useful",
-      "what": "Clears header information from memory so a snapshot of the running process is harder to analyse. It also disables the dump function inside your own process.",
+      "what": "Wipes the file headers from the running program's memory, and patches the Windows function that writes a memory dump so it does nothing inside your own process.",
       "good": [
-        "Windows only, on x86 and x64.",
-        "Tools that dump the process from outside are not affected.",
-        "Not available for NativeAOT, Unity IL2CPP or Blazor WebAssembly."
+        "It works on x86 and x64. It is skipped on ARM64.",
+        "Tools that dump the process from outside are not affected, so this raises the effort only a little."
       ],
       "windowsOnly": true,
       "guideTopic": "tech",
@@ -346,7 +348,7 @@
       "what": "Packs the DLLs your program references into the output and loads them from there.",
       "good": [
         "Only DLLs that sit next to the input and that the input refers to are packed.",
-        "Not available for NativeAOT, Unity IL2CPP or Blazor WebAssembly."
+        "The packed DLLs are stored as resources named Obfy.Embedded.* inside the output."
       ],
       "guideTopic": "tech",
       "options": [
@@ -365,12 +367,16 @@
       "group": "Packaging",
       "name": "Native packing",
       "summary": "Wraps the result in a native launcher",
-      "what": "Replaces the managed file with a small native launcher that starts your program.",
+      "what": "Replaces the managed file with a small native launcher that loads your program into the .NET runtime. When several assemblies are protected together, each one with an entry point is packed.",
       "good": [
         "Needs an input with an entry point, so it suits applications, not libraries.",
         "The result still needs the .NET runtime on the machine. It is not self-contained and not compiled ahead of time.",
         "It is off at every level. Turning it on moves you to Custom."
       ],
+      "securityNote": {
+        "title": "Obfuscation, not confidentiality.",
+        "text": "The key that unpacks your program is stored in the launcher file, so anyone who inspects it can recover the original assembly. Do not ship real secrets such as keys, tokens or credentials and rely on packing."
+      },
       "guideTopic": "tech",
       "options": [
         { "key": "rid", "type": "select", "label": "Target", "choiceSet": "packingRid" }

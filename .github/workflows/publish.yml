@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      version:
+        description: Package version to publish (1.2.3 or v1.2.3)
+        required: true
+        type: string
 
 jobs:
   publish:
@@ -20,11 +25,23 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
+    - name: Resolve package version
+      id: version
+      shell: pwsh
+      env:
+        PACKAGE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      run: |
+        $resolved = & ./build/Resolve-PackageVersion.ps1 -RefName $env:PACKAGE_REF
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resolved)) {
+          throw "Could not resolve a package version from '$env:PACKAGE_REF'."
+        }
+        "version=$($resolved.Trim())" >> $env:GITHUB_OUTPUT
+
     - name: Restore
       run: dotnet restore Obfy.sln
 
     - name: Build
-      run: dotnet build Obfy.sln --no-restore -c Release
+      run: dotnet build Obfy.sln --no-restore -c Release -p:Version=${{ steps.version.outputs.version }}
 
     - name: Test
       run: >
@@ -33,7 +50,7 @@ jobs:
         --verbosity normal
 
     - name: Pack
-      run: dotnet pack Src/Obfy.Console/Obfy.Console.csproj --no-build -c Release -o ./artifacts
+      run: dotnet pack Src/Obfy.Console/Obfy.Console.csproj --no-build -c Release -p:Version=${{ steps.version.outputs.version }} -o ./artifacts
 
     - name: NuGet login (OIDC)
       uses: NuGet/login@v1
@@ -44,9 +61,20 @@ jobs:
     - name: Push to NuGet
       shell: pwsh
       run: |
+        $version = "${{ steps.version.outputs.version }}"
+        $lower = $version.ToLowerInvariant()
+        $url = "https://api.nuget.org/v3-flatcontainer/obfy/$lower/obfy.$lower.nupkg"
+        $existing = Invoke-WebRequest -Uri $url -Method Head -SkipHttpErrorCheck
+        if ($existing.StatusCode -eq 200) {
+          throw "Obfy $version is already on NuGet. Refusing to report a successful publish."
+        }
+        if ($existing.StatusCode -ne 404) {
+          throw "NuGet version check for Obfy $version returned HTTP $([int]$existing.StatusCode)."
+        }
+
         $packages = Get-ChildItem ./artifacts -Filter *.nupkg
         if (-not $packages) { throw "No .nupkg in ./artifacts" }
         foreach ($pkg in $packages) {
-          dotnet nuget push $pkg.FullName --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push $pkg.FullName --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json
           if ($LASTEXITCODE -ne 0) { throw "nuget push failed for $($pkg.Name)" }
         }

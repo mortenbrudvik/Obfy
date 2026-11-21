@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
 using FlaUI.Core;
 using FlaUI.UIA3;
@@ -40,7 +41,21 @@ internal static class LaunchDiagnostics
         }
 
         text.Append($" msedgewebview2 processes on the machine: {CountProcesses("msedgewebview2")}.");
+        if (IsElevated())
+        {
+            // The app inherits this token. An elevated WebView2 host ignores the browser-arguments variable, so the debug
+            // port never opens unless the machine policy carries the arguments (UiLaunch.BrowserArgumentsVariable).
+            text.Append($" The tests run elevated, where WebView2 ignores {UiLaunch.BrowserArgumentsVariable}: set the machine policy"
+                + $@" HKLM\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments (ObfyUI.exe = ""{UiLaunch.BrowserArguments}"").");
+        }
+
         return text.ToString();
+    }
+
+    private static bool IsElevated()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
     private static int CountProcesses(string name)

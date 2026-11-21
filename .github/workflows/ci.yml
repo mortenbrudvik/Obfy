@@ -155,6 +155,15 @@ jobs:
     - name: UI tests
       shell: pwsh
       run: |
+        # This step runs as an administrator with a full token, and an elevated WebView2 host ignores
+        # WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS (and the per-user policy), which is how the tests ask for the debug port:
+        # the app starts, the page loads, and the port never opens. The machine policy is honoured, so the same arguments
+        # go there (UiLaunch.BrowserArguments). Port 0 lets each launch's browser pick a free port and write it to
+        # DevToolsActivePort in its profile, where the harness reads it.
+        $policy = 'HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+        New-Item -Path $policy -Force | Out-Null
+        New-ItemProperty -Path $policy -Name 'ObfyUI.exe' -Value '--remote-debugging-port=0 --remote-allow-origins=*' -PropertyType String -Force | Out-Null
+
         # ilammy/msvc-dev-cmd exports Platform=x64 for the rest of the job. The solution build ignores it, but a
         # project-level `dotnet test --no-build` then looks in bin\x64\Release and finds no DLL, so no test ran.
         Remove-Item Env:Platform -ErrorAction SilentlyContinue

@@ -76,71 +76,12 @@ jobs:
     - name: Build
       run: dotnet build --no-restore -c Release
 
-    - name: Policies and CDP probes
-      if: always()
+    - name: Machine policy for the debug port (as in ci.yml)
       shell: pwsh
       run: |
-        New-Item -ItemType Directory -Force $env:DIAG | Out-Null
-        $out = Join-Path $env:DIAG 'probes.txt'
-        function Get-Cdp([int]$port) {
-          try { (Invoke-WebRequest "http://127.0.0.1:$port/json/version" -UseBasicParsing -TimeoutSec 2).Content } catch { $null }
-        }
-        function Wait-Cdp([int]$port, [int]$seconds) {
-          for ($i = 0; $i -lt $seconds; $i++) { $r = Get-Cdp $port; if ($r) { return $r }; Start-Sleep -Seconds 1 }
-          return $null
-        }
-        function Get-WebViewVersion {
-          (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue).pv
-        }
-        $exe = Join-Path $env:GITHUB_WORKSPACE 'Src\Obfy.UI\bin\Release\net10.0-windows10.0.26100\ObfyUI.exe'
-        function Invoke-ObfyProbe([string]$label, [int]$port, [string]$browserArgs) {
-          $work = Join-Path $env:TEMP ("probe-obfy-" + $port)
-          New-Item -ItemType Directory -Force $work | Out-Null
-          $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
-          $psi.UseShellExecute = $false
-          $psi.Environment['OBFY_UI_PREFERENCES'] = Join-Path $work 'ui-preferences.json'
-          $psi.Environment['OBFY_WEBVIEW2_USER_DATA'] = Join-Path $work 'webview2'
-          if ($browserArgs) { $psi.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = $browserArgs }
-          $app = [System.Diagnostics.Process]::Start($psi)
-          $r = Wait-Cdp $port 25
-          "ObfyUI [$label]: $(if ($r) { 'PORT OPEN' } else { 'NO ANSWER' }); chrome_debug.log: $(Test-Path (Join-Path $work 'webview2\EBWebView\chrome_debug.log'))"
-          $app.Kill($true)
-          Start-Sleep -Seconds 2
-          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        }
-        $lines = & {
-          "WebView2 runtime: $(Get-WebViewVersion)"
-          '--- Token of this step (integrity level, admin group) ---'
-          (whoami /groups | Select-String 'Mandatory Label|Administrators') | ForEach-Object { $_.Line.Trim() }
-          "EnableLUA: $((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').EnableLUA)  ConsentPromptBehaviorAdmin: $((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').ConsentPromptBehaviorAdmin)"
-
-          # Machine-wide policy, which an elevated host cannot be argued out of by a user-level env var or HKCU value.
-          $key = 'HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
-          New-Item -Path $key -Force | Out-Null
-          New-ItemProperty -Path $key -Name '*' -Value '--remote-debugging-port=9351 --remote-allow-origins=* --enable-logging --v=1' -PropertyType String -Force | Out-Null
-          Invoke-ObfyProbe 'HKLM policy AdditionalBrowserArguments for *' 9351 $null
-          Remove-Item 'HKLM:\Software\Policies\Microsoft\Edge\WebView2' -Recurse -Force
-
-          New-Item -Path $key -Force | Out-Null
-          New-ItemProperty -Path $key -Name 'ObfyUI.exe' -Value '--remote-debugging-port=9352 --remote-allow-origins=* --enable-logging --v=1' -PropertyType String -Force | Out-Null
-          Invoke-ObfyProbe 'HKLM policy AdditionalBrowserArguments for ObfyUI.exe' 9352 $null
-          Remove-Item 'HKLM:\Software\Policies\Microsoft\Edge\WebView2' -Recurse -Force
-
-          '--- Same env var, but the app started with a basic-user token (runas /trustlevel) ---'
-          $work = Join-Path $env:TEMP 'probe-obfy-9353'
-          New-Item -ItemType Directory -Force $work | Out-Null
-          $env:OBFY_UI_PREFERENCES = Join-Path $work 'ui-preferences.json'
-          $env:OBFY_WEBVIEW2_USER_DATA = Join-Path $work 'webview2'
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9353 --remote-allow-origins=* --enable-logging --v=1'
-          & runas.exe /trustlevel:0x20000 "`"$exe`"" 2>&1 | Out-String
-          $r = Wait-Cdp 9353 25
-          "ObfyUI via runas /trustlevel:0x20000: $(if ($r) { 'PORT OPEN' } else { 'NO ANSWER' }); chrome_debug.log: $(Test-Path (Join-Path $work 'webview2\EBWebView\chrome_debug.log'))"
-          Get-Process ObfyUI -ErrorAction SilentlyContinue | ForEach-Object { "  ObfyUI pid $($_.Id) session $($_.SessionId)" }
-          Get-Process ObfyUI -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, Env:OBFY_UI_PREFERENCES, Env:OBFY_WEBVIEW2_USER_DATA
-        }
-        $lines | Tee-Object $out
+        $policy = 'HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+        New-Item -Path $policy -Force | Out-Null
+        New-ItemProperty -Path $policy -Name 'ObfyUI.exe' -Value '--remote-debugging-port=0 --remote-allow-origins=*' -PropertyType String -Force | Out-Null
 
     - name: Start sampler
       shell: pwsh
@@ -179,7 +120,7 @@ jobs:
         OBFY_E2E_WEBVIEW_LOG: '1'
       run: |
         Remove-Item Env:Platform -ErrorAction SilentlyContinue
-        dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --no-build -c Release --filter "Category=UI&FullyQualifiedName~FirstLaunch" --nologo --logger "trx;LogFileName=ui.trx" --results-directory "$env:DIAG\results"
+        dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --no-build -c Release --filter "Category=UI" --nologo --logger "trx;LogFileName=ui.trx" --results-directory "$env:DIAG\results"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     - name: Collect evidence

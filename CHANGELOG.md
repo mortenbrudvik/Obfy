@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The JetBrains Rider plugin (`Src/Obfy.Rider`) was removed, with its Gradle build, JVM tests, and the `rider-tests` CI job. It was never published to a marketplace or attached to a release
 
 ### Fixed
+- The desktop app refuses to start a run whose output would replace one of its inputs, and the run bar says why and how to get out (pick another folder, or clear the folder). Before, an output folder that was the folder of an input silently overwrote the original, and a closed set also deleted the backup it had made. It checks every mode (one file, closed set, merge, C# files) and the default `*.obfuscated.*` name, ignoring case, trailing separators and `..`, and follows symbolic links and junctions. The CLI is unchanged and still writes where `-o` says
 - The CI UI-automation step ran no tests: `ilammy/msvc-dev-cmd` exports `Platform=x64`, so the project-level `dotnet test --no-build` looked in `bin/x64/Release` and found no DLL. The step now clears `Platform`
 - The desktop app shows and runs a loaded configuration as Custom when its level-controlled options are not exactly what its `level` preset sets, so a run uses the file's switches, as the CLI does. The file on disk is not rewritten
 - The run bar hint names what a run writes: with an output folder it gives the input's own file name (not `*.obfuscated.*`), and two or more C# files without a folder are compiled together into `obfy-src` next to the first

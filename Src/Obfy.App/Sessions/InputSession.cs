@@ -548,19 +548,28 @@ public sealed class InputSession
     /// </summary>
     public RunInput CaptureRun(bool merge)
     {
+        RunInput captured;
+        OutputPlan? defaultPlan;
         lock (_gate)
         {
             var included = IncludedLocked()
                 .Select(e => new InputFile(e.Id, e.Path, e.Kind, e.Origin == FileOrigin.Solution, e.Hints))
                 .ToList();
             var skipped = _entries.Where(e => e.Status == FileStatus.Skipped).Select(ToRow).ToList();
-            return new RunInput(
+            captured = new RunInput(
                 included,
                 skipped,
                 PlanLocked(merge),
                 _outputFolder.Length > 0,
                 _writeSymbolMap ? ResolveSymbolMapLocked() : null);
+
+            // What clearing the folder would write, so the message can say whether that way out is open.
+            defaultPlan = _outputFolder.Length > 0 ? PlanLocked(merge, folder: null) : null;
         }
+
+        // Outside the lock: telling two paths apart may ask the file system about links.
+        var listed = captured.Included.Select(static f => f.Path).Concat(captured.Skipped.Select(static r => r.Path));
+        return captured with { Collision = OutputCollisions.Find(listed, captured.Plan, defaultPlan) };
     }
 
     /// <summary>The symbol map's file: the typed path (a relative one against the output folder), or the default name there.</summary>
@@ -586,13 +595,19 @@ public sealed class InputSession
     private List<Entry> IncludedLocked() =>
         _entries.Where(e => e.Status != FileStatus.Skipped && e.Kind != FileKind.Project).ToList();
 
-    private OutputPlan PlanLocked(bool merge)
+    private OutputPlan PlanLocked(bool merge) => PlanLocked(merge, _outputFolder.Length == 0 ? null : _outputFolder);
+
+    /// <summary>
+    /// The plan for the included rows with <paramref name="folder"/> as the output folder (null: the defaults). The one
+    /// place that decides where each file is written: the hint, the run (<see cref="OutputPlan.OutputPathFor"/>) and the
+    /// check that no output replaces a listed file (<see cref="OutputCollisions"/>) all read it.
+    /// </summary>
+    private OutputPlan PlanLocked(bool merge, string? folder)
     {
         var inputs = IncludedLocked();
         if (inputs.Count == 0)
-            return new OutputPlan(OutputMode.None, null, null, string.Empty);
+            return new OutputPlan(OutputMode.None, null, null, string.Empty, []);
 
-        var folder = _outputFolder.Length == 0 ? null : _outputFolder;
         var assemblies = inputs.Where(e => e.Kind == FileKind.Assembly).ToList();
 
         if (merge && inputs.Count >= 2 && assemblies.Count == inputs.Count)
@@ -600,16 +615,18 @@ public sealed class InputSession
             var primary = assemblies[0];
             var directory = folder ?? DirectoryOf(primary);
             var path = Path.Combine(directory, ObfuscatedName(primary));
-            return new OutputPlan(OutputMode.Merge, directory, path, $"Merges {inputs.Count} assemblies into {path}.");
+            return new OutputPlan(
+                OutputMode.Merge, directory, path, $"Merges {inputs.Count} assemblies into {path}.", [new PlannedOutput(primary.Path, path)]);
         }
 
         if (assemblies.Count >= 2 || inputs.Any(e => e.Origin == FileOrigin.Solution))
         {
             var directory = folder ?? Path.Combine(DirectoryOf(assemblies.FirstOrDefault() ?? inputs[0]), "obfy-out");
-            return new OutputPlan(OutputMode.ClosedSet, directory, null, $"Writes the protected assemblies to {directory}.");
+            return new OutputPlan(
+                OutputMode.ClosedSet, directory, null, $"Writes the protected assemblies to {directory}.", ClosedSetOutputs(inputs, assemblies, directory));
         }
 
-        return new OutputPlan(OutputMode.Each, folder, null, EachHint(inputs, folder));
+        return new OutputPlan(OutputMode.Each, folder, null, EachHint(inputs, folder), EachOutputs(inputs, folder));
     }
 
     /// <summary>
@@ -633,11 +650,58 @@ public sealed class InputSession
         if (sources.Count < 2)
             return "Writes each file next to its input as name.obfuscated.ext.";
 
-        var sourceFolder = Path.Combine(DirectoryOf(sources[0]), "obfy-src");
+        var sourceFolder = DefaultSourceFolder(sources[0]);
         return sources.Count == inputs.Count
             ? $"Compiles the C# files together and writes them to {sourceFolder}."
             : $"Compiles the C# files together and writes them to {sourceFolder}; the other file goes next to its input as name.obfuscated.ext.";
     }
+
+    /// <summary>
+    /// The files <c>RunCoordinator.EachAsync</c> writes: two or more C# files are one compilation, laid out by the engine
+    /// under the chosen folder or <c>obfy-src</c> beside the first; every other file is written alone, under its own name in
+    /// the chosen folder or as <c>name.obfuscated.ext</c> beside its input.
+    /// </summary>
+    private static List<PlannedOutput> EachOutputs(List<Entry> inputs, string? folder)
+    {
+        var outputs = new List<PlannedOutput>(inputs.Count);
+        var sources = inputs.Where(e => e.Kind == FileKind.Source).ToList();
+        var separate = inputs;
+
+        if (sources.Count >= 2)
+        {
+            var sourceFolder = folder ?? DefaultSourceFolder(sources[0]);
+            var written = Obfy.Core.Services.SourceProcessor.PlanMultiFileOutputPaths([.. sources.Select(static s => s.Path)], sourceFolder);
+            for (var i = 0; i < sources.Count; i++)
+                outputs.Add(new PlannedOutput(sources[i].Path, written[i]));
+            separate = inputs.Where(e => e.Kind != FileKind.Source).ToList();
+        }
+
+        foreach (var entry in separate)
+        {
+            var path = folder is null
+                ? Path.Combine(DirectoryOf(entry), ObfuscatedName(entry))
+                : Path.Combine(folder, entry.Name);
+            outputs.Add(new PlannedOutput(entry.Path, path));
+        }
+
+        return outputs;
+    }
+
+    /// <summary>
+    /// The files a closed set writes under <paramref name="directory"/>: the engine's own names for the assemblies (a shared
+    /// name goes into a folder of its own), nothing for the C# files, which a closed set skips. With no assembly at all the
+    /// run falls back to separate files in that folder, and so does this.
+    /// </summary>
+    private static List<PlannedOutput> ClosedSetOutputs(List<Entry> inputs, List<Entry> assemblies, string directory)
+    {
+        if (assemblies.Count == 0)
+            return EachOutputs(inputs, directory);
+
+        var relative = ClosedSetProcessor.PlanRelativeOutputPaths([.. assemblies.Select(static a => a.Path)]);
+        return [.. assemblies.Select((a, i) => new PlannedOutput(a.Path, Path.Combine(directory, relative[i])))];
+    }
+
+    private static string DefaultSourceFolder(Entry first) => Path.Combine(DirectoryOf(first), "obfy-src");
 
     /// <summary>
     /// Runs on every snapshot, so it must never throw on what the user typed: a typed path that cannot be made absolute

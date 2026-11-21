@@ -118,6 +118,16 @@ describe("GuidePage", () => {
     expect(within(article).queryByText(/never changed/)).toBeNull();
   });
 
+  it("saysTheAppWillNotWriteOverAnInput_notThatItDoesWhenTheInputsFolderIsChosen", () => {
+    render(<Harness />);
+
+    const article = screen.getByRole("region", { name: "Getting started" });
+    expect(within(article).getByText(/will not write over an input file/)).toBeTruthy();
+    expect(within(article).getByText(/the run bar says why/)).toBeTruthy();
+    expect(within(article).queryByText(/unless you choose/)).toBeNull();
+    expect(within(article).queryByText(/leaves your input files alone/)).toBeNull();
+  });
+
   it("rendersInlineMarkup_asBoldMonoAndKeycaps", () => {
     render(<Harness />);
 

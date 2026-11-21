@@ -184,6 +184,13 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 {
                     context.Statistics.Merge(sessionContext.Statistics);
                     context.SkippedItems.AddRange(sessionContext.SkippedItems);
+
+                    // The cache covers a single assembly or a merge only. One note per run, so on the first module.
+                    if (baseSettings.Incremental.Enabled)
+                    {
+                        context.Warnings.Add(ObfuscationWarnings.ClosedSetCacheNote);
+                        _logger.LogInformation("Incremental cache not used: a closed set is never cached");
+                    }
                 }
 
                 var result = await _pipeline.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);

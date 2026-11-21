@@ -37,9 +37,86 @@ internal static class StaleMemberReferenceScanner
                         $"(parent {reference.Class?.GetType().Name}, in {module.Name})");
                 }
             }
+
+            findings.AddRange(FindStaleNamedArguments(module, set));
         }
 
         return findings.Distinct().OrderBy(f => f, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// A named argument of a custom attribute (<c>[Info(Note = "x")]</c>) is stored as the NAME of a field or property
+    /// of the attribute type, which the CLR looks up when the attribute is read. Reports every named argument
+    /// of an attribute defined in the set that names no field or property of the attribute type or its base
+    /// types. Every row of the CustomAttribute table is looked at, whatever its parent is, so no owner can be
+    /// forgotten the way a hand-written list of them could.
+    /// </summary>
+    private static IEnumerable<string> FindStaleNamedArguments(ModuleDef module, IReadOnlyList<ModuleDef> set)
+    {
+        foreach (var (owner, attributeType, arguments) in AllNamedArguments(module))
+        {
+            foreach (var argument in arguments)
+            {
+                if (IsStaleNamedArgument(attributeType, argument, set) is { } attributeDef)
+                {
+                    yield return $"named argument '{argument.Name}' of {attributeDef.FullName} " +
+                        $"(on {owner.GetType().Name}, in {module.Name})";
+                }
+            }
+        }
+    }
+
+    private static TypeDef? IsStaleNamedArgument(ITypeDefOrRef? attributeType, CANamedArgument argument, IReadOnlyList<ModuleDef> set)
+    {
+        var attributeDef = ResolveType(attributeType, set);
+        if (attributeDef is null)
+            return null;
+
+        for (var type = attributeDef; type is not null; type = ResolveType(type.BaseType, set))
+        {
+            if (argument.IsField
+                    ? type.Fields.Any(f => f.Name == argument.Name)
+                    : type.Properties.Any(p => p.Name == argument.Name))
+                return null;
+        }
+
+        return attributeDef;
+    }
+
+    /// <summary>The named arguments of every custom attribute and declarative security attribute of the module.</summary>
+    private static IEnumerable<(object Owner, ITypeDefOrRef? AttributeType, IList<CANamedArgument> Arguments)> AllNamedArguments(
+        ModuleDef module)
+    {
+        if (module is ModuleDefMD md)
+        {
+            var seen = new HashSet<uint>();
+            var table = md.TablesStream.CustomAttributeTable;
+            for (uint rid = 1; rid <= table.Rows; rid++)
+            {
+                if (!md.TablesStream.TryReadCustomAttributeRow(rid, out var row))
+                    continue;
+                var owner = md.ResolveHasCustomAttribute(row.Parent);
+                if (owner is null || !seen.Add(owner.MDToken.Raw))
+                    continue;
+                foreach (var attribute in owner.CustomAttributes)
+                    yield return (owner, attribute.AttributeType, attribute.NamedArguments);
+            }
+
+            for (uint rid = 1; rid <= md.TablesStream.DeclSecurityTable.Rows; rid++)
+            {
+                var security = md.ResolveDeclSecurity(rid);
+                foreach (var attribute in security.SecurityAttributes)
+                    yield return (security, attribute.AttributeType, attribute.NamedArguments);
+            }
+
+            yield break;
+        }
+
+        foreach (var owner in CustomAttributeOwners(module))
+        {
+            foreach (var attribute in owner.CustomAttributes)
+                yield return (owner, attribute.AttributeType, attribute.NamedArguments);
+        }
     }
 
     /// <summary>

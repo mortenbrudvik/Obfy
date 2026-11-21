@@ -156,18 +156,16 @@ public class SymbolRenamingObfuscator : IObfuscator
 
             // A member of a generic instantiation of one of this module's own types (Box<int>.Item) is not
             // referenced through its definition but through a MemberRef the CLR binds by name and signature,
+            // and a named argument of a custom attribute ([Info(Note = "x")]) is stored as the member's name,
             // so every such reference has to follow the rename. Resolve them while the original names still
             // match; the definitions are renamed next. The module is the whole set, so nothing is resolved
             // through the assembly resolver.
-            var typeRefUpdates = new List<(TypeRef Ref, TypeDef Def)>();
-            var memberRefUpdates = new List<(MemberRef Ref, IMemberDef Def)>();
-            var exportedUpdates = new List<(ExportedType Ref, TypeDef Def)>();
+            var referenceUpdates = new ReferenceUpdates();
             if (typeRenames.Count + methodRenames.Count + fieldRenames.Count + propertyRenames.Count
                 + eventRenames.Count + namespaceRenames.Count > 0)
             {
                 SnapshotReferences(
-                    module, new[] { module }, typeRefUpdates, memberRefUpdates, exportedUpdates,
-                    context.Warnings, resolveOutsideSet: false);
+                    module, new[] { module }, referenceUpdates, context.Warnings, resolveOutsideSet: false);
             }
 
             // Apply renames
@@ -226,7 +224,7 @@ public class SymbolRenamingObfuscator : IObfuscator
                 stats.NamespacesRenamed++;
             }
 
-            ApplyReferenceUpdates(typeRefUpdates, memberRefUpdates, exportedUpdates);
+            ApplyReferenceUpdates(referenceUpdates);
 
             RenameDerivedResources(module, runtimeNames);
 
@@ -318,14 +316,10 @@ public class SymbolRenamingObfuscator : IObfuscator
         // Resolve while original names still match; apply mutates defs that the resolver keys on.
         // Match in-set refs by assembly name + TFM path so two TFMs of the same identity
         // do not steal each other's TypeRefs via the shared AssemblyResolver cache.
-        var typeRefUpdates = new List<(TypeRef Ref, TypeDef Def)>();
-        var memberRefUpdates = new List<(MemberRef Ref, IMemberDef Def)>();
-        var exportedUpdates = new List<(ExportedType Ref, TypeDef Def)>();
+        var referenceUpdates = new ReferenceUpdates();
         var set = plans.ConvertAll(static p => p.Module);
         foreach (var (module, _, _) in plans)
-            SnapshotReferences(
-                module, set, typeRefUpdates, memberRefUpdates, exportedUpdates, sharedContext.Warnings,
-                resolveOutsideSet: true);
+            SnapshotReferences(module, set, referenceUpdates, sharedContext.Warnings, resolveOutsideSet: true);
 
         foreach (var (module, settings, plan) in plans)
         {
@@ -346,7 +340,7 @@ public class SymbolRenamingObfuscator : IObfuscator
             }
         }
 
-        ApplyReferenceUpdates(typeRefUpdates, memberRefUpdates, exportedUpdates);
+        ApplyReferenceUpdates(referenceUpdates);
         sharedContext.Statistics.Merge(stats);
 
         _logger.LogInformation(
@@ -558,16 +552,15 @@ public class SymbolRenamingObfuscator : IObfuscator
 
     /// <summary>
     /// Pairs every reference of <paramref name="module"/> that points at a definition of <paramref name="set"/>
-    /// with that definition, by the names both still carry. Nothing is renamed here. With
+    /// with that definition, by the names both still carry: type, member and exported-type references, and
+    /// the names inside custom attribute blobs (<see cref="SnapshotAttributeBlobs"/>). Nothing is renamed here. With
     /// <paramref name="resolveOutsideSet"/> a reference that names no assembly of the set is also resolved
     /// through the assembly resolver (a type forwarded into the set); a single-module run has no reason to.
     /// </summary>
     private static void SnapshotReferences(
         ModuleDef module,
         IReadOnlyList<ModuleDef> set,
-        List<(TypeRef Ref, TypeDef Def)> typeRefUpdates,
-        List<(MemberRef Ref, IMemberDef Def)> memberRefUpdates,
-        List<(ExportedType Ref, TypeDef Def)> exportedUpdates,
+        ReferenceUpdates updates,
         ICollection<string> warnings,
         bool resolveOutsideSet)
     {
@@ -575,7 +568,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         {
             var def = FindTypeDefInSet(typeRef, module, set, resolveOutsideSet);
             if (def != null)
-                typeRefUpdates.Add((typeRef, def));
+                updates.TypeRefs.Add((typeRef, def));
         }
 
         var seenMemberRefs = new HashSet<MemberRef>(ReferenceEqualityComparer.Instance);
@@ -587,7 +580,7 @@ public class SymbolRenamingObfuscator : IObfuscator
 
             var def = FindMemberDefInSet(memberRef, module, set, resolveOutsideSet);
             if (def != null)
-                memberRefUpdates.Add((memberRef, def));
+                updates.MemberRefs.Add((memberRef, def));
             else if (IsInSetMemberRef(memberRef, set))
                 unresolvedInSet++;
         }
@@ -602,9 +595,255 @@ public class SymbolRenamingObfuscator : IObfuscator
         {
             var def = FindExportedTypeInSet(exported, module, set, resolveOutsideSet);
             if (def != null)
-                exportedUpdates.Add((exported, def));
+                updates.ExportedTypes.Add((exported, def));
+        }
+
+        SnapshotAttributeBlobs(module, set, updates, warnings, resolveOutsideSet);
+    }
+
+    /// <summary>
+    /// A custom attribute blob holds two kinds of names. A named argument (<c>[Info(Note = "x")]</c>) is stored as
+    /// the NAME of a field or property of the attribute type, which the CLR looks up when the attribute is read:
+    /// every named argument whose attribute type is defined in the set is paired with the field or property it
+    /// names, found on the attribute type or on a base type in the set (attributes of framework types resolve
+    /// to nothing in the set and are left as they are). An enum-typed argument and a <c>typeof</c> argument are
+    /// stored as the type's NAME too, and dnlib hands such a type over as a type reference of its own, which
+    /// is not a row of the TypeRef table: those references are paired with their definitions like the rows are.
+    /// </summary>
+    private static void SnapshotAttributeBlobs(
+        ModuleDef module,
+        IReadOnlyList<ModuleDef> set,
+        ReferenceUpdates updates,
+        ICollection<string> warnings,
+        bool resolveOutsideSet)
+    {
+        var unparsed = 0;
+        foreach (var owner in CustomAttributeOwners(module).Concat(ReferenceCustomAttributeOwners(module)))
+        {
+            foreach (var attribute in owner.CustomAttributes)
+            {
+                if (attribute.IsRawBlob)
+                {
+                    // dnlib could not parse the blob (an enum it cannot resolve), so the names in it stay opaque.
+                    if (ResolveTypeInSet(attribute.AttributeType, module, set, resolveOutsideSet) != null)
+                        unparsed++;
+                    continue;
+                }
+
+                AddNamedArguments(attribute.AttributeType, attribute.NamedArguments, module, set, updates, resolveOutsideSet);
+                AddBlobTypeRefs(attribute.ConstructorArguments, attribute.NamedArguments, module, set, updates, resolveOutsideSet);
+            }
+
+            if (owner is DeclSecurity declSecurity)
+            {
+                foreach (var security in declSecurity.SecurityAttributes)
+                {
+                    AddNamedArguments(security.AttributeType, security.NamedArguments, module, set, updates, resolveOutsideSet);
+                    AddBlobTypeRefs(Array.Empty<CAArgument>(), security.NamedArguments, module, set, updates, resolveOutsideSet);
+                }
+            }
+        }
+
+        if (unparsed > 0)
+        {
+            warnings.Add(
+                $"{unparsed} custom attribute(s) in {module.Name} of an in-set type could not be parsed, " +
+                "so the names inside them were not rewritten.");
         }
     }
+
+    private static void AddBlobTypeRefs(
+        IList<CAArgument> positional,
+        IList<CANamedArgument> named,
+        ModuleDef referring,
+        IReadOnlyList<ModuleDef> set,
+        ReferenceUpdates updates,
+        bool resolveOutsideSet)
+    {
+        foreach (var typeRef in TypeRefsInArguments(positional, named))
+        {
+            var def = FindTypeDefInSet(typeRef, referring, set, resolveOutsideSet);
+            if (def != null)
+                updates.TypeRefs.Add((typeRef, def));
+        }
+    }
+
+    private static IEnumerable<TypeRef> TypeRefsInArguments(IList<CAArgument> positional, IList<CANamedArgument> named)
+    {
+        foreach (var argument in positional)
+        {
+            foreach (var typeRef in TypeRefsInArgument(argument))
+                yield return typeRef;
+        }
+
+        foreach (var argument in named)
+        {
+            foreach (var typeRef in TypeRefsInSig(argument.Type))
+                yield return typeRef;
+            foreach (var typeRef in TypeRefsInArgument(argument.Argument))
+                yield return typeRef;
+        }
+    }
+
+    private static IEnumerable<TypeRef> TypeRefsInArgument(CAArgument argument)
+    {
+        foreach (var typeRef in TypeRefsInSig(argument.Type))
+            yield return typeRef;
+
+        switch (argument.Value)
+        {
+            case TypeSig sig:
+                foreach (var typeRef in TypeRefsInSig(sig))
+                    yield return typeRef;
+                break;
+            case CAArgument boxed:
+                foreach (var typeRef in TypeRefsInArgument(boxed))
+                    yield return typeRef;
+                break;
+            case IList<CAArgument> elements:
+                foreach (var element in elements)
+                {
+                    foreach (var typeRef in TypeRefsInArgument(element))
+                        yield return typeRef;
+                }
+
+                break;
+        }
+    }
+
+    private static IEnumerable<TypeRef> TypeRefsInSig(TypeSig? sig)
+    {
+        for (; sig != null; sig = sig.Next)
+        {
+            switch (sig)
+            {
+                case GenericInstSig generic:
+                    foreach (var typeRef in TypeRefsInSig(generic.GenericType))
+                        yield return typeRef;
+                    foreach (var argument in generic.GenericArguments)
+                    {
+                        foreach (var typeRef in TypeRefsInSig(argument))
+                            yield return typeRef;
+                    }
+
+                    break;
+                case ClassOrValueTypeSig named:
+                    foreach (var typeRef in TypeRefsInType(named.TypeDefOrRef))
+                        yield return typeRef;
+                    break;
+                case ModifierSig modifier:
+                    foreach (var typeRef in TypeRefsInType(modifier.Modifier))
+                        yield return typeRef;
+                    break;
+            }
+        }
+    }
+
+    /// <summary>A type reference and the enclosing type references a nested one names as its scope.</summary>
+    private static IEnumerable<TypeRef> TypeRefsInType(ITypeDefOrRef? type)
+    {
+        switch (type)
+        {
+            case TypeRef typeRef:
+                yield return typeRef;
+                foreach (var enclosing in TypeRefsInType(typeRef.ResolutionScope as TypeRef))
+                    yield return enclosing;
+                break;
+            case TypeSpec spec:
+                foreach (var typeRef in TypeRefsInSig(spec.TypeSig))
+                    yield return typeRef;
+                break;
+        }
+    }
+
+    private static void AddNamedArguments(
+        ITypeDefOrRef? attributeType,
+        IList<CANamedArgument> arguments,
+        ModuleDef referring,
+        IReadOnlyList<ModuleDef> set,
+        ReferenceUpdates updates,
+        bool resolveOutsideSet)
+    {
+        if (arguments.Count == 0)
+            return;
+
+        var attributeDef = ResolveTypeInSet(attributeType, referring, set, resolveOutsideSet);
+        if (attributeDef is null)
+            return;
+
+        foreach (var argument in arguments)
+        {
+            if (UTF8String.IsNullOrEmpty(argument.Name))
+                continue;
+
+            var member = FindNamedArgumentMember(attributeDef, argument, set, resolveOutsideSet);
+            if (member != null)
+                updates.NamedArguments.Add((argument, member));
+        }
+    }
+
+    /// <summary>
+    /// The field (<see cref="CANamedArgument.IsField"/>) or property a named argument names: the CLR looks it up
+    /// on the attribute type first and then up the base chain, so a member of a base attribute is found the same way.
+    /// </summary>
+    private static IMemberDef? FindNamedArgumentMember(
+        TypeDef attributeDef, CANamedArgument argument, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet)
+    {
+        foreach (var type in TypeAndBases(attributeDef, set, resolveOutsideSet))
+        {
+            if (argument.IsField)
+            {
+                foreach (var field in type.Fields)
+                {
+                    if (field.Name == argument.Name)
+                        return field;
+                }
+            }
+            else
+            {
+                foreach (var property in type.Properties)
+                {
+                    if (property.Name == argument.Name)
+                        return property;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// <paramref name="start"/> and its base types as far as they are definitions of the set (or, with
+    /// <paramref name="resolveOutsideSet"/>, resolvable). A base given as a generic instantiation
+    /// (<c>Base&lt;int&gt;</c>) is followed through its generic type.
+    /// </summary>
+    private static IEnumerable<TypeDef> TypeAndBases(TypeDef start, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet)
+    {
+        var seen = new HashSet<TypeDef>();
+        for (var type = start; type != null && seen.Add(type); )
+        {
+            yield return type;
+            type = ResolveTypeInSet(type.BaseType, type.Module, set, resolveOutsideSet);
+        }
+    }
+
+    /// <summary>
+    /// The definition a type reference, a definition or an instantiation of a generic type
+    /// (<c>Box&lt;int&gt;</c>) names, or null when it is none of the program's own (an array, a pointer, a
+    /// type outside the set). <paramref name="referring"/> is the module that holds the reference.
+    /// </summary>
+    private static TypeDef? ResolveTypeInSet(
+        ITypeDefOrRef? type, ModuleDef referring, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet) =>
+        type switch
+        {
+            TypeDef def => def,
+            TypeRef typeRef => FindTypeDefInSet(typeRef, referring, set, resolveOutsideSet),
+            TypeSpec { TypeSig: GenericInstSig { GenericType: { } generic } } =>
+                ResolveTypeInSet(generic.TypeDefOrRef, referring, set, resolveOutsideSet),
+            TypeSpec { TypeSig: ClassOrValueTypeSig plain } =>
+                ResolveTypeInSet(plain.TypeDefOrRef, referring, set, resolveOutsideSet),
+            _ => null
+        };
 
     private static TypeDef? FindTypeDefInSet(
         TypeRef typeRef, ModuleDef referring, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet)
@@ -660,12 +899,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (declaring is null)
             return null;
 
-        var typeDef = declaring switch
-        {
-            TypeRef typeRef => FindTypeDefInSet(typeRef, referring, set, resolveOutsideSet),
-            TypeDef declared => declared,
-            _ => null
-        };
+        var typeDef = ResolveTypeInSet(declaring, referring, set, resolveOutsideSet);
 
         if (typeDef is null)
             return resolveOutsideSet ? memberRef.Resolve() as IMemberDef : null;
@@ -909,17 +1143,42 @@ public class SymbolRenamingObfuscator : IObfuscator
         }
     }
 
+    /// <summary>
+    /// Everything of <paramref name="module"/> that carries custom attributes and that the writer reaches:
+    /// the module and assembly, the types with their interface implementations, generic parameters (and their
+    /// constraints), fields, properties, events, methods, parameters and return values, declarative security,
+    /// exported types, resources, and the assembly, module and type references.
+    /// </summary>
     private static IEnumerable<IHasCustomAttribute> CustomAttributeOwners(ModuleDef module)
     {
         yield return module;
         if (module.Assembly is { } assembly)
+        {
             yield return assembly;
+            foreach (var security in assembly.DeclSecurities)
+                yield return security;
+        }
+
+        foreach (var exported in module.ExportedTypes)
+            yield return exported;
+        foreach (var resource in module.Resources)
+            yield return resource;
+        foreach (var assemblyRef in module.GetAssemblyRefs())
+            yield return assemblyRef;
+        foreach (var moduleRef in module.GetModuleRefs())
+            yield return moduleRef;
+        foreach (var typeRef in module.GetTypeRefs())
+            yield return typeRef;
 
         foreach (var type in module.GetTypes())
         {
             yield return type;
-            foreach (var genericParameter in type.GenericParameters)
-                yield return genericParameter;
+            foreach (var security in type.DeclSecurities)
+                yield return security;
+            foreach (var implementation in type.Interfaces)
+                yield return implementation;
+            foreach (var owner in GenericParameterOwners(type.GenericParameters))
+                yield return owner;
             foreach (var field in type.Fields)
                 yield return field;
             foreach (var property in type.Properties)
@@ -930,11 +1189,75 @@ public class SymbolRenamingObfuscator : IObfuscator
             foreach (var method in type.Methods)
             {
                 yield return method;
-                foreach (var genericParameter in method.GenericParameters)
-                    yield return genericParameter;
+                foreach (var security in method.DeclSecurities)
+                    yield return security;
+                foreach (var owner in GenericParameterOwners(method.GenericParameters))
+                    yield return owner;
                 foreach (var parameter in method.ParamDefs)
                     yield return parameter;
             }
+        }
+    }
+
+    /// <summary>
+    /// The member references, method specifications and type specifications the code and the type definitions hold,
+    /// as the instances the writer emits (see <see cref="EnumerateMemberRefs"/>). They can carry attributes
+    /// like any other row. A leftover copy that only the original metadata knows is not among them: the
+    /// writer has no row for it unless it is told to preserve row ids.
+    /// </summary>
+    private static IEnumerable<IHasCustomAttribute> ReferenceCustomAttributeOwners(ModuleDef module)
+    {
+        var seen = new HashSet<object>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+
+        foreach (var memberRef in EnumerateMemberRefs(module))
+        {
+            if (seen.Add(memberRef))
+                yield return memberRef;
+            if (memberRef.Class is TypeSpec parent && seen.Add(parent))
+                yield return parent;
+        }
+
+        foreach (var type in module.GetTypes())
+        {
+            if (type.BaseType is TypeSpec baseSpec && seen.Add(baseSpec))
+                yield return baseSpec;
+            foreach (var implementation in type.Interfaces)
+            {
+                if (implementation.Interface is TypeSpec interfaceSpec && seen.Add(interfaceSpec))
+                    yield return interfaceSpec;
+            }
+
+            foreach (var method in type.Methods)
+            {
+                if (method.Body is null)
+                    continue;
+
+                foreach (var instruction in method.Body.Instructions)
+                {
+                    switch (instruction.Operand)
+                    {
+                        case TypeSpec typeSpec when seen.Add(typeSpec):
+                            yield return typeSpec;
+                            break;
+                        case MethodSpec methodSpec:
+                            if (seen.Add(methodSpec))
+                                yield return methodSpec;
+                            if (methodSpec.Method is MemberRef { Class: TypeSpec genericParent } && seen.Add(genericParent))
+                                yield return genericParent;
+                            break;
+                    }
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<IHasCustomAttribute> GenericParameterOwners(IList<GenericParam> parameters)
+    {
+        foreach (var parameter in parameters)
+        {
+            yield return parameter;
+            foreach (var constraint in parameter.GenericParamConstraints)
+                yield return constraint;
         }
     }
 
@@ -951,12 +1274,18 @@ public class SymbolRenamingObfuscator : IObfuscator
         public int GetHashCode(MemberRef? obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
 
-    private static void ApplyReferenceUpdates(
-        List<(TypeRef Ref, TypeDef Def)> typeRefUpdates,
-        List<(MemberRef Ref, IMemberDef Def)> memberRefUpdates,
-        List<(ExportedType Ref, TypeDef Def)> exportedUpdates)
+    /// <summary>What <see cref="SnapshotReferences"/> found, to be applied once the definitions carry their new names.</summary>
+    private sealed class ReferenceUpdates
     {
-        foreach (var (typeRef, def) in typeRefUpdates)
+        public List<(TypeRef Ref, TypeDef Def)> TypeRefs { get; } = new();
+        public List<(MemberRef Ref, IMemberDef Def)> MemberRefs { get; } = new();
+        public List<(ExportedType Ref, TypeDef Def)> ExportedTypes { get; } = new();
+        public List<(CANamedArgument Argument, IMemberDef Def)> NamedArguments { get; } = new();
+    }
+
+    private static void ApplyReferenceUpdates(ReferenceUpdates updates)
+    {
+        foreach (var (typeRef, def) in updates.TypeRefs)
         {
             if (typeRef.Name != def.Name)
                 typeRef.Name = def.Name;
@@ -967,18 +1296,25 @@ public class SymbolRenamingObfuscator : IObfuscator
                 typeRef.Namespace = def.Namespace;
         }
 
-        foreach (var (memberRef, def) in memberRefUpdates)
+        foreach (var (memberRef, def) in updates.MemberRefs)
         {
             if (memberRef.Name != def.Name)
                 memberRef.Name = def.Name;
         }
 
-        foreach (var (exported, def) in exportedUpdates)
+        foreach (var (exported, def) in updates.ExportedTypes)
         {
             if (exported.TypeName != def.Name)
                 exported.TypeName = def.Name;
             if (exported.TypeNamespace != def.Namespace)
                 exported.TypeNamespace = def.Namespace;
+        }
+
+        // A property is renamed together with its accessors; the argument names the PROPERTY, not get_/set_.
+        foreach (var (argument, def) in updates.NamedArguments)
+        {
+            if (argument.Name != def.Name)
+                argument.Name = def.Name;
         }
     }
 

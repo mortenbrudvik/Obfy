@@ -32,7 +32,6 @@ dotnet test Tests/Obfy.VisualStudio.Tests/Obfy.VisualStudio.Tests.csproj
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
 ```
 
-   Rider JVM tests (JDK 21): `./gradlew.bat test` in `Src/Obfy.Rider`.
    Platform (weekly CI): `dotnet test Tests/Obfy.ScenarioTests --filter Category=Platform`
    Linux CLI (CI job `linux-cli`): `dotnet test Tests/Obfy.Console.Tests` on Ubuntu.
 

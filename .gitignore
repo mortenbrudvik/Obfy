@@ -89,9 +89,6 @@ package/*.cer
 **/obfy.json
 !Tests/Obfy.ScenarioTests/**/obfy.json
 
-# Utility scripts
-install-gradle.ps1
-
 # Windows artifacts
 nul
 

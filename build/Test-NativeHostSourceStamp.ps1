@@ -1,5 +1,5 @@
-# Fails when host.c, build.ps1, or PackedBootstrap sources disagree with the
-# committed stamp. Compare against git HEAD (-FromGitHead) after a rebuild:
+# Fails when host.c, build.ps1, or PackedBootstrap sources (including
+# MethodImageDecryptor.cs) disagree with the committed stamp. Compare against git HEAD (-FromGitHead) after a rebuild:
 # build.ps1 rewrites the working-tree stamp, and that rewrite must not hide a
 # stale committed stamp.
 [CmdletBinding()]

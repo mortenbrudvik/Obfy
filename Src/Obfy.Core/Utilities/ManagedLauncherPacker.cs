@@ -40,7 +40,10 @@ public static class ManagedLauncherPacker
 
                     using var payload = new MemoryStream();
                     stream.CopyTo(payload);
-                    payload.Position = 0;
+                    var bytes = payload.ToArray();
+                    // LoadFromStream has no mapped image, so the in-assembly decryptor leaves
+                    // method IL ciphertext. Undo that XOR before the load.
+                    Obfy.Runtime.MethodImageDecryptor.Decrypt(bytes);
 
                     var alc = new AssemblyLoadContext("obfy-packed");
                     alc.Resolving += static (context, name) =>
@@ -54,7 +57,7 @@ public static class ManagedLauncherPacker
                         return File.Exists(probe) ? context.LoadFromAssemblyPath(probe) : null;
                     };
 
-                    var assembly = alc.LoadFromStream(payload);
+                    var assembly = alc.LoadFromStream(new MemoryStream(bytes));
                     var entry = assembly.EntryPoint;
                     if (entry == null)
                     {
@@ -89,6 +92,17 @@ public static class ManagedLauncherPacker
             }
         }
         """;
+
+    private static string ReadMethodImageDecryptorSource()
+    {
+        using var stream = typeof(ManagedLauncherPacker).Assembly
+            .GetManifestResourceStream("Obfy.MethodImageDecryptor.cs");
+        if (stream == null)
+            throw new InvalidOperationException("Method-image decryptor source is missing from Obfy.Core.");
+
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
 
     public static string LauncherPathFor(string assemblyPath)
     {
@@ -136,7 +150,11 @@ public static class ManagedLauncherPacker
 
         var compilation = CSharpCompilation.Create(
             "ObfyLauncher",
-            new[] { CSharpSyntaxTree.ParseText(HostSource) },
+            new[]
+            {
+                CSharpSyntaxTree.ParseText(HostSource),
+                CSharpSyntaxTree.ParseText(ReadMethodImageDecryptorSource())
+            },
             references,
             new CSharpCompilationOptions(OutputKind.ConsoleApplication, optimizationLevel: OptimizationLevel.Release));
 

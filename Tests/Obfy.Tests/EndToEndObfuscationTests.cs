@@ -1052,6 +1052,94 @@ public class EndToEndObfuscationTests
     }
 
     [Fact]
+    public async Task Packing_Portable_MethodEncryption_MainReturns42()
+    {
+        const string source = "public static class Program { public static int Main() => 42; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-mc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "PackedMcApp");
+            var output = Path.Combine(dir, "PackedMcApp.obf.exe");
+            var settings = PackingSettings();
+            settings.Protection.MethodEncryption = true;
+            var result = await CreateService().ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            var (exit, stderr) = RunLauncherCapture(ManagedLauncherPacker.LauncherPathFor(output));
+            exit.ShouldBe(42, stderr);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task Packing_Native_MethodEncryption_MainReturns42()
+    {
+        const string source = "public static class Program { public static int Main() => 42; }";
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-pack-native-mc-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToExe(source, dir, "NativeMcApp");
+            var output = Path.Combine(dir, "NativeMcApp.obf.exe");
+            var settings = NativePackingSettings();
+            settings.Protection.MethodEncryption = true;
+            var result = await CreateService().ObfuscateAsync(input, output, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+
+            if (OperatingSystem.IsWindows())
+            {
+                var (exit, stderr) = RunNativeCapture(output);
+                exit.ShouldBe(42, stderr);
+            }
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public async Task ReferenceProxy_WithRenamingAndStringEncryption_Runs()
+    {
+        const string source = """
+            public static class Lib
+            {
+                public static int Get() => new Adder().Add(20, 22) + Secret().Length;
+                static string Secret() => "hello";
+            }
+            public class Adder
+            {
+                public int Add(int a, int b) => a + b;
+            }
+            """;
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-e2e-proxy-full-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var input = CompileToAssembly(source, dir, "ProxyFullLib");
+            var output = Path.Combine(dir, "ProxyFullLib.obf.dll");
+            var result = await CreateService().ObfuscateAsync(input, output, new ObfySettings
+            {
+                Level = ObfuscationLevel.Custom,
+                StringEncryption = { Enabled = true, MinStringLength = 3 },
+                SymbolRenaming = { Enabled = true, PreservePublicApi = true },
+                Protection = { ReferenceProxy = true }
+            });
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            LoadAndInvoke(output, "Lib", "Get").ShouldBe(47);
+        }
+        finally
+        {
+            TryDeleteDir(dir);
+        }
+    }
+
+    [Fact]
     public async Task Packing_Native_ForwardsMainArgs()
     {
         const string source = "public static class Program { public static int Main(string[] args) => args.Length == 1 && args[0] == \"ping\" ? 7 : 1; }";

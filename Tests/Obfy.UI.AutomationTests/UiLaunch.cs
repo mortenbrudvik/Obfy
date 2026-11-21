@@ -18,6 +18,12 @@ internal static class UiLaunch
     /// <summary>WebView2 reads this itself when it starts its browser; no host code passes it on.</summary>
     public const string BrowserArgumentsVariable = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
 
+    /// <summary>
+    /// Set to any value to have WebView2's browser write its own log (<c>chrome_debug.log</c> in the profile folder), for
+    /// finding out why a page cannot be reached. Off by default: the log is large and slows the browser.
+    /// </summary>
+    public const string WebViewLogVariable = "OBFY_E2E_WEBVIEW_LOG";
+
     private static readonly object Gate = new();
 
     /// <summary>Starts the app under FlaUI. The window-level smoke test uses this; the page is not driven.</summary>
@@ -49,7 +55,10 @@ internal static class UiLaunch
 
         info.Environment[PreferencesVariable] = Path.Combine(workDirectory, "ui-preferences.json");
         info.Environment[WebViewProfileVariable] = Path.Combine(workDirectory, "webview2");
-        info.Environment[BrowserArgumentsVariable] = $"--remote-debugging-port={debugPort} --remote-allow-origins=*";
+        var browserArguments = $"--remote-debugging-port={debugPort} --remote-allow-origins=*";
+        if (Environment.GetEnvironmentVariable(WebViewLogVariable) is { Length: > 0 })
+            browserArguments += " --enable-logging --v=1";
+        info.Environment[BrowserArgumentsVariable] = browserArguments;
 
         return Process.Start(info) ?? throw new InvalidOperationException("ObfyUI.exe did not start.");
     }

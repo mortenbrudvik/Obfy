@@ -16,6 +16,12 @@ internal sealed class ObfyApp : IAsyncDisposable
 {
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// Set to any value to keep each launch's <see cref="WorkDirectory"/> (WebView2 profile, preferences and, with
+    /// <see cref="UiLaunch.WebViewLogVariable"/>, the browser's chrome_debug.log) instead of deleting it on dispose.
+    /// </summary>
+    public const string KeepWorkDirectoryVariable = "OBFY_E2E_KEEP";
+
     private readonly Process _process;
     private readonly IPlaywright _playwright;
     private readonly IBrowser _browser;
@@ -81,6 +87,12 @@ internal sealed class ObfyApp : IAsyncDisposable
             {
                 await Task.Delay(500);
             }
+            catch (PlaywrightException ex)
+            {
+                throw new TimeoutException(
+                    $"WebView2's debug port {port} did not open within {ConnectTimeout.TotalSeconds:0} s. {LaunchDiagnostics.Describe(process)}",
+                    ex);
+            }
         }
     }
 
@@ -100,7 +112,7 @@ internal sealed class ObfyApp : IAsyncDisposable
             await Task.Delay(250);
         }
 
-        throw new TimeoutException("The Obfy page did not appear over the debug port.");
+        throw new TimeoutException($"The Obfy page did not appear over the debug port within {ConnectTimeout.TotalSeconds:0} s. {LaunchDiagnostics.Describe(process)}");
     }
 
     private static async Task ShutDownAsync(Process process, IPlaywright? playwright, IBrowser? browser, string work)
@@ -133,6 +145,9 @@ internal sealed class ObfyApp : IAsyncDisposable
         {
             process.Dispose();
         }
+
+        if (Environment.GetEnvironmentVariable(KeepWorkDirectoryVariable) is { Length: > 0 })
+            return;
 
         try
         {

@@ -1,8 +1,9 @@
 import Notice from "../../components/Notice";
+import type { Committed } from "../../hooks/useDraft";
 import { strings } from "../../strings";
 import type { SettingsPatch, SettingsSnapshot, TechniqueState } from "../../types/domain";
 import { DetailHead, DetailSection, GuideLink } from "./DetailParts";
-import OptionControl, { type Committed } from "./OptionControl";
+import OptionControl from "./OptionControl";
 import { switchPatch } from "./patches";
 import { contentFor } from "./techniqueContent";
 

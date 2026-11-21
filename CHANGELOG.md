@@ -75,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - File rows have an include checkbox, a status color, and the output path after success. Extended selection and Delete remove the selected rows. The row menu has Show in folder and Remove
 - Obfuscate explains why it is disabled. The status text is the status bar name
 - NativeAOT, Unity IL2CPP, and Blazor WebAssembly disable the protections those profiles cannot use and keep the stored values. Signing has a key-file browse button, and a missing key or an empty watermark id stays marked invalid
+- An app built with the .NET SDK and protected with the Aggressive preset (or with AntiDebug, AntiDump or MethodEncryption on its own) no longer crashes at startup with `TypeLoadException: Could not load type 'System.DllNotFoundException'` (or `System.Runtime.InteropServices.Marshal`) before any user code runs. The injected code named those two types through the `System.Runtime` reference, whose facade does not carry them; they now point at `System.Runtime.InteropServices`, checked on net8.0, net9.0 and net10.0. Inputs built against mscorlib, netstandard or System.Private.CoreLib are unchanged
 
 ## [2.0.0] - 2026-11-20
 

@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type DragEvent, type ReactNode } from "react";
+import ErrorBoundary from "../../components/ErrorBoundary";
 import Notice from "../../components/Notice";
 import { flushPendingEdits } from "../../hooks/pendingEdits";
 import { useAppAction } from "../../hooks/useAppAction";
@@ -11,6 +12,7 @@ import { api, events } from "../../interop/api";
 import { strings } from "../../strings";
 import type { AppInfo, InputSnapshot, ResultsSnapshot, SettingsSnapshot } from "../../types/domain";
 import RunBar from "./RunBar";
+import ScreenCrash from "./ScreenCrash";
 import Sidebar, { type ResultsDot, type Screen } from "./Sidebar";
 import "../../components/components.css";
 import "./Shell.css";
@@ -96,6 +98,9 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
     openConfig: () => void openConfig(),
   });
 
+  // Trying a broken screen again removes the button that had focus: focus goes to the content area, where the screen is.
+  const contentRef = useRef<HTMLElement>(null);
+
   const fileCount = files?.files.length ?? 0;
   const includedCount = files?.files.filter((file) => file.included).length ?? 0;
   const level = settings?.level ?? null;
@@ -119,9 +124,24 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
         version={info?.version ?? null}
       />
       <div className="main">
-        <main className="content">
+        <main className="content" ref={contentRef} tabIndex={-1}>
           {shortcutError && <Notice tone="error">{shortcutError}</Notice>}
-          {children}
+          {/* A screen that throws is replaced by its own message here, so the sidebar, the run bar and the shortcuts stay.
+              Keyed on the screen: moving to another one starts it afresh. */}
+          <ErrorBoundary
+            key={screen}
+            fallback={(retry) => (
+              <ScreenCrash
+                screen={screen}
+                onRetry={() => {
+                  retry();
+                  contentRef.current?.focus();
+                }}
+              />
+            )}
+          >
+            {children}
+          </ErrorBoundary>
         </main>
         <RunBar
           run={run}

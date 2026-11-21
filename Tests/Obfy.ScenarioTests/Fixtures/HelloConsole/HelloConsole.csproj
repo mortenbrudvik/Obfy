@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A plain SDK console app, built exactly as `dotnet new console` builds it: the core library reference
+       is System.Runtime, not the System.Private.CoreLib that Roslyn picks when a test compiles against the
+       runtime's implementation assemblies. The tests pick the framework with -p:FixtureTfm=net8.0|net9.0|net10.0
+       (a separate property, so restore and build both see it). -->
+  <PropertyGroup>
+    <FixtureTfm Condition="'$(FixtureTfm)' == ''">net10.0</FixtureTfm>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(FixtureTfm)</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

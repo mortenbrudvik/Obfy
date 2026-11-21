@@ -49,7 +49,7 @@ describe("useProtection.update", () => {
   it("sendsOneUpdateAtATime_andOnlyTheLatestOfAFastRun_soTheHostEndsOnTheLastValue", async () => {
     const host = slowHost();
     const { result } = renderHook(() => useProtection());
-    await waitFor(() => expect(result.current.settings).not.toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(result.current.settings).not.toBeNull());
 
     // Typing 1, 12, 123 into a number box, or dragging a slider, issues a call per change.
     const first = result.current.update({ "stringEncryption.minLength": 1 });
@@ -61,28 +61,28 @@ describe("useProtection.update", () => {
     expect(host.sent).toEqual([{ "stringEncryption.minLength": 1 }]);
 
     host.answerNext(2);
-    await waitFor(() => expect(host.sent).toHaveLength(2), { timeout: 3000 });
+    await waitFor(() => expect(host.sent).toHaveLength(2));
     expect(host.sent[1]).toEqual({ "stringEncryption.minLength": 123 });
     host.answerNext(3);
 
     await expect(Promise.all([first, second, third])).resolves.toEqual([true, true, true]);
     expect(host.sent).toHaveLength(2);
-    await waitFor(() => expect(result.current.settings?.revision).toBe(3), { timeout: 3000 });
+    await waitFor(() => expect(result.current.settings?.revision).toBe(3));
   });
 
   it("keepsTheOrderOfUpdatesToDifferentOptions_andDoesNotMergeThem", async () => {
     const host = slowHost();
     const { result } = renderHook(() => useProtection());
-    await waitFor(() => expect(result.current.settings).not.toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(result.current.settings).not.toBeNull());
 
     const a1 = result.current.update({ "a.x": 1 });
     const b = result.current.update({ "b.y": 2 });
     const a2 = result.current.update({ "a.x": 3 });
     await tick();
     host.answerNext(2);
-    await waitFor(() => expect(host.sent).toHaveLength(2), { timeout: 3000 });
+    await waitFor(() => expect(host.sent).toHaveLength(2));
     host.answerNext(3);
-    await waitFor(() => expect(host.sent).toHaveLength(3), { timeout: 3000 });
+    await waitFor(() => expect(host.sent).toHaveLength(3));
     host.answerNext(4);
 
     await Promise.all([a1, b, a2]);
@@ -93,18 +93,18 @@ describe("useProtection.update", () => {
   it("answersFalseForARefusedUpdate_andKeepsSendingTheOnesBehindIt", async () => {
     const host = slowHost();
     const { result } = renderHook(() => useProtection());
-    await waitFor(() => expect(result.current.settings).not.toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(result.current.settings).not.toBeNull());
 
     const refused = result.current.update({ "a.x": 1 });
     const next = result.current.update({ "b.y": 2 });
     await tick();
     host.failNext("settings.invalidValue");
-    await waitFor(() => expect(host.sent).toHaveLength(2), { timeout: 3000 });
+    await waitFor(() => expect(host.sent).toHaveLength(2));
     host.answerNext(5);
 
     await expect(refused).resolves.toBe(false);
     await expect(next).resolves.toBe(true);
-    await waitFor(() => expect(result.current.settings?.revision).toBe(5), { timeout: 3000 });
+    await waitFor(() => expect(result.current.settings?.revision).toBe(5));
     expect(result.current.error).toBeNull();
   });
 
@@ -116,11 +116,11 @@ describe("useProtection.update", () => {
       "settings.update": () => protectionSnapshot({ revision: 3, level: "Custom" }),
     });
     const { result } = renderHook(() => useProtection());
-    await waitFor(() => expect(result.current.settings).not.toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(result.current.settings).not.toBeNull());
 
     const level = result.current.applyLevel("Minimal");
     await result.current.update({ "a.x": 1 });
-    await waitFor(() => expect(result.current.settings?.revision).toBe(3), { timeout: 3000 });
+    await waitFor(() => expect(result.current.settings?.revision).toBe(3));
     act(() => releaseLevel(protectionSnapshot({ revision: 2, level: "Minimal" })));
     await level;
 

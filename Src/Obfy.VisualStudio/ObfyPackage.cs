@@ -46,6 +46,12 @@ public sealed class ObfyPackage : ToolkitPackage
     /// </summary>
     public static ObfyPackage? Instance { get; private set; }
 
+    /// <summary>
+    /// Every obfuscation run in flight (manual and post-build), so closing the solution, disposing the package,
+    /// a new build of the project or the Cancel Obfuscation command can stop it
+    /// </summary>
+    public static ObfuscationRunTracker Runs { get; } = new ObfuscationRunTracker();
+
     public static GeneralOptionsPage? Options =>
         Instance?.GetDialogPage(typeof(GeneralOptionsPage)) as GeneralOptionsPage;
 
@@ -62,8 +68,20 @@ public sealed class ObfyPackage : ToolkitPackage
         await ObfuscateCommand.InitializeAsync(this);
         await TogglePostBuildCommand.InitializeAsync(this);
         await OpenSettingsCommand.InitializeAsync(this);
+        await CancelObfuscationCommand.InitializeAsync(this);
 
         OutputService!.Info("Obfy extension initialized successfully");
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            // Kill any CLI that is still running instead of leaving it behind after Visual Studio's package unloads.
+            Runs.Shutdown();
+        }
+
+        base.Dispose(disposing);
     }
 
     private Task InitializeBaseAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress) =>

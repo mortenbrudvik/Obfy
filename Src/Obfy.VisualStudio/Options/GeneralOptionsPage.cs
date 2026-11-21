@@ -17,6 +17,7 @@ public class GeneralOptionsPage : DialogPage
     private bool _releaseOnly = true;
     private bool _generateSymbolMap = false;
     private bool _showOutputWindow = true;
+    private int _runTimeoutMinutes = CliProcessRunner.DefaultTimeoutMinutes;
 
     /// <summary>
     /// Default obfuscation level for new projects
@@ -81,5 +82,19 @@ public class GeneralOptionsPage : DialogPage
     {
         get => _showOutputWindow;
         set => _showOutputWindow = value;
+    }
+
+    /// <summary>
+    /// Longest time one Obfy CLI run may take before it is stopped
+    /// </summary>
+    [Category("General")]
+    [DisplayName("Run Timeout (minutes)")]
+    [Description("Stop an obfuscation run that takes longer than this many minutes, and report it as timed out. " +
+                 "Large solutions can take several minutes. A value below 1 restores the default (30).")]
+    [DefaultValue(CliProcessRunner.DefaultTimeoutMinutes)]
+    public int RunTimeoutMinutes
+    {
+        get => _runTimeoutMinutes;
+        set => _runTimeoutMinutes = value;
     }
 }

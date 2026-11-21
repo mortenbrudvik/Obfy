@@ -1,8 +1,6 @@
 using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Obfy.VisualStudio;
@@ -35,6 +33,8 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var cliPath = FindCliPath();
             if (string.IsNullOrEmpty(cliPath))
             {
@@ -43,6 +43,7 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
             }
 
             var generateMap = ObfyPackage.Options?.GenerateSymbolMap == true;
+            var timeout = CliProcessRunner.ResolveTimeout(ObfyPackage.Options?.RunTimeoutMinutes);
             var inPlace = !string.IsNullOrEmpty(outputPath) &&
                           string.Equals(Path.GetFullPath(outputPath), Path.GetFullPath(assemblyPath), StringComparison.OrdinalIgnoreCase);
             var cliOutput = outputPath;
@@ -63,7 +64,7 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
 
             _outputService.Info($"Executing: obfy {commandLine}");
 
-            var result = await RunCliAsync(cliPath!, commandLine, cancellationToken);
+            var result = await RunCliAsync(cliPath!, commandLine, assemblyPath, timeout, cancellationToken);
 
             stopwatch.Stop();
             result.ElapsedTime = stopwatch.Elapsed;
@@ -92,7 +93,7 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         }
         catch (OperationCanceledException)
         {
-            return ObfuscationResult.Failure(assemblyPath, "Operation was cancelled");
+            return ObfuscationResult.Cancelled(assemblyPath);
         }
         catch (Exception ex)
         {
@@ -119,82 +120,22 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
         return found;
     }
 
-    private async Task<ObfuscationResult> RunCliAsync(string cliPath, string args, CancellationToken cancellationToken)
+    /// <summary>
+    /// Runs the CLI until it exits, the token is cancelled or <paramref name="timeout"/> passes; the process tree is
+    /// killed in the last two cases. See <see cref="CliProcessRunner"/>.
+    /// </summary>
+    private async Task<ObfuscationResult> RunCliAsync(
+        string cliPath,
+        string args,
+        string assemblyPath,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
     {
-        var result = new ObfuscationResult();
-        var outputBuilder = new StringBuilder();
-        var errorBuilder = new StringBuilder();
+        var run = await CliProcessRunner
+            .RunAsync(cliPath, args, timeout, _outputService.Info, _outputService.Error, cancellationToken)
+            .ConfigureAwait(false);
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = cliPath,
-            Arguments = args,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-
-        using var process = new Process { StartInfo = startInfo };
-
-        process.OutputDataReceived += (sender, e) =>
-        {
-            if (!string.IsNullOrEmpty(e.Data))
-            {
-                outputBuilder.AppendLine(e.Data);
-                _outputService.Info(e.Data);
-            }
-        };
-
-        process.ErrorDataReceived += (sender, e) =>
-        {
-            if (!string.IsNullOrEmpty(e.Data))
-            {
-                errorBuilder.AppendLine(e.Data);
-                _outputService.Error(e.Data);
-            }
-        };
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        using (cancellationToken.Register(() =>
-        {
-            try
-            {
-                if (!process.HasExited)
-                    process.Kill();
-            }
-            catch (Win32Exception ex)
-            {
-                _outputService.Warning($"Could not stop Obfy CLI: {ex.Message}");
-            }
-            catch (InvalidOperationException)
-            {
-            }
-        }))
-        {
-            await Task.Run(() => process.WaitForExit(), CancellationToken.None).ConfigureAwait(false);
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        result.Success = process.ExitCode == 0;
-
-        if (!result.Success)
-        {
-            // The CLI reports failures on stdout ("Error: ..."), so stderr alone is usually empty.
-            result.ErrorMessage = CliArgumentBuilder.ExtractErrorMessage(
-                outputBuilder.ToString(), errorBuilder.ToString(), process.ExitCode);
-        }
-        else
-        {
-            // Try to parse statistics from output
-            result.Statistics = CliArgumentBuilder.ParseStatistics(outputBuilder.ToString());
-        }
-
-        return result;
+        return run.ToObfuscationResult(assemblyPath, timeout);
     }
 
     private static void TryDeleteDirectory(string? path)

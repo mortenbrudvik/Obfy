@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 using Community.VisualStudio.Toolkit;
 using Microsoft.VisualStudio.Shell;
@@ -17,7 +16,39 @@ public static class BuildEvents
     {
         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
+        VS.Events.BuildEvents.ProjectBuildStarted += OnProjectBuildStarted;
         VS.Events.BuildEvents.ProjectBuildDone += OnProjectBuildDone;
+        VS.Events.SolutionEvents.OnBeforeCloseSolution += OnSolutionClosing;
+    }
+
+    /// <summary>
+    /// A new build of a project replaces the output a running obfuscation of that project is working on.
+    /// </summary>
+    private static void OnProjectBuildStarted(Project? project)
+    {
+        if (project == null)
+        {
+            return;
+        }
+
+        var cancelled = ObfyPackage.Runs.CancelProject(project.FullPath);
+        if (cancelled > 0)
+        {
+            ObfyPackage.OutputService?.Info($"Cancelled obfuscation of {project.Name}: the project is being built again");
+        }
+    }
+
+    /// <summary>
+    /// Nothing is left to obfuscate once the solution is closed, so stop every run instead of letting it hold the
+    /// status bar and the output files.
+    /// </summary>
+    private static void OnSolutionClosing()
+    {
+        var cancelled = ObfyPackage.Runs.CancelAll();
+        if (cancelled > 0)
+        {
+            ObfyPackage.OutputService?.Info($"Cancelled {cancelled} obfuscation run(s): the solution is closing");
+        }
     }
 
     private static void OnProjectBuildDone(ProjectBuildDoneEventArgs e)
@@ -52,6 +83,10 @@ public static class BuildEvents
             {
                 return;
             }
+
+            // Registers this run so a new build of the project, closing the solution, disposing the package or the
+            // Cancel Obfuscation command can stop it. Disposed on every path out of this method.
+            using var run = ObfyPackage.Runs.Begin(project.FullPath);
 
             // Check if we should only run for Release builds
             var options = ObfyPackage.Options;
@@ -95,15 +130,21 @@ public static class BuildEvents
             // Run obfuscation
             await VS.StatusBar.ShowProgressAsync("Post-build obfuscation...", 1, 2);
 
-            var cts = new CancellationTokenSource();
             var configPath = !string.IsNullOrEmpty(projectDir) && settingsService is not null
                 ? settingsService.GetSettingsFilePath(projectDir)
                 : null;
             if (configPath is not null && !File.Exists(configPath))
                 configPath = null;
-            var result = await obfuscator.ObfuscateAsync(assemblyPath!, assemblyPath, settings, cts.Token, configPath);
 
-            await VS.StatusBar.ClearAsync();
+            ObfuscationResult result;
+            try
+            {
+                result = await obfuscator.ObfuscateAsync(assemblyPath!, assemblyPath, settings, run.Token, configPath);
+            }
+            finally
+            {
+                await VS.StatusBar.ClearAsync();
+            }
 
             if (result.Success)
             {
@@ -111,6 +152,14 @@ public static class BuildEvents
                     PostBuildStamp.Record(projectDir!, assemblyPath!);
 
                 output?.Success($"Post-build obfuscation complete for {project.Name}: {result.Statistics.TotalTransformations} transformations");
+            }
+            else if (result.StopReason == ObfuscationStopReason.Cancelled)
+            {
+                output?.Warning($"Post-build obfuscation cancelled for {project.Name}");
+            }
+            else if (result.StopReason == ObfuscationStopReason.TimedOut)
+            {
+                output?.Error($"Post-build obfuscation of {project.Name}: {result.ErrorMessage}");
             }
             else
             {

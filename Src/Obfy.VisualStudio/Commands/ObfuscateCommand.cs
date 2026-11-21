@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 using Community.VisualStudio.Toolkit;
 using Microsoft.VisualStudio.Shell;
@@ -35,6 +34,10 @@ internal sealed class ObfuscateCommand : BaseCommand<ObfuscateCommand>
             await VS.MessageBox.ShowErrorAsync("Obfy", "No project selected");
             return;
         }
+
+        // Registers this run so closing the solution, disposing the package, a new build of the project or the
+        // Cancel Obfuscation command can stop it. Disposed on every path out of this method.
+        using var run = ObfyPackage.Runs.Begin(project.FullPath);
 
         // Show and activate output window
         var options = ObfyPackage.Options;
@@ -75,7 +78,6 @@ internal sealed class ObfuscateCommand : BaseCommand<ObfuscateCommand>
             // Run obfuscation
             await VS.StatusBar.ShowProgressAsync("Obfuscating...", 1, 2);
 
-            var cts = new CancellationTokenSource();
             var assemblyPath = outputPath!;
             var projectDir = Path.GetDirectoryName(await project.GetAttributeAsync("FullPath"));
             var configPath = !string.IsNullOrEmpty(projectDir)
@@ -83,11 +85,29 @@ internal sealed class ObfuscateCommand : BaseCommand<ObfuscateCommand>
                 : null;
             if (configPath is not null && !File.Exists(configPath))
                 configPath = null;
-            var result = await obfuscator.ObfuscateAsync(assemblyPath, assemblyPath, settings, cts.Token, configPath);
 
-            await VS.StatusBar.ClearAsync();
+            ObfuscationResult result;
+            try
+            {
+                result = await obfuscator.ObfuscateAsync(assemblyPath, assemblyPath, settings, run.Token, configPath);
+            }
+            finally
+            {
+                await VS.StatusBar.ClearAsync();
+            }
 
-            if (result.Success)
+            if (result.StopReason == ObfuscationStopReason.Cancelled)
+            {
+                output.Warning(result.ErrorMessage ?? ObfuscationResult.CancelledMessage);
+                await VS.StatusBar.ShowMessageAsync("Obfuscation cancelled");
+            }
+            else if (result.StopReason == ObfuscationStopReason.TimedOut)
+            {
+                output.Error(result.ErrorMessage ?? "Obfuscation timed out.");
+                await VS.StatusBar.ShowMessageAsync("Obfuscation timed out");
+                await VS.MessageBox.ShowErrorAsync("Obfy", result.ErrorMessage ?? "Obfuscation timed out.");
+            }
+            else if (result.Success)
             {
                 output.Success($"Obfuscation complete!");
                 output.Info($"  Output: {result.OutputPath}");
@@ -149,4 +169,5 @@ internal static class PackageIds
     public const int cmdidObfuscate = 0x0100;
     public const int cmdidTogglePostBuild = 0x0101;
     public const int cmdidOpenSettings = 0x0102;
+    public const int cmdidCancelObfuscation = 0x0103;
 }

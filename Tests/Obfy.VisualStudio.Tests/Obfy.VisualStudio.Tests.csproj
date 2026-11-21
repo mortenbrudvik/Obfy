@@ -18,6 +18,8 @@
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\InPlaceOutputCopy.cs" Link="Linked\InPlaceOutputCopy.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ProjectSupport.cs" Link="Linked\ProjectSupport.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\PostBuildStamp.cs" Link="Linked\PostBuildStamp.cs" />
+    <Compile Include="..\..\Src\Obfy.VisualStudio\Services\CliProcessRunner.cs" Link="Linked\CliProcessRunner.cs" />
+    <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ObfuscationRunTracker.cs" Link="Linked\ObfuscationRunTracker.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\IOutputService.cs" Link="Linked\IOutputService.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\OutputServiceExtensions.cs" Link="Linked\OutputServiceExtensions.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\UI\SettingsDialogViewModel.cs" Link="Linked\SettingsDialogViewModel.cs" />

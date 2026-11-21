@@ -7,12 +7,20 @@ namespace Obfy.VisualStudio.Services;
 /// </summary>
 public class ObfuscationResult
 {
+    public const string CancelledMessage = "Obfuscation was cancelled.";
+
     public bool Success { get; set; }
     public string? ErrorMessage { get; set; }
     public string? OutputPath { get; set; }
     public Exception? Exception { get; set; }
     public ObfuscationStatistics Statistics { get; set; } = new();
     public TimeSpan ElapsedTime { get; set; }
+
+    /// <summary>
+    /// Why the run was stopped before the CLI finished. <see cref="ObfuscationStopReason.None"/> for a run that
+    /// completed, successfully or not; a cancelled or timed-out run is not a failure of the obfuscation itself.
+    /// </summary>
+    public ObfuscationStopReason StopReason { get; set; }
 
     public static ObfuscationResult Failure(string inputPath, string message, Exception? ex = null)
     {
@@ -24,6 +32,49 @@ public class ObfuscationResult
             Exception = ex
         };
     }
+
+    public static ObfuscationResult Cancelled(string inputPath)
+    {
+        return new ObfuscationResult
+        {
+            Success = false,
+            StopReason = ObfuscationStopReason.Cancelled,
+            ErrorMessage = CancelledMessage,
+            OutputPath = inputPath
+        };
+    }
+
+    public static ObfuscationResult TimedOut(string inputPath, TimeSpan limit)
+    {
+        return new ObfuscationResult
+        {
+            Success = false,
+            StopReason = ObfuscationStopReason.TimedOut,
+            ErrorMessage = $"Obfuscation timed out after {DescribeLimit(limit)} and the Obfy CLI was stopped. " +
+                           "The time limit is under Tools > Options > Obfy > General > Run Timeout (minutes).",
+            OutputPath = inputPath
+        };
+    }
+
+    private static string DescribeLimit(TimeSpan limit)
+    {
+        var minutes = (int)Math.Round(limit.TotalMinutes);
+        if (minutes >= 1)
+            return minutes == 1 ? "1 minute" : minutes + " minutes";
+
+        var seconds = Math.Max(1, (int)Math.Round(limit.TotalSeconds));
+        return seconds == 1 ? "1 second" : seconds + " seconds";
+    }
+}
+
+/// <summary>
+/// Why an obfuscation run ended without the CLI finishing.
+/// </summary>
+public enum ObfuscationStopReason
+{
+    None,
+    Cancelled,
+    TimedOut
 }
 
 /// <summary>

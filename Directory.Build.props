@@ -1,4 +1,35 @@
-<Project>
+<Project InitialTargets="ObfyRequireProductVersion">
+  <!--
+    The product version. version.json at the repository root is the only place it is written: this file reads it
+    while each project is evaluated (an MSBuild property function, so no task, and the same on Windows and Linux)
+    and the projects under Src\ take it as their Version (assembly, file and informational version, the NuGet
+    package version of the Obfy tool). Nothing else in a project file states a version; a test pins that.
+    build-installer.ps1 and build-msix.ps1 read version.json too, and package\AppxManifest.xml is pinned to it.
+
+    A command-line -p:Version=... still wins, because a global property cannot be overwritten here. The publish
+    workflow passes the release tag that way, so a prerelease suffix (2.1.0-beta.1) is possible there.
+
+    These projects keep their own version and are skipped: Obfy.VisualStudio (the VSIX has its own version in
+    source.extension.vsixmanifest), Obfy.PackedBootstrap (embedded in the native host stub, whose source stamp
+    covers its project file) and Obfy.VmRuntime (embedded into protected assemblies). Tests and examples are
+    outside Src\ and are not touched.
+  -->
+  <PropertyGroup>
+    <ObfyVersionFile>$(MSBuildThisFileDirectory)version.json</ObfyVersionFile>
+    <ObfyVersionJson Condition="Exists('$(ObfyVersionFile)')">$([System.IO.File]::ReadAllText('$(ObfyVersionFile)'))</ObfyVersionJson>
+    <ObfyVersionMajor>$([System.Text.RegularExpressions.Regex]::Match('$(ObfyVersionJson)', '(?i)"major"\s*:\s*(\d+)\s*[,}]').Groups[1].Value)</ObfyVersionMajor>
+    <ObfyVersionMinor>$([System.Text.RegularExpressions.Regex]::Match('$(ObfyVersionJson)', '(?i)"minor"\s*:\s*(\d+)\s*[,}]').Groups[1].Value)</ObfyVersionMinor>
+    <ObfyVersionPatch>$([System.Text.RegularExpressions.Regex]::Match('$(ObfyVersionJson)', '(?i)"patch"\s*:\s*(\d+)\s*[,}]').Groups[1].Value)</ObfyVersionPatch>
+    <ObfyProductVersion Condition="'$(ObfyVersionMajor)' != '' and '$(ObfyVersionMinor)' != '' and '$(ObfyVersionPatch)' != ''">$(ObfyVersionMajor).$(ObfyVersionMinor).$(ObfyVersionPatch)</ObfyProductVersion>
+  </PropertyGroup>
+  <!-- Case-insensitive: Windows keeps the case a path was typed in, and a miss here would silently build 1.0.0. -->
+  <PropertyGroup Condition="$(MSBuildProjectFullPath.StartsWith('$(MSBuildThisFileDirectory)Src', System.StringComparison.OrdinalIgnoreCase)) and '$(MSBuildProjectName)' != 'Obfy.VisualStudio' and '$(MSBuildProjectName)' != 'Obfy.PackedBootstrap' and '$(MSBuildProjectName)' != 'Obfy.VmRuntime'">
+    <ObfyUsesProductVersion>true</ObfyUsesProductVersion>
+    <Version Condition="'$(Version)' == ''">$(ObfyProductVersion)</Version>
+  </PropertyGroup>
+  <Target Name="ObfyRequireProductVersion" Condition="'$(ObfyUsesProductVersion)' == 'true' and '$(ObfyProductVersion)' == ''">
+    <Error Text="$(MSBuildProjectName) takes its version from $(ObfyVersionFile), which is missing or does not hold integer major, minor and patch values." />
+  </Target>
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>

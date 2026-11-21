@@ -1,27 +1,183 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
+using Obfy.Core.Models;
 using Shouldly;
 
 namespace Obfy.Tests;
 
 /// <summary>
-/// The product version is stated in several places that are edited by hand and shipped together
-/// (version.json, the CLI and UI projects, the Inno Setup script, the MSIX manifest). Nothing derives
-/// one from another, so a release that bumps only some of them ships mismatched installers and packages.
+/// <c>version.json</c> is the one place the product version is written. The .NET projects read it through
+/// <c>Directory.Build.props</c>, the installer script and the release-tag check read it through
+/// <c>build/Get-ProductVersion.ps1</c>, and the MSIX script reads it directly. The only copy that stays in a
+/// file by hand is the Identity Version in <c>package/AppxManifest.xml</c>; a test below pins it, so bumping
+/// <c>version.json</c> without the manifest fails the build.
 /// </summary>
 public class ReleaseVersionConsistencyTests
 {
     private static readonly string RepoRoot = FindRepoRoot();
 
-    [Fact]
-    public void AllVersionDeclarations_AgreeWithVersionJson()
-    {
-        var expected = VersionJsonVersion();
+    // Properties that set a product version. A project that states one of these as a plain value has a second
+    // authority for the version.
+    private static readonly string[] VersionProperties =
+    [
+        "Version", "VersionPrefix", "AssemblyVersion", "FileVersion", "InformationalVersion",
+        "PackageVersion", "ApplicationVersion"
+    ];
 
-        ProjectVersion("Src/Obfy.Console/Obfy.Console.csproj").ShouldBe(expected, "Obfy.Console.csproj <Version>");
-        ProjectVersion("Src/Obfy.UI/Obfy.UI.csproj").ShouldBe(expected, "Obfy.UI.csproj <Version>");
-        InstallerVersion().ShouldBe(expected, "MyAppVersion in build/ObfySetup.iss");
-        ManifestVersion().ShouldBe(expected + ".0", "Identity Version in package/AppxManifest.xml");
+    [Fact]
+    public void NoProjectOrBuildPropsFile_HardCodesAVersion()
+    {
+        var files = CentralPackageVersionTests.EnumerateOwnProjects(RepoRoot)
+            .Concat(new[] { "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props" }
+                .Select(name => Path.Combine(RepoRoot, name))
+                .Where(File.Exists))
+            .ToList();
+        files.ShouldNotBeEmpty();
+
+        var violations = new List<string>();
+        foreach (var file in files)
+        {
+            foreach (var element in XDocument.Load(file).Descendants()
+                         .Where(e => e.Parent?.Name.LocalName == "PropertyGroup" && !e.HasAttributes))
+            {
+                var value = element.Value.Trim();
+                if (VersionProperties.Contains(element.Name.LocalName) && !value.Contains("$(", StringComparison.Ordinal))
+                {
+                    violations.Add($"{Path.GetRelativePath(RepoRoot, file)}: <{element.Name.LocalName}>{value}</{element.Name.LocalName}>");
+                }
+            }
+        }
+
+        violations.ShouldBeEmpty("the product version is written in version.json only; projects must not state it");
+    }
+
+    [Fact]
+    public void DirectoryBuildProps_ReadsTheVersionFromVersionJsonAndLetsTheCommandLineWin()
+    {
+        var props = File.ReadAllText(Path.Combine(RepoRoot, "Directory.Build.props"));
+
+        props.ShouldContain("version.json");
+        props.ShouldContain("ObfyProductVersion");
+        // -p:Version=... (publish.yml passes the release tag) must keep overriding the file.
+        props.ShouldContain("'$(Version)' == ''");
+        props.ShouldContain("InitialTargets=");
+    }
+
+    [Theory]
+    [InlineData("Src/Obfy.Console/Obfy.Console.csproj")]
+    [InlineData("Src/Obfy.Core/Obfy.Core.csproj")]
+    [InlineData("Src/Settings.Core/Settings.Core.csproj")]
+    public void SrcProjects_EvaluateToTheVersionInVersionJson(string project)
+    {
+        EvaluateVersion(project).ShouldBe(VersionJsonVersion(), $"{project} Version");
+    }
+
+    [Fact]
+    public void SrcProject_ReachedThroughAPathInOtherCase_StillTakesTheVersionInVersionJson()
+    {
+        // Windows keeps the case a path was typed in (dotnet build .\src\...). A case-sensitive match on "Src" in
+        // Directory.Build.props would skip the version silently and build 1.0.0. Needs a case-insensitive file system.
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        EvaluateVersion("src/Obfy.Core/Obfy.Core.csproj").ShouldBe(VersionJsonVersion());
+    }
+
+    [Theory]
+    [InlineData("Src/Obfy.Console/Obfy.Console.csproj", "9.9.9")]
+    [InlineData("Src/Obfy.Core/Obfy.Core.csproj", "2.5.0-beta.1")]
+    public void CommandLineVersion_OverridesVersionJson(string project, string commandLineVersion)
+    {
+        EvaluateVersion(project, $"-p:Version={commandLineVersion}").ShouldBe(commandLineVersion);
+    }
+
+    // The native host stub embeds Obfy.PackedBootstrap, and its source stamp covers that project file; the VM
+    // runtime is embedded into protected assemblies. Both keep their own (default) assembly version.
+    [Theory]
+    [InlineData("Src/Obfy.PackedBootstrap/Obfy.PackedBootstrap.csproj")]
+    [InlineData("Src/Obfy.VmRuntime/Obfy.VmRuntime.csproj")]
+    public void ProjectsWithTheirOwnVersionScheme_DoNotTakeTheProductVersion(string project)
+    {
+        EvaluateVersion(project).ShouldBe("1.0.0", $"{project} keeps the SDK default version");
+    }
+
+    [Fact]
+    public void CoreAssembly_CarriesTheVersionFromVersionJson()
+    {
+        // Obfy.Core carries the product version: app.info reports it, ReportService prints it, and the
+        // incremental cache and the VM seed key on it. A -p:Version prerelease suffix (release builds) is allowed.
+        var expected = VersionJsonVersion();
+        var assembly = typeof(ObfySettings).Assembly;
+
+        var version = assembly.GetName().Version.ShouldNotBeNull();
+        $"{version.Major}.{version.Minor}.{version.Build}".ShouldBe(expected);
+        version.Revision.ShouldBe(0);
+
+        var informational = assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), inherit: false)
+            .Cast<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .Single().InformationalVersion;
+        informational.ShouldStartWith(expected);
+    }
+
+    [Fact]
+    public void ManifestSnapshot_MatchesVersionJson()
+    {
+        var text = File.ReadAllText(Path.Combine(RepoRoot, "package", "AppxManifest.xml"));
+        var match = Regex.Match(text, "<Identity[^>]*?\\sVersion=\"([^\"]+)\"", RegexOptions.Singleline);
+        match.Success.ShouldBeTrue("AppxManifest.xml Identity has no Version");
+
+        match.Groups[1].Value.ShouldBe(VersionJsonVersion() + ".0",
+            "Identity Version in package/AppxManifest.xml (a snapshot; build-msix.ps1 re-stamps it from version.json)");
+    }
+
+    [Fact]
+    public void InstallerScript_TakesTheVersionFromTheCompilerDefine_WithNoDefaultThatCouldDrift()
+    {
+        var iss = File.ReadAllText(Path.Combine(RepoRoot, "build", "ObfySetup.iss"));
+
+        // No literal: a #define of the version (or a guarded default) is a second copy to bump.
+        Regex.IsMatch(iss, @"^\s*#define\s+MyAppVersion\b", RegexOptions.Multiline)
+            .ShouldBeFalse("ObfySetup.iss must not define MyAppVersion; build-installer.ps1 passes /DMyAppVersion");
+
+        // Compiling without the define fails with a message that names the way to build.
+        var guard = Regex.Match(iss, @"#ifndef\s+MyAppVersion\s*\r?\n\s*#error\s+([^\r\n]+)");
+        guard.Success.ShouldBeTrue("ObfySetup.iss must stop with #error when MyAppVersion is not defined");
+        guard.Groups[1].Value.ShouldContain("build-installer.ps1");
+        guard.Groups[1].Value.ShouldContain("version.json");
+        guard.Index.ShouldBeLessThan(iss.IndexOf("[Setup]", StringComparison.Ordinal));
+
+        // The output name scheme is unchanged.
+        iss.ShouldContain("AppVersion={#MyAppVersion}");
+        iss.ShouldContain("AppVerName={#MyAppName} {#MyAppVersion}");
+        iss.ShouldContain("OutputBaseFilename=ObfySetup-{#MyAppVersion}");
+    }
+
+    [Fact]
+    public void InstallerBuildScript_ReadsVersionJsonAndPassesItToTheCompiler()
+    {
+        var script = File.ReadAllText(Path.Combine(RepoRoot, "build", "build-installer.ps1"));
+
+        script.ShouldContain("Get-ProductVersion.ps1");
+        script.ShouldContain("/DMyAppVersion=");
+        // The version is resolved (and version.json validated) before the long publish, not after it.
+        script.IndexOf("Get-ProductVersion.ps1", StringComparison.Ordinal)
+            .ShouldBeLessThan(script.IndexOf("Publishing Obfy CLI", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PublishWorkflow_ChecksTheTagAgainstVersionJson_AndStillPassesTheVersionToBuildAndPack()
+    {
+        var workflow = File.ReadAllText(Path.Combine(RepoRoot, ".github", "workflows", "publish.yml"));
+
+        workflow.ShouldContain("Resolve-PackageVersion.ps1 -RefName $env:PACKAGE_REF -VersionFile ./version.json");
+        // The tag may carry a prerelease suffix that version.json cannot, so it stays the package version.
+        Regex.Matches(workflow, Regex.Escape("-p:Version=${{ steps.version.outputs.version }}")).Count
+            .ShouldBe(2, "dotnet build and dotnet pack both pass the resolved version");
     }
 
     private static string VersionJsonVersion()
@@ -31,28 +187,31 @@ public class ReleaseVersionConsistencyTests
         return $"{root.GetProperty("major").GetInt32()}.{root.GetProperty("minor").GetInt32()}.{root.GetProperty("patch").GetInt32()}";
     }
 
-    private static string ProjectVersion(string relative)
+    /// <summary>The Version MSBuild evaluates for a project, without building it.</summary>
+    private static string EvaluateVersion(string relativeProject, params string[] extraArguments)
     {
-        var text = File.ReadAllText(Path.Combine(RepoRoot, relative.Replace('/', Path.DirectorySeparatorChar)));
-        var match = Regex.Match(text, @"<Version>\s*([^<\s]+)\s*</Version>");
-        match.Success.ShouldBeTrue($"{relative} has no <Version>");
-        return match.Groups[1].Value;
-    }
+        var project = Path.Combine(RepoRoot, relativeProject.Replace('/', Path.DirectorySeparatorChar));
+        File.Exists(project).ShouldBeTrue($"Expected project at {project}");
 
-    private static string InstallerVersion()
-    {
-        var text = File.ReadAllText(Path.Combine(RepoRoot, "build", "ObfySetup.iss"));
-        var match = Regex.Match(text, "^#define MyAppVersion \"([^\"]+)\"", RegexOptions.Multiline);
-        match.Success.ShouldBeTrue("ObfySetup.iss has no #define MyAppVersion");
-        return match.Groups[1].Value;
-    }
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = RepoRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        foreach (var argument in new[] { "msbuild", project, "-getProperty:Version", "-nologo", "-nodeReuse:false" }
+                     .Concat(extraArguments))
+        {
+            start.ArgumentList.Add(argument);
+        }
 
-    private static string ManifestVersion()
-    {
-        var text = File.ReadAllText(Path.Combine(RepoRoot, "package", "AppxManifest.xml"));
-        var match = Regex.Match(text, "<Identity[^>]*?\\sVersion=\"([^\"]+)\"", RegexOptions.Singleline);
-        match.Success.ShouldBeTrue("AppxManifest.xml Identity has no Version");
-        return match.Groups[1].Value;
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start dotnet");
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        process.WaitForExit(180_000).ShouldBeTrue("dotnet msbuild timed out");
+        process.ExitCode.ShouldBe(0, stdout.Result + stderr.Result);
+        return stdout.Result.Trim();
     }
 
     private static string FindRepoRoot()

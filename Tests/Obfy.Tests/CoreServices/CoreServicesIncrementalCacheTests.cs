@@ -17,6 +17,9 @@ public class CoreServicesIncrementalCacheTests : IDisposable
 {
     private const string ReusedWarning = "Incremental: reused cached output";
 
+    private const string InPlaceNote =
+        "Incremental cache not used: the output replaces the input file. Write the output to a different path to use the cache.";
+
     private readonly string _dir = CoreServicesTestSupport.NewTempDirectory("obfy-cache-svc");
 
     public void Dispose() => CoreServicesTestSupport.DeleteQuietly(_dir);
@@ -197,6 +200,128 @@ public class CoreServicesIncrementalCacheTests : IDisposable
         // run would bless this output for the edited input.
         IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
         result.Warnings.ShouldContain(w => w.Contains("cache", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task InputChangesWhileTheRunIsInFlight_WithASeparateOutput_WarnsAndWritesNoCacheFile()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var real = container.Resolve<IAssemblyProcessor>();
+        var input = CompileInput();
+        var original = await File.ReadAllBytesAsync(input);
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+
+        var racing = new Mock<IAssemblyProcessor>();
+        racing
+            .Setup(p => p.LoadAsync(It.IsAny<string>(), It.IsAny<ObfySettings>(), It.IsAny<CancellationToken>()))
+            .Returns((string path, ObfySettings s, CancellationToken ct) => real.LoadAsync(path, s, ct));
+        racing
+            .Setup(p => p.SaveAsync(It.IsAny<PipelineContext>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((PipelineContext c, string path, CancellationToken ct) =>
+            {
+                File.WriteAllBytes(input, [.. original, 0, 0, 0, 0]);
+                return real.SaveAsync(c, path, ct);
+            });
+
+        var result = await NewService(container, racing.Object).ObfuscateAsync(input, output, Incremental());
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.Warnings.ShouldContain(w => w.Contains("changed while the run was in progress", StringComparison.Ordinal));
+        File.Exists(IncrementalCache.CachePath(output)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task InPlaceRun_WritesNoCacheAndDoesNotClaimTheInputChangedDuringTheRun()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileInput();
+        var before = await File.ReadAllBytesAsync(input);
+
+        // The documented MSBuild step: obfy $(TargetPath) -o $(TargetDir), so the output replaces the input.
+        var result = await service.ObfuscateAsync(input, input, Incremental());
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        (await File.ReadAllBytesAsync(input)).ShouldNotBe(before, "the output replaces the input");
+        result.Warnings.ShouldNotContain(w => w.Contains("changed while the run was in progress", StringComparison.Ordinal));
+        File.Exists(IncrementalCache.CachePath(input)).ShouldBeFalse("a cache keyed on the replaced input could never hit");
+        result.Warnings.Count(w => w == InPlaceNote).ShouldBe(1, "said once, with the exact text");
+    }
+
+    [Fact]
+    public async Task InPlaceRun_ReachedThroughADifferentSpellingOfThePath_IsStillInPlace()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileInput();
+        Directory.CreateDirectory(Path.Combine(_dir, "sub"));
+        // Same file, spelled with a detour through another folder. On Windows also in another case.
+        var spelled = Path.Combine(_dir, "sub", "..", "Lib.dll");
+        if (OperatingSystem.IsWindows())
+            spelled = Path.Combine(_dir.ToUpperInvariant(), "sub", "..", "LIB.DLL");
+
+        var result = await service.ObfuscateAsync(input, spelled, Incremental());
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.Warnings.ShouldNotContain(w => w.Contains("changed while the run was in progress", StringComparison.Ordinal));
+        result.Warnings.ShouldContain(InPlaceNote);
+        File.Exists(IncrementalCache.CachePath(input)).ShouldBeFalse();
+        File.Exists(IncrementalCache.CachePath(spelled)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task InPlaceRun_WithoutIncrementalMode_SaysNothingAboutTheCache()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileInput();
+        var settings = Incremental();
+        settings.Incremental.Enabled = false;
+
+        var result = await service.ObfuscateAsync(input, input, settings);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.Warnings.ShouldNotContain(w => w.Contains("cache", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task SeparateOutput_DoesNotGetTheInPlaceNote_AndStillCaches()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileInput();
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+
+        var result = await service.ObfuscateAsync(input, output, Incremental());
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.Warnings.ShouldNotContain(InPlaceNote);
+        File.Exists(IncrementalCache.CachePath(output)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task InPlaceRun_NeverTakesACacheHit_EvenWhenAStaleCacheMatchesTheFileOnDisk()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var source = CompileInput();
+        var original = await File.ReadAllBytesAsync(source);
+        var folder = Path.Combine(_dir, "bin");
+        Directory.CreateDirectory(folder);
+        var target = Path.Combine(folder, "Lib.dll");
+
+        // A separate-output run leaves bin\Lib.dll.obfycache keyed on the original bytes.
+        (await service.ObfuscateAsync(source, target, Incremental())).Success.ShouldBeTrue();
+        File.Exists(IncrementalCache.CachePath(target)).ShouldBeTrue();
+
+        // A build then puts the very same original bytes there, and the post-build step runs in place. The key of
+        // the file on disk equals the stored key, but the file is the unprotected input, not a cached output.
+        await File.WriteAllBytesAsync(target, original);
+        var result = await service.ObfuscateAsync(target, target, Incremental());
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.Warnings.ShouldNotContain(w => w.StartsWith(ReusedWarning, StringComparison.Ordinal));
+        (await File.ReadAllBytesAsync(target)).ShouldNotBe(original, "the in-place run protected the file instead of reusing it");
     }
 
     [Theory]

@@ -71,7 +71,17 @@ public class ObfuscationService : IObfuscationService
         var effectiveOutput = outputPath ?? GenerateOutputPath(inputPath);
         string? cacheKey = null;
         ObfySettings? keySettings = null;
-        if (settings.Incremental.Enabled && !isDirectory && target.TargetType == TargetType.Assembly)
+        string? cacheNote = null;
+        if (settings.Incremental.Enabled && !isDirectory && target.TargetType == TargetType.Assembly &&
+            IsSameFile(inputPath, effectiveOutput))
+        {
+            // The run replaces its own input. A key from the input could not match the file this run leaves behind,
+            // and a stale cache that matches the file now on disk would "reuse" an unprotected input. No key, no
+            // hit check, no cache file.
+            cacheNote = InPlaceCacheNote;
+            _logger.LogInformation("Incremental cache not used: the output replaces the input");
+        }
+        else if (settings.Incremental.Enabled && !isDirectory && target.TargetType == TargetType.Assembly)
         {
             keySettings = settings.Clone();
             try
@@ -127,6 +137,8 @@ public class ObfuscationService : IObfuscationService
             context.InputPath = inputPath;
             context.OutputPath = target.EffectiveOutputPath;
             context.Warnings.AddRange(gatingWarnings);
+            if (cacheNote is not null)
+                context.Warnings.Add(cacheNote);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -311,6 +323,29 @@ public class ObfuscationService : IObfuscationService
             _logger.LogWarning("Could not write the incremental cache");
             warnings.Add(
                 "Incremental cache could not be written next to the output, so the next run will not be skipped.");
+        }
+    }
+
+    /// <summary>
+    /// Said once per in-place run when incremental mode is on. Fixed text: it names no file.
+    /// </summary>
+    internal const string InPlaceCacheNote =
+        "Incremental cache not used: the output replaces the input file. Write the output to a different path to use the cache.";
+
+    /// <summary>
+    /// True when both paths name the same file: full paths, compared the way the platform compares file names
+    /// (case-insensitively on Windows). An unusable path is not the same file; the run reports it when it saves.
+    /// </summary>
+    private static bool IsSameFile(string inputPath, string outputPath)
+    {
+        try
+        {
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            return string.Equals(Path.GetFullPath(inputPath), Path.GetFullPath(outputPath), comparison);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException)
+        {
+            return false;
         }
     }
 

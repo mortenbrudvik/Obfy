@@ -66,6 +66,15 @@ public class ObfuscationResult
     /// </summary>
     public string? PackedLauncherPath { get; private init; }
 
+    /// <summary>
+    /// True when no run produced this result: the incremental cache found the output of an earlier run for the same
+    /// Obfy build, input and settings and reused it. <see cref="Statistics"/> are then the numbers of the run that
+    /// wrote the output. <see cref="SymbolMap"/>, <see cref="SkippedItems"/> and <see cref="ProcessingTimes"/> are
+    /// empty because the cache never stores names (<see cref="Warnings"/> says what was not kept), and
+    /// <see cref="ElapsedTime"/> is zero.
+    /// </summary>
+    public bool FromCache { get; private init; }
+
     private ObfuscationResult()
     {
     }
@@ -82,7 +91,8 @@ public class ObfuscationResult
         List<SkippedItem>? skippedItems = null,
         Dictionary<string, string>? symbolMap = null,
         List<string>? warnings = null,
-        string? packedLauncherPath = null)
+        string? packedLauncherPath = null,
+        bool fromCache = false)
     {
         return new ObfuscationResult
         {
@@ -95,7 +105,8 @@ public class ObfuscationResult
             SkippedItems = skippedItems ?? new(),
             SymbolMap = symbolMap ?? new(),
             Warnings = warnings ?? new(),
-            PackedLauncherPath = packedLauncherPath
+            PackedLauncherPath = packedLauncherPath,
+            FromCache = fromCache
         };
     }
 

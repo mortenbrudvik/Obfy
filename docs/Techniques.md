@@ -848,7 +848,11 @@ Transforms control flow structures in source code.
 
 ## Post-processing: incremental cache
 
-`incremental.enabled` (off in every preset; CLI `--incremental`) skips re-obfuscation when the Obfy version, input bytes, and serialized settings have not changed. The cache file is `{outputPath}.obfycache` and stores a SHA-256 of those inputs. A hit also requires the output file to exist. If packing is on, a hit additionally requires `{name}.runtimeconfig.json` (win-x64) or the managed `{name}.launcher.exe` plus its `.runtimeconfig.json` (portable). A locked or corrupt cache is a miss. The cache is written only after a successful write (including a successful pack when packing is on).
+`incremental.enabled` (off in every preset; CLI `--incremental`) skips re-obfuscation when the Obfy build, input bytes, and serialized settings have not changed and the output is still the file the last run wrote. The cache file is `{outputPath}.obfycache`, a small JSON file with the SHA-256 key of those inputs, the statistics of the run that wrote the output, three counts (symbol-map entries, skipped items, warnings), and the length and SHA-256 of the output file and, when packing is on, of `{name}.runtimeconfig.json` (win-x64) or the managed `{name}.launcher.exe` plus its `.runtimeconfig.json` (portable). It holds numbers and hashes only, never a name or the symbol map.
+
+A hit needs the key and every one of those fingerprints to match. An output that was replaced, edited or removed since (for example the unprotected original copied over it) is a miss and is rebuilt, and so is a locked, corrupt or older-layout cache. Changing the protected output after the run, such as Authenticode-signing it or a post-build step that touches it, is the common legitimate case: the next incremental run builds it again. A hit returns the cached statistics and says it reused the output, and how many items were skipped and warnings raised that it cannot list. `--map` rebuilds instead of taking a hit when the cached run renamed symbols. `--report` also rebuilds when it skipped items or raised warnings, and so does the desktop app, which lists the symbols on its Results screen and builds a report from every run.
+
+Applies to a single assembly or a merge. Closed-set, solution, source and directory runs do not use it, and it is not used when the output replaces the input. The cache is written only after a successful write (including a successful pack when packing is on).
 
 ## Post-processing: native packer (win-x64)
 

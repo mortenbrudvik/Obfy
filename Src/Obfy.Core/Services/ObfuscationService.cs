@@ -42,12 +42,23 @@ public class ObfuscationService : IObfuscationService
     }
 
     /// <inheritdoc/>
+    public Task<ObfuscationResult> ObfuscateAsync(
+        string inputPath,
+        string? outputPath,
+        ObfySettings settings,
+        CancellationToken cancellationToken = default) =>
+        ObfuscateAsync(inputPath, outputPath, settings, ObfuscationRunOptions.Default, cancellationToken);
+
+    /// <inheritdoc/>
     public async Task<ObfuscationResult> ObfuscateAsync(
         string inputPath,
         string? outputPath,
         ObfySettings settings,
+        ObfuscationRunOptions options,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         // The log keeps Debug and above: no path, no exception text. Counts, stages and exception types only.
         _logger.LogInformation("Starting obfuscation run");
 
@@ -71,7 +82,17 @@ public class ObfuscationService : IObfuscationService
         var effectiveOutput = outputPath ?? GenerateOutputPath(inputPath);
         string? cacheKey = null;
         ObfySettings? keySettings = null;
-        if (settings.Incremental.Enabled && !isDirectory && target.TargetType == TargetType.Assembly)
+        string? cacheNote = null;
+        if (settings.Incremental.Enabled && !isDirectory && target.TargetType == TargetType.Assembly &&
+            PathIdentity.SameFile(inputPath, effectiveOutput))
+        {
+            // The run replaces its own input. A key from the input could not match the file this run leaves behind,
+            // and a stale cache that matches the file now on disk would "reuse" an unprotected input. No key, no
+            // hit check, no cache file.
+            cacheNote = InPlaceCacheNote;
+            _logger.LogInformation("Incremental cache not used: the output replaces the input");
+        }
+        else if (settings.Incremental.Enabled && !isDirectory && target.TargetType == TargetType.Assembly)
         {
             keySettings = settings.Clone();
             try
@@ -85,32 +106,22 @@ public class ObfuscationService : IObfuscationService
             }
         }
 
-        if (cacheKey is not null && IncrementalCache.TryHit(effectiveOutput, keySettings!, cacheKey))
+        if (cacheKey is not null)
         {
-            _logger.LogInformation("Incremental cache hit");
-            string? packed = null;
-            var warnings = new List<string> { "Incremental: reused cached output" };
-            warnings.AddRange(gatingWarnings);
-            if (settings.Packing.Enabled)
+            var cached = IncrementalCache.TryReadHit(effectiveOutput, keySettings!, cacheKey);
+            if (cached is not null && WhyNotReused(options, cached) is { } declined)
             {
-                if (settings.Packing.IsPortable)
-                {
-                    packed = ManagedLauncherPacker.LauncherPathFor(effectiveOutput);
-                    warnings.Add("Packed launcher: " + packed);
-                }
-                else
-                {
-                    packed = effectiveOutput;
-                    warnings.Add("Packed native host: " + packed);
-                }
+                // The caller will read something a hit cannot give: the cache never stores the symbol map, the skipped
+                // items or the warning texts, because they name the original types, members and resources. Do the
+                // work again rather than hand back an empty list as if it were the result of this run.
+                _logger.LogInformation("Incremental cache hit not used: the caller needs more than a hit holds");
+                cacheNote = declined;
             }
-
-            return ObfuscationResult.Successful(
-                new ObfuscationStatistics(),
-                inputPath: inputPath,
-                outputPath: effectiveOutput,
-                warnings: warnings,
-                packedLauncherPath: packed);
+            else if (cached is not null)
+            {
+                _logger.LogInformation("Incremental cache hit");
+                return ReuseCachedOutput(inputPath, effectiveOutput, settings, gatingWarnings, cached);
+            }
         }
 
         PipelineContext context;
@@ -127,6 +138,8 @@ public class ObfuscationService : IObfuscationService
             context.InputPath = inputPath;
             context.OutputPath = target.EffectiveOutputPath;
             context.Warnings.AddRange(gatingWarnings);
+            if (cacheNote is not null)
+                context.Warnings.Add(cacheNote);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -194,12 +207,15 @@ public class ObfuscationService : IObfuscationService
                 }
 
                 string? packedPath = null;
+                var packingWarnings = 0;
                 if (settings.Packing.Enabled && target.TargetType == TargetType.Assembly)
                 {
                     try
                     {
+                        var warningsBeforePacking = context.Warnings.Count;
                         packedPath = PackingApplicator.Pack(
                             effectiveOutput, settings, inputPath, context.Warnings);
+                        packingWarnings = context.Warnings.Count - warningsBeforePacking;
                         _logger.LogInformation("Packed output written");
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
@@ -210,7 +226,19 @@ public class ObfuscationService : IObfuscationService
                 }
 
                 if (cacheKey is not null)
-                    WriteIncrementalCache(inputPath, effectiveOutput, keySettings!, cacheKey, context.Warnings);
+                {
+                    // Numbers only. The warnings a hit derives again (profile gating, the lines packing adds, the cache
+                    // note of this run) are not part of the count.
+                    var runRecord = new CachedRun(
+                        context.Statistics,
+                        context.SymbolMap.Count,
+                        context.SkippedItems.Count,
+                        Math.Max(
+                            0,
+                            context.Warnings.Count - gatingWarnings.Count - packingWarnings
+                                - (cacheNote is null ? 0 : 1)));
+                    WriteIncrementalCache(inputPath, effectiveOutput, keySettings!, cacheKey, runRecord, context.Warnings);
+                }
 
                 return ObfuscationResult.Successful(
                     context.Statistics,
@@ -287,7 +315,7 @@ public class ObfuscationService : IObfuscationService
     /// then, so the cache is written only if they are unchanged now.
     /// </summary>
     private void WriteIncrementalCache(
-        string inputPath, string output, ObfySettings keySettings, string cacheKey, List<string> warnings)
+        string inputPath, string output, ObfySettings keySettings, string cacheKey, CachedRun run, List<string> warnings)
     {
         string? current = null;
         try
@@ -301,18 +329,109 @@ public class ObfuscationService : IObfuscationService
 
         if (!string.Equals(current, cacheKey, StringComparison.Ordinal))
         {
+            // The input is not the file it was. Either something else rewrote it, or this run did: the output reached
+            // the input through a spelling PathIdentity cannot see (a subst drive, an admin share), and the input is
+            // now the output. Only the second is a run replacing its own input, and the note says so.
             warnings.Add(
-                "Incremental cache not written: the input or one of its dependencies changed while the run was in progress.");
+                InputIsNowTheOutput(inputPath, output)
+                    ? InPlaceCacheNote
+                    : "Incremental cache not written: the input or one of its dependencies changed while the run was in progress.");
             return;
         }
 
-        if (!IncrementalCache.TryWrite(output, cacheKey))
+        if (!IncrementalCache.TryWrite(output, cacheKey, run, keySettings.Packing))
         {
             _logger.LogWarning("Could not write the incremental cache");
             warnings.Add(
                 "Incremental cache could not be written next to the output, so the next run will not be skipped.");
         }
     }
+
+    /// <summary>
+    /// True when the input file now holds exactly the bytes of the output this run wrote: the run replaced its own
+    /// input. A file that cannot be read is not that.
+    /// </summary>
+    private static bool InputIsNowTheOutput(string inputPath, string output)
+    {
+        try
+        {
+            return FileFingerprint.Of(output).Matches(inputPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The result of a cache hit: the output of the earlier run is the output of this one, and its statistics are
+    /// the statistics. What the cache does not keep (symbol map, skipped items, warning text, timings) is empty, and
+    /// the warnings say how much of it there was, so a hit never reads as a run that found nothing to report.
+    /// </summary>
+    private static ObfuscationResult ReuseCachedOutput(
+        string inputPath, string output, ObfySettings settings, List<string> gatingWarnings, CachedRun cached)
+    {
+        var warnings = new List<string> { "Incremental: reused cached output" };
+        warnings.AddRange(gatingWarnings);
+        var packed = settings.Packing.Enabled ? PackingApplicator.DescribePacked(output, settings.Packing, warnings) : null;
+
+        var cacheFile = Path.GetFileName(IncrementalCache.CachePath(output));
+        if (cached.SkippedItems > 0)
+        {
+            warnings.Add(
+                $"The run that produced this output skipped {cached.SkippedItems} item(s) and left them unobfuscated. " +
+                $"The cache keeps no names, so they are not listed here. Delete '{cacheFile}' and run again to list them.");
+        }
+
+        if (cached.Warnings > 0)
+        {
+            warnings.Add(
+                $"The run that produced this output raised {cached.Warnings} warning(s). " +
+                $"The cache keeps no warning text, so they are not repeated here. Delete '{cacheFile}' and run again to see them.");
+        }
+
+        return ObfuscationResult.Successful(
+            cached.Statistics,
+            inputPath: inputPath,
+            outputPath: output,
+            warnings: warnings,
+            packedLauncherPath: packed,
+            fromCache: true);
+    }
+
+    /// <summary>
+    /// Said when a cache hit was available but the caller reads the symbol map. Fixed text: it names no file.
+    /// </summary>
+    internal const string SymbolMapNeededNote =
+        "Incremental cache not used for this run: the symbol map is needed and the cache does not store it " +
+        "(it lists the original names), so the output was built again.";
+
+    /// <summary>
+    /// Said when a cache hit was available but the caller builds a report that the hit would make thinner than the
+    /// run it describes. Fixed text: it names no file.
+    /// </summary>
+    internal const string ReportNeededNote =
+        "Incremental cache not used for this run: the report is needed and the cache does not store the symbol map, " +
+        "skipped items or warning texts it lists (they name your original types, members and resources), " +
+        "so the output was built again.";
+
+    /// <summary>
+    /// The sentence that says why a cache hit was not taken, or null when the hit can stand in for the run for this
+    /// caller. A part a hit cannot supply only matters when the cached run had some of it: an empty list is exact.
+    /// </summary>
+    private static string? WhyNotReused(ObfuscationRunOptions options, CachedRun cached)
+    {
+        if (options.NeedsReport && (cached.SymbolMapEntries > 0 || cached.SkippedItems > 0 || cached.Warnings > 0))
+            return ReportNeededNote;
+
+        return options.NeedsSymbolMap && cached.SymbolMapEntries > 0 ? SymbolMapNeededNote : null;
+    }
+
+    /// <summary>
+    /// Said once per in-place run when incremental mode is on. Fixed text: it names no file.
+    /// </summary>
+    internal const string InPlaceCacheNote =
+        "Incremental cache not used: the output replaces the input file. Write the output to a different path to use the cache.";
 
     private static void DisposeModule(PipelineContext context)
     {
@@ -531,12 +650,22 @@ public class ObfuscationService : IObfuscationService
     }
 
     /// <inheritdoc/>
+    public Task<ObfuscationResult> MergeAndObfuscateAsync(
+        IEnumerable<string> inputPaths,
+        string outputPath,
+        ObfySettings settings,
+        CancellationToken cancellationToken = default) =>
+        MergeAndObfuscateAsync(inputPaths, outputPath, settings, ObfuscationRunOptions.Default, cancellationToken);
+
+    /// <inheritdoc/>
     public async Task<ObfuscationResult> MergeAndObfuscateAsync(
         IEnumerable<string> inputPaths,
         string outputPath,
         ObfySettings settings,
+        ObfuscationRunOptions options,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
         var inputList = inputPaths.ToList();
 
         if (inputList.Count < 2)
@@ -576,6 +705,7 @@ public class ObfuscationService : IObfuscationService
                 tempMergedPath,
                 outputPath,
                 settings,
+                options,
                 cancellationToken).ConfigureAwait(false);
 
             // Add merge info to the result

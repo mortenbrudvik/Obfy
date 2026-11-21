@@ -64,9 +64,9 @@ public class IncrementalCacheTests : IDisposable
     {
         var (input, output, settings) = Seed();
         settings.Packing.Enabled = true;
-        IncrementalCache.Write(input, output, settings);
         File.WriteAllText(NativePacker.RuntimeConfigPathFor(output), "{}");
-        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse("the output is not a packed host");
     }
 
     [Fact]
@@ -74,13 +74,14 @@ public class IncrementalCacheTests : IDisposable
     {
         var (input, output, settings) = Seed();
         settings.Packing.Enabled = true;
-        IncrementalCache.Write(input, output, settings);
         var packed = new byte[8];
         packed[0] = (byte)'M';
         packed[1] = (byte)'Z';
         "OBP1"u8.CopyTo(packed.AsSpan(4));
         File.WriteAllBytes(output, packed);
         File.WriteAllText(NativePacker.RuntimeConfigPathFor(output), "{}");
+        // The entry fingerprints the files as they are when it is written, so they come first.
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
         IncrementalCache.TryHit(input, output, settings).ShouldBeTrue();
     }
 
@@ -110,7 +111,8 @@ public class IncrementalCacheTests : IDisposable
     {
         var (input, output, settings) = Seed();
         IncrementalCache.Write(input, output, settings);
-        File.ReadAllText(IncrementalCache.CachePath(output)).Trim().Length.ShouldBe(64);
+        using (var entry = JsonDocument.Parse(File.ReadAllText(IncrementalCache.CachePath(output))))
+            entry.RootElement.GetProperty("key").GetString()!.Length.ShouldBe(64);
         File.WriteAllText(IncrementalCache.CachePath(output), "deadbeef");
         IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
     }
@@ -239,6 +241,107 @@ public class IncrementalCacheTests : IDisposable
         var (input, output, settings) = Seed();
         File.WriteAllText(IncrementalCache.CachePath(output), "");
         IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryReadHit_ReturnsTheRunRecordThatWasWritten()
+    {
+        var (input, output, settings) = Seed();
+        var key = IncrementalCache.ComputeKey(input, settings);
+        var run = new CachedRun(
+            new ObfuscationStatistics { StringsEncrypted = 7, TypesRenamed = 3, MethodsRenamed = 5, AssembliesEmbedded = 1 },
+            SymbolMapEntries: 11, SkippedItems: 2, Warnings: 4);
+
+        IncrementalCache.TryWrite(output, key, run, settings.Packing).ShouldBeTrue();
+        var read = IncrementalCache.TryReadHit(output, settings, key);
+
+        read.ShouldNotBeNull();
+        read.SymbolMapEntries.ShouldBe(11);
+        read.SkippedItems.ShouldBe(2);
+        read.Warnings.ShouldBe(4);
+        read.Statistics.StringsEncrypted.ShouldBe(7);
+        read.Statistics.TypesRenamed.ShouldBe(3);
+        read.Statistics.MethodsRenamed.ShouldBe(5);
+        read.Statistics.AssembliesEmbedded.ShouldBe(1);
+        read.Statistics.TotalTransformations.ShouldBe(16);
+    }
+
+    [Fact]
+    public void TryHit_BareKeyFromTheOldFormat_IsAMiss()
+    {
+        // Earlier builds stored only the hex key. It would still match, but there are no numbers to give back, and
+        // a hit with zero statistics is the defect this format replaced.
+        var (input, output, settings) = Seed();
+        File.WriteAllText(IncrementalCache.CachePath(output), IncrementalCache.ComputeKey(input, settings));
+
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+        IncrementalCache.TryReadHit(output, settings, IncrementalCache.ComputeKey(input, settings)).ShouldBeNull();
+    }
+
+    [Fact]
+    public void TryHit_OutputChangedAfterTheCacheWasWritten_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
+        IncrementalCache.TryHit(input, output, settings).ShouldBeTrue();
+
+        File.WriteAllBytes(output, [5, 6, 7, 9]);
+
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse("same length, one byte different");
+    }
+
+    [Fact]
+    public void TryWrite_OutputMissing_WritesNothing()
+    {
+        var (input, output, settings) = Seed();
+        File.Delete(output);
+
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeFalse("there is no file to vouch for");
+        File.Exists(IncrementalCache.CachePath(output)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryWrite_PackingOnButTheSidecarIsMissing_WritesNothing()
+    {
+        var (input, output, settings) = Seed();
+        settings.Packing.Enabled = true;
+
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeFalse();
+        File.Exists(IncrementalCache.CachePath(output)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryHit_OutputHeldOpenForWritingByAnotherProcessWithoutChange_IsStillAHit()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
+
+        // An indexer, a scanner or an editor holding the file open for writing has not changed it. Reading it to
+        // check the fingerprint must not fail on that, or the hit turns into a rebuild that cannot save.
+        using var holder = new FileStream(output, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+
+        IncrementalCache.TryHit(input, output, settings).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void TryHit_OutputLockedExclusively_IsAMissNotAnException()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
+
+        using var holder = new FileStream(output, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        Should.NotThrow(() => IncrementalCache.TryHit(input, output, settings)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryReadHit_KeyDiffersInCase_StillMatches()
+    {
+        var (input, output, settings) = Seed();
+        var key = IncrementalCache.ComputeKey(input, settings);
+        IncrementalCache.TryWrite(output, key.ToLowerInvariant(), CachedRun.Empty, settings.Packing).ShouldBeTrue();
+
+        IncrementalCache.TryReadHit(output, settings, key).ShouldNotBeNull();
     }
 
     public void Dispose()

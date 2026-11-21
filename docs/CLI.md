@@ -44,7 +44,7 @@ obfy <input>... [options]
 | `--anti-dump` | | Enable anti-dump (PE wipe + in-process MiniDump hook, Windows) | Off |
 | `--watermark-id <id>` | | Enable watermarking and set `watermark.id` (trimmed; whitespace-only is an error) | Off |
 | `--virtualize` | | Enable IL virtualization of eligible methods (no EH/generics/byref/custom structs/ctors; gated off NativeAOT / IL2CPP / Blazor WASM) | Off |
-| `--incremental` | | Skip re-obfuscation when input and settings are unchanged | Off |
+| `--incremental` | | Skip re-obfuscation when input and settings are unchanged and the output is still the file the last run wrote. The cache file next to the output holds counts and hashes, never names. Single assembly or merge only; not used when the output replaces the input. `--map` rebuilds when the earlier run renamed symbols, `--report` also when it skipped items or raised warnings. Changing the output after the run (Authenticode-signing it, or a post-build step that touches it) makes the next run build it again (`docs/Configuration.md`) | Off |
 | `--reference-proxy` | | Enable reference proxy | Off |
 | `--proxy-external` | | Also proxy selected out-of-module calls (enables `--reference-proxy`; skips compiler/interop/pointer/value-type/generic/vararg/ctor signatures) | Off |
 | `--encrypt-methods` | | Encrypt method IL in the PE image (Windows) | Off |

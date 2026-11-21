@@ -27,6 +27,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Junction helpers (and their skippable facts), shared with Obfy.App.Tests. -->
+    <Compile Include="..\Obfy.App.Tests\Common\Links.cs" Link="Linked\Links.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

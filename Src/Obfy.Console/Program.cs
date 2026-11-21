@@ -811,7 +811,10 @@ public class Program
         var presentExtras = extraAssemblies.Where(static e => File.Exists(e.FullName)).ToList();
         var missingExtras = extraAssemblies.Where(static e => !File.Exists(e.FullName)).ToList();
         foreach (var missing in missingExtras)
+        {
             AnsiConsole.MarkupLine($"[red]File not found: {Markup.Escape(missing.FullName)}[/]");
+            WriteProblem(missing.FullName, "error", "File not found");
+        }
 
         PrintSessionPlan(session, presentExtras, missingExtras, preservePublic);
 
@@ -911,7 +914,10 @@ public class Program
         }
 
         foreach (var file in missing)
+        {
             AnsiConsole.MarkupLine($"[red]File not found: {Markup.Escape(file.FullName)}[/]");
+            WriteProblem(file.FullName, "error", "File not found");
+        }
         foreach (var file in skippedSource)
             AnsiConsole.MarkupLine(
                 $"[yellow]Source files are not part of a closed set and were skipped: {Markup.Escape(file.FullName)}[/]");
@@ -980,6 +986,7 @@ public class Program
         {
             AnsiConsole.MarkupLine(
                 $"[red]Failed to load {Markup.Escape(failure.Path)}: {Markup.Escape(failure.Message)}[/]");
+            WriteProblem(failure.Path, "error", $"Failed to load assembly: {failure.Message}");
         }
 
         if (!result.Success)

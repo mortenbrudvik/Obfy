@@ -328,6 +328,79 @@ public class SolutionInputTests : IDisposable
     }
 
     [Fact]
+    public void Invoke_TwoDllsPlusCorrupt_EmitsProblemMatcherLineForTheCorruptFile()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll", "Alpha");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll", "Beta");
+        var corrupt = Path.Combine(_tempDirectory, "Corrupt.dll");
+        File.WriteAllText(corrupt, "not an assembly");
+        var outputDir = Path.Combine(_tempDirectory, "corrupt-problem-out");
+        using var problems = new ProblemLineCapture();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            Program.CreateRootCommand(), $"\"{a}\" \"{b}\" \"{corrupt}\" -o \"{outputDir}\" -l minimal --no-logo", out _);
+
+        exitCode.ShouldBe(1);
+        var problem = problems.Problems.Where(p => p.File == corrupt).ShouldHaveSingleItem();
+        problem.Severity.ShouldBe("error");
+        problem.Message.ShouldStartWith("Failed to load assembly:");
+    }
+
+    [Fact]
+    public void Invoke_SolutionWithCorruptOutput_EmitsProblemMatcherLineForTheCorruptFile()
+    {
+        var sln = WriteLibrarySolutionWithBuiltOutput();
+        var corrupt = Path.Combine(_tempDirectory, "Lib", "bin", "Release", "net8.0", "Lib.dll");
+        File.WriteAllText(corrupt, "not an assembly");
+        var outputDir = Path.Combine(_tempDirectory, "sln-corrupt-problem-out");
+        using var problems = new ProblemLineCapture();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            Program.CreateRootCommand(), $"\"{sln}\" -o \"{outputDir}\" -l minimal --no-logo", out _);
+
+        exitCode.ShouldBe(1);
+        var problem = problems.Problems.ShouldHaveSingleItem();
+        problem.File.ShouldBe(corrupt, StringCompareShould.IgnoreCase);
+        problem.Severity.ShouldBe("error");
+        problem.Message.ShouldStartWith("Failed to load assembly:");
+    }
+
+    [Fact]
+    public void Invoke_SolutionPlusMissingExtraDll_EmitsProblemMatcherLineForTheMissingFile()
+    {
+        var sln = WriteTestsOnlySolution();
+        var missing = Path.Combine(_tempDirectory, "NoSuch.dll");
+        using var problems = new ProblemLineCapture();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            Program.CreateRootCommand(), $"\"{sln}\" \"{missing}\" --dry-run --no-logo", out _);
+
+        exitCode.ShouldBe(1);
+        var problem = problems.Problems.ShouldHaveSingleItem();
+        problem.File.ShouldBe(missing);
+        problem.Severity.ShouldBe("error");
+        problem.Message.ShouldBe("File not found");
+    }
+
+    [Fact]
+    public void Invoke_TwoDllsPlusMissing_EmitsProblemMatcherLineForTheMissingFile()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
+        var missing = Path.Combine(_tempDirectory, "NoSuch.dll");
+        using var problems = new ProblemLineCapture();
+
+        var exitCode = CommandLineTestHelpers.Invoke(
+            Program.CreateRootCommand(), $"\"{a}\" \"{b}\" \"{missing}\" --dry-run --no-logo", out _);
+
+        exitCode.ShouldBe(1);
+        var problem = problems.Problems.ShouldHaveSingleItem();
+        problem.File.ShouldBe(missing);
+        problem.Severity.ShouldBe("error");
+        problem.Message.ShouldBe("File not found");
+    }
+
+    [Fact]
     public void FormatLibraryMode_ForcePreservePublic_YesOnlyWhenIncluded()
     {
         Program.FormatLibraryMode(included: true, hintPreservePublic: false, forcePreservePublic: true)

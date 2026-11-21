@@ -1,9 +1,10 @@
 import Badge from "../../components/Badge";
 import { content } from "../../content/content";
+import type { Committed } from "../../hooks/useDraft";
 import { strings } from "../../strings";
 import type { SettingsPatch, SettingsSnapshot } from "../../types/domain";
 import { DetailHead, DetailSection, GuideLink } from "./DetailParts";
-import { ListOption, type Committed } from "./OptionControl";
+import { ListOption } from "./OptionControl";
 import { ruleCount } from "./scope";
 
 interface ScopeDetailProps {

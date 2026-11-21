@@ -180,14 +180,39 @@ describe("an output box and the host's answer to what was typed in it", () => {
     expect(folderBox().value).toBe("E:/restored");
   });
 
-  it("keepsWhatTheUserIsTyping_whenTheHostsFolderChangesUnderIt", async () => {
+  it("replacesWhatWasTyped_whenTheHostsFolderChangesAndNothingWasSent", async () => {
     const events = host({});
     await renderFiles();
     fireEvent.change(folderBox(), { target: { value: "C:/typing" } });
 
     events.push("files.changed", withFile({ revision: 5, outputFolder: "E:/restored" }));
 
-    // Typed text the host has not seen is never overwritten; leaving the box sends it.
-    expect(folderBox().value).toBe("C:/typing");
+    // Only the echo of the box's own commit is kept off the typed text; any other change of the host's value wins.
+    expect(folderBox().value).toBe("E:/restored");
+  });
+
+  it("showsTheLoadedFolder_andSendsNothingOnTheNextShortcut_afterARefusedWriteAndAChangeOfTheHostsValue", async () => {
+    const events = host({
+      "output.set": () => {
+        throw new Error("output.invalidFolder");
+      },
+    });
+    await renderFiles();
+    const box = folderBox();
+    fireEvent.change(box, { target: { value: "Z:/nowhere" } });
+    fireEvent.blur(box);
+    await screen.findByText(/Could not change the output/);
+    expect(box.value).toBe("Z:/nowhere");
+    expect(calls("output", "set")).toHaveLength(1);
+
+    // A configuration is loaded with its own folder.
+    events.push("files.changed", withFile({ revision: 5, outputFolder: "E:/loaded", outputHint: "E:/loaded" }));
+    expect(box.value).toBe("E:/loaded");
+
+    // The run starts on what was loaded: the refused text is not sent over it.
+    fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(calls("run", "start")).toHaveLength(1));
+    expect(calls("output", "set")).toHaveLength(1);
+    expect(box.value).toBe("E:/loaded");
   });
 });

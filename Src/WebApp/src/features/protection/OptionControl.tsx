@@ -4,7 +4,7 @@ import Field from "../../components/Field";
 import Select from "../../components/Select";
 import Slider from "../../components/Slider";
 import { usePendingEdit, type FlushResult } from "../../hooks/pendingEdits";
-import { useDraft } from "../../hooks/useDraft";
+import { useDraft, type Committed } from "../../hooks/useDraft";
 import { strings } from "../../strings";
 import type { SettingsChoices, SettingsPatch } from "../../types/domain";
 
@@ -21,9 +21,6 @@ interface OptionControlProps {
   onUpdate: (patch: SettingsPatch) => Committed;
   onPickKey: () => void;
 }
-
-/** What a change answers: nothing, or (once the host has answered) whether it took the change in; `false` is a refusal. */
-export type Committed = void | boolean | Promise<void | boolean>;
 
 const asText = (value: unknown) => (typeof value === "string" ? value : "");
 const asNumber = (value: unknown) => (typeof value === "number" ? value : 0);

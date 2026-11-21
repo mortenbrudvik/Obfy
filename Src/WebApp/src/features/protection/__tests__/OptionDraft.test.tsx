@@ -5,7 +5,7 @@ vi.mock("../../../interop/WebViewApiClient", () => ({ apiClient: { call: vi.fn()
 
 import { apiClient } from "../../../interop/WebViewApiClient";
 import { mockBridge } from "../../../test/bridge";
-import { emptyFiles, idleRun, notRunResults } from "../../../test/snapshots";
+import { emptyFiles, idleRun, notRunResults, readyRun } from "../../../test/snapshots";
 import Shell from "../../shell/Shell";
 import ProtectionPage from "../ProtectionPage";
 import { protectionSnapshot } from "./fixtures";
@@ -120,6 +120,42 @@ describe("an option box and the host's answer to what was typed in it", () => {
 
     await screen.findByRole("alert");
     expect(box.value).toBe("bad id");
+  });
+
+  it("showsTheLoadedId_andSendsNothingOnTheNextShortcut_afterARefusedWriteAndAConfigurationLoad", async () => {
+    const events = host({
+      "run.get": () => readyRun,
+      "run.start": () => ({ ...readyRun, status: "Running" }),
+      "settings.update": () => {
+        throw new Error("settings.invalidValue");
+      },
+    });
+    const box = await openWatermark();
+    fireEvent.change(box, { target: { value: "bad id" } });
+    fireEvent.blur(box);
+    await screen.findByRole("alert");
+    expect(box.value).toBe("bad id");
+    expect(updates()).toHaveLength(1);
+
+    // A configuration is loaded, and it holds an id.
+    events.push("settings.changed", withId("from-config"));
+    expect(box.value).toBe("from-config");
+
+    // Ctrl+Enter runs with the loaded id: the refused text is not sent over it.
+    fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(vi.mocked(apiClient.call).mock.calls.filter(([s, m]) => s === "run" && m === "start")).toHaveLength(1));
+    expect(updates()).toHaveLength(1);
+    expect(box.value).toBe("from-config");
+  });
+
+  it("replacesWhatWasTyped_whenAConfigurationIsLoadedAndNothingWasSent", async () => {
+    const events = host({});
+    const box = await openWatermark();
+    fireEvent.change(box, { target: { value: "half-typ" } });
+
+    events.push("settings.changed", withId("from-config"));
+
+    expect(box.value).toBe("from-config");
   });
 
   it("followsTheHostsId_whenAConfigurationIsLoadedAndTheBoxHoldsNoUncommittedEdit", async () => {

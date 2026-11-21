@@ -88,7 +88,7 @@
         "proxyExternalCalls": {
           "type": "boolean",
           "default": false,
-          "description": "Proxy selected out-of-module calls (BCL and third-party). Ignored unless referenceProxy is true. Skips compiler/interop/pointer/value-type signatures."
+          "description": "Proxy selected out-of-module calls (BCL and third-party). Ignored unless referenceProxy is true. Skips compiler and interop types (including nested types), pointers, by-refs, generics, varargs and constructors. A known value-type instance call is proxied by reference; an unknown receiver or callvirt on a value type stays direct."
         },
         "methodEncryption": { "type": "boolean", "default": false },
         "antiTamper": {

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../interop/WebViewApiClient", () => ({ apiClient: { call: vi.fn(), on: vi.fn(() => vi.fn()) } }));
 
@@ -130,27 +130,102 @@ describe("Shell", () => {
     });
   });
 
-  it("showsTheDropOverlay_whileTheHostSaysFilesAreDragged_andHidesItAfter", async () => {
-    const host = startHost(readyRun);
-    render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+  /** A drag carrying files, as the browser exposes it to dragenter/dragover/dragleave/drop. */
+  const filesDrag = (files: File[] = []) => ({ dataTransfer: { types: ["Files"], files, dropEffect: "none" } });
+
+  function installWebView() {
+    const postMessageWithAdditionalObjects = vi.fn();
+    window.chrome = { webview: { postMessageWithAdditionalObjects } as unknown as NonNullable<Window["chrome"]>["webview"] };
+    return postMessageWithAdditionalObjects;
+  }
+
+  afterEach(() => {
+    delete window.chrome;
+  });
+
+  it("showsTheDropOverlay_whileFilesAreDraggedOverThePage_andHidesItWhenTheyLeave", async () => {
+    startHost(readyRun);
+    const { container } = render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
     await screen.findByText(/2 of 3 files/);
+    const shell = container.querySelector(".shell")!;
     expect(screen.queryByTestId("drop-overlay")).toBeNull();
 
-    host.push("shell.dragState", { dragging: true });
+    fireEvent.dragEnter(shell, filesDrag());
     expect(screen.getByTestId("drop-overlay").textContent).toBe("Drop files to add them");
 
-    host.push("shell.dragState", { dragging: false });
+    // Crossing into a child fires leave and enter: the overlay stays.
+    const child = shell.querySelector("main")!;
+    fireEvent.dragEnter(child, filesDrag());
+    fireEvent.dragLeave(shell, filesDrag());
+    expect(screen.getByTestId("drop-overlay")).toBeTruthy();
+
+    fireEvent.dragLeave(child, filesDrag());
     expect(screen.queryByTestId("drop-overlay")).toBeNull();
   });
 
-  it("saysFilesCannotBeAdded_inTheDropOverlay_whileARunGoes", async () => {
+  it("ignoresADragThatCarriesNoFiles", async () => {
+    startHost(readyRun);
+    const { container } = render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/2 of 3 files/);
+
+    fireEvent.dragEnter(container.querySelector(".shell")!, { dataTransfer: { types: ["text/plain"], files: [] } });
+
+    expect(screen.queryByTestId("drop-overlay")).toBeNull();
+  });
+
+  it("copiesOnDragOver_soThePageTakesTheDrop", async () => {
+    startHost(readyRun);
+    const { container } = render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/2 of 3 files/);
+    const drag = filesDrag();
+
+    const notCancelled = fireEvent.dragOver(container.querySelector(".shell")!, drag);
+
+    expect(notCancelled).toBe(false);
+    expect(drag.dataTransfer.dropEffect).toBe("copy");
+  });
+
+  it("postsTheDroppedFilesToTheHost_andHidesTheOverlay", async () => {
+    startHost(readyRun);
+    const post = installWebView();
+    const { container } = render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/2 of 3 files/);
+    const shell = container.querySelector(".shell")!;
+    const files = [new File(["x"], "a.dll"), new File(["y"], "b.dll")];
+
+    fireEvent.dragEnter(shell, filesDrag(files));
+    const notCancelled = fireEvent.drop(shell, filesDrag(files));
+
+    expect(notCancelled).toBe(false);
+    expect(post).toHaveBeenCalledExactlyOnceWith("files.dropped", files);
+    expect(screen.queryByTestId("drop-overlay")).toBeNull();
+  });
+
+  it("postsNothing_whenTheDropCarriesNoFiles", async () => {
+    startHost(readyRun);
+    const post = installWebView();
+    const { container } = render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/2 of 3 files/);
+
+    fireEvent.drop(container.querySelector(".shell")!, filesDrag([]));
+
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("saysFilesCannotBeAdded_inTheDropOverlay_whileARunGoes_andStillHandsTheDropToTheHost", async () => {
     const running: RunSnapshot = { ...readyRun, canStart: false, status: "Running", currentFile: "a.dll", total: 2, progress: 10 };
-    const host = startHost(running);
-    render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    startHost(running);
+    const post = installWebView();
+    const { container } = render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
     await screen.findByText(/Processing a\.dll/);
+    const shell = container.querySelector(".shell")!;
 
-    host.push("shell.dragState", { dragging: true });
-
+    fireEvent.dragEnter(shell, filesDrag());
     expect(screen.getByTestId("drop-overlay").textContent).toBe("Files can't be added while a run is in progress");
+
+    // The host's one rule (the run lock) decides; the page does not.
+    const files = [new File(["x"], "a.dll")];
+    fireEvent.drop(shell, filesDrag(files));
+    expect(post).toHaveBeenCalledExactlyOnceWith("files.dropped", files);
   });
 });

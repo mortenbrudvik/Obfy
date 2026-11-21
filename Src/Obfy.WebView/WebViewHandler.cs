@@ -31,6 +31,12 @@ public class WebViewHandler
     /// <summary>The host the bundled page is served from (<see cref="HostWebRootFolder"/>) unless another is given.</summary>
     public const string DefaultHostName = "obfy.localassets.invalid";
 
+    /// <summary>
+    /// The one message the page posts with <c>postMessageWithAdditionalObjects</c>; the dropped files travel as the
+    /// additional objects. Mirrored in the page (Shell.tsx).
+    /// </summary>
+    public const string FilesDroppedMessage = "files.dropped";
+
     private readonly ILogger _logger;
     private int _reloads;
     private Task? _start;
@@ -42,9 +48,11 @@ public class WebViewHandler
         EnvironmentFolderPath = environmentFolderPath;
         _logger = logger ?? NullLogger.Instance;
 
-        // A document or link dragged onto the window would make the page navigate to it (blocked, but a navigation all
-        // the same). The page takes no drop.
-        WebView.AllowExternalDrop = false;
+        // The web area's render window takes the OS drop, so a native drop never reaches the WPF window. The page
+        // therefore accepts the drop itself and posts the dropped files to the host (FilesDropped), which reads their
+        // real paths from the posted objects. Navigating to a dropped document is blocked by NavigationStarting, and the
+        // page cancels the browser's default handling of the drop.
+        WebView.AllowExternalDrop = true;
 
         // InitializeAsync catches everything itself, so the discarded task cannot fault.
         WebView.Loaded += (_, _) => _ = StartAsync();
@@ -64,6 +72,12 @@ public class WebViewHandler
     /// <see cref="ProcessFailureResponse.GiveUp"/>). Only a new WebView2, in practice a restart of the app, brings it back.
     /// </summary>
     public Action? Unrecoverable { get; set; }
+
+    /// <summary>
+    /// Raised on the UI thread with the full paths of the files the user dropped onto the page (see
+    /// <see cref="FilesDroppedMessage"/>). The page cannot know a file's path; the host reads it from the posted file objects.
+    /// </summary>
+    public Action<IReadOnlyList<string>>? FilesDropped { get; set; }
 
     public WebView2 WebView { get; }
     public string InitialUrl { get; }
@@ -135,6 +149,9 @@ public class WebViewHandler
             return null;
         return $"{uri.Scheme}://{uri.IdnHost}:{uri.Port}".ToLowerInvariant();
     }
+
+    /// <summary>Whether <paramref name="message"/> is the page's file-drop message (<see cref="FilesDroppedMessage"/>), and nothing else.</summary>
+    public static bool IsFilesDroppedMessage(string? message) => string.Equals(message, FilesDroppedMessage, StringComparison.Ordinal);
 
     /// <summary>
     /// What to do about a failed process of <paramref name="kind"/>, after <paramref name="reloadsSoFar"/> reloads.
@@ -241,6 +258,7 @@ public class WebViewHandler
 
             InstallRequestFilter(core);
             InstallNavigationGuards(core);
+            core.WebMessageReceived += (_, args) => OnWebMessage(args);
             core.ProcessFailed += (_, args) => OnProcessFailed(args.ProcessFailedKind, args.Reason, args.ExitCode);
 
             if (!string.IsNullOrEmpty(InitialUrl))
@@ -250,6 +268,48 @@ public class WebViewHandler
         {
             _logger.LogError(ex, "WebView2 initialization failed");
             RaiseSafely(() => InitializeFailed?.Invoke(ex), nameof(InitializeFailed));
+        }
+    }
+
+    /// <summary>
+    /// A message the page posted. Only <see cref="FilesDroppedMessage"/> from an allowed origin is acted on; every other
+    /// message is ignored. The dropped files arrive as <see cref="CoreWebView2File"/> objects, whose
+    /// <see cref="CoreWebView2File.Path"/> is the real path on disk; anything else among the objects is skipped.
+    /// </summary>
+    private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        try
+        {
+            if (!IsAllowedOrigin(args.Source, AllowedOrigins))
+                return;
+
+            // Throws when the message is not a string.
+            string message;
+            try
+            {
+                message = args.TryGetWebMessageAsString();
+            }
+            catch (ArgumentException)
+            {
+                return;
+            }
+
+            if (!IsFilesDroppedMessage(message))
+                return;
+
+            var paths = new List<string>();
+            foreach (var item in args.AdditionalObjects)
+            {
+                if (item is CoreWebView2File { Path: { Length: > 0 } path })
+                    paths.Add(path);
+            }
+
+            if (paths.Count > 0)
+                RaiseSafely(() => FilesDropped?.Invoke(paths), nameof(FilesDropped));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not read a message from the page");
         }
     }
 

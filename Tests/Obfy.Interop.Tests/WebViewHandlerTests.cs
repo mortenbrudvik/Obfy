@@ -9,6 +9,26 @@ public class WebViewHandlerTests
     private static readonly string[] Allowed = ["https://obfy.localassets.invalid", "http://localhost:5173"];
 
     [Fact]
+    public void IsFilesDroppedMessage_OnlyTheExactToken_True()
+    {
+        WebViewHandler.IsFilesDroppedMessage("files.dropped").ShouldBeTrue();
+        WebViewHandler.IsFilesDroppedMessage(WebViewHandler.FilesDroppedMessage).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Files.Dropped")]
+    [InlineData(" files.dropped")]
+    [InlineData("files.dropped ")]
+    [InlineData("files.pick")]
+    [InlineData("\"files.dropped\"")]
+    public void IsFilesDroppedMessage_AnythingElse_False(string? message)
+    {
+        WebViewHandler.IsFilesDroppedMessage(message).ShouldBeFalse();
+    }
+
+    [Fact]
     public void IsAllowedOrigin_ExactMatch_True()
     {
         WebViewHandler.IsAllowedOrigin(new Uri("https://obfy.localassets.invalid/index.html?x=1"), Allowed).ShouldBeTrue();

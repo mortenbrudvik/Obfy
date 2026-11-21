@@ -351,15 +351,6 @@ public class RequestJsonContractTests
     }
 
     [Fact]
-    public void ShellDragState_CarriesTheDraggingFlag()
-    {
-        var envelope = Pushed(IpcNames.Events.ShellDragState, new { dragging = true });
-
-        ShouldBeString(envelope.GetProperty("eventName"), "shell.dragState");
-        ShouldHaveKeys(envelope.GetProperty("data"), "dragging");
-    }
-
-    [Fact]
     public void AppRevealed_CarriesTheReadyFlag()
     {
         var envelope = Pushed(IpcNames.Events.AppRevealed, new { ready = true });

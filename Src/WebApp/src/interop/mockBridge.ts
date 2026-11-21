@@ -46,6 +46,9 @@ export function createMockWebView(handlers: MockHandlers = defaultMockHandlers):
       listeners.push(listener);
     },
 
+    // A plain browser has no host to hand dropped files to.
+    postMessageWithAdditionalObjects() {},
+
     hostObjects: {
       apibridge: {
         async InvokeMethod(service, method, jsonParams) {

@@ -2,8 +2,10 @@ using System.Diagnostics;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Mediator;
 using Microsoft.Extensions.Logging;
 using Obfy.App.Features.App;
+using Obfy.App.Features.Files;
 using Obfy.Interop;
 using Obfy.UI.Services;
 using Obfy.WebView;
@@ -29,7 +31,7 @@ public partial class ShellViewModel : ObservableObject
 
     public ShellViewModel(
         WebViewControl webView, ApiBridge bridge, ThemeController theme, AppReadyCoordinator ready,
-        ApiEventAggregator events, ILogger<ShellViewModel> logger)
+        ApiEventAggregator events, IMediator mediator, ILogger<ShellViewModel> logger)
     {
         WebView = webView;
         _ready = ready;
@@ -64,6 +66,21 @@ public partial class ShellViewModel : ObservableObject
             // BaseDirectory, not CurrentDirectory: the working directory differs for "dotnet run" and a shortcut.
             HostWebRootFolder = Path.Combine(AppContext.BaseDirectory, "Assets"),
 #endif
+            // Off the UI thread: dropping a solution makes the host read and analyse it, which must not freeze the window.
+            // Nothing waits for the answer; the page follows files.changed. An exception must not escape a
+            // fire-and-forget task, where it would only surface as an unobserved one. The run lock, solution expansion
+            // and .json handling are all in DropPathsRequest.
+            FilesDropped = paths => _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await mediator.Send(new DropPathsRequest(paths));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Could not handle the dropped files");
+                }
+            }),
             // Both arrive on the UI thread.
             InitializeFailed = ex =>
             {
@@ -99,20 +116,6 @@ public partial class ShellViewModel : ObservableObject
 
     /// <summary>Tells the page the window is now shown (<c>app.revealed</c>). Safe from any thread.</summary>
     public void NotifyRevealed() => _events.Publish(IpcNames.Events.AppRevealed, new { ready = _ready.IsReady });
-
-    /// <summary>Tells the page files are being dragged over the window, or no longer are (<c>shell.dragState</c>).</summary>
-    public void NotifyDragState(bool dragging)
-    {
-        try
-        {
-            _events.Publish(IpcNames.Events.ShellDragState, new { dragging });
-        }
-        catch (Exception ex)
-        {
-            // A cosmetic cue: a page that cannot be reached (WebView2 failed) is not a reason to fail the drag.
-            _logger.LogDebug(ex, "Could not publish the drag state");
-        }
-    }
 
     /// <summary>The failure panel's Restart: starts a new process and closes this one.</summary>
     [RelayCommand]

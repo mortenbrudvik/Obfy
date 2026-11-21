@@ -13,6 +13,7 @@ describe("WebViewApiClient", () => {
     window.chrome = {
       webview: {
         addEventListener: (_type: string, listener: MessageListener) => listeners.push(listener),
+        postMessageWithAdditionalObjects: () => {},
         hostObjects: { apibridge: { InvokeMethod: invoke } },
       },
     };

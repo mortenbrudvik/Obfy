@@ -3,10 +3,8 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
-using Mediator;
 using Microsoft.Extensions.Logging;
 using Obfy.App.Features.App;
-using Obfy.App.Features.Files;
 using Obfy.UI.Services;
 using Obfy.UI.ViewModels;
 using Wpf.Ui.Controls;
@@ -28,19 +26,16 @@ public partial class ShellWindow : FluentWindow
 
     private readonly ShellViewModel _viewModel;
     private readonly AppReadyCoordinator _ready;
-    private readonly IMediator _mediator;
     private readonly ILogger<ShellWindow> _logger;
     private DispatcherTimer? _revealTimer;
     private bool _cloaked;
     private bool _revealed;
-    private bool _dragging;
 
     public ShellWindow(
-        ShellViewModel viewModel, ThemeController theme, AppReadyCoordinator ready, IMediator mediator, ILogger<ShellWindow> logger)
+        ShellViewModel viewModel, ThemeController theme, AppReadyCoordinator ready, ILogger<ShellWindow> logger)
     {
         _viewModel = viewModel;
         _ready = ready;
-        _mediator = mediator;
         _logger = logger;
         DataContext = viewModel;
         InitializeComponent();
@@ -50,10 +45,6 @@ public partial class ShellWindow : FluentWindow
         _ready.Ready += OnReady;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
-        // The web area takes no drop (WebViewHandler sets AllowExternalDrop = false), so the OS drop reaches the window.
-        DragOver += OnDragOver;
-        DragLeave += OnDragLeave;
-        Drop += OnDrop;
         Closed += (_, _) =>
         {
             _ready.Ready -= OnReady;
@@ -117,49 +108,6 @@ public partial class ShellWindow : FluentWindow
     }
 
     private void OnReady() => Dispatcher.BeginInvoke(Reveal);
-
-    private void OnDragOver(object sender, DragEventArgs e)
-    {
-        var files = e.Data.GetDataPresent(DataFormats.FileDrop);
-        e.Effects = files ? DragDropEffects.Copy : DragDropEffects.None;
-        e.Handled = true;
-        SetDragging(files);
-    }
-
-    private void OnDragLeave(object sender, DragEventArgs e) => SetDragging(false);
-
-    /// <summary>Tells the page when the drag state changes (DragOver fires continuously; DragLeave also fires between child elements, and the next DragOver sets it again).</summary>
-    private void SetDragging(bool dragging)
-    {
-        if (_dragging == dragging)
-            return;
-
-        _dragging = dragging;
-        _viewModel.NotifyDragState(dragging);
-    }
-
-    private void OnDrop(object sender, DragEventArgs e)
-    {
-        e.Handled = true;
-        SetDragging(false);
-        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } paths)
-            return;
-
-        // Off the UI thread: dropping a solution makes the host read and analyse it, which must not freeze the window.
-        // Nothing waits for the answer; the page follows files.changed, which is published from here. An exception must
-        // not escape a fire-and-forget task, where it would only surface as an unobserved one.
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await _mediator.Send(new DropPathsRequest(paths));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Could not handle the dropped files");
-            }
-        });
-    }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

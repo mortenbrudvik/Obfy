@@ -256,4 +256,41 @@ describe("ProtectionPage", () => {
     expect(rowSwitch("Reference proxy").checked).toBe(true);
     expect(rowSwitch("Control flow").checked).toBe(true);
   });
+
+  it("opensTheOnlineGuide_atTheTechniquesSection_whenReadMoreIsChosen", async () => {
+    const openGuide = vi.fn(() => ({}));
+    host(protectionSnapshot(), { "app.openGuide": openGuide });
+
+    render(<ProtectionPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Read more online" }));
+
+    await waitFor(() => expect(openGuide).toHaveBeenCalledTimes(1));
+    expect(openGuide).toHaveBeenCalledWith({ topic: "techniques" });
+    expect(vi.mocked(apiClient.call)).toHaveBeenCalledWith("app", "openGuide", { topic: "techniques" }, undefined);
+  });
+
+  it("opensTheWhatCanBreakSection_fromTheScopeRulesPanel", async () => {
+    const openGuide = vi.fn(() => ({}));
+    host(protectionSnapshot(), { "app.openGuide": openGuide });
+
+    render(<ProtectionPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /Inclusions and exclusions/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Read more online" }));
+
+    await waitFor(() => expect(openGuide).toHaveBeenCalledWith({ topic: "what-can-break" }));
+  });
+
+  it("explainsWhenTheBrowserCouldNotBeStarted_andStaysOnTheScreen", async () => {
+    host(protectionSnapshot(), {
+      "app.openGuide": () => {
+        throw new Error("The guide could not be opened in your browser. Visit https://brudvik.com/obfy/guide instead.");
+      },
+    });
+
+    render(<ProtectionPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Read more online" }));
+
+    expect(await screen.findByText(/Could not open the online guide \(The guide could not be opened in your browser/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Protection" })).toBeTruthy();
+  });
 });

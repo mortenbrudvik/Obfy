@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using Obfy.App.Features.App;
 using Obfy.App.Models;
 using Obfy.App.Sessions;
 using Shouldly;
@@ -145,14 +146,15 @@ public class TechniqueContentContractTests
     }
 
     [Fact]
-    public void GuideTopics_LinkedFromTheContent_Exist()
+    public void GuideTopics_LinkedFromTheContent_AreSectionsOfTheOnlineGuide()
     {
-        var topics = Guide.GetProperty("topics").EnumerateArray().Select(t => Text(t, "id")).ToHashSet();
+        // "Read more" opens the online guide through app.openGuide, which only knows the ids in GuideLinks.Topics; any
+        // other id would silently open the guide's start.
         var linked = ContentTechniques().Select(t => Text(t.Value, "guideTopic"))
             .Append(Text(Content.GetProperty("scope"), "guideTopic"));
 
         foreach (var topic in linked)
-            topics.ShouldContain(topic, $"techniques.json links to a Guide topic that does not exist: {topic}");
+            GuideLinks.Topics.Keys.ShouldContain(topic!, $"techniques.json links to a guide section the host does not know: {topic}");
     }
 
     [Fact]

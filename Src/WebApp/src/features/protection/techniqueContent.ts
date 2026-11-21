@@ -10,7 +10,7 @@ export function contentFor(id: string): TechniqueContent {
       summary: "",
       what: "",
       good: [],
-      guideTopic: "tech",
+      guideTopic: "techniques",
       options: [],
     }
   );

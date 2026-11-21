@@ -44,7 +44,7 @@ public class WebUiTests
     }
 
     [Fact]
-    public async Task F1_OpensTheGuide()
+    public async Task F1_OpensTheInAppQuickStart()
     {
         await using var app = await ObfyApp.StartAsync();
         await Expect(app.Page.GetByTestId("nav-files")).ToBeVisibleAsync(Visible);
@@ -52,15 +52,21 @@ public class WebUiTests
         await app.Page.Keyboard.PressAsync("F1");
         await Expect(app.Page.GetByTestId("guide-page")).ToBeVisibleAsync(Visible);
         await Expect(app.Page.GetByTestId("nav-guide")).ToHaveAttributeAsync("aria-current", "page");
+        await Expect(app.Page.GetByRole(AriaRole.Heading, new() { Level = 2, Name = "Getting started" })).ToBeVisibleAsync(Visible);
     }
 
     [Fact]
-    public async Task GuideNav_OpensTheGuide()
+    public async Task GuideNav_OpensTheQuickStart_WithALinkToTheFullGuideOnline()
     {
         await using var app = await ObfyApp.StartAsync();
 
         await app.Page.GetByTestId("nav-guide").ClickAsync();
         await Expect(app.Page.GetByTestId("guide-page")).ToBeVisibleAsync(Visible);
+
+        // The quick-start has two topics. The button is only looked at, never clicked: it would start the machine's browser.
+        var topics = app.Page.GetByRole(AriaRole.Navigation, new() { Name = "Guide topics" }).GetByRole(AriaRole.Button);
+        await Expect(topics).ToHaveCountAsync(2);
+        await Expect(app.Page.GetByRole(AriaRole.Button, new() { Name = "Open the full guide online" })).ToBeVisibleAsync(Visible);
     }
 
     [Fact]

@@ -54,10 +54,66 @@ internal sealed class ObfyApp : IAsyncDisposable
             await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
             return new ObfyApp(process, playwright, browser, page, work);
         }
-        catch
+        catch (Exception failure)
         {
+            // The app and its WebView2 are still alive here; once they are shut down nothing is left to look at. A
+            // refused debugging port says nothing about why, so record what WebView2 is running and what is listening.
+            var state = await DescribeWebViewStateAsync();
             await ShutDownAsync(process, playwright, browser, work);
-            throw;
+            throw new InvalidOperationException(
+                failure.Message + Environment.NewLine +
+                $"WebView2 state when the connection failed (debug port {port}, ObfyUI exited: {HasExited(process)}):" +
+                Environment.NewLine + state,
+                failure);
+        }
+    }
+
+    private static bool HasExited(Process process)
+    {
+        try { return process.HasExited; }
+        catch (InvalidOperationException) { return true; }
+    }
+
+    /// <summary>
+    /// The WebView2 and Obfy processes with their command lines (does the browser carry the remote-debugging
+    /// argument, and which port?) and every listening TCP port with its owner (is anything listening on it?).
+    /// </summary>
+    private static async Task<string> DescribeWebViewStateAsync()
+    {
+        const string script =
+            "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe' or Name='ObfyUI.exe'\" | " +
+            "Where-Object { $_.Name -eq 'ObfyUI.exe' -or $_.CommandLine -like '*obfy-e2e-*' } | " +
+            "Select-Object ProcessId, ParentProcessId, Name, CommandLine | Format-List | Out-String -Width 600; " +
+            "Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | " +
+            "Select-Object LocalAddress, LocalPort, OwningProcess | Sort-Object LocalPort | Format-Table -AutoSize | Out-String -Width 200";
+        try
+        {
+            var info = new ProcessStartInfo("powershell.exe")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            info.ArgumentList.Add("-NoProfile");
+            info.ArgumentList.Add("-NonInteractive");
+            info.ArgumentList.Add("-Command");
+            info.ArgumentList.Add(script);
+
+            using var listing = Process.Start(info)!;
+            var output = listing.StandardOutput.ReadToEndAsync();
+            var errors = listing.StandardError.ReadToEndAsync();
+            if (!listing.WaitForExit(20_000))
+            {
+                listing.Kill(entireProcessTree: true);
+                return "(the process listing timed out)";
+            }
+
+            return await output + await errors;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return "(could not list processes: " + ex.GetType().Name + ")";
         }
     }
 

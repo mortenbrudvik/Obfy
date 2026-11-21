@@ -148,34 +148,6 @@ jobs:
           Write-Host "::warning::Coverage $pct% is below 80% threshold (warning only; not a hard fail)"
         }
 
-    # The runner image documents Microsoft Edge but not the WebView2 runtime. Without the runtime the app shows its
-    # "runtime missing" message and never opens WebView2's debugging port, which the UI tests then report as
-    # ECONNREFUSED after a minute. Detect the runtime and install Microsoft's Evergreen bootstrapper only if absent
-    # (same URL and checks as build\build-installer.ps1).
-    - name: Ensure WebView2 runtime
-      shell: pwsh
-      run: |
-        $client = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
-        $roots = @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$client",
-                   "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$client",
-                   "HKCU:\Software\Microsoft\EdgeUpdate\Clients\$client")
-        function Get-WebView2Version { foreach ($r in $roots) { $v = (Get-ItemProperty -Path $r -ErrorAction SilentlyContinue).pv; if ($v) { return $v } } }
-        $version = Get-WebView2Version
-        if ($version) { Write-Host "WebView2 runtime $version is installed."; exit 0 }
-
-        Write-Host "WebView2 runtime not found; installing the Evergreen bootstrapper."
-        $setup = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
-        Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $setup -UseBasicParsing
-        if ((Get-Item $setup).Length -lt 100KB) { throw 'The WebView2 bootstrapper download is truncated or an error page.' }
-        $signature = Get-AuthenticodeSignature -FilePath $setup
-        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
-          throw "The WebView2 bootstrapper is not signed by Microsoft (status $($signature.Status))."
-        }
-        Start-Process -FilePath $setup -ArgumentList '/silent', '/install' -Wait
-        $version = Get-WebView2Version
-        if (-not $version) { throw 'The WebView2 runtime is still missing after running the bootstrapper.' }
-        Write-Host "WebView2 runtime $version installed."
-
     # windows-latest has an interactive session. Default dotnet test still
     # excludes Category=UI; this step is the opt-in run against the Release exe.
     # The web UI tests drive the WebView2 page with Playwright over a remote-debugging port (CDP), so they need no
@@ -190,22 +162,18 @@ jobs:
         dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --no-build -c Release --filter "Category=UI" --nologo
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    # Only on failure: the UI tests give a test no view into the app, and a refused debugging port says nothing about
-    # why the app did not start. The app's own log (exception types only, never paths) and any surviving process tell.
+    # Only on failure. The app's own log shows whether it started and loaded its page (the runner has the WebView2
+    # runtime and the app does start there; a refused debugging port says nothing about why). The tests themselves
+    # record WebView2's processes and listening ports at the moment a connection fails (ObfyApp.StartAsync).
     - name: UI test diagnostics
       if: failure()
       shell: pwsh
       run: |
+        $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+        Write-Host "WebView2 runtime: $((Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).pv)"
         $logs = Join-Path $env:LOCALAPPDATA 'Obfy\Logs'
-        if (Test-Path $logs) {
-          Get-ChildItem $logs -File | Sort-Object LastWriteTime | Select-Object -Last 3 | ForEach-Object {
-            Write-Host "=== $($_.Name)"
-            Get-Content $_.FullName -Tail 80
-          }
-        } else {
-          Write-Host "No Obfy log folder at $logs"
-        }
-        Get-Process -Name ObfyUI -ErrorAction SilentlyContinue | Format-Table Id, Responding, MainWindowTitle -AutoSize | Out-String | Write-Host
+        $log = if (Test-Path $logs) { Get-ChildItem $logs -Filter 'Obfy.UI-*.log' | Sort-Object LastWriteTime | Select-Object -Last 1 }
+        if ($log) { Write-Host "=== $($log.Name)"; Get-Content $log.FullName -Tail 60 } else { Write-Host "No Obfy.UI log under $logs" }
 
   linux-cli:
     runs-on: ubuntu-latest

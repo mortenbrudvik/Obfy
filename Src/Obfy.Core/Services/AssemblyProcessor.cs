@@ -33,7 +33,7 @@ public class AssemblyProcessor : IAssemblyProcessor
     /// <inheritdoc/>
     public async Task<PipelineContext> LoadAsync(string path, ObfySettings settings, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Loading assembly from {Path}", path);
+        _logger.LogDebug("Loading assembly");
         cancellationToken.ThrowIfCancellationRequested();
 
         var moduleContext = ModuleDef.CreateModuleContext();
@@ -43,8 +43,7 @@ public class AssemblyProcessor : IAssemblyProcessor
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
         var module = ModuleDefMD.Load(bytes, moduleContext);
 
-        _logger.LogDebug("Loaded assembly {Name} with {TypeCount} types",
-            module.Name, module.Types.Count);
+        _logger.LogDebug("Loaded assembly with {TypeCount} types", module.Types.Count);
 
         var context = PipelineContext.ForAssembly(module, settings);
         context.InputPath = path;
@@ -53,6 +52,12 @@ public class AssemblyProcessor : IAssemblyProcessor
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The assembly is written to a temporary file in the target directory, post-processed and signed
+    /// there, and only then moved over <paramref name="outputPath"/>. A failure at any step deletes the
+    /// temporary file and leaves an existing target (including an in-place output that is also the
+    /// input) exactly as it was.
+    /// </remarks>
     public Task SaveAsync(PipelineContext context, string outputPath, CancellationToken cancellationToken = default)
     {
         if (context.Module == null)
@@ -61,10 +66,12 @@ public class AssemblyProcessor : IAssemblyProcessor
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        _logger.LogDebug("Saving obfuscated assembly to {Path}", outputPath);
+        _logger.LogDebug("Saving obfuscated assembly");
+
+        var targetPath = Path.GetFullPath(outputPath);
 
         // Ensure output directory exists
-        var directory = Path.GetDirectoryName(outputPath);
+        var directory = Path.GetDirectoryName(targetPath);
         if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
         {
             Directory.CreateDirectory(directory);
@@ -77,7 +84,10 @@ public class AssemblyProcessor : IAssemblyProcessor
 
         var writerOptions = new ModuleWriterOptions(context.Module)
         {
-            MetadataOptions = { Flags = MetadataFlags.PreserveAll },
+            // Keep table row ids (token-based reflection in the input keeps working) but let dnlib
+            // rebuild #Strings, #US and #Blob. PreserveAll also copies the ORIGINAL heaps verbatim,
+            // which leaves every renamed name and encrypted literal readable in the output bytes.
+            MetadataOptions = { Flags = OutputMetadataFlags },
             StrongNameKey = strongNameKey
         };
 
@@ -92,9 +102,10 @@ public class AssemblyProcessor : IAssemblyProcessor
             throw new InvalidOperationException("Anti-tamper is enabled but the runtime type was not injected.");
         }
 
-        var writePath = antiTamper
-            ? Path.Combine(Path.GetTempPath(), $"obfy_{Guid.NewGuid():N}.dll")
-            : outputPath;
+        var targetExisted = File.Exists(targetPath);
+        var tempPath = Path.Combine(
+            directory ?? string.Empty,
+            $"{Path.GetFileName(targetPath)}.obfy-{Guid.NewGuid():N}.tmp");
 
         try
         {
@@ -111,32 +122,22 @@ public class AssemblyProcessor : IAssemblyProcessor
                 }
             }
 
-            context.Module.Write(writePath, writerOptions);
+            context.Module.Write(tempPath, writerOptions);
             foreach (var processor in _postProcessors)
-                processor.Process(writePath, context);
+                processor.Process(tempPath, context);
             if (strongNameKey is not null)
-                AssemblySigner.SignInPlace(writePath, strongNameKey);
+                AssemblySigner.SignInPlace(tempPath, strongNameKey);
 
-            if (antiTamper)
-            {
-                if (File.Exists(outputPath))
-                    File.Delete(outputPath);
-                File.Move(writePath, outputPath);
-            }
+            ReplaceTarget(tempPath, targetPath, targetExisted);
+        }
+        catch (Exception ex) when (targetExisted && ex is not OperationCanceledException)
+        {
+            throw new InvalidOperationException(
+                $"{ex.Message} The existing output file was not modified.", ex);
         }
         finally
         {
-            if (antiTamper && File.Exists(writePath))
-            {
-                try
-                {
-                    File.Delete(writePath);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to delete temp assembly {Path}", writePath);
-                }
-            }
+            DeleteTempFile(tempPath);
         }
 
         if (context.Module is IDisposable disposable)
@@ -148,5 +149,34 @@ public class AssemblyProcessor : IAssemblyProcessor
         _logger.LogDebug("Assembly saved successfully");
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Row ids are preserved; the string, user-string and blob heaps are not, so names and literals
+    /// the pipeline removed or replaced are not carried into the output.
+    /// </summary>
+    private const MetadataFlags OutputMetadataFlags =
+        MetadataFlags.PreserveRids | MetadataFlags.PreserveExtraSignatureData;
+
+    private static void ReplaceTarget(string tempPath, string targetPath, bool targetExisted)
+    {
+        if (targetExisted && OperatingSystem.IsWindows())
+            File.Replace(tempPath, targetPath, destinationBackupFileName: null);
+        else
+            File.Move(tempPath, targetPath, overwrite: true);
+    }
+
+    private void DeleteTempFile(string tempPath)
+    {
+        try
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The exception text carries the path, so log its type only.
+            _logger.LogWarning("Failed to delete a temporary output file ({ExceptionType})", ex.GetType().Name);
+        }
     }
 }

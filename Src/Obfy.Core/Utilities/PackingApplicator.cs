@@ -18,7 +18,7 @@ internal static class PackingApplicator
     {
         if (settings.Packing.IsPortable)
         {
-            var packed = ManagedLauncherPacker.Pack(assemblyPath);
+            var packed = ManagedLauncherPacker.Pack(assemblyPath, inputPath);
             warnings.Add("Packed launcher: " + packed);
             return packed;
         }

@@ -1,8 +1,10 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Reflection.PortableExecutable;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using dnlib.DotNet;
 using Obfy.Core.Models;
 
@@ -13,12 +15,19 @@ namespace Obfy.Core.Utilities;
 /// AES-256-CBC overlay of the obfuscated managed PE (72-byte header + ciphertext; key and IV
 /// live in the header). Writes a sibling <c>.runtimeconfig.json</c>. Not a sibling launcher:
 /// the managed PE is gone on success. Runtimeconfig TFM prefers
-/// <c>TargetFrameworkAttribute</c> / the input sibling JSON, then the Obfy process version
-/// (same fallback as <see cref="ManagedLauncherPacker"/>).
+/// <c>TargetFrameworkAttribute</c> / the input sibling JSON, then the framework references of the
+/// payload. The payload must target .NET 8 or newer; anything else is refused before any file
+/// changes (use <c>packing.rid: portable</c>).
 /// </summary>
 public static class NativePacker
 {
     public const string EmbeddedName = "Obfy.NativeHost.exe";
+
+    /// <summary>
+    /// Lowest .NET (Microsoft.NETCore.App) major the packed host can run: the bootstrap it loads
+    /// into the payload's runtime (<c>Obfy.PackedBootstrap</c>) targets net8.0.
+    /// </summary>
+    internal const uint MinPayloadMajor = 8;
 
     public static ReadOnlySpan<byte> Magic => "OBP1"u8;
     public static ReadOnlySpan<byte> Sentinel => "OBPYOVL1"u8;
@@ -80,24 +89,31 @@ public static class NativePacker
     /// embedded native host, and replaces the managed PE in place. The AES key is random for
     /// this pack and is not the <c>.obfycache</c> digest. Throws
     /// <see cref="InvalidOperationException"/> without a <c>Packing failed:</c> prefix.
+    /// The swap is transactional: if the runtimeconfig cannot be published the original PE is
+    /// restored, and a payload the host cannot run is refused before any file is touched.
     /// </summary>
     public static string Pack(string assemblyPath, ObfySettings settings, string inputPath)
     {
         if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath))
             throw new InvalidOperationException("Packing requires an existing assembly file.");
 
-        using (var module = ModuleDefMD.Load(File.ReadAllBytes(assemblyPath)))
+        var managed = File.ReadAllBytes(assemblyPath);
+        using (var module = ModuleDefMD.Load(managed))
         {
             if (module.EntryPoint == null)
                 throw new InvalidOperationException("Packing requires an assembly with an entry point.");
         }
+
+        // Decide whether the payload can run under the packed host before anything on disk changes.
+        var target = ResolvePayloadTarget(managed, inputPath);
+        ValidatePayloadTarget(target);
+        var tfmMajor = target.Major;
 
         var tempPath = assemblyPath + ".obfypack";
         var runtimeConfigPath = RuntimeConfigPathFor(assemblyPath);
         var runtimeConfigTemp = runtimeConfigPath + ".obfytmp";
         try
         {
-            var managed = File.ReadAllBytes(assemblyPath);
             ushort subsystem;
             using (var pe = new PEReader(new MemoryStream(managed)))
             {
@@ -109,7 +125,6 @@ public static class NativePacker
             var key = RandomNumberGenerator.GetBytes(32);
             var iv = HMACSHA256.HashData(key, "obfy-pack-iv"u8)[..16];
             var ciphertext = EncryptAes(managed, key, iv);
-            var tfmMajor = ResolveTfmMajor(managed, inputPath);
 
             var stub = LoadEmbeddedStub();
             StampStub(stub, subsystem);
@@ -121,14 +136,9 @@ public static class NativePacker
                 output.Write(ciphertext);
             }
 
-            WriteRuntimeConfig(runtimeConfigTemp, tfmMajor);
+            File.WriteAllText(runtimeConfigTemp, BuildRuntimeConfig(tfmMajor, inputPath));
 
-            if (OperatingSystem.IsWindows())
-                File.Replace(tempPath, assemblyPath, destinationBackupFileName: null);
-            else
-                File.Move(tempPath, assemblyPath, overwrite: true);
-
-            File.Move(runtimeConfigTemp, runtimeConfigPath, overwrite: true);
+            Publish(tempPath, assemblyPath, runtimeConfigTemp, runtimeConfigPath);
             return assemblyPath;
         }
         catch (Exception ex)
@@ -138,6 +148,59 @@ public static class NativePacker
             if (ex is InvalidOperationException)
                 throw;
             throw new InvalidOperationException($"{ex.GetType().Name}: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Swaps the packed host in for the managed PE and then publishes the runtimeconfig. The runtimeconfig
+    /// move is the only step after the swap and replaces its target atomically, so when it fails the
+    /// original PE is put back from its backup: the output is never an unrunnable native stub with no
+    /// (or a stale) configuration.
+    /// </summary>
+    private static void Publish(string packedTemp, string assemblyPath, string runtimeConfigTemp, string runtimeConfigPath)
+    {
+        var peBackup = assemblyPath + ".obfybak";
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                File.Replace(packedTemp, assemblyPath, peBackup);
+            }
+            else
+            {
+                File.Copy(assemblyPath, peBackup, overwrite: true);
+                File.Move(packedTemp, assemblyPath, overwrite: true);
+            }
+
+            File.Move(runtimeConfigTemp, runtimeConfigPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            var restored = TryRestore(peBackup, assemblyPath);
+            TryDelete(peBackup);
+            throw new InvalidOperationException(
+                restored
+                    ? $"{ex.GetType().Name}: {ex.Message} The original assembly was restored."
+                    : $"{ex.GetType().Name}: {ex.Message} Restoring the original assembly failed; the output may be an unusable packed host.",
+                ex);
+        }
+
+        TryDelete(peBackup);
+    }
+
+    private static bool TryRestore(string backupPath, string destination)
+    {
+        try
+        {
+            if (!File.Exists(backupPath))
+                return true; // the swap itself failed, so nothing was replaced
+            File.Move(backupPath, destination, overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"NativePacker: failed to restore '{destination}': {ex.Message}");
+            return false;
         }
     }
 
@@ -206,9 +269,35 @@ public static class NativePacker
         return header;
     }
 
-    private static void WriteRuntimeConfig(string runtimeConfigPath, uint major)
+    /// <summary>
+    /// Runtimeconfig for a packed payload. When the input has a sibling <c>.runtimeconfig.json</c>
+    /// that names its frameworks, its <c>runtimeOptions</c> (frameworks such as
+    /// <c>Microsoft.WindowsDesktop.App</c> / <c>Microsoft.AspNetCore.App</c>, <c>configProperties</c>,
+    /// roll-forward policy) are kept, with any <c>Microsoft.*</c> framework raised to at least
+    /// <paramref name="major"/>. Otherwise a minimal <c>Microsoft.NETCore.App</c> config is generated.
+    /// </summary>
+    internal static string BuildRuntimeConfig(uint major, string inputPath)
     {
-        var runtimeConfig = $$"""
+        var original = TryReadRuntimeOptions(Path.ChangeExtension(inputPath, ".runtimeconfig.json"));
+        if (original is not null)
+        {
+            original["tfm"] = $"net{major}.0";
+            if (original["framework"] is JsonObject single)
+                RaiseFramework(single, major);
+            if (original["frameworks"] is JsonArray many)
+            {
+                foreach (var node in many)
+                {
+                    if (node is JsonObject framework)
+                        RaiseFramework(framework, major);
+                }
+            }
+
+            return new JsonObject { ["runtimeOptions"] = original }
+                .ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        return $$"""
             {
               "runtimeOptions": {
                 "tfm": "net{{major}}.0",
@@ -220,19 +309,73 @@ public static class NativePacker
               }
             }
             """;
-        File.WriteAllText(runtimeConfigPath, runtimeConfig);
     }
 
-    internal static uint ResolveTfmMajor(byte[] managed, string inputPath)
+    private static void RaiseFramework(JsonObject framework, uint major)
     {
-        if (TryTfmFromAttribute(managed, out var major))
-            return major;
-        if (TryTfmFromRuntimeConfig(Path.ChangeExtension(inputPath, ".runtimeconfig.json"), out major))
-            return major;
+        var name = framework["name"]?.GetValue<string>();
+        var version = framework["version"]?.GetValue<string>();
+        if (name is null || !name.StartsWith("Microsoft.", StringComparison.Ordinal) || version is null)
+            return;
+        if (Version.TryParse(version, out var parsed) && parsed.Major < major)
+            framework["version"] = $"{major}.0.0";
+    }
+
+    private static JsonObject? TryReadRuntimeOptions(string path)
+    {
+        if (!File.Exists(path))
+            return null;
+        try
+        {
+            var root = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
+            if (root?["runtimeOptions"] is not JsonObject options)
+                return null;
+            // A self-contained config has neither; fall back to the generated shared-framework config.
+            if (options["framework"] is not JsonObject && options["frameworks"] is not JsonArray)
+                return null;
+            return (JsonObject)options.DeepClone();
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    internal readonly record struct PayloadTarget(string Framework, uint Major, string? FullVersion = null)
+    {
+        public bool IsNetCoreApp => string.Equals(Framework, ".NETCoreApp", StringComparison.OrdinalIgnoreCase);
+
+        public override string ToString() => $"{Framework} {FullVersion ?? $"{Major}.0"}";
+    }
+
+    internal static uint ResolveTfmMajor(byte[] managed, string inputPath) =>
+        ResolvePayloadTarget(managed, inputPath).Major;
+
+    internal static PayloadTarget ResolvePayloadTarget(byte[] managed, string inputPath)
+    {
+        if (TryTargetFromAttribute(managed, out var target))
+            return target;
+        if (TryTfmFromRuntimeConfig(Path.ChangeExtension(inputPath, ".runtimeconfig.json"), out var major))
+            return new PayloadTarget(".NETCoreApp", major);
         if (TryTfmFromFrameworkReference(managed, out major))
-            return major;
+            return new PayloadTarget(".NETCoreApp", major);
         throw new InvalidOperationException(
             "Cannot determine the payload target framework. Packing will not write a runtimeconfig from the Obfy host version.");
+    }
+
+    /// <summary>
+    /// Fails, before the managed PE is touched, when the packed host cannot run the payload:
+    /// .NET Framework / .NET Standard assemblies, and .NET Core apps older than the net8.0 bootstrap.
+    /// </summary>
+    internal static void ValidatePayloadTarget(PayloadTarget target)
+    {
+        if (target.IsNetCoreApp && target.Major >= MinPayloadMajor)
+            return;
+
+        throw new InvalidOperationException(
+            $"Native packing cannot run this assembly: it targets {target}, but the packed host needs " +
+            $".NET {MinPayloadMajor}.0 or newer (Microsoft.NETCore.App). " +
+            "Set packing.rid to 'portable' to use the managed launcher, or retarget the assembly.");
     }
 
     private static bool TryTfmFromFrameworkReference(byte[] managed, out uint major)
@@ -264,9 +407,9 @@ public static class NativePacker
         }
     }
 
-    private static bool TryTfmFromAttribute(byte[] managed, out uint major)
+    private static bool TryTargetFromAttribute(byte[] managed, out PayloadTarget target)
     {
-        major = 0;
+        target = default;
         try
         {
             using var module = ModuleDefMD.Load(managed);
@@ -277,13 +420,11 @@ public static class NativePacker
             var value = attr.ConstructorArguments[0].Value?.ToString();
             if (string.IsNullOrEmpty(value))
                 return false;
-            var vIndex = value.LastIndexOf('v');
-            if (vIndex < 0 || vIndex + 1 >= value.Length || !char.IsDigit(value[vIndex + 1]))
+            var name = new FrameworkName(value);
+            if (name.Version.Major <= 0)
                 return false;
-            var majorEnd = vIndex + 1;
-            while (majorEnd < value.Length && char.IsDigit(value[majorEnd]))
-                majorEnd++;
-            return uint.TryParse(value.AsSpan(vIndex + 1, majorEnd - vIndex - 1), out major) && major > 0;
+            target = new PayloadTarget(name.Identifier, (uint)name.Version.Major, name.Version.ToString());
+            return true;
         }
         catch (Exception)
         {
@@ -305,10 +446,10 @@ public static class NativePacker
             var tfm = tfmEl.GetString();
             if (tfm is null || !tfm.StartsWith("net", StringComparison.OrdinalIgnoreCase))
                 return false;
+            // .NET 5+ monikers always carry a dot (net8.0); "net48" is .NET Framework, not a major 48.
             var rest = tfm[3..];
             var dot = rest.IndexOf('.');
-            var majorText = dot < 0 ? rest : rest[..dot];
-            return uint.TryParse(majorText, out major) && major > 0;
+            return dot > 0 && uint.TryParse(rest[..dot], out major) && major > 0;
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {

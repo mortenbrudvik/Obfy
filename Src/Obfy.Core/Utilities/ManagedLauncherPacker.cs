@@ -70,10 +70,11 @@ public static class ManagedLauncherPacker
                     if (result is Task t)
                     {
                         t.GetAwaiter().GetResult();
-                        return 0;
+                        return Environment.ExitCode;
                     }
 
-                    return result is int code ? code : 0;
+                    // A void Main reports its status through Environment.ExitCode.
+                    return result is int code ? code : Environment.ExitCode;
                 }
                 catch (TargetInvocationException ex)
                 {
@@ -102,11 +103,14 @@ public static class ManagedLauncherPacker
 
     /// <summary>
     /// Emits <c>{name}.launcher.exe</c> and <c>{name}.launcher.runtimeconfig.json</c> beside
-    /// <paramref name="assemblyPath"/>. The TFM comes from the Obfy process, not the packed assembly.
+    /// <paramref name="assemblyPath"/>. The launcher is compiled against the Obfy process's runtime, so
+    /// the runtimeconfig targets the newer of that runtime and the packed assembly's own target
+    /// (<c>TargetFrameworkAttribute</c> / the sibling JSON of <paramref name="inputPath"/>), and keeps
+    /// that JSON's other frameworks and <c>configProperties</c>.
     /// Throws <see cref="InvalidOperationException"/> when the module has no entry point or emit fails.
     /// Partial output files are deleted on failure.
     /// </summary>
-    public static string Pack(string assemblyPath)
+    public static string Pack(string assemblyPath, string? inputPath = null)
     {
         if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath))
             throw new InvalidOperationException("Packing requires an existing assembly file.");
@@ -152,20 +156,10 @@ public static class ManagedLauncherPacker
                 }
             }
 
-            var major = Environment.Version.Major;
-            var runtimeConfig = $$"""
-                {
-                  "runtimeOptions": {
-                    "tfm": "net{{major}}.0",
-                    "rollForward": "LatestMinor",
-                    "framework": {
-                      "name": "Microsoft.NETCore.App",
-                      "version": "{{major}}.0.0"
-                    }
-                  }
-                }
-                """;
-            File.WriteAllText(runtimeConfigPath, runtimeConfig);
+            var configSource = inputPath ?? assemblyPath;
+            File.WriteAllText(
+                runtimeConfigPath,
+                NativePacker.BuildRuntimeConfig(ResolveLauncherMajor(assemblyPath, configSource), configSource));
             return launcherPath;
         }
         catch
@@ -173,6 +167,22 @@ public static class ManagedLauncherPacker
             TryDelete(launcherPath);
             TryDelete(runtimeConfigPath);
             throw;
+        }
+    }
+
+    // The launcher needs at least the runtime it was compiled against (Obfy's own), and a newer
+    // payload needs its own runtime; an unresolvable or non-.NET Core payload keeps the host's.
+    private static uint ResolveLauncherMajor(string assemblyPath, string configSource)
+    {
+        var host = (uint)Environment.Version.Major;
+        try
+        {
+            var target = NativePacker.ResolvePayloadTarget(File.ReadAllBytes(assemblyPath), configSource);
+            return target.IsNetCoreApp ? Math.Max(host, target.Major) : host;
+        }
+        catch (InvalidOperationException)
+        {
+            return host;
         }
     }
 

@@ -53,6 +53,7 @@ public class RequestJsonContractTests
     [InlineData(typeof(ClearFilesRequest))]
     [InlineData(typeof(OpenOutputRequest))]
     [InlineData(typeof(PickOutputFolderRequest))]
+    [InlineData(typeof(PickSymbolMapRequest))]
     [InlineData(typeof(Obfy.App.Features.Log.GetLogRequest))]
     [InlineData(typeof(Obfy.App.Features.Log.ClearLogRequest))]
     [InlineData(typeof(GetResultsSummaryRequest))]

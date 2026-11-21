@@ -14,7 +14,7 @@ const noticeTone: Record<NoticeLevel, "info" | "warn" | "error"> = { Info: "info
 
 /** The Files screen: first-launch guidance when the list is empty, otherwise the list and where the output goes. */
 export default function FilesPage() {
-  const { input, failed, error, pick, clear, remove, setIncluded, reveal, openConfig, setOutput, pickFolder, setSymbolMap } = useInput();
+  const { input, failed, error, pick, clear, remove, setIncluded, reveal, openConfig, setOutput, pickFolder, pickSymbolMap, setSymbolMap } = useInput();
   const { state: run } = usePushedState<RunSnapshot>("run", "get", events.runChanged);
   // The run captured its inputs when it started; the list is not edited under it.
   const locked = run?.status === "Running";
@@ -78,6 +78,7 @@ export default function FilesPage() {
         locked={locked}
         onSetOutput={(folder) => void setOutput(folder)}
         onPickFolder={() => void pickFolder()}
+        onPickSymbolMap={() => void pickSymbolMap()}
         onSetSymbolMap={(change) => void setSymbolMap(change)}
       />
     </div>

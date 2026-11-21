@@ -29,6 +29,7 @@ function host(input: InputSnapshot, run: RunSnapshot = readyRun, extra: Record<s
     "output.setSymbolMap": () => input,
     "output.set": () => input,
     "output.pickFolder": () => input,
+    "output.pickSymbolMap": () => input,
     ...extra,
   });
 }
@@ -141,6 +142,22 @@ describe("FilesPage", () => {
     bridge.push("files.changed", { ...off, revision: 3, writeSymbolMap: true, symbolMapPath: "map.json", resolvedSymbolMapPath: "C:/out/map.json" });
     expect(await screen.findByLabelText("Symbol map file")).toBeTruthy();
     expect((screen.getByLabelText("Symbol map file") as HTMLInputElement).value).toBe("map.json");
+  });
+
+  it("browsesForTheSymbolMapFile_whileTheToggleIsOn", async () => {
+    host(withFiles([row({ name: "App.dll" })], { writeSymbolMap: false }));
+    const { unmount } = render(<FilesPage />);
+    await screen.findByRole("switch", { name: "Write a symbol map" });
+    expect(screen.queryByRole("button", { name: "Browse for the symbol map file" })).toBeNull();
+    unmount();
+
+    host(withFiles([row({ name: "App.dll" })], { writeSymbolMap: true, symbolMapPath: "map.json" }));
+    render(<FilesPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Browse for the symbol map file" }));
+
+    await waitFor(() => expect(calls("output", "pickSymbolMap")).toHaveLength(1));
+    expect(calls("output", "pickFolder")).toHaveLength(0);
   });
 
   it("setsTheOutputFolder_whenTheBoxIsLeft", async () => {

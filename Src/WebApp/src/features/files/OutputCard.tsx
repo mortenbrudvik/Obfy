@@ -11,11 +11,12 @@ interface OutputCardProps {
   locked: boolean;
   onSetOutput: (folder: string) => void;
   onPickFolder: () => void;
+  onPickSymbolMap: () => void;
   onSetSymbolMap: (change: { enabled?: boolean; path?: string }) => void;
 }
 
 /** Where the output goes, and whether to write the symbol map. */
-export default function OutputCard({ input, locked, onSetOutput, onPickFolder, onSetSymbolMap }: OutputCardProps) {
+export default function OutputCard({ input, locked, onSetOutput, onPickFolder, onPickSymbolMap, onSetSymbolMap }: OutputCardProps) {
   const [folder, setFolder] = useDraft(input.outputFolder);
   const [mapPath, setMapPath] = useDraft(input.symbolMapPath);
 
@@ -85,6 +86,9 @@ export default function OutputCard({ input, locked, onSetOutput, onPickFolder, o
                 onBlur={commitMapPath}
                 onKeyDown={onEnter(commitMapPath)}
               />
+              <button type="button" className="btn" disabled={locked} aria-label={strings.files.browseSymbolMap} onClick={onPickSymbolMap}>
+                {strings.files.browse}
+              </button>
             </div>
           )}
         </Field>

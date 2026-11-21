@@ -65,6 +65,7 @@ export const api = {
     pickFolder: () => call<InputSnapshot>("output", "pickFolder", {}, forUser),
     /** Leave a field out to leave it as it is. */
     setSymbolMap: (change: { enabled?: boolean; path?: string }) => call<InputSnapshot>("output", "setSymbolMap", change),
+    pickSymbolMap: () => call<InputSnapshot>("output", "pickSymbolMap", {}, forUser),
   },
 
   log: {

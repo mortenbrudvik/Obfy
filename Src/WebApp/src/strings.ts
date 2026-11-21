@@ -51,6 +51,7 @@ export const strings = {
     outputFolder: "Output folder",
     outputHelp: "Leave this empty to use the default.",
     browse: "Browse…",
+    browseSymbolMap: "Browse for the symbol map file",
     symbolMap: "Write a symbol map",
     symbolMapHelp: "Maps the new short names back to the originals. You need it to read stack traces from the protected build. Keep it private.",
     symbolMapFile: "Symbol map file",

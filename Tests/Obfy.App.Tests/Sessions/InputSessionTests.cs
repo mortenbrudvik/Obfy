@@ -655,6 +655,33 @@ public sealed class InputSessionTests : IDisposable
         snapshot.OutputFolder.ShouldBe(@"C:\Original");
     }
 
+    [Fact]
+    public async Task PickSymbolMap_SetsTheSymbolMapPath()
+    {
+        var session = Create();
+        session.SetWriteSymbolMap(true);
+        _dialogs.SavePath = @"C:\Maps\my.json";
+
+        var snapshot = await new PickSymbolMapRequestHandler(session, _dialogs).Handle(new PickSymbolMapRequest(), default);
+
+        _dialogs.SavePicks.ShouldBe(1);
+        snapshot.SymbolMapPath.ShouldBe(@"C:\Maps\my.json");
+    }
+
+    [Fact]
+    public async Task PickSymbolMap_WhenCancelled_LeavesThePathAlone()
+    {
+        var session = Create();
+        session.SetWriteSymbolMap(true);
+        session.SetSymbolMapPath("maps/m.json");
+        _dialogs.SavePath = null;
+
+        var snapshot = await new PickSymbolMapRequestHandler(session, _dialogs).Handle(new PickSymbolMapRequest(), default);
+
+        _dialogs.SavePicks.ShouldBe(1);
+        snapshot.SymbolMapPath.ShouldBe("maps/m.json");
+    }
+
     #endregion
 
     #region ResetFileStatus Tests

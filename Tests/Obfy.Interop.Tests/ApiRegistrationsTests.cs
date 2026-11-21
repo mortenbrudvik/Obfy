@@ -54,6 +54,7 @@ public class ApiRegistrationsTests
         { "output", "set", typeof(SetOutputRequest) },
         { "output", "pickFolder", typeof(PickOutputFolderRequest) },
         { "output", "setSymbolMap", typeof(SetSymbolMapRequest) },
+        { "output", "pickSymbolMap", typeof(PickSymbolMapRequest) },
 
         { "log", "get", typeof(GetLogRequest) },
         { "log", "clear", typeof(ClearLogRequest) },

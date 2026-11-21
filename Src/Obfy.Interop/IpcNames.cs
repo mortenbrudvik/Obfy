@@ -37,6 +37,7 @@ public static class IpcNames
         public const string OutputSet = "set";
         public const string OutputPickFolder = "pickFolder";
         public const string OutputSetSymbolMap = "setSymbolMap";
+        public const string OutputPickSymbolMap = "pickSymbolMap";
         public const string LogGet = "get";
         public const string LogClear = "clear";
         public const string ResultsSummary = "summary";

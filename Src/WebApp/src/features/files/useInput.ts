@@ -21,6 +21,7 @@ export interface UseInput {
   openConfig: () => Promise<void>;
   setOutput: (folder: string) => Promise<void>;
   pickFolder: () => Promise<void>;
+  pickSymbolMap: () => Promise<void>;
   setSymbolMap: (change: { enabled?: boolean; path?: string }) => Promise<void>;
 }
 
@@ -50,6 +51,7 @@ export function useInput(): UseInput {
   }, strings.files.failed.config);
   const [setOutput, outputError] = useAppAction(async (folder: string) => setAnswered(await api.output.set(folder)), strings.files.failed.output);
   const [pickFolder, pickFolderError] = useAppAction(async () => setAnswered(await api.output.pickFolder()), strings.files.failed.output);
+  const [pickSymbolMap, pickSymbolMapError] = useAppAction(async () => setAnswered(await api.output.pickSymbolMap()), strings.files.failed.output);
   const [setSymbolMap, symbolMapError] = useAppAction(
     async (change: { enabled?: boolean; path?: string }) => setAnswered(await api.output.setSymbolMap(change)),
     strings.files.failed.output,
@@ -57,7 +59,7 @@ export function useInput(): UseInput {
 
   const error =
     pickError ?? clearError ?? removeError ?? includeError ?? revealError ?? openOutputError ?? configError ??
-    outputError ?? pickFolderError ?? symbolMapError;
+    outputError ?? pickFolderError ?? pickSymbolMapError ?? symbolMapError;
 
   return {
     input,
@@ -72,6 +74,7 @@ export function useInput(): UseInput {
     openConfig: async () => void (await openConfig()),
     setOutput: async (folder) => void (await setOutput(folder)),
     pickFolder: async () => void (await pickFolder()),
+    pickSymbolMap: async () => void (await pickSymbolMap()),
     setSymbolMap: async (change) => void (await setSymbolMap(change)),
   };
 }

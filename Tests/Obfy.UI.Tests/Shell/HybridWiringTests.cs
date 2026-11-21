@@ -182,7 +182,7 @@ public class HybridWiringTests
         })
             registry.GetRequestType(IpcNames.Services.Files, method).ShouldNotBeNull(method);
 
-        foreach (var method in new[] { IpcNames.Methods.OutputSet, IpcNames.Methods.OutputPickFolder, IpcNames.Methods.OutputSetSymbolMap })
+        foreach (var method in new[] { IpcNames.Methods.OutputSet, IpcNames.Methods.OutputPickFolder, IpcNames.Methods.OutputSetSymbolMap, IpcNames.Methods.OutputPickSymbolMap })
             registry.GetRequestType(IpcNames.Services.Output, method).ShouldNotBeNull(method);
 
         // The native drop is not a page method.

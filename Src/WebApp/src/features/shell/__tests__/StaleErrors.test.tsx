@@ -113,6 +113,55 @@ describe("an error that no longer applies", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
+  /** A cancel the host has not answered yet; `fail` makes it fail, as the bridge's own timeout would. */
+  function slowCancel() {
+    let fail!: () => void;
+    const answer = new Promise<never>((_, reject) => {
+      fail = () => reject(new Error("The app did not answer in time."));
+    });
+    return { answer, fail };
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  it("showsNoCancelError_whenTheRunEndedWhileTheCancelWasInFlight_andTheCallThenFails", async () => {
+    const running: RunSnapshot = { ...readyRun, canStart: false, status: "Running", currentFile: "a.dll", total: 1 };
+    const cancel = slowCancel();
+    const host = startHost(running, { "run.cancel": () => cancel.answer });
+    render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/Processing a.dll/);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    // The run ends on its own while the cancel is still being asked for, and only then does the call fail.
+    host.push("run.changed", { ...readyRun, revision: 6, status: "Done" });
+    expect(screen.getByRole("button", { name: "Obfuscate" })).toBeTruthy();
+    cancel.fail();
+    await settle();
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    // Nothing makes it come back: the same status again, with a newer revision.
+    host.push("run.changed", { ...readyRun, revision: 7, status: "Done", outputHint: "App.obfuscated.dll next to App.dll" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(/Could not cancel the run/)).toBeNull();
+  });
+
+  it("showsNoCancelError_inANewRun_whenTheCancelOfTheEarlierOneFailsAfterwards", async () => {
+    const running: RunSnapshot = { ...readyRun, canStart: false, status: "Running", currentFile: "a.dll", total: 1 };
+    const cancel = slowCancel();
+    const host = startHost(running, { "run.cancel": () => cancel.answer });
+    render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/Processing a.dll/);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    host.push("run.changed", { ...readyRun, revision: 6, status: "Done" });
+    host.push("run.changed", { ...running, revision: 8, currentFile: "b.dll" });
+    await screen.findByText(/Processing b.dll/);
+    cancel.fail();
+    await settle();
+
+    // The failure belongs to the run that has ended, not to the one now going.
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("clearsAShortcutError_whenTheUserMovesToAnotherScreen", async () => {
     startHost(readyRun, { "files.pick": () => { throw new Error("The picker failed."); } });
     const { rerender } = render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);

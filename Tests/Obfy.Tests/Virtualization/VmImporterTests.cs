@@ -119,6 +119,45 @@ public class VmImporterTests
         type.FindMethod("ResolveArgumentType")!.Body.Instructions.ShouldNotContain(i => i.OpCode == OpCodes.Switch);
     }
 
+    [Fact]
+    public void Import_ReferencesItsOwnMembersByDefinition_NotByName()
+    {
+        // The copied interpreter reads and writes the fields of its nested structs from the outer type's
+        // methods. A reference built as a MemberRef on a type of this very module is bound by name at run
+        // time, so symbol renaming (which renames the interpreter's fields) would leave it dangling:
+        // "MissingFieldException: Field not found: '<renamed>.Type'". Every such operand must be the
+        // copied definition itself.
+        var module = new ModuleDefUser("T", Guid.NewGuid(), AssemblyRefUser.CreateMscorlibReferenceCLR40());
+        var asm = new AssemblyDefUser("T", new Version(1, 0, 0, 0));
+        asm.Modules.Add(module);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings());
+        var identity = Enumerable.Range(0, 256).Select(i => (byte)i).ToArray();
+
+        var vm = ImportEmpty(context, identity);
+
+        var family = new List<TypeDef>();
+        void Collect(TypeDef type)
+        {
+            family.Add(type);
+            type.NestedTypes.ToList().ForEach(Collect);
+        }
+
+        Collect(vm);
+        var operands = family
+            .SelectMany(t => t.Methods)
+            .Where(m => m.HasBody)
+            .SelectMany(m => m.Body.Instructions)
+            .Select(i => i.Operand)
+            .ToList();
+
+        operands.OfType<FieldDef>().ShouldContain(
+            f => f.DeclaringType.DeclaringType == vm,
+            "the interpreter touches fields of its nested structs; this guards against a vacuous pass");
+        operands.OfType<MemberRef>().ShouldNotContain(
+            r => r.Class is TypeDef,
+            "a MemberRef on a type of this module is bound by name and breaks when the member is renamed");
+    }
+
     private static MethodDef HelperLoading(TypeDef vmType, object token, string calls = "")
     {
         var holders = vmType.Methods

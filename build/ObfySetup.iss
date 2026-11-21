@@ -1,8 +1,14 @@
 ; Obfy Installer Script for Inno Setup
 ; Download Inno Setup from: https://jrsoftware.org/isinfo.php
 
+; The version is not written here. version.json is the only source: build-installer.ps1 reads it and passes it
+; as /DMyAppVersion=major.minor.patch. There is deliberately no default: a default would be a second copy to
+; bump, and an installer built from the Inno Setup IDE would silently carry the wrong version.
+#ifndef MyAppVersion
+  #error MyAppVersion is not defined. Build the installer with build\build-installer.ps1, which reads version.json and passes /DMyAppVersion=major.minor.patch to ISCC.
+#endif
+
 #define MyAppName "Obfy"
-#define MyAppVersion "2.0.0"
 #define MyAppPublisher "Obfy"
 #define MyAppURL "https://github.com/mortenbrudvik/Obfy"
 #define MyAppExeName "obfy.exe"

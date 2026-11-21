@@ -14,9 +14,10 @@ namespace Obfy.ScenarioTests;
 /// <c>System.Private.CoreLib</c>, so it cannot see this.
 /// </summary>
 /// <remarks>
-/// Every theory below runs the same cases: the Aggressive preset, and AntiDebug, AntiDump and MethodEncryption
-/// each alone, so a failure names the technique. net8.0 and net9.0 are skipped (visibly) on a machine without
-/// those runtimes.
+/// Every theory below runs the same cases: the Aggressive preset, and AntiDebug, AntiDump, MethodEncryption and
+/// Virtualization each alone, then Virtualization together with symbol renaming (which renames the interpreter and
+/// everything it reaches), so a failure names the technique. net8.0 and net9.0 are skipped (visibly) on a machine
+/// without those runtimes.
 /// </remarks>
 public sealed class ProtectedConsoleStartupTests : IClassFixture<ProtectedConsoleStartupTests.BuiltHelloConsole>
 {
@@ -32,7 +33,9 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<ProtectedConsol
         "Aggressive",
         "AntiDebug",
         "AntiDump",
-        "MethodEncryption"
+        "MethodEncryption",
+        "Virtualization",
+        "VirtualizationWithRenaming"
     };
 
     [SdkRuntimeTheory("net10.0", windowsOnly: true)]
@@ -56,7 +59,12 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<ProtectedConsol
         ScenarioHarness.CopySidecars(stageDir, obfDir, AssemblyFileName);
         var output = Path.Combine(obfDir, AssemblyFileName);
 
-        await ScenarioHarness.ObfuscateAsync(staged, output, SettingsFor(protection));
+        var result = await ScenarioHarness.ObfuscateAsync(staged, output, SettingsFor(protection));
+        if (protection.StartsWith("Virtualization", StringComparison.Ordinal))
+        {
+            result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(
+                0, $"{protection} virtualized nothing, so this run would prove nothing about it");
+        }
 
         var marker = InjectedTypeFor(protection);
         if (marker is not null)
@@ -78,6 +86,12 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<ProtectedConsol
         "AntiDebug" => Only(s => s.Protection.AntiDebug = true),
         "AntiDump" => Only(s => s.Protection.AntiDump = true),
         "MethodEncryption" => Only(s => s.Protection.MethodEncryption = true),
+        "Virtualization" => Only(s => s.Virtualization.Enabled = true),
+        "VirtualizationWithRenaming" => Only(s =>
+        {
+            s.Virtualization.Enabled = true;
+            s.SymbolRenaming.Enabled = true;
+        }),
         _ => throw new ArgumentOutOfRangeException(nameof(protection), protection, null)
     };
 
@@ -93,12 +107,16 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<ProtectedConsol
         return settings;
     }
 
-    /// <summary>The type the technique injects (symbol renaming is off for the single-technique cases).</summary>
+    /// <summary>
+    /// The type the technique injects (symbol renaming is off for the single-technique cases; with it on, the
+    /// interpreter is renamed, so <c>VirtualizationWithRenaming</c> is checked through the statistics instead).
+    /// </summary>
     private static string? InjectedTypeFor(string protection) => protection switch
     {
         "AntiDebug" => "<AntiDebug>",
         "AntiDump" => "<AntiDump>",
         "MethodEncryption" => "<MethodCrypt>",
+        "Virtualization" => "Vm",
         _ => null
     };
 

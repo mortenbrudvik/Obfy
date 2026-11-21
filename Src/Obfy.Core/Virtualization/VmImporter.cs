@@ -174,11 +174,35 @@ public static class VmImporter
         return cloned;
     }
 
+    /// <summary>
+    /// Copies the type and its nested types in two steps: every field and method of the whole family is
+    /// declared (and entered in <paramref name="map"/>) first, and only then are the bodies copied. A body
+    /// of the outer type reads and writes the fields of its nested structs, and a field or method that was
+    /// not mapped yet is imported as a <see cref="MemberRef"/> on a type of this module. The CLR binds such
+    /// a reference by name when the method is compiled, so renaming the member afterwards (the interpreter
+    /// is renamed like any other type) leaves it dangling: <c>MissingFieldException: Field not found</c>.
+    /// With the map complete, every reference inside the interpreter is the copied definition itself and
+    /// follows a rename.
+    /// </summary>
     private static void CopyTypeContents(
         TypeDef origin,
         TypeDef cloned,
         Importer importer,
         Dictionary<IDnlibDef, IDnlibDef> map)
+    {
+        var methodsToCopy = new List<(MethodDef Origin, MethodDef Cloned)>();
+        DeclareTypeMembers(origin, cloned, importer, map, methodsToCopy);
+
+        foreach (var (originMethod, clonedMethod) in methodsToCopy)
+            CopyMethodBody(originMethod, clonedMethod, importer, map);
+    }
+
+    private static void DeclareTypeMembers(
+        TypeDef origin,
+        TypeDef cloned,
+        Importer importer,
+        Dictionary<IDnlibDef, IDnlibDef> map,
+        List<(MethodDef Origin, MethodDef Cloned)> methodsToCopy)
     {
         cloned.BaseType = origin.BaseType is null ? null : importer.Import(origin.BaseType);
         foreach (var iface in origin.Interfaces)
@@ -197,7 +221,6 @@ public static class VmImporter
             cloned.Fields.Add(clonedField);
         }
 
-        var methodsToCopy = new List<(MethodDef Origin, MethodDef Cloned)>();
         foreach (var method in origin.Methods)
         {
             if (method.IsStaticConstructor)
@@ -215,11 +238,8 @@ public static class VmImporter
             methodsToCopy.Add((method, clonedMethod));
         }
 
-        foreach (var (originMethod, clonedMethod) in methodsToCopy)
-            CopyMethodBody(originMethod, clonedMethod, importer, map);
-
         foreach (var nested in origin.NestedTypes)
-            CopyTypeContents(nested, (TypeDef)map[nested], importer, map);
+            DeclareTypeMembers(nested, (TypeDef)map[nested], importer, map, methodsToCopy);
     }
 
     private static void CopyMethodBody(

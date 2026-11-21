@@ -138,7 +138,7 @@ public class WatermarkObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Watermark injection failed");
+            _logger.LogError("Watermark injection failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Watermark injection failed: {ex.Message}", ex));
         }
     }

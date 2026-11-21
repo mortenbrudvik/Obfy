@@ -164,7 +164,7 @@ public sealed class ThemeController : IDisposable
         catch (Exception ex) when (ex is NotImplementedException or InvalidCastException or COMException or InvalidOperationException)
         {
             // A runtime too old for the setting, or a WebView2 that has gone away: the page follows Windows instead.
-            _logger.LogWarning(ex, "Could not set the page's colour scheme");
+            _logger.LogWarning("Could not set the page's colour scheme ({ExceptionType})", ex.GetType().Name);
         }
     }
 

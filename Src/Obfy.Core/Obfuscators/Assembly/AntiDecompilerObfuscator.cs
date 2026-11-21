@@ -96,7 +96,7 @@ public class AntiDecompilerObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Anti-decompiler injection failed");
+            _logger.LogError("Anti-decompiler injection failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Anti-decompiler injection failed: {ex.Message}", ex));
         }
     }

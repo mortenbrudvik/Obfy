@@ -94,7 +94,7 @@ public class ControlFlowObfuscator : IObfuscator
                         // Flattening mutates the body in place (Clear + rebuild, or incremental
                         // inserts). A throw mid-mutation can leave unverifiable IL; do not report
                         // Success with a "skipped" method whose body is half-rewritten.
-                        _logger.LogError(ex, "Failed to obfuscate method {Method}", method.FullName);
+                        _logger.LogError("Failed to obfuscate a method ({ExceptionType})", ex.GetType().Name);
                         return Task.FromResult(ObfuscationResult.Failed(
                             $"Control flow obfuscation failed on {method.FullName}: {ex.Message}", ex));
                     }
@@ -107,7 +107,7 @@ public class ControlFlowObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Control flow obfuscation failed");
+            _logger.LogError("Control flow obfuscation failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Control flow obfuscation failed: {ex.Message}", ex));
         }
     }

@@ -66,7 +66,7 @@ public class MetadataRemovalObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Metadata removal failed");
+            _logger.LogError("Metadata removal failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Metadata removal failed: {ex.Message}", ex));
         }
     }

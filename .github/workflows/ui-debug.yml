@@ -89,44 +89,44 @@ jobs:
           for ($i = 0; $i -lt $seconds; $i++) { $r = Get-Cdp $port; if ($r) { return $r }; Start-Sleep -Seconds 1 }
           return $null
         }
+        function Get-WebViewVersion {
+          (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue).pv
+        }
+        $exe = Join-Path $env:GITHUB_WORKSPACE 'Src\Obfy.UI\bin\Release\net10.0-windows10.0.26100\ObfyUI.exe'
+        function Invoke-ObfyProbe([string]$label, [int]$port, [string]$browserArgs) {
+          $work = Join-Path $env:TEMP ("probe-obfy-" + $port)
+          New-Item -ItemType Directory -Force $work | Out-Null
+          $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
+          $psi.UseShellExecute = $false
+          $psi.Environment['OBFY_UI_PREFERENCES'] = Join-Path $work 'ui-preferences.json'
+          $psi.Environment['OBFY_WEBVIEW2_USER_DATA'] = Join-Path $work 'webview2'
+          if ($browserArgs) { $psi.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = $browserArgs }
+          $app = [System.Diagnostics.Process]::Start($psi)
+          $r = Wait-Cdp $port 25
+          "ObfyUI [$label]: $(if ($r) { 'PORT OPEN' } else { 'NO ANSWER' }); chrome_debug.log: $(Test-Path (Join-Path $work 'webview2\EBWebView\chrome_debug.log'))"
+          $app.Kill($true)
+          Start-Sleep -Seconds 2
+          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        }
         $lines = & {
-          '--- Edge / WebView2 / Chrome policies (reg query) ---'
-          foreach ($k in 'HKLM\SOFTWARE\Policies\Microsoft\Edge', 'HKLM\SOFTWARE\Policies\Microsoft\EdgeUpdate', 'HKLM\SOFTWARE\Policies\Microsoft\Edge\WebView2', 'HKCU\SOFTWARE\Policies\Microsoft\Edge', 'HKLM\SOFTWARE\Policies\Google\Chrome', 'HKLM\SOFTWARE\Microsoft\Edge', 'HKLM\SOFTWARE\WOW6432Node\Microsoft\Edge') {
-            "[$k]"
-            (reg query $k /s 2>&1) -join "`n"
-          }
-          '--- Edge headless with a debug port ---'
-          $edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-          $profile = Join-Path $env:TEMP 'probe-edge'
-          $p = Start-Process $edge -ArgumentList '--headless=new', '--remote-debugging-port=9333', "--user-data-dir=$profile", '--enable-logging', '--v=1', 'about:blank' -PassThru
-          $r = Wait-Cdp 9333 20
-          "msedge headless, port 9333: $(if ($r) { $r } else { 'NO ANSWER' })"
-          "chrome_debug.log exists: $(Test-Path (Join-Path $profile 'chrome_debug.log'))"
-          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-          Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          '--- ObfyUI.exe with the browser arguments, three variants ---'
-          $exe = Join-Path $env:GITHUB_WORKSPACE 'Src\Obfy.UI\bin\Release\net10.0-windows10.0.26100\ObfyUI.exe'
-          $variants = @(
-            @{ port = 9341; args = '--remote-debugging-port=9341' },
-            @{ port = 9342; args = '--remote-debugging-port=9342 --remote-allow-origins=*' },
-            @{ port = 9343; args = '--remote-debugging-port=9343 --remote-allow-origins=* --enable-logging --v=1' }
-          )
-          foreach ($v in $variants) {
-            $work = Join-Path $env:TEMP ("probe-obfy-" + $v.port)
-            New-Item -ItemType Directory -Force $work | Out-Null
-            $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
-            $psi.UseShellExecute = $false
-            $psi.Environment['OBFY_UI_PREFERENCES'] = Join-Path $work 'ui-preferences.json'
-            $psi.Environment['OBFY_WEBVIEW2_USER_DATA'] = Join-Path $work 'webview2'
-            $psi.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = $v.args
-            $app = [System.Diagnostics.Process]::Start($psi)
-            $r = Wait-Cdp $v.port 25
-            "ObfyUI with [$($v.args)]: $(if ($r) { $r } else { 'NO ANSWER' }); chrome_debug.log: $(Test-Path (Join-Path $work 'webview2\EBWebView\chrome_debug.log'))"
-            Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedgewebview2.exe' -and $_.CommandLine -notmatch '--type=' } | ForEach-Object { "  browser process $($_.ProcessId): $($_.CommandLine)" }
-            $app.Kill($true)
-            Start-Sleep -Seconds 2
-            Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          }
+          "WebView2 runtime before: $(Get-WebViewVersion)"
+          Invoke-ObfyProbe 'env var, runtime as imaged' 9341 '--remote-debugging-port=9341 --remote-allow-origins=* --enable-logging --v=1'
+
+          # The same through the machine policy that WebView2 reads for every host app.
+          $key = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name '*' -Value '--remote-debugging-port=9342 --remote-allow-origins=* --enable-logging --v=1' -PropertyType String -Force | Out-Null
+          Invoke-ObfyProbe 'registry policy AdditionalBrowserArguments, runtime as imaged' 9342 $null
+          Remove-Item 'HKCU:\Software\Policies\Microsoft\Edge\WebView2' -Recurse -Force
+
+          '--- Updating the WebView2 runtime with the Evergreen bootstrapper ---'
+          $setup = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $setup
+          $install = Start-Process $setup -ArgumentList '/silent', '/install' -Wait -PassThru
+          "bootstrapper exit code: $($install.ExitCode)"
+          "WebView2 runtime after: $(Get-WebViewVersion)"
+          Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' | ForEach-Object { "  $($_.Name)" }
+          Invoke-ObfyProbe 'env var, after the update' 9343 '--remote-debugging-port=9343 --remote-allow-origins=* --enable-logging --v=1'
         }
         $lines | Tee-Object $out
 

@@ -67,9 +67,6 @@ public sealed class ShutdownCoordinator
         _logger = logger;
     }
 
-    /// <summary>Whether a run is going now (the window closes at once when none is).</summary>
-    public bool RunIsActive => _isRunning();
-
     /// <summary>
     /// Approves the shutdown at once when no run is going, and from that moment refuses new runs (one atomic step, see
     /// <see cref="RunCoordinator.TryRefuseNewRuns"/>): a run whose files are still being checked would otherwise become Running
@@ -85,6 +82,17 @@ public sealed class ShutdownCoordinator
 
         Approved = true;
         return true;
+    }
+
+    /// <summary>
+    /// The shell is staying after all: a close was approved (new runs refused) but will not happen, because closing the
+    /// window or shutting down failed. Takes the approval back and lets runs start again; the next close asks again. Call
+    /// on the UI thread.
+    /// </summary>
+    public void AbandonClose()
+    {
+        Approved = false;
+        _allowNewRuns();
     }
 
     /// <summary>The shutdown has been agreed (and any run stopped): the window may close without asking again.</summary>
@@ -105,6 +113,7 @@ public sealed class ShutdownCoordinator
             return false;
 
         _preparing = true;
+        var doorClosed = false;
         try
         {
             if (!_confirmCancelRun())
@@ -113,6 +122,7 @@ public sealed class ShutdownCoordinator
             // The user has said yes: no run may start behind the cancel, for example one whose files were still being
             // checked when the question was asked.
             _refuseNewRuns();
+            doorClosed = true;
 
             // The run may have ended while the question was open.
             if (_isRunning())
@@ -128,6 +138,11 @@ public sealed class ShutdownCoordinator
         finally
         {
             _preparing = false;
+
+            // Said yes, then something failed before the close was approved (the cancel's own event handler threw, say): the
+            // shell is staying, so runs must be able to start.
+            if (doorClosed && !Approved)
+                _allowNewRuns();
         }
     }
 
@@ -135,7 +150,21 @@ public sealed class ShutdownCoordinator
     public async Task QuitAsync()
     {
         if (await PrepareToCloseAsync())
+            ShutDown();
+    }
+
+    /// <summary>Ends the process through the shutdown action. If that throws the shell is staying, so the approval is taken back.</summary>
+    private void ShutDown()
+    {
+        try
+        {
             _shutdown();
+        }
+        catch (Exception)
+        {
+            AbandonClose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -147,17 +176,25 @@ public sealed class ShutdownCoordinator
         if (!await PrepareToCloseAsync())
             return;
 
-        await WaitAsync(_flushPreferences, _preferencesTimeout, "The preferences were not written in time; restarting anyway");
-
-        if (!_startNewInstance())
+        try
         {
-            // Not leaving: a run started later must be asked about again, and must be able to start.
-            Approved = false;
-            _allowNewRuns();
-            return;
-        }
+            await WaitAsync(_flushPreferences, _preferencesTimeout, "The preferences were not written in time; restarting anyway");
 
-        _shutdown();
+            if (!_startNewInstance())
+            {
+                // Not leaving: a run started later must be asked about again, and must be able to start.
+                AbandonClose();
+                return;
+            }
+
+            ShutDown();
+        }
+        catch (Exception) when (Approved)
+        {
+            // Starting the new process threw: the shell is staying too. (A throwing shutdown has already taken the approval back.)
+            AbandonClose();
+            throw;
+        }
     }
 
     /// <summary>Waits for the task <paramref name="start"/> returns for at most <paramref name="timeout"/>. Never throws; says why in the log (the exception type only).</summary>

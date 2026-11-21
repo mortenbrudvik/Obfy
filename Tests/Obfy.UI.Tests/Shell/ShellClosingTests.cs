@@ -132,6 +132,38 @@ public class ShellClosingTests
     }
 
     [Fact]
+    public void ClosingTheWindow_WhenTheCloseItselfThrows_AllowsNewRunsAgain_AndTheNextCloseIsAskedAboutAgain()
+    {
+        ShellHarness.OnSta(() =>
+        {
+            ShellHarness.UseShellResources();
+            var fixture = new Fixture { Running = true };
+            using var container = Build(fixture);
+            var window = container.Resolve<ShellWindow>();
+            var shutdown = container.Resolve<ShutdownCoordinator>();
+
+            // Added after the window's own handler. Once the close is approved it fails, as a Close() that throws would.
+            window.Closing += (_, _) =>
+            {
+                if (shutdown.Approved)
+                    throw new InvalidOperationException("the close failed");
+            };
+
+            window.Close();
+            ShellHarness.PumpUntil(() => fixture.Asked > 0 && fixture.Cancelled > 0, 300);
+            fixture.DoorClosed.ShouldBeTrue("the user said yes: no run may start behind the cancel");
+
+            fixture.RunEnded.SetResult();
+            ShellHarness.PumpUntil(() => fixture.DoorOpenings > 0, 2000);
+
+            // The app stays open, so runs must still be able to start, and a later close must ask again.
+            fixture.DoorClosed.ShouldBeFalse();
+            shutdown.Approved.ShouldBeFalse();
+            return true;
+        });
+    }
+
+    [Fact]
     public void QuitOnTheFailurePanel_DuringARun_AsksFirst_AndDoesNothingWhenDeclined()
     {
         ShellHarness.OnSta(() =>

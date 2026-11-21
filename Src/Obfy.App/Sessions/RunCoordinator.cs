@@ -143,7 +143,7 @@ public sealed class RunCoordinator : IDisposable
         {
             if (_status == RunStatus.Running)
                 return false;
-            _closing = true;
+            SetClosing(true);
             return true;
         }
     }
@@ -152,14 +152,27 @@ public sealed class RunCoordinator : IDisposable
     public void RefuseNewRuns()
     {
         lock (_gate)
-            _closing = true;
+            SetClosing(true);
     }
 
     /// <summary>Opens the door again, for a shutdown that was given up (a restart that could not start the new process).</summary>
     public void AllowNewRuns()
     {
         lock (_gate)
-            _closing = false;
+            SetClosing(false);
+    }
+
+    /// <summary>
+    /// Caller holds the gate. A change bumps the revision, so a snapshot read afterwards (<see cref="GetSnapshot"/> says why
+    /// a closing shell cannot start) is not mistaken for the one before. Nothing is pushed: this is called from the
+    /// shell's close handler on the UI thread, and a push would take a snapshot, which checks the files on the disk.
+    /// </summary>
+    private void SetClosing(bool closing)
+    {
+        if (_closing == closing)
+            return;
+        _closing = closing;
+        _revision++;
     }
 
     /// <summary>Finishes when the run now going ends (or already has). Never faults.</summary>
@@ -184,8 +197,10 @@ public sealed class RunCoordinator : IDisposable
         int completed, total, failed;
         long revision;
         RunPlan? active;
+        bool closing;
         lock (_gate)
         {
+            closing = _closing;
             status = _status;
             message = _message;
             progress = _progress;
@@ -208,7 +223,9 @@ public sealed class RunCoordinator : IDisposable
 
         var capture = _input.CaptureRun(_protection.ToObfySettings().AssemblyMerge.Enabled);
         var plan = Plan(capture);
-        var blocked = BlockedReasonFor(capture.Included.Count, capture.Collision);
+
+        // Start refuses a closing shell before anything else, so the run bar says so first: one rule.
+        var blocked = closing ? ClosingReason : BlockedReasonFor(capture.Included.Count, capture.Collision);
         return new RunSnapshot(
             revision, blocked is null, blocked, plan.Mode, Explain(plan.Mode), plan.Output.Hint,
             progress, indeterminate, current, completed, total, failed, status, message);

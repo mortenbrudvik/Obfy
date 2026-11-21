@@ -152,6 +152,9 @@ public partial class ShellWindow : FluentWindow
         {
             // Nothing awaits this task: a fault here would only surface as an unobserved exception.
             _logger.LogError("Could not close the window after the run stopped ({ExceptionType})", ex.GetType().Name);
+
+            // The window is staying open, so the close that was approved is off: runs must start, and the next close asks again.
+            _shutdown.AbandonClose();
         }
     }
 

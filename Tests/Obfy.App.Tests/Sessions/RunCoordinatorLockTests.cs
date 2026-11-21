@@ -294,36 +294,50 @@ public sealed class RunCoordinatorLockTests
     public async Task ApplyPreferences_ChangesTheStateAndTheRevisionInOneStep_SoNoRevisionHasTwoStates()
     {
         // What Start relies on: a capture at a given revision is always the same state. A capture that landed between
-        // the write of the preferences and the bump of the revision would be the old revision with the new state.
+        // the write of the preferences and the bump of the revision would be the old revision with the new state. That
+        // gap is a few instructions wide and cannot be hooked, so this forces the interleaving as far as it can be forced:
+        // several readers capture in a tight loop, queued on the session's lock, while one writer applies the preferences
+        // half a million times. Against the two-hold version this fails on every run; against the fixed one it never does.
         var settings = new FakeSettings();
         var session = new InputSession(
             settings, null, new FakeShell(), null, NullLogger<InputSession>.Instance, TimeSpan.Zero);
         var stateAt = new System.Collections.Concurrent.ConcurrentDictionary<long, bool>();
         var twoStates = 0;
-        var writing = true;
+        var running = true;
 
-        var reader = Task.Factory.StartNew(() =>
-        {
-            while (Volatile.Read(ref writing))
+        bool Going() => Volatile.Read(ref running) && Volatile.Read(ref twoStates) == 0;
+
+        var readers = Enumerable.Range(0, 3)
+            .Select(_ => Task.Factory.StartNew(() =>
             {
-                var capture = session.CaptureRun(merge: false);
-                var mapOn = capture.SymbolMapPath is not null;
-                if (stateAt.GetOrAdd(capture.Revision, mapOn) != mapOn)
-                    Interlocked.Exchange(ref twoStates, 1);
-            }
-        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                while (Going())
+                {
+                    var capture = session.CaptureRun(merge: false);
+                    var mapOn = capture.SymbolMapPath is not null;
+                    if (stateAt.GetOrAdd(capture.Revision, mapOn) != mapOn)
+                        Interlocked.Exchange(ref twoStates, 1);
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default))
+            .ToArray();
 
-        await Task.Factory.StartNew(() =>
+        try
         {
-            for (var i = 0; i < 50_000 && Volatile.Read(ref twoStates) == 0; i++)
+            await Task.Factory.StartNew(() =>
             {
-                settings.GenerateSymbolMap = i % 2 == 0;
-                session.ApplyPreferences();
-            }
-        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).WaitAsync(Guard);
+                for (var i = 0; i < 500_000 && Going(); i++)
+                {
+                    settings.GenerateSymbolMap = i % 2 == 0;
+                    session.ApplyPreferences();
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).WaitAsync(Guard);
+        }
+        finally
+        {
+            // Even when the wait above times out: the readers must not be left spinning.
+            Volatile.Write(ref running, false);
+        }
 
-        Volatile.Write(ref writing, false);
-        await reader.WaitAsync(Guard);
+        await Task.WhenAll(readers).WaitAsync(Guard);
 
         twoStates.ShouldBe(0);
     }
@@ -444,5 +458,43 @@ public sealed class RunCoordinatorLockTests
         h.Run.AllowNewRuns();
         await h.Run.Start().WaitAsync(Guard);
         h.Engine.ObfuscatedInputs.Count.ShouldBe(1);
+    }
+
+    // ---- The run bar and Start agree about a closing shell ----
+
+    [Fact]
+    public void WhileTheShellIsClosing_TheSnapshotCannotStartAndSaysWhy_LikeStart()
+    {
+        using var h = new ReviewHarness();
+        h.AddFile("a.dll");
+        h.Run.GetSnapshot().CanStart.ShouldBeTrue();
+        var revision = h.Run.GetSnapshot().Revision;
+
+        h.Run.RefuseNewRuns();
+
+        var snapshot = h.Run.GetSnapshot();
+        snapshot.CanStart.ShouldBeFalse();
+        snapshot.BlockedReason.ShouldBe("Obfy is closing.");
+        snapshot.Revision.ShouldBeGreaterThan(revision);
+        Should.Throw<ObfyApiException>(() => h.Run.Start()).Message.ShouldBe(snapshot.BlockedReason);
+
+        h.Run.AllowNewRuns();
+
+        var after = h.Run.GetSnapshot();
+        after.CanStart.ShouldBeTrue();
+        after.BlockedReason.ShouldBeNull();
+        after.Revision.ShouldBeGreaterThan(snapshot.Revision);
+    }
+
+    [Fact]
+    public void TheDoorTheShellClosesIsFirstInTheSnapshot_BeforeTheReasonsAboutTheFiles()
+    {
+        using var h = new ReviewHarness();
+
+        // Nothing listed would say "Add at least one included file."; Start refuses for the closing first, so the bar does too.
+        h.Run.TryRefuseNewRuns().ShouldBeTrue();
+
+        h.Run.GetSnapshot().BlockedReason.ShouldBe("Obfy is closing.");
+        Should.Throw<ObfyApiException>(() => h.Run.Start()).Message.ShouldBe("Obfy is closing.");
     }
 }

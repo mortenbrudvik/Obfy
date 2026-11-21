@@ -5,9 +5,11 @@ using Shouldly;
 using Obfy.App.Features.App;
 using Obfy.App.Features.Files;
 using Obfy.App.Features.Log;
+using Obfy.App;
 using Obfy.App.Sessions;
 using Obfy.Interop;
 using Obfy.UI.DependencyInjection;
+using Obfy.UI.Services;
 
 namespace Obfy.UI.Tests.Shell;
 
@@ -286,6 +288,30 @@ public class HybridWiringTests
             run.ShouldContain("\"canStart\":false");
             run.ShouldContain("\"mode\":\"None\"");
             run.ShouldContain("\"status\":\"Idle\"");
+            return true;
+        });
+    }
+
+    [Fact]
+    public void TheShutdownCoordinatorIsWiredToTheSharedRunCoordinator_AnApprovedCloseRefusesRuns()
+    {
+        // Every other shell test builds the coordinator with fixture delegates. This one goes through the container's
+        // constructor, so a delegate wired to the wrong method (or to another RunCoordinator) shows up here.
+        OnSta(() =>
+        {
+            using var container = Build();
+            var shutdown = container.Resolve<ShutdownCoordinator>();
+            var run = container.Resolve<RunCoordinator>();
+
+            shutdown.TryApproveWithoutAsking().ShouldBeTrue();
+
+            var error = Should.Throw<ObfyApiException>(() => run.Start());
+            error.Code.ShouldBe("run.blocked");
+            error.Message.ShouldBe("Obfy is closing.");
+
+            // And giving the close up opens it again: the refusal is no longer the closing one.
+            shutdown.AbandonClose();
+            Should.Throw<ObfyApiException>(() => run.Start()).Message.ShouldBe("Add at least one included file.");
             return true;
         });
     }

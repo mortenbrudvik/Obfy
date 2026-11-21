@@ -144,7 +144,7 @@ public class StringEncryptionObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "String encryption failed");
+            _logger.LogError("String encryption failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"String encryption failed: {ex.Message}", ex));
         }
     }
@@ -257,11 +257,41 @@ public class StringEncryptionObfuscator : IObfuscator
                 continue;
 
             var data = embedded.CreateReader().ToArray();
-            if (!TryEncryptResourceFile(data, key, settings, out var rewritten, out var count, out var error))
+            var encrypted = TryEncryptResourceFile(
+                data, key, settings, out var rewritten, out var count, out var alreadyProtected, out var error);
+
+            if (alreadyProtected > 0)
+            {
+                // The runtime hook strips ONE layer, so wrapping Obfy ciphertext a second time would make
+                // the app read the inner ciphertext as the value. Leave those strings as they are.
+                context.Warnings.Add(
+                    $"StringEncryption: {alreadyProtected} string(s) in resource '{name}' already carry Obfy encryption " +
+                    "(the input looks like Obfy output) and were not encrypted again.");
+            }
+
+            if (!encrypted)
             {
                 if (error != null)
-                    _logger.LogWarning(error, "Failed to rewrite resource strings in {Name}", name);
-                context.SkippedItems.Add(SkippedItem.ResourceExcluded(name));
+                {
+                    // Log the exception type only: exception messages can carry content from the input.
+                    _logger.LogWarning(
+                        "Failed to rewrite resource strings in {Name}: {ExceptionType}", name, error.GetType().Name);
+                    context.Warnings.Add(
+                        $"StringEncryption: resource '{name}' could not be read or rewritten, so its strings were NOT encrypted.");
+                    context.SkippedItems.Add(new SkippedItem
+                    {
+                        Reason = SkipReason.UnsupportedConstruct,
+                        ItemType = SkippedItemType.Resource,
+                        ItemName = name,
+                        Details = "The resource could not be read or rewritten; its strings were left in plaintext."
+                    });
+                }
+                else if (alreadyProtected == 0)
+                {
+                    // Nothing in the resource was long enough to encrypt.
+                    context.SkippedItems.Add(SkippedItem.ResourceExcluded(name));
+                }
+
                 continue;
             }
 
@@ -281,10 +311,12 @@ public class StringEncryptionObfuscator : IObfuscator
         StringEncryptionSettings settings,
         out byte[] rewritten,
         out int count,
+        out int alreadyProtected,
         out Exception? error)
     {
         rewritten = data;
         count = 0;
+        alreadyProtected = 0;
         error = null;
         try
         {
@@ -297,7 +329,14 @@ public class StringEncryptionObfuscator : IObfuscator
             while (enumerator.MoveNext())
             {
                 var value = enumerator.Value;
-                if (value is string s && s.Length >= settings.MinStringLength)
+                if (value is string prefixed && prefixed.Length >= settings.MinStringLength &&
+                    prefixed[0] == ResourceCipherPrefix)
+                {
+                    // Already Obfy ciphertext (a second pass over protected output): keep it as is.
+                    alreadyProtected++;
+                    writer.AddResource(enumerator.Key.ToString()!, value);
+                }
+                else if (value is string s && s.Length >= settings.MinStringLength)
                 {
                     writer.AddResource(
                         enumerator.Key.ToString()!,

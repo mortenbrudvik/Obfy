@@ -73,11 +73,19 @@ public class DependencyEmbeddingObfuscator : IObfuscator
                 if (string.Equals(simple, selfName, StringComparison.OrdinalIgnoreCase))
                     continue;
 
+                // The name comes from the (untrusted) input assembly: only a plain file name that resolves
+                // to a file directly inside the input folder may be embedded.
                 var fileName = simple + ".dll";
+                if (!TryResolveSibling(inputDir, simple, fileName, out var path))
+                {
+                    context.Warnings.Add(
+                        "Dependency embedding: an assembly reference name is not a plain file name and was not packed.");
+                    continue;
+                }
+
                 if (!IsIncluded(fileName, settings))
                     continue;
 
-                var path = Path.Combine(inputDir, fileName);
                 if (!File.Exists(path))
                 {
                     if (!IsFrameworkAssembly(simple))
@@ -117,9 +125,42 @@ public class DependencyEmbeddingObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Dependency embedding failed");
+            _logger.LogError("Dependency embedding failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Dependency embedding failed: {ex.Message}", ex));
         }
+    }
+
+    /// <summary>
+    /// Resolves <paramref name="fileName"/> next to the input. Rejects a name with a directory part (separators,
+    /// a root, a drive or stream colon, wildcard or other invalid file-name characters) and re-checks that
+    /// the full path sits directly inside <paramref name="inputDir"/>, so a name like <c>..\x</c> cannot
+    /// climb out of it.
+    /// </summary>
+    internal static bool TryResolveSibling(string inputDir, string simpleName, string fileName, out string path)
+    {
+        path = string.Empty;
+        if (string.IsNullOrWhiteSpace(simpleName) ||
+            simpleName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+            Path.IsPathRooted(fileName) ||
+            !string.Equals(Path.GetFileName(fileName), fileName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var full = Path.GetFullPath(Path.Combine(inputDir, fileName));
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var directory = Path.GetDirectoryName(full);
+        if (directory is null ||
+            !string.Equals(
+                Path.TrimEndingDirectorySeparator(directory),
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(inputDir)),
+                comparison))
+        {
+            return false;
+        }
+
+        path = full;
+        return true;
     }
 
     private static bool IsIncluded(string fileName, DependencyEmbeddingSettings settings)

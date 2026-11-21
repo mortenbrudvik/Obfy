@@ -11,7 +11,8 @@ namespace Obfy.Core.Obfuscators.Assembly;
 /// XOR-encrypts method IL in the PE image. A module initializer decrypts the IL in memory
 /// before JIT using VirtualProtect. Windows-only; generics and NativeAOT are skipped
 /// or unsupported. Helpers are skipped unless registered with <c>EncryptIl = true</c>.
-/// Decrypt failures leave ciphertext — they do not restore plaintext IL.
+/// Decrypt failures leave ciphertext — they do not restore plaintext IL. Keys are one byte, so
+/// they are distinct for up to 255 methods and are reused beyond that (see <see cref="CreateDistinctKeys"/>).
 /// </summary>
 public class MethodEncryptionObfuscator : IObfuscator
 {
@@ -113,7 +114,7 @@ public class MethodEncryptionObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Method encryption injection failed");
+            _logger.LogError("Method encryption injection failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Method encryption failed: {ex.Message}", ex));
         }
     }
@@ -129,18 +130,28 @@ public class MethodEncryptionObfuscator : IObfuscator
         return true;
     }
 
-    private static byte[] CreateDistinctKeys(int count)
+    /// <summary>
+    /// Assigns each method a non-zero single-byte XOR key. A byte has only 255 non-zero values, so keys
+    /// are pairwise distinct for at most 255 methods; beyond that they must repeat. Keys are dealt from a
+    /// fresh random permutation of 1..255 per block of 255 methods: distinct inside every block, and once
+    /// methods outnumber keys the reuse is spread evenly instead of piling onto a few keys.
+    /// </summary>
+    internal static byte[] CreateDistinctKeys(int count)
     {
+        const int nonZeroKeys = 255;
         var keys = new byte[count];
-        var used = new HashSet<byte>();
+        var block = new byte[nonZeroKeys];
         for (var i = 0; i < count; i++)
         {
-            byte key;
-            do
+            var slot = i % nonZeroKeys;
+            if (slot == 0)
             {
-                key = (byte)Random.Shared.Next(1, 256);
-            } while (used.Count < 255 && !used.Add(key));
-            keys[i] = key;
+                for (var k = 0; k < nonZeroKeys; k++)
+                    block[k] = (byte)(k + 1);
+                Random.Shared.Shuffle(block);
+            }
+
+            keys[i] = block[slot];
         }
 
         return keys;

@@ -7,12 +7,23 @@ namespace Obfy.VisualStudio.Services;
 /// </summary>
 public class ObfuscationResult
 {
+    public const string CancelledMessage = "Obfuscation was cancelled.";
+
+    public const string CancelledButStillRunningMessage =
+        "Obfuscation was cancelled, but the Obfy CLI process did not exit and may still be running.";
+
     public bool Success { get; set; }
     public string? ErrorMessage { get; set; }
     public string? OutputPath { get; set; }
     public Exception? Exception { get; set; }
     public ObfuscationStatistics Statistics { get; set; } = new();
     public TimeSpan ElapsedTime { get; set; }
+
+    /// <summary>
+    /// Why the run was stopped before the CLI finished. <see cref="ObfuscationStopReason.None"/> for a run that
+    /// completed, successfully or not; a cancelled or timed-out run is not a failure of the obfuscation itself.
+    /// </summary>
+    public ObfuscationStopReason StopReason { get; set; }
 
     public static ObfuscationResult Failure(string inputPath, string message, Exception? ex = null)
     {
@@ -24,6 +35,53 @@ public class ObfuscationResult
             Exception = ex
         };
     }
+
+    public static ObfuscationResult Cancelled(string inputPath, bool processStillRunning = false)
+    {
+        return new ObfuscationResult
+        {
+            Success = false,
+            StopReason = ObfuscationStopReason.Cancelled,
+            ErrorMessage = processStillRunning ? CancelledButStillRunningMessage : CancelledMessage,
+            OutputPath = inputPath
+        };
+    }
+
+    public static ObfuscationResult TimedOut(string inputPath, TimeSpan limit, bool processStillRunning = false)
+    {
+        var outcome = processStillRunning
+            ? "the Obfy CLI process did not exit when it was stopped and may still be running"
+            : "the Obfy CLI was stopped";
+
+        return new ObfuscationResult
+        {
+            Success = false,
+            StopReason = ObfuscationStopReason.TimedOut,
+            ErrorMessage = $"Obfuscation timed out after {DescribeLimit(limit)} and {outcome}. " +
+                           "The time limit is under Tools > Options > Obfy > General > Run Timeout (minutes).",
+            OutputPath = inputPath
+        };
+    }
+
+    private static string DescribeLimit(TimeSpan limit)
+    {
+        var minutes = (int)Math.Round(limit.TotalMinutes);
+        if (minutes >= 1)
+            return minutes == 1 ? "1 minute" : minutes + " minutes";
+
+        var seconds = Math.Max(1, (int)Math.Round(limit.TotalSeconds));
+        return seconds == 1 ? "1 second" : seconds + " seconds";
+    }
+}
+
+/// <summary>
+/// Why an obfuscation run ended without the CLI finishing.
+/// </summary>
+public enum ObfuscationStopReason
+{
+    None,
+    Cancelled,
+    TimedOut
 }
 
 /// <summary>

@@ -30,6 +30,16 @@
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.SDK.Analyzers" PrivateAssets="all" />
     <PackageReference Include="System.Text.Json" />
+
+    <!--
+      Pins the MessagePack that Microsoft.VisualStudio.SDK 17.14 (and StreamJsonRpc, Microsoft.VisualStudio.Composition)
+      bring in transitively at 2.5.192, which has twelve advisories. The version is in Directory.Packages.props. Nothing
+      here uses MessagePack, and the VSSDK packaging leaves MessagePack.dll out of the VSIX (Visual Studio provides its
+      own), so this changes what the project compiles against and what lands in bin, not what Visual Studio loads.
+      Default asset flags on purpose: they match what the transitive reference had. Remove it once the 17.x SDK asks
+      for MessagePack 2.5.303 or later.
+    -->
+    <PackageReference Include="MessagePack" />
   </ItemGroup>
 
   <!--

@@ -11,7 +11,7 @@ namespace Obfy.VisualStudio.Commands;
 /// <summary>
 /// Command that opens the settings dialog for the selected project
 /// </summary>
-[Command(PackageIds.cmdidOpenSettings)]
+[Command(PackageGuids.CommandSetString, PackageIds.cmdidOpenSettings)]
 internal sealed class OpenSettingsCommand : BaseCommand<OpenSettingsCommand>
 {
     protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)

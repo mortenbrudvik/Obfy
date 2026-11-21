@@ -15,7 +15,7 @@ public class OutputStep : WizardStep
         ConfigurationWizard.DisplaySummary(context);
 
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"Output file: [cyan]{context.OutputFile.FullName}[/]");
+        AnsiConsole.MarkupLine($"Output file: [cyan]{Markup.Escape(context.OutputFile.FullName)}[/]");
         AnsiConsole.WriteLine();
 
         var action = AnsiConsole.Prompt(

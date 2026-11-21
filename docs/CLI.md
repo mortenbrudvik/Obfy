@@ -32,9 +32,9 @@ obfy <input>... [options]
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
-| `--output <dir>` | `-o` | Output directory for obfuscated files | Single file: sibling `{name}.obfuscated{ext}`. `--merge` without `-o`: sibling `{name}.merged{ext}`. Solution/project or two+ loose assemblies: `{dir}/obfy-out/` |
-| `--config <file>` | `-c` | Path to JSON configuration file. Technique flags in the file are used as-is; `--level` is ignored when `-c` is set (a warning is printed), and `level` inside the file is not re-applied as a preset (`obfy config generate -l …` writes fully resolved flags) | None |
-| `--level <level>` | `-l` | Obfuscation level: `minimal`, `standard`, `aggressive`, `custom`. Applied only when `-c` is omitted | `standard` |
+| `--output <dir>` | `-o` | Output directory for obfuscated files | Single file: sibling `{name}.obfuscated{ext}`. `--merge` without `-o`: sibling `{name}.merged{ext}`. Solution/project or two+ loose assemblies: `{dir}/obfy-out/`. An output folder that would write over an input file (for example the input's own folder) is an error, exit code 1, and nothing is written |
+| `--config <file>` | `-c` | Path to JSON configuration file. Technique flags in the file are used as-is; `--level` is ignored when `-c` is set (a warning is printed), and `level` inside the file is not re-applied as a preset (`obfy config generate -l …` writes fully resolved flags). Key names are read case-insensitively (`StringEncryption` works as `stringEncryption`). A key that is not a setting (a typo such as `stringEncrption`, or `controlFlow.intensty`) is ignored with a warning, and the run continues | None |
+| `--level <level>` | `-l` | Obfuscation level: `minimal`, `standard`, `aggressive`, `custom`. Applied only when `-c` is omitted. A number that is not a level (for example `9`) is an error | `standard` |
 | `--string-encrypt` | | Enable string encryption | Off |
 | `--control-flow` | | Enable control flow obfuscation | Off |
 | `--rename` | | Enable symbol renaming | Off |
@@ -55,8 +55,8 @@ obfy <input>... [options]
 | `--encrypt-resources` | | Enable resource encryption | Off |
 | `--encrypt-constants` | | Enable constant encryption | Off |
 | `--preserve-public` | | Preserve public API names (also forces library-mode on a closed set) | Off |
-| `--merge` | | Merge all input assemblies into one before obfuscating | Off |
-| `--internalize` | | With `--merge` only: make merged types internal. `--internalize false` keeps them public. A config `internalize: false` is overwritten when `--merge` is also passed | On (when merging) |
+| `--merge` | | Merge all input assemblies into one before obfuscating. A config with `assemblyMerge.enabled: true` does the same without the flag (with a single loose input it is ignored with a warning; `--merge` with a single input is an error) | Off |
+| `--internalize` | | When merging: make merged types internal. `--internalize false` keeps them public. Only applied when typed: without it, `assemblyMerge.internalize` from the `-c` file is used, and `true` when there is no file | On (when merging) |
 | `--map <file>` | | Output symbol mapping to file | None |
 | `--report <file>` | | Generate an obfuscation report (HTML or JSON based on extension). A multi-file run includes every successful file | None |
 | `--dry-run` | | Analyze only, don't write output | Off |
@@ -83,6 +83,9 @@ obfy config generate [options]
 |--------|-------|-------------|---------|
 | `--output <file>` | `-o` | Output file path | `obfy.json` |
 | `--level <level>` | `-l` | Preset level for the configuration | `standard` |
+| `--force` | `-f` | Overwrite the output file if it already exists. Without it an existing file is left untouched and the command fails with exit code 1 | Off |
+
+The output folder is created when it does not exist. Enums are written as names (`"level": "Standard"`), as the wizard does, so the file validates against the schema.
 
 ### config wizard
 

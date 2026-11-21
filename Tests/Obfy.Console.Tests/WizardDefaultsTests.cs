@@ -133,7 +133,12 @@ public class WizardDefaultsTests
             File.Exists(path).ShouldBeTrue();
             var settings = JsonSerializer.Deserialize<ObfySettings>(
                 await File.ReadAllTextAsync(path),
-                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    // The wizard writes enums as names, like `config generate` (the schema rejects numbers).
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                });
             settings.ShouldNotBeNull();
             settings!.RuntimeProfile.ShouldBe(RuntimeProfile.UnityIl2Cpp);
             settings.Exclusions.Namespaces.ShouldContain("UnityEngine");

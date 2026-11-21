@@ -692,7 +692,7 @@ public class Program
 
         if (merge)
         {
-            anyFailed = await RunMergeObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun).ConfigureAwait(false);
+            anyFailed = await RunMergeObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun, cancellationToken).ConfigureAwait(false);
         }
         else if (ShouldUseLooseClosedSet(inputs))
         {
@@ -1095,7 +1095,8 @@ public class Program
         Dictionary<string, string> allSymbols,
         List<(ObfuscationResult Result, ObfySettings Settings)> successfulResults,
         IObfuscationService service,
-        bool dryRun)
+        bool dryRun,
+        CancellationToken cancellationToken)
     {
         var primaryInput = inputs[0];
         var outputPath = output != null
@@ -1123,7 +1124,8 @@ public class Program
                 var result = await service.MergeAndObfuscateAsync(
                     inputPaths,
                     outputPath,
-                    settings).ConfigureAwait(false);
+                    settings,
+                    cancellationToken).ConfigureAwait(false);
 
                 if (result.Success)
                 {
@@ -1227,7 +1229,8 @@ public class Program
                     var result = await service.ObfuscateAsync(
                         input.FullName,
                         outputPath,
-                        settings).ConfigureAwait(false);
+                        settings,
+                        cancellationToken).ConfigureAwait(false);
 
                     task.Increment(100);
 

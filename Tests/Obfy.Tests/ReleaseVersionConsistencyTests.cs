@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -36,22 +35,53 @@ public class ReleaseVersionConsistencyTests
             .ToList();
         files.ShouldNotBeEmpty();
 
-        var violations = new List<string>();
-        foreach (var file in files)
-        {
-            foreach (var element in XDocument.Load(file).Descendants()
-                         .Where(e => e.Parent?.Name.LocalName == "PropertyGroup" && !e.HasAttributes))
-            {
-                var value = element.Value.Trim();
-                if (VersionProperties.Contains(element.Name.LocalName) && !value.Contains("$(", StringComparison.Ordinal))
-                {
-                    violations.Add($"{Path.GetRelativePath(RepoRoot, file)}: <{element.Name.LocalName}>{value}</{element.Name.LocalName}>");
-                }
-            }
-        }
+        var violations = files
+            .SelectMany(file => HardCodedVersions(XDocument.Load(file))
+                .Select(found => $"{Path.GetRelativePath(RepoRoot, file)}: {found}"))
+            .ToList();
 
         violations.ShouldBeEmpty("the product version is written in version.json only; projects must not state it");
     }
+
+    [Theory]
+    [InlineData("<Version>3.0.0</Version>")]
+    [InlineData("<Version Condition=\"'$(Version)' == ''\">3.0.0</Version>")]
+    [InlineData("<AssemblyVersion Condition=\"'$(TargetFramework)' != ''\">3.0.0.0</AssemblyVersion>")]
+    [InlineData("<InformationalVersion Label=\"x\">3.0.0-beta</InformationalVersion>")]
+    [InlineData("<VersionPrefix>3.0.0</VersionPrefix>")]
+    public void HardCodedVersionScan_CatchesALiteralOnAnElementWithOrWithoutAttributes(string property)
+    {
+        var project = XDocument.Parse($"<Project><PropertyGroup>{property}</PropertyGroup></Project>");
+
+        HardCodedVersions(project).ShouldHaveSingleItem();
+    }
+
+    [Theory]
+    [InlineData("<Version Condition=\"'$(Version)' == ''\">$(ObfyProductVersion)</Version>")]
+    [InlineData("<Version>$(ObfyProductVersion)</Version>")]
+    [InlineData("<TargetFramework>net10.0</TargetFramework>")]
+    public void HardCodedVersionScan_AcceptsAVersionTakenFromAProperty(string property)
+    {
+        var project = XDocument.Parse($"<Project><PropertyGroup>{property}</PropertyGroup></Project>");
+
+        HardCodedVersions(project).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void HardCodedVersionScan_IgnoresPackageVersionItems()
+    {
+        // Directory.Packages.props lists dependency versions as items; those are not the product version.
+        var packages = XDocument.Parse("<Project><ItemGroup><PackageVersion Include=\"dnlib\" Version=\"4.5.0\" /></ItemGroup></Project>");
+
+        HardCodedVersions(packages).ShouldBeEmpty();
+    }
+
+    /// <summary>Properties of the document that state a version as plain text (no <c>$(...)</c> reference).</summary>
+    private static IEnumerable<string> HardCodedVersions(XDocument document) =>
+        document.Descendants()
+            .Where(e => e.Parent?.Name.LocalName == "PropertyGroup" && VersionProperties.Contains(e.Name.LocalName))
+            .Where(e => !e.Value.Contains("$(", StringComparison.Ordinal))
+            .Select(e => $"<{e.Name.LocalName}>{e.Value.Trim()}</{e.Name.LocalName}>");
 
     [Fact]
     public void DirectoryBuildProps_ReadsTheVersionFromVersionJsonAndLetsTheCommandLineWin()
@@ -72,6 +102,19 @@ public class ReleaseVersionConsistencyTests
     public void SrcProjects_EvaluateToTheVersionInVersionJson(string project)
     {
         EvaluateVersion(project).ShouldBe(VersionJsonVersion(), $"{project} Version");
+    }
+
+    [Fact]
+    public void UiProject_EvaluatesToTheVersionInVersionJson()
+    {
+        // ObfyUI.exe is the desktop app (installer and MSIX). The WPF project targets Windows, so it is only
+        // evaluated here; evaluation runs no targets, and SkipFrontendBuild keeps the npm steps out regardless.
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        EvaluateVersion("Src/Obfy.UI/Obfy.UI.csproj", "-p:SkipFrontendBuild=true").ShouldBe(VersionJsonVersion());
     }
 
     [Fact]
@@ -162,11 +205,14 @@ public class ReleaseVersionConsistencyTests
     {
         var script = File.ReadAllText(Path.Combine(RepoRoot, "build", "build-installer.ps1"));
 
-        script.ShouldContain("Get-ProductVersion.ps1");
         script.ShouldContain("/DMyAppVersion=");
-        // The version is resolved (and version.json validated) before the long publish, not after it.
-        script.IndexOf("Get-ProductVersion.ps1", StringComparison.Ordinal)
-            .ShouldBeLessThan(script.IndexOf("Publishing Obfy CLI", StringComparison.Ordinal));
+
+        // The call itself (not the comment that mentions the script) comes before the long publish, so a bad
+        // version.json fails fast, and the compiler is started after both.
+        var call = Regex.Match(script, @"^\s*\$\w+\s*=\s*\(&\s*\(Join-Path \$BuildDir ""Get-ProductVersion\.ps1""\)", RegexOptions.Multiline);
+        call.Success.ShouldBeTrue("build-installer.ps1 must run Get-ProductVersion.ps1 and keep its result");
+        call.Index.ShouldBeLessThan(script.IndexOf("Publishing Obfy CLI", StringComparison.Ordinal));
+        call.Index.ShouldBeLessThan(script.IndexOf("/DMyAppVersion=", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -180,6 +226,31 @@ public class ReleaseVersionConsistencyTests
             .ShouldBe(2, "dotnet build and dotnet pack both pass the resolved version");
     }
 
+    [Fact]
+    public void PublishWorkflow_ChecksTheTagRightAfterCheckout_BeforeAnySlowSetup()
+    {
+        var workflow = File.ReadAllText(Path.Combine(RepoRoot, ".github", "workflows", "publish.yml"));
+
+        var checkout = workflow.IndexOf("uses: actions/checkout@", StringComparison.Ordinal);
+        var resolve = workflow.IndexOf("- name: Resolve package version", StringComparison.Ordinal);
+        checkout.ShouldBeGreaterThanOrEqualTo(0);
+        resolve.ShouldBeGreaterThan(checkout);
+
+        // A tag that disagrees with version.json fails before the .NET and Node setup and the native-host rebuild.
+        foreach (var slowStep in new[] { "- name: Setup .NET", "- name: Setup MSVC", "- name: Rebuild native packer host", "- name: Setup Node", "- name: Restore", "- name: Build" })
+        {
+            var index = workflow.IndexOf(slowStep, StringComparison.Ordinal);
+            index.ShouldBeGreaterThanOrEqualTo(0, slowStep);
+            resolve.ShouldBeLessThan(index, $"'Resolve package version' must run before '{slowStep}'");
+        }
+
+        // Only the checkout lies between the start of the steps and the check.
+        var stepsStart = workflow.IndexOf("    steps:", StringComparison.Ordinal);
+        stepsStart.ShouldBeGreaterThanOrEqualTo(0);
+        Regex.Matches(workflow[stepsStart..resolve], @"^\s*- (name|uses):", RegexOptions.Multiline).Count
+            .ShouldBe(1, "the checkout is the only step before the version check");
+    }
+
     private static string VersionJsonVersion()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepoRoot, "version.json")));
@@ -188,31 +259,12 @@ public class ReleaseVersionConsistencyTests
     }
 
     /// <summary>The Version MSBuild evaluates for a project, without building it.</summary>
-    private static string EvaluateVersion(string relativeProject, params string[] extraArguments)
-    {
-        var project = Path.Combine(RepoRoot, relativeProject.Replace('/', Path.DirectorySeparatorChar));
-        File.Exists(project).ShouldBeTrue($"Expected project at {project}");
-
-        var start = new ProcessStartInfo("dotnet")
-        {
-            WorkingDirectory = RepoRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        };
-        foreach (var argument in new[] { "msbuild", project, "-getProperty:Version", "-nologo", "-nodeReuse:false" }
-                     .Concat(extraArguments))
-        {
-            start.ArgumentList.Add(argument);
-        }
-
-        using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start dotnet");
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        process.WaitForExit(180_000).ShouldBeTrue("dotnet msbuild timed out");
-        process.ExitCode.ShouldBe(0, stdout.Result + stderr.Result);
-        return stdout.Result.Trim();
-    }
+    private static string EvaluateVersion(string relativeProject, params string[] extraArguments) =>
+        MsBuildEvaluation.Property(
+            RepoRoot,
+            Path.Combine(RepoRoot, relativeProject.Replace('/', Path.DirectorySeparatorChar)),
+            "Version",
+            extraArguments);
 
     private static string FindRepoRoot()
     {

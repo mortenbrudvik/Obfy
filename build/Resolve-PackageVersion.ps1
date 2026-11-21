@@ -23,7 +23,8 @@ if ($RefName -match '^v?(?<Version>(?<Numbers>\d+\.\d+\.\d+)(?:[-+][0-9A-Za-z.-]
         }
 
         if ($numbers -ne $expected) {
-            Write-Error "Release '$RefName' does not match version.json ($expected). Bump version.json to $numbers and merge it before tagging, or tag v$expected."
+            # For a published release the tag and the release already exist, so say what to undo as well as what to do.
+            Write-Error "Release '$RefName' does not match version.json ($expected). To release $expected instead, tag v$expected. To release $numbers, delete the GitHub release and the tag '$RefName' if they exist, bump version.json (and the package\AppxManifest.xml snapshot) to $numbers on main, then tag the new commit and publish the release again."
             exit 1
         }
     }

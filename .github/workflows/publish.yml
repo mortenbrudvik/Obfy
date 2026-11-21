@@ -22,6 +22,22 @@ jobs:
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+    # version.json is the product version. The release tag (or the manual input) must carry the same major.minor.patch,
+    # so the package, installer and MSIX cannot go out under different versions. This runs first, right after the
+    # checkout, so a mismatch fails before the slow setup and the native-host rebuild. The tag stays the build's
+    # Version (-p:Version below) because it may add a prerelease suffix that version.json cannot hold.
+    - name: Resolve package version
+      id: version
+      shell: pwsh
+      env:
+        PACKAGE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      run: |
+        $resolved = & ./build/Resolve-PackageVersion.ps1 -RefName $env:PACKAGE_REF -VersionFile ./version.json
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resolved)) {
+          throw "Could not resolve a package version from '$env:PACKAGE_REF'."
+        }
+        "version=$($resolved.Trim())" >> $env:GITHUB_OUTPUT
+
     - name: Setup .NET
       uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
       with:
@@ -48,21 +64,6 @@ jobs:
         node-version: 24
         cache: npm
         cache-dependency-path: Src/WebApp/package-lock.json
-
-    # version.json is the product version. The release tag (or the manual input) must carry the same major.minor.patch,
-    # so the package, installer and MSIX cannot go out under different versions. The tag stays the build's Version
-    # (-p:Version below) because it may add a prerelease suffix that version.json cannot hold.
-    - name: Resolve package version
-      id: version
-      shell: pwsh
-      env:
-        PACKAGE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-      run: |
-        $resolved = & ./build/Resolve-PackageVersion.ps1 -RefName $env:PACKAGE_REF -VersionFile ./version.json
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resolved)) {
-          throw "Could not resolve a package version from '$env:PACKAGE_REF'."
-        }
-        "version=$($resolved.Trim())" >> $env:GITHUB_OUTPUT
 
     - name: Restore
       run: dotnet restore Obfy.sln

@@ -35,9 +35,7 @@ public class ProductVersionScriptTests : IDisposable
     }
 
     [Theory]
-    [InlineData("{ \"major\": 2, \"minor\": 0, \"patch\": 1 }", "2.0.1")]
-    [InlineData("{\"patch\":7,\"minor\":12,\"major\":3}", "3.12.7")]
-    [InlineData("{ \"major\": 65535, \"minor\": 0, \"patch\": 0 }", "65535.0.0")]
+    [MemberData(nameof(VersionJsonCases.Accepted), MemberType = typeof(VersionJsonCases))]
     public void PrintsMajorMinorPatch(string json, string expected)
     {
         var (exitCode, stdout, stderr) = Run(WriteVersionFile(json));
@@ -46,15 +44,10 @@ public class ProductVersionScriptTests : IDisposable
         stdout.Trim().ShouldBe(expected);
     }
 
+    // The same files Directory.Build.props rejects (DirectoryBuildPropsVersionTests): the two readers must agree.
     [Theory]
-    [InlineData("not json")]
-    [InlineData("{ \"major\": 2, \"minor\": 0 }")]
-    [InlineData("{ \"major\": \"2\", \"minor\": 0, \"patch\": 0 }")]
-    [InlineData("{ \"major\": 2.5, \"minor\": 0, \"patch\": 0 }")]
-    [InlineData("{ \"major\": -1, \"minor\": 0, \"patch\": 0 }")]
-    [InlineData("{ \"major\": 2, \"minor\": 65536, \"patch\": 0 }")]
-    [InlineData("{ \"major\": true, \"minor\": 0, \"patch\": 0 }")]
-    public void RefusesAFileThatIsNotThreeIntegers(string json)
+    [MemberData(nameof(VersionJsonCases.Rejected), MemberType = typeof(VersionJsonCases))]
+    public void RefusesAFileThatIsNotExactlyTheThreeIntegerKeys(string json)
     {
         var (exitCode, stdout, stderr) = Run(WriteVersionFile(json));
 

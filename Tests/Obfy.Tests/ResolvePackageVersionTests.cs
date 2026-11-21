@@ -47,6 +47,26 @@ public class ResolvePackageVersionTests : IDisposable
     }
 
     [Fact]
+    public void WithVersionFile_TheMismatchMessageSaysWhatToDoWhenTheReleaseAndTagAlreadyExist()
+    {
+        var versionFile = WriteVersionFile("{ \"major\": 2, \"minor\": 1, \"patch\": 0 }");
+
+        var (exitCode, _, rawStderr) = Run("v2.1.1", versionFile);
+        // PowerShell colours and may wrap an error message; compare the words.
+        var stderr = System.Text.RegularExpressions.Regex.Replace(
+            System.Text.RegularExpressions.Regex.Replace(rawStderr, @"\u001b\[[0-9;]*m", ""), @"\s+", " ");
+
+        exitCode.ShouldNotBe(0);
+        // A published release already has its tag, so "tag it after merging" cannot be followed.
+        stderr.ShouldNotContain("before tagging");
+        stderr.ShouldContain("delete the GitHub release and the tag 'v2.1.1'");
+        stderr.ShouldContain("bump version.json");
+        stderr.ShouldContain("2.1.1 on main");
+        stderr.ShouldContain("tag the new commit");
+        stderr.ShouldContain("tag v2.1.0");
+    }
+
+    [Fact]
     public void WithVersionFile_StillRejectsANonVersionTag()
     {
         var versionFile = WriteVersionFile("{ \"major\": 2, \"minor\": 1, \"patch\": 0 }");

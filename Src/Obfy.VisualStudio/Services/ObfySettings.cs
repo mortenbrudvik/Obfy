@@ -9,6 +9,9 @@ public class ObfuscationResult
 {
     public const string CancelledMessage = "Obfuscation was cancelled.";
 
+    public const string CancelledButStillRunningMessage =
+        "Obfuscation was cancelled, but the Obfy CLI process did not exit and may still be running.";
+
     public bool Success { get; set; }
     public string? ErrorMessage { get; set; }
     public string? OutputPath { get; set; }
@@ -33,24 +36,28 @@ public class ObfuscationResult
         };
     }
 
-    public static ObfuscationResult Cancelled(string inputPath)
+    public static ObfuscationResult Cancelled(string inputPath, bool processStillRunning = false)
     {
         return new ObfuscationResult
         {
             Success = false,
             StopReason = ObfuscationStopReason.Cancelled,
-            ErrorMessage = CancelledMessage,
+            ErrorMessage = processStillRunning ? CancelledButStillRunningMessage : CancelledMessage,
             OutputPath = inputPath
         };
     }
 
-    public static ObfuscationResult TimedOut(string inputPath, TimeSpan limit)
+    public static ObfuscationResult TimedOut(string inputPath, TimeSpan limit, bool processStillRunning = false)
     {
+        var outcome = processStillRunning
+            ? "the Obfy CLI process did not exit when it was stopped and may still be running"
+            : "the Obfy CLI was stopped";
+
         return new ObfuscationResult
         {
             Success = false,
             StopReason = ObfuscationStopReason.TimedOut,
-            ErrorMessage = $"Obfuscation timed out after {DescribeLimit(limit)} and the Obfy CLI was stopped. " +
+            ErrorMessage = $"Obfuscation timed out after {DescribeLimit(limit)} and {outcome}. " +
                            "The time limit is under Tools > Options > Obfy > General > Run Timeout (minutes).",
             OutputPath = inputPath
         };

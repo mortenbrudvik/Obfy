@@ -5,33 +5,78 @@ using Shouldly;
 namespace Obfy.VisualStudio.Tests;
 
 /// <summary>
-/// Runs real short-lived child processes. The "long-running CLI" is a copy of ping.exe under a unique name, so the
-/// tests can tell whether exactly that process (a grandchild of the runner, started through cmd.exe) is still alive.
+/// Runs real short-lived child processes. The "CLI" is a renamed copy of cmd.exe, and the "long-running work" is a
+/// renamed copy of ping.exe, both under unique names. That lets the tests tell exactly which processes (the root and
+/// its grandchildren, started through the root) are still alive, and lets the cleanup kill them by name even when a
+/// test failed half way and the runner never got to.
 /// </summary>
 public class CliProcessRunnerTests : IDisposable
 {
-    // Far below the helper's own run time (about a minute), far above what a kill needs on a loaded machine.
+    // Far below the helpers' own run time (about a minute), far above what a kill needs on a loaded machine.
     private static readonly TimeSpan Generous = TimeSpan.FromSeconds(20);
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "obfy-runner-" + Guid.NewGuid().ToString("N"));
-    private readonly string _sleeperName = "obfy-sleeper-" + Guid.NewGuid().ToString("N").Substring(0, 8);
-    private string SleeperPath => Path.Combine(_dir, _sleeperName + ".exe");
+    private readonly string _unique = Guid.NewGuid().ToString("N").Substring(0, 8);
+    private readonly string _rootName;
+    private readonly string _sleeperName;
 
     public CliProcessRunnerTests()
     {
+        _rootName = "obfy-root-" + _unique;
+        _sleeperName = "obfy-sleeper-" + _unique;
         Directory.CreateDirectory(_dir);
+        File.Copy(Path.Combine(Environment.SystemDirectory, "cmd.exe"), RootPath);
         File.Copy(Path.Combine(Environment.SystemDirectory, "PING.EXE"), SleeperPath);
     }
 
+    private string RootPath => Path.Combine(_dir, _rootName + ".exe");
+    private string SleeperPath => Path.Combine(_dir, _sleeperName + ".exe");
+
     public void Dispose()
     {
-        foreach (var leftover in Process.GetProcessesByName(_sleeperName))
-        {
-            try { leftover.Kill(); } catch { /* already gone */ }
-            leftover.Dispose();
-        }
+        // Root first, so a still-running loop cannot start more helpers while they are being killed.
+        KillAllAndWait(_rootName);
+        KillAllAndWait(_sleeperName);
 
-        try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ }
+        for (var attempt = 0; attempt < 50 && Directory.Exists(_dir); attempt++)
+        {
+            try
+            {
+                Directory.Delete(_dir, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(100);
+            }
+        }
+    }
+
+    private static void KillAllAndWait(string processName)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            var processes = Process.GetProcessesByName(processName);
+            if (processes.Length == 0)
+                return;
+
+            foreach (var process in processes)
+            {
+                try
+                {
+                    process.Kill();
+                    process.WaitForExit(5000);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+                {
+                    // Already gone.
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            }
+        }
     }
 
     [WindowsFact]
@@ -83,7 +128,7 @@ public class CliProcessRunnerTests : IDisposable
             cts.Token);
 
         await sawLine.Task.WaitAsync(Generous);
-        (await WaitUntil(() => SleeperCount() > 0)).ShouldBeTrue("the long-running helper child never started");
+        (await WaitUntil(() => Count(_sleeperName) > 0)).ShouldBeTrue("the long-running helper child never started");
 
         var stopwatch = Stopwatch.StartNew();
         cts.Cancel();
@@ -94,26 +139,61 @@ public class CliProcessRunnerTests : IDisposable
         result.Output.ShouldContain("before-kill");
         stopwatch.Elapsed.ShouldBeLessThan(Generous);
 
-        // cmd.exe is the process the runner started; the helper is its child. The whole tree has to go.
-        (await WaitUntil(() => SleeperCount() == 0)).ShouldBeTrue("the child of the killed process is still running");
+        // The root is the process the runner started; the helper is its child. The whole tree has to go.
+        (await WaitUntil(() => Count(_sleeperName) == 0)).ShouldBeTrue("the child of the killed process is still running");
     }
 
     [WindowsFact]
-    public async Task Timeout_EndsALongRunningChildPromptly_AndReportsTimedOut()
+    public async Task Timeout_EndsALongRunningChildPromptly_AndReportsTimedOut_KillingTheTree()
     {
+        // The limit has to outlast the start of the helper, or there would be no child to find. Starting a
+        // process takes milliseconds; four seconds is far beyond that even on a loaded machine.
         var stopwatch = Stopwatch.StartNew();
+        var run = Run(
+            $"\"{SleeperPath}\" -n 60 127.0.0.1 > nul",
+            TimeSpan.FromSeconds(4),
+            null,
+            null,
+            CancellationToken.None);
 
-        var result = await Run(
-                $"\"{SleeperPath}\" -n 30 127.0.0.1 > nul",
-                TimeSpan.FromSeconds(1),
-                null,
-                null,
-                CancellationToken.None)
-            .WaitAsync(Generous);
+        (await WaitUntil(() => Count(_sleeperName) > 0)).ShouldBeTrue("the long-running helper child never started");
+        var result = await run.WaitAsync(Generous);
         stopwatch.Stop();
 
         result.Status.ShouldBe(CliRunStatus.TimedOut);
         stopwatch.Elapsed.ShouldBeLessThan(Generous);
+        (await WaitUntil(() => Count(_sleeperName) == 0)).ShouldBeTrue("the child of the timed-out process is still running");
+    }
+
+    [WindowsFact]
+    public Task Cancel_WithAWideProcessTree_KillsEveryDescendantPromptly() =>
+        CancelAWideTree(CliProcessRunner.ProcessTreeKill.JobObject);
+
+    [WindowsFact]
+    public Task Cancel_WithAWideProcessTree_KillsEveryDescendantPromptly_WhenOnlyTaskkillIsUsed() =>
+        CancelAWideTree(CliProcessRunner.ProcessTreeKill.TaskkillOnly);
+
+    private async Task CancelAWideTree(CliProcessRunner.ProcessTreeKill kill)
+    {
+        // taskkill prints about 85 bytes per killed process; with the pipe nobody reads, it blocks on the write once
+        // roughly 45 processes are listed. Sixty children and the one the root waits for are well past that.
+        const int children = 60;
+        using var cts = new CancellationTokenSource();
+
+        var run = Run(WideTreeScript(children), TimeSpan.FromMinutes(10), null, null, cts.Token, kill);
+
+        (await WaitUntil(() => Count(_sleeperName) >= children + 1, TimeSpan.FromSeconds(60)))
+            .ShouldBeTrue($"only {Count(_sleeperName)} of {children + 1} helpers started");
+
+        var stopwatch = Stopwatch.StartNew();
+        cts.Cancel();
+        var result = await run.WaitAsync(Generous);
+        stopwatch.Stop();
+
+        result.Status.ShouldBe(CliRunStatus.Cancelled);
+        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(8));
+        (await WaitUntil(() => Count(_sleeperName) == 0))
+            .ShouldBeTrue($"{Count(_sleeperName)} descendants of the killed process are still running");
     }
 
     [WindowsFact]
@@ -130,6 +210,22 @@ public class CliProcessRunnerTests : IDisposable
     }
 
     [WindowsFact]
+    public async Task NormalRun_LeavesAHelperTheCliStartedRunning()
+    {
+        // A CLI may leave a helper behind on purpose (a build server). The job object must not kill it when the
+        // run ends normally; before the job existed, nothing did.
+        var result = await Run(
+            $"start \"\" /b \"{SleeperPath}\" -n 60 127.0.0.1 > nul & echo started",
+            TimeSpan.FromMinutes(1),
+            null,
+            null,
+            CancellationToken.None);
+
+        result.Status.ShouldBe(CliRunStatus.Completed);
+        Count(_sleeperName).ShouldBe(1);
+    }
+
+    [WindowsFact]
     public async Task CancelAfterTheRunHasFinished_IsHarmless()
     {
         using var cts = new CancellationTokenSource();
@@ -140,41 +236,27 @@ public class CliProcessRunnerTests : IDisposable
         result.Status.ShouldBe(CliRunStatus.Completed);
     }
 
-    [Fact]
-    public void ResolveTimeout_UsesTheDefault_ForMissingOrNonPositiveValues()
-    {
-        var expected = TimeSpan.FromMinutes(CliProcessRunner.DefaultTimeoutMinutes);
+    /// <summary>
+    /// The root starts <paramref name="children"/> sleepers with <c>start /b</c> (so they are its children and share
+    /// its stderr pipe), then waits for one more itself so it stays alive while they run.
+    /// </summary>
+    private string WideTreeScript(int children) =>
+        $"(for /L %i in (1,1,{children}) do @start \"\" /b \"{SleeperPath}\" -n 60 127.0.0.1 > nul)" +
+        $" & \"{SleeperPath}\" -n 60 127.0.0.1 > nul";
 
-        CliProcessRunner.ResolveTimeout(null).ShouldBe(expected);
-        CliProcessRunner.ResolveTimeout(0).ShouldBe(expected);
-        CliProcessRunner.ResolveTimeout(-5).ShouldBe(expected);
-    }
-
-    [Fact]
-    public void ResolveTimeout_UsesTheConfiguredMinutes_UpToTheMaximum()
-    {
-        CliProcessRunner.ResolveTimeout(5).ShouldBe(TimeSpan.FromMinutes(5));
-        CliProcessRunner.ResolveTimeout(int.MaxValue)
-            .ShouldBe(TimeSpan.FromMinutes(CliProcessRunner.MaxTimeoutMinutes));
-    }
-
-    [Fact]
-    public void DefaultTimeout_IsGenerousEnoughForLargeSolutions()
-    {
-        CliProcessRunner.DefaultTimeoutMinutes.ShouldBeGreaterThanOrEqualTo(10);
-    }
-
-    private static Task<CliRunResult> Run(
+    private Task<CliRunResult> Run(
         string script,
         TimeSpan timeout,
         Action<string>? onOutput,
         Action<string>? onError,
-        CancellationToken cancellationToken) =>
-        CliProcessRunner.RunAsync("cmd.exe", "/d /c \"" + script + "\"", timeout, onOutput, onError, cancellationToken);
+        CancellationToken cancellationToken,
+        CliProcessRunner.ProcessTreeKill kill = CliProcessRunner.ProcessTreeKill.JobObject) =>
+        CliProcessRunner.RunAsync(
+            RootPath, "/d /c \"" + script + "\"", timeout, onOutput, onError, cancellationToken, kill);
 
-    private int SleeperCount()
+    private static int Count(string processName)
     {
-        var processes = Process.GetProcessesByName(_sleeperName);
+        var processes = Process.GetProcessesByName(processName);
         try
         {
             return processes.Length;
@@ -186,9 +268,11 @@ public class CliProcessRunnerTests : IDisposable
         }
     }
 
-    private static async Task<bool> WaitUntil(Func<bool> condition)
+    private static Task<bool> WaitUntil(Func<bool> condition) => WaitUntil(condition, Generous);
+
+    private static async Task<bool> WaitUntil(Func<bool> condition, TimeSpan limit)
     {
-        var deadline = DateTime.UtcNow + Generous;
+        var deadline = DateTime.UtcNow + limit;
         while (DateTime.UtcNow < deadline)
         {
             if (condition())

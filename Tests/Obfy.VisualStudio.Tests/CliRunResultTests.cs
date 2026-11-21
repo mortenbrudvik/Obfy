@@ -81,6 +81,45 @@ public class CliRunResultTests
     }
 
     [Fact]
+    public void Cancelled_WhenTheProcessDidNotExit_SaysItMayStillBeRunning()
+    {
+        var run = new CliRunResult(CliRunStatus.Cancelled, -1, string.Empty, string.Empty, processStillRunning: true);
+
+        var result = run.ToObfuscationResult(Input, Limit);
+
+        result.StopReason.ShouldBe(ObfuscationStopReason.Cancelled);
+        result.ErrorMessage.ShouldBe(ObfuscationResult.CancelledButStillRunningMessage);
+        result.ErrorMessage.ShouldContain("may still be running");
+    }
+
+    [Fact]
+    public void TimedOut_WhenTheProcessDidNotExit_DoesNotClaimItWasStopped()
+    {
+        var run = new CliRunResult(CliRunStatus.TimedOut, -1, string.Empty, string.Empty, processStillRunning: true);
+
+        var result = run.ToObfuscationResult(Input, Limit);
+
+        result.StopReason.ShouldBe(ObfuscationStopReason.TimedOut);
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage.ShouldContain("timed out after 30 minutes");
+        result.ErrorMessage.ShouldContain("did not exit when it was stopped and may still be running");
+        result.ErrorMessage.ShouldNotContain("the Obfy CLI was stopped");
+        result.ErrorMessage.ShouldContain("Run Timeout (minutes)");
+    }
+
+    [Theory]
+    [InlineData(true, false, CliRunStatus.Completed)]
+    [InlineData(true, true, CliRunStatus.Completed)]
+    [InlineData(false, true, CliRunStatus.Cancelled)]
+    [InlineData(false, false, CliRunStatus.TimedOut)]
+    public void Classify_ReportsAProcessThatFinishedByItselfAsCompleted(
+        bool exitedByItself, bool callerCancelled, CliRunStatus expected)
+    {
+        // A stop requested in the very instant the process exited must not turn its result into a stop.
+        CliProcessRunner.Classify(exitedByItself, callerCancelled).ShouldBe(expected);
+    }
+
+    [Fact]
     public void Failure_IsNotAStop()
     {
         ObfuscationResult.Failure(Input, "x").StopReason.ShouldBe(ObfuscationStopReason.None);

@@ -24,12 +24,13 @@ public enum CliRunStatus
 /// <summary>What a CLI run produced. <see cref="Output"/> and <see cref="Error"/> hold what was read before the run ended.</summary>
 public sealed class CliRunResult
 {
-    public CliRunResult(CliRunStatus status, int exitCode, string output, string error)
+    public CliRunResult(CliRunStatus status, int exitCode, string output, string error, bool processStillRunning = false)
     {
         Status = status;
         ExitCode = exitCode;
         Output = output;
         Error = error;
+        ProcessStillRunning = processStillRunning;
     }
 
     public CliRunStatus Status { get; }
@@ -41,6 +42,12 @@ public sealed class CliRunResult
     public string Error { get; }
 
     /// <summary>
+    /// True when the run was stopped (<see cref="CliRunStatus.Cancelled"/> or <see cref="CliRunStatus.TimedOut"/>)
+    /// but the process was still there when the wait for it ended, so it may still be running.
+    /// </summary>
+    public bool ProcessStillRunning { get; }
+
+    /// <summary>
     /// Maps the run to the result the commands show. A cancelled or timed-out run is not reported as a failure
     /// of the obfuscation itself: <see cref="ObfuscationResult.StopReason"/> says why it ended.
     /// </summary>
@@ -49,9 +56,9 @@ public sealed class CliRunResult
         switch (Status)
         {
             case CliRunStatus.Cancelled:
-                return ObfuscationResult.Cancelled(inputPath);
+                return ObfuscationResult.Cancelled(inputPath, ProcessStillRunning);
             case CliRunStatus.TimedOut:
-                return ObfuscationResult.TimedOut(inputPath, timeout);
+                return ObfuscationResult.TimedOut(inputPath, timeout, ProcessStillRunning);
         }
 
         var result = new ObfuscationResult { Success = ExitCode == 0 };
@@ -72,6 +79,8 @@ public sealed class CliRunResult
 /// <summary>
 /// Runs the Obfy CLI as a child process and makes sure a run always ends: when the token is cancelled or the time
 /// limit passes, the whole process tree is killed and the call returns promptly, whatever the CLI is doing.
+/// The process is put in a kill-on-close job object (<see cref="ProcessJob"/>), so the tree dies in one call however
+/// wide it is, and also if Visual Studio itself goes away while the CLI runs.
 /// </summary>
 public static class CliProcessRunner
 {
@@ -106,15 +115,46 @@ public static class CliProcessRunner
     /// is cancelled (<see cref="CliRunStatus.Cancelled"/>) or <paramref name="timeout"/> passes
     /// (<see cref="CliRunStatus.TimedOut"/>). A token that is already cancelled never starts the process.
     /// <paramref name="onOutput"/> and <paramref name="onError"/> get each non-empty line as it arrives, from a
-    /// thread-pool thread, and never after this call has returned.
+    /// thread-pool thread. No callback starts after this call has returned; one that is already running at that
+    /// moment may still finish.
+    /// A process that exits by itself is <see cref="CliRunStatus.Completed"/> even when a stop was requested in the
+    /// same instant.
     /// </summary>
-    public static async Task<CliRunResult> RunAsync(
+    public static Task<CliRunResult> RunAsync(
         string fileName,
         string arguments,
         TimeSpan timeout,
         Action<string>? onOutput,
         Action<string>? onError,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        RunAsync(fileName, arguments, timeout, onOutput, onError, cancellationToken, ProcessTreeKill.JobObject);
+
+    /// <summary>How a run kills the process tree when it has to stop.</summary>
+    internal enum ProcessTreeKill
+    {
+        /// <summary>The job object, with taskkill as the fallback when no job could be created.</summary>
+        JobObject,
+
+        /// <summary>taskkill only. For tests of the fallback.</summary>
+        TaskkillOnly
+    }
+
+    /// <summary>Decides how a run that was asked to stop ended. A process that finished by itself completed.</summary>
+    internal static CliRunStatus Classify(bool exitedByItself, bool callerCancelled)
+    {
+        if (exitedByItself)
+            return CliRunStatus.Completed;
+        return callerCancelled ? CliRunStatus.Cancelled : CliRunStatus.TimedOut;
+    }
+
+    internal static async Task<CliRunResult> RunAsync(
+        string fileName,
+        string arguments,
+        TimeSpan timeout,
+        Action<string>? onOutput,
+        Action<string>? onError,
+        CancellationToken cancellationToken,
+        ProcessTreeKill kill)
     {
         if (cancellationToken.IsCancellationRequested)
             return new CliRunResult(CliRunStatus.Cancelled, -1, string.Empty, string.Empty);
@@ -174,6 +214,7 @@ public static class CliProcessRunner
         var stopRequested = NewSignal();
 
         process.Start();
+        using var job = kill == ProcessTreeKill.TaskkillOnly ? null : ProcessJob.TryCreateFor(process);
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
@@ -185,16 +226,26 @@ public static class CliProcessRunner
             await Task.WhenAny(exited.Task, stopRequested.Task).ConfigureAwait(false);
         }
 
+        // Judged by the process itself, not by the Exited event, which can lag behind: a process that has exited
+        // finished on its own, whatever stopped the wait.
         var status = CliRunStatus.Completed;
-        if (!exited.Task.IsCompleted)
+        var stillRunning = false;
+        if (!HasExited(process))
         {
-            // A caller that cancelled and hit the limit in the same moment cancelled.
-            status = cancellationToken.IsCancellationRequested ? CliRunStatus.Cancelled : CliRunStatus.TimedOut;
+            var stopped = await Task.Run(() => StopProcessTree(process, job)).ConfigureAwait(false);
 
-            await Task.Run(() => KillProcessTree(process)).ConfigureAwait(false);
-            var gone = await Task.WhenAny(exited.Task, Task.Delay(StopWait)).ConfigureAwait(false);
-            if (gone != exited.Task)
-                onError?.Invoke("The Obfy CLI process did not exit after it was asked to stop.");
+            // A caller that cancelled and hit the limit in the same moment cancelled.
+            status = Classify(exitedByItself: !stopped, callerCancelled: cancellationToken.IsCancellationRequested);
+
+            if (stopped)
+            {
+                await Task.WhenAny(exited.Task, Task.Delay(StopWait)).ConfigureAwait(false);
+                if (!HasExited(process))
+                {
+                    stillRunning = true;
+                    onError?.Invoke("The Obfy CLI process did not exit after it was asked to stop.");
+                }
+            }
         }
 
         // Let the readers deliver the tail of the output, but never wait on them indefinitely.
@@ -209,51 +260,45 @@ public static class CliProcessRunner
             error = errorBuilder.ToString();
         }
 
-        var exitCode = status == CliRunStatus.Completed ? process.ExitCode : -1;
-        return new CliRunResult(status, exitCode, output, error);
+        if (status == CliRunStatus.Completed)
+        {
+            // Closing the job handle would kill what is left in it; a helper the CLI meant to leave running (a build
+            // server, say) must survive a normal run, as it did before the job existed.
+            job?.Disarm();
+            return new CliRunResult(status, process.ExitCode, output, error);
+        }
+
+        return new CliRunResult(status, -1, output, error, stillRunning);
+    }
+
+    private static bool HasExited(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private static TaskCompletionSource<bool> NewSignal() =>
         new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
-    /// Kills the process and everything it started. <see cref="Process.Kill()"/> alone leaves children running, and
-    /// .NET Framework (the extension's runtime) has no overload that takes the tree, so taskkill does it. If taskkill
-    /// cannot run, the process itself is still killed.
+    /// Kills the process and everything it started. Returns false when the process had already exited, so there was
+    /// nothing to stop. The job object ends the whole tree in one call; without one, taskkill does it
+    /// (<see cref="Process.Kill()"/> alone leaves children running, and .NET Framework, the extension's runtime, has no
+    /// overload that takes the tree). If neither works, the process itself is still killed.
     /// </summary>
-    private static void KillProcessTree(Process process)
+    private static bool StopProcessTree(Process process, ProcessJob? job)
     {
-        int pid;
-        try
-        {
-            if (process.HasExited)
-                return;
-            pid = process.Id;
-        }
-        catch (InvalidOperationException)
-        {
-            return;
-        }
+        if (HasExited(process))
+            return false;
 
-        try
-        {
-            using var taskkill = Process.Start(new ProcessStartInfo
-            {
-                FileName = Path.Combine(Environment.SystemDirectory, "taskkill.exe"),
-                Arguments = "/PID " + pid + " /T /F",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-
-            if (taskkill != null && !taskkill.WaitForExit((int)StopWait.TotalMilliseconds))
-                taskkill.Kill();
-        }
-        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
-        {
-            // Fall through to killing the process itself.
-        }
+        if (job == null || !job.Terminate())
+            TaskkillTree(process);
 
         try
         {
@@ -263,6 +308,52 @@ public static class CliProcessRunner
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
             // Already gone, or access denied; the wait for exit reports the latter.
+        }
+
+        return true;
+    }
+
+    private static void TaskkillTree(Process process)
+    {
+        int pid;
+        try
+        {
+            pid = process.Id;
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+
+        try
+        {
+            using var taskkill = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = Path.Combine(Environment.SystemDirectory, "taskkill.exe"),
+                    Arguments = "/PID " + pid + " /T /F",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                }
+            };
+
+            // taskkill lists every process it kills. Both streams have to be read, or a wide tree fills the pipe
+            // (about 45 processes) and taskkill blocks on the write instead of killing the rest.
+            taskkill.OutputDataReceived += (sender, e) => { };
+            taskkill.ErrorDataReceived += (sender, e) => { };
+            taskkill.Start();
+            taskkill.BeginOutputReadLine();
+            taskkill.BeginErrorReadLine();
+
+            if (!taskkill.WaitForExit((int)StopWait.TotalMilliseconds))
+                taskkill.Kill();
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        {
+            // The caller kills the process itself.
         }
     }
 }

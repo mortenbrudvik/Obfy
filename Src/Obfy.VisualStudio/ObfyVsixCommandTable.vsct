@@ -26,9 +26,12 @@
         </Strings>
       </Button>
 
-      <!-- Cancel Obfuscation command: stops a running obfuscation (enabled only while one is running) -->
+      <!-- Cancel Obfuscation command: stops a running obfuscation. In the menu only while one is running
+           (CancelObfuscationCommand.BeforeQueryStatus decides). -->
       <Button guid="guidObfyPackageCmdSet" id="cmdidCancelObfuscation" priority="0x0150" type="Button">
         <Parent guid="guidObfyPackageCmdSet" id="ObfyMenuGroup"/>
+        <CommandFlag>DefaultInvisible</CommandFlag>
+        <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Cancel Obfuscation</ButtonText>
           <ToolTipText>Stop the obfuscation that is running</ToolTipText>

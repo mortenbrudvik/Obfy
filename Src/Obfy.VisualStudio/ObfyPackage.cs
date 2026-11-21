@@ -24,7 +24,7 @@ public sealed class ObfyPackage : ToolkitPackage
     /// <summary>
     /// Package GUID - must match the one in source.extension.vsixmanifest
     /// </summary>
-    public const string PackageGuidString = "5a9b8c7d-6e5f-4a3b-2c1d-0e9f8a7b6c5d";
+    public const string PackageGuidString = PackageGuids.PackageString;
 
     /// <summary>
     /// Output service for logging to VS Output window

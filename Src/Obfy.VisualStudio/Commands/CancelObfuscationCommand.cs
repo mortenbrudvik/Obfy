@@ -6,9 +6,9 @@ using Microsoft.VisualStudio.Shell;
 namespace Obfy.VisualStudio.Commands;
 
 /// <summary>
-/// Command that stops the obfuscation runs that are in flight (manual and post-build). Enabled only while one runs.
+/// Command that stops the obfuscation runs that are in flight (manual and post-build). Shown only while one runs.
 /// </summary>
-[Command(PackageIds.cmdidCancelObfuscation)]
+[Command(PackageGuids.CommandSetString, PackageIds.cmdidCancelObfuscation)]
 internal sealed class CancelObfuscationCommand : BaseCommand<CancelObfuscationCommand>
 {
     protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
@@ -29,7 +29,9 @@ internal sealed class CancelObfuscationCommand : BaseCommand<CancelObfuscationCo
 
     protected override void BeforeQueryStatus(EventArgs e)
     {
-        Command.Visible = true;
-        Command.Enabled = ObfyPackage.Runs.ActiveRunCount > 0;
+        // The .vsct declares the button DefaultInvisible + DynamicVisibility: it is in the menu only during a run.
+        var running = ObfyPackage.Runs.ActiveRunCount > 0;
+        Command.Visible = running;
+        Command.Enabled = running;
     }
 }

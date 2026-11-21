@@ -90,7 +90,8 @@ public class GeneralOptionsPage : DialogPage
     [Category("General")]
     [DisplayName("Run Timeout (minutes)")]
     [Description("Stop an obfuscation run that takes longer than this many minutes, and report it as timed out. " +
-                 "Large solutions can take several minutes. A value below 1 restores the default (30).")]
+                 "Large solutions can take several minutes. A value below 1 restores the default (30); " +
+                 "a value above 1440 (one day) is treated as 1440.")]
     [DefaultValue(CliProcessRunner.DefaultTimeoutMinutes)]
     public int RunTimeoutMinutes
     {

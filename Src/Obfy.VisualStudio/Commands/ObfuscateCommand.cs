@@ -10,7 +10,7 @@ namespace Obfy.VisualStudio.Commands;
 /// <summary>
 /// Command that obfuscates the selected project's output assembly
 /// </summary>
-[Command(PackageIds.cmdidObfuscate)]
+[Command(PackageGuids.CommandSetString, PackageIds.cmdidObfuscate)]
 internal sealed class ObfuscateCommand : BaseCommand<ObfuscateCommand>
 {
     protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)
@@ -159,15 +159,4 @@ internal sealed class ObfuscateCommand : BaseCommand<ObfuscateCommand>
             return null;
         }
     }
-}
-
-/// <summary>
-/// Package IDs for commands - must match the values in .vsct file
-/// </summary>
-internal static class PackageIds
-{
-    public const int cmdidObfuscate = 0x0100;
-    public const int cmdidTogglePostBuild = 0x0101;
-    public const int cmdidOpenSettings = 0x0102;
-    public const int cmdidCancelObfuscation = 0x0103;
 }

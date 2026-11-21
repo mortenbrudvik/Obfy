@@ -8,7 +8,7 @@ namespace Obfy.VisualStudio.Commands;
 /// <summary>
 /// Command that toggles post-build obfuscation for the selected project
 /// </summary>
-[Command(PackageIds.cmdidTogglePostBuild)]
+[Command(PackageGuids.CommandSetString, PackageIds.cmdidTogglePostBuild)]
 internal sealed class TogglePostBuildCommand : BaseCommand<TogglePostBuildCommand>
 {
     protected override async Task ExecuteAsync(OleMenuCmdEventArgs e)

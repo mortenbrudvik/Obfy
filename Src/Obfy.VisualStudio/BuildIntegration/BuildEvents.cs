@@ -24,6 +24,11 @@ public static class BuildEvents
     /// <summary>
     /// A new build of a project replaces the output a running obfuscation of that project is working on.
     /// </summary>
+    /// <remarks>
+    /// The toolkit raises this for every project action except clean (build, rebuild, deploy, ...) and passes only
+    /// the project, not the action, so a deploy of the same project cancels its post-build run as well. That only
+    /// matters for project types that have a deploy step. <c>ProjectBuildDone</c> has the same limitation.
+    /// </remarks>
     private static void OnProjectBuildStarted(Project? project)
     {
         if (project == null)

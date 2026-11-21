@@ -19,6 +19,7 @@
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ProjectSupport.cs" Link="Linked\ProjectSupport.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\PostBuildStamp.cs" Link="Linked\PostBuildStamp.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\CliProcessRunner.cs" Link="Linked\CliProcessRunner.cs" />
+    <Compile Include="..\..\Src\Obfy.VisualStudio\Commands\PackageIds.cs" Link="Linked\PackageIds.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ObfuscationRunTracker.cs" Link="Linked\ObfuscationRunTracker.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\IOutputService.cs" Link="Linked\IOutputService.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\OutputServiceExtensions.cs" Link="Linked\OutputServiceExtensions.cs" />

@@ -329,8 +329,13 @@ public class ObfuscationService : IObfuscationService
 
         if (!string.Equals(current, cacheKey, StringComparison.Ordinal))
         {
+            // The input is not the file it was. Either something else rewrote it, or this run did: the output reached
+            // the input through a spelling PathIdentity cannot see (a subst drive, an admin share), and the input is
+            // now the output. Only the second is a run replacing its own input, and the note says so.
             warnings.Add(
-                "Incremental cache not written: the input or one of its dependencies changed while the run was in progress.");
+                InputIsNowTheOutput(inputPath, output)
+                    ? InPlaceCacheNote
+                    : "Incremental cache not written: the input or one of its dependencies changed while the run was in progress.");
             return;
         }
 
@@ -339,6 +344,22 @@ public class ObfuscationService : IObfuscationService
             _logger.LogWarning("Could not write the incremental cache");
             warnings.Add(
                 "Incremental cache could not be written next to the output, so the next run will not be skipped.");
+        }
+    }
+
+    /// <summary>
+    /// True when the input file now holds exactly the bytes of the output this run wrote: the run replaced its own
+    /// input. A file that cannot be read is not that.
+    /// </summary>
+    private static bool InputIsNowTheOutput(string inputPath, string output)
+    {
+        try
+        {
+            return FileFingerprint.Of(output).Matches(inputPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

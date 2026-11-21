@@ -109,6 +109,67 @@ public class PathIdentityTests : IDisposable
         PathIdentity.SameFile(@"\\?\" + file, Make("b.dll")).ShouldBeFalse();
     }
 
+    [Fact]
+    public void AVeryDeepPath_IsComparedWithoutOverflowingTheStack()
+    {
+        // A path of 20,000 components used to recurse once per component and end the process with a stack overflow
+        // that no catch can stop. The longest path the OS accepts is far shorter; this one only has to not crash.
+        var deep = Path.Combine(_root, string.Concat(Enumerable.Repeat("a" + Path.DirectorySeparatorChar, 20_000)), "x.dll");
+
+        PathIdentity.SameFile(deep, deep).ShouldBeTrue();
+        PathIdentity.SameFile(deep, deep + "2").ShouldBeFalse();
+        PathIdentity.SameFile(deep, Make("b.dll")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AnExtendedLengthUncPath_IsTheUncPath()
+    {
+        if (!OperatingSystem.IsWindows())
+            return; // the UNC form of the extended-length prefix is a Windows spelling
+
+        // Normalised only: asking a host that is not there whether it is a link would wait for the network.
+        PathIdentity.Normalize(@"\\?\UNC\server\share\dir\a.dll").ShouldBe(@"\\server\share\dir\a.dll");
+        PathIdentity.Normalize(@"\\server\share\dir\a.dll").ShouldBe(@"\\server\share\dir\a.dll");
+        PathIdentity.Normalize(@"\\?\C:\dir\a.dll").ShouldBe(@"C:\dir\a.dll");
+    }
+
+    [Fact]
+    public void AnEightDotThreeShortName_IsExpandedByGetFullPath_SoItIsTheSameFile()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var file = Make("a long file name.dll");
+        var shortName = ShortPathOf(file);
+        if (shortName is null || !shortName.Contains('~'))
+            return; // 8.3 names are switched off on this volume
+
+        PathIdentity.SameFile(file, shortName).ShouldBeTrue();
+    }
+
+    /// <summary>The 8.3 form of an existing path, or null when the shell cannot say.</summary>
+    private static string? ShortPathOf(string path)
+    {
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("cmd.exe")
+            {
+                ArgumentList = { "/c", "for", "%I", "in", $"(\"{path}\")", "do", "@echo", "%~sI" },
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true
+            };
+            using var process = System.Diagnostics.Process.Start(start);
+            var line = process?.StandardOutput.ReadLine();
+            process?.WaitForExit();
+            return string.IsNullOrWhiteSpace(line) ? null : line.Trim();
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            return null;
+        }
+    }
+
     [JunctionFact]
     public void AJunctionToTheFolder_IsTheFolder()
     {

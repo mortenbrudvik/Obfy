@@ -457,7 +457,7 @@
         "An input counts as changed when its bytes, the settings or the Obfy version change.",
         "It is off at every level. Turning it on moves you to Custom.",
         "A cache file that is locked or damaged is treated as no cache.",
-        "In the desktop app the output is rebuilt whenever symbols were renamed, because the Results screen needs the symbol list, so the option only saves time when renaming is off."
+        "In the desktop app the output is rebuilt whenever the earlier run renamed symbols, skipped items or raised warnings, because the Results screen and its report need them, so the option only saves time when renaming is off and the run was clean."
       ],
       "guideTopic": "techniques",
       "options": []

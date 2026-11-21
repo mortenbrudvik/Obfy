@@ -49,10 +49,13 @@ public sealed class RunCoordinator : IDisposable
     private const string NotProcessed = "The closed set returned no result for this assembly.";
 
     /// <summary>
-    /// The Results screen lists the symbols of every run, so it reads the symbol map. The incremental cache never
-    /// stores the map (it lists the original names): a run whose cached output renamed something is done again.
+    /// The Results screen lists the symbols of every run, and every run builds a report that the export can write to
+    /// disk. The incremental cache never stores the symbol map, the skipped items or the warning texts (they name the
+    /// original types, members and resources): a run whose cached output renamed symbols, skipped items or raised
+    /// warnings is done again, so neither the list nor the exported report is thinner than the run it describes.
     /// </summary>
-    private static readonly ObfuscationRunOptions ResultsNeedTheSymbolMap = new() { NeedsSymbolMap = true };
+    private static readonly ObfuscationRunOptions ResultsAndReportNeedTheFullRun =
+        new() { NeedsSymbolMap = true, NeedsReport = true };
 
     private readonly object _gate = new();
     private readonly object _publishGate = new();
@@ -731,7 +734,7 @@ public sealed class RunCoordinator : IDisposable
 
             var outputPath = outputDir is not null ? run.Plan.Output.OutputPathFor(file.Path) : null;
             var result = await _obfuscation.ObfuscateAsync(
-                file.Path, outputPath, run.Settings, ResultsNeedTheSymbolMap, cancellationToken).ConfigureAwait(false);
+                file.Path, outputPath, run.Settings, ResultsAndReportNeedTheFullRun, cancellationToken).ConfigureAwait(false);
 
             ApplyResult(file, name, result, outcome);
             completed++;
@@ -803,7 +806,7 @@ public sealed class RunCoordinator : IDisposable
         var outputPath = run.Plan.Output.MergePath
             ?? throw new InvalidOperationException("A merge run has no merge output path.");
         var result = await _obfuscation.MergeAndObfuscateAsync(
-            files.Select(static f => f.Path).ToList(), outputPath, run.Settings, ResultsNeedTheSymbolMap, cancellationToken)
+            files.Select(static f => f.Path).ToList(), outputPath, run.Settings, ResultsAndReportNeedTheFullRun, cancellationToken)
             .ConfigureAwait(false);
 
         Report("Merged", currentFile: null, completed: files.Count);

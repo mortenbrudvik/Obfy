@@ -404,10 +404,15 @@ internal sealed class FileFingerprint
     public bool IsWellFormed =>
         Length >= 0 && Sha256 is { Length: 64 } hash && hash.All(static c => char.IsAsciiHexDigit(c));
 
-    /// <summary>The fingerprint of the file as it is now. Throws IOException when it cannot be read.</summary>
+    /// <summary>
+    /// The fingerprint of the file as it is now. Throws IOException when it cannot be read. The file is opened for
+    /// reading while others may hold it open for writing, or delete it: a scanner or an indexer with the output open
+    /// has not changed it, and a hit must not turn into a rebuild that then cannot save. A file another process holds
+    /// exclusively cannot be read, and that is a miss for the caller.
+    /// </summary>
     public static FileFingerprint Of(string path)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         return new FileFingerprint { Length = stream.Length, Sha256 = Convert.ToHexString(SHA256.HashData(stream)) };
     }
 

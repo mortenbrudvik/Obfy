@@ -233,6 +233,38 @@ public class CoreServicesIncrementalCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task OutputThatReplacedTheInputThroughASpellingNoPathCheckCanSee_IsSaidToBeInPlace_NotAChange()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var real = container.Resolve<IAssemblyProcessor>();
+        var input = CompileInput();
+        var output = Path.Combine(_dir, "alias", "Lib.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        var settings = Incremental();
+
+        // A subst drive or an admin share names the input's file under a name nothing can tell from another file. The
+        // run writes the output and the input is the output afterwards. The processor below does the same thing.
+        var aliased = new Mock<IAssemblyProcessor>();
+        aliased
+            .Setup(p => p.LoadAsync(It.IsAny<string>(), It.IsAny<ObfySettings>(), It.IsAny<CancellationToken>()))
+            .Returns((string path, ObfySettings s, CancellationToken ct) => real.LoadAsync(path, s, ct));
+        aliased
+            .Setup(p => p.SaveAsync(It.IsAny<PipelineContext>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(async (PipelineContext c, string path, CancellationToken ct) =>
+            {
+                await real.SaveAsync(c, path, ct);
+                File.Copy(path, input, overwrite: true);
+            });
+
+        var result = await NewService(container, aliased.Object).ObfuscateAsync(input, output, settings);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.Warnings.ShouldNotContain(w => w.Contains("changed while the run was in progress", StringComparison.Ordinal));
+        result.Warnings.ShouldContain("Incremental cache not used: the output replaces the input file. Write the output to a different path to use the cache.");
+        File.Exists(IncrementalCache.CachePath(output)).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task InPlaceRun_WritesNoCacheAndDoesNotClaimTheInputChangedDuringTheRun()
     {
         using var container = CoreServicesTestSupport.BuildContainer();

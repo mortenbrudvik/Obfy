@@ -311,6 +311,30 @@ public class IncrementalCacheTests : IDisposable
     }
 
     [Fact]
+    public void TryHit_OutputHeldOpenForWritingByAnotherProcessWithoutChange_IsStillAHit()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
+
+        // An indexer, a scanner or an editor holding the file open for writing has not changed it. Reading it to
+        // check the fingerprint must not fail on that, or the hit turns into a rebuild that cannot save.
+        using var holder = new FileStream(output, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+
+        IncrementalCache.TryHit(input, output, settings).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void TryHit_OutputLockedExclusively_IsAMissNotAnException()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
+
+        using var holder = new FileStream(output, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        Should.NotThrow(() => IncrementalCache.TryHit(input, output, settings)).ShouldBeFalse();
+    }
+
+    [Fact]
     public void TryReadHit_KeyDiffersInCase_StillMatches()
     {
         var (input, output, settings) = Seed();

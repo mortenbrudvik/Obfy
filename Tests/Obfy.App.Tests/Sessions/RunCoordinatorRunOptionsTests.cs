@@ -9,9 +9,10 @@ using ProtectionSession = Obfy.App.Sessions.ProtectionSession;
 namespace Obfy.App.Tests.Sessions;
 
 /// <summary>
-/// The Results screen lists the symbols of every run, so a run tells the engine it reads the symbol map. Without
-/// that, an incremental-cache hit would hand the page an empty list (the cache never stores the map: it holds the
-/// original names).
+/// The Results screen lists the symbols of every run, and every run builds a report that the export can write to disk,
+/// so a run tells the engine it reads the symbol map and builds a report. Without that, an incremental-cache hit would
+/// hand the page an empty list, or a report that lacks the skipped items and warnings of the run it describes (the cache
+/// never stores them: they name the original types, members and resources).
 /// </summary>
 public sealed class RunCoordinatorRunOptionsTests : IDisposable
 {
@@ -51,17 +52,19 @@ public sealed class RunCoordinatorRunOptionsTests : IDisposable
     }
 
     [Fact]
-    public async Task EachFile_IsRunWithTheSymbolMapNeeded()
+    public async Task EachFile_IsRunAsOneThatNeedsTheSymbolMapAndAReport()
     {
         AddFile("app.dll");
 
         await _run.Start().WaitAsync(Guard);
 
-        _engine.ObfuscateOptions.ShouldHaveSingleItem().NeedsSymbolMap.ShouldBeTrue();
+        var options = _engine.ObfuscateOptions.ShouldHaveSingleItem();
+        options.NeedsSymbolMap.ShouldBeTrue();
+        options.NeedsReport.ShouldBeTrue("the app builds a report from every run, and the export can write it to disk");
     }
 
     [Fact]
-    public async Task Merge_IsRunWithTheSymbolMapNeeded()
+    public async Task Merge_IsRunAsOneThatNeedsTheSymbolMapAndAReport()
     {
         AddFile("first.dll");
         AddFile("second.dll");
@@ -69,7 +72,9 @@ public sealed class RunCoordinatorRunOptionsTests : IDisposable
 
         await _run.Start().WaitAsync(Guard);
 
-        _engine.MergeOptions.ShouldHaveSingleItem().NeedsSymbolMap.ShouldBeTrue();
+        var options = _engine.MergeOptions.ShouldHaveSingleItem();
+        options.NeedsSymbolMap.ShouldBeTrue();
+        options.NeedsReport.ShouldBeTrue();
         _engine.ObfuscateOptions.ShouldBeEmpty();
     }
 

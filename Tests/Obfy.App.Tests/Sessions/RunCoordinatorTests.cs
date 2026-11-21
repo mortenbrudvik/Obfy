@@ -546,7 +546,7 @@ public sealed class RunCoordinatorTests : IDisposable
         capture.SymbolMapPath.ShouldBeNull();
 
         _input.SetWriteSymbolMap(true);
-        _input.SetOutputFolder(_tempDirectory);
+        _input.SetOutputFolder(Path.Combine(_tempDirectory, "chosen"));
         var later = _input.CaptureRun(merge: false);
         later.Plan.Mode.ShouldBe(OutputMode.ClosedSet);
         later.OutputFolderChosen.ShouldBeTrue();
@@ -777,6 +777,276 @@ public sealed class RunCoordinatorTests : IDisposable
         calls.Where(c => c.Key != expectedCall && !(expectedCall == "sources" && c.Key == "obfuscate")).ShouldAllBe(c => c.Value == 0);
     }
 
+    // ---- The hint says what the run writes (regression: with a folder it named a .obfuscated file the run never wrote) ----
+
+    [Fact]
+    public async Task Hint_OneFileWithAFolder_NamesThePathTheRunWrites()
+    {
+        AddFile("MyApp.dll");
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        _input.SetOutputFolder(folder);
+        var hint = _run.GetSnapshot().OutputHint;
+
+        await RunAsync();
+
+        var call = _engine.ObfuscateCalls.ShouldHaveSingleItem();
+        call.Output.ShouldBe(Path.Combine(folder, "MyApp.dll"));
+        hint.ShouldBe($"Writes MyApp.dll to {folder}.");
+    }
+
+    [Fact]
+    public async Task Hint_ClosedSetAndMergeWithAFolder_NameThePathsTheRunWrites()
+    {
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        AddFile("a.dll");
+        AddFile("b.dll");
+        _input.SetOutputFolder(folder);
+        var closedHint = _run.GetSnapshot().OutputHint;
+        await RunAsync();
+        _engine.ClosedSetCalls.ShouldHaveSingleItem().Output.ShouldBe(folder);
+        closedHint.ShouldContain(folder);
+
+        _protection.UpdateSetting("assemblyMerge.enabled", true);
+        var mergeHint = _run.GetSnapshot().OutputHint;
+        await RunAsync();
+        var merge = _engine.MergeCalls.ShouldHaveSingleItem();
+        merge.Output.ShouldBe(Path.Combine(folder, "a.obfuscated.dll"));
+        mergeHint.ShouldContain(merge.Output);
+    }
+
+    [Fact]
+    public async Task Hint_TwoSourceFiles_MatchesHowTheRunPassesThemToTheEngine()
+    {
+        AddFile("a.cs");
+        AddFile("b.cs");
+
+        // No folder: the run hands the engine no folder, and the engine writes obfy-src beside the first file.
+        var noFolderHint = _run.GetSnapshot().OutputHint;
+        await RunAsync();
+        _engine.SourcesCalls.ShouldHaveSingleItem().Output.ShouldBeNull();
+        noFolderHint.ShouldContain(Path.Combine(_tempDirectory, "obfy-src"));
+        noFolderHint.ShouldNotContain("next to its input");
+
+        // A folder: the engine gets it, and the hint says every file goes there.
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        _input.SetOutputFolder(folder);
+        var folderHint = _run.GetSnapshot().OutputHint;
+        await RunAsync();
+        _engine.SourcesCalls.Last().Output.ShouldBe(folder);
+        folderHint.ShouldBe($"Writes each file to {folder}.");
+    }
+
+    // ---- An output that would replace a listed file blocks the run (data loss: it replaced the user's original) ----
+
+    private const string ReplaceYourOriginal = "the run would replace your original.";
+
+    /// <summary>The run is refused, with the same reason on the run bar and in the <c>run.blocked</c> error, and nothing is started.</summary>
+    private void ShouldBeBlockedWith(string reason)
+    {
+        var snapshot = _run.GetSnapshot();
+        snapshot.CanStart.ShouldBeFalse();
+        snapshot.BlockedReason.ShouldBe(reason);
+
+        var error = Should.Throw<ObfyApiException>(() => _run.Start());
+        error.Code.ShouldBe("run.blocked");
+        error.Message.ShouldBe(reason);
+
+        _run.IsRunning.ShouldBeFalse();
+        _engine.ObfuscateCalls.ShouldBeEmpty();
+        _engine.ClosedSetCalls.ShouldBeEmpty();
+        _engine.MergeCalls.ShouldBeEmpty();
+        _engine.SourcesCalls.ShouldBeEmpty();
+        Rows.ShouldAllBe(r => r.Status == FileStatus.Pending);
+    }
+
+    [Fact]
+    public async Task Each_OutputFolderIsTheInputFolder_IsBlocked_UntilTheFolderChanges()
+    {
+        AddFile("App.dll");
+        _input.SetOutputFolder(_tempDirectory);
+
+        ShouldBeBlockedWith(
+            $"The output folder is the folder of App.dll; {ReplaceYourOriginal} Pick another folder, or clear it to write App.obfuscated.dll beside it.");
+
+        // Clearing it is the way out the message names: the run writes App.obfuscated.dll beside the input.
+        _input.SetOutputFolder("");
+        _run.GetSnapshot().BlockedReason.ShouldBeNull();
+        await RunAsync();
+        _engine.ObfuscateCalls.ShouldHaveSingleItem().Output.ShouldBeNull();
+
+        // So is another folder.
+        var elsewhere = Path.Combine(_tempDirectory, "elsewhere");
+        _input.SetOutputFolder(elsewhere);
+        _run.GetSnapshot().CanStart.ShouldBeTrue();
+        await RunAsync();
+        _engine.ObfuscateCalls.Last().Output.ShouldBe(Path.Combine(elsewhere, "App.dll"));
+    }
+
+    [Fact]
+    public void Each_TheReasonIsPushedToThePageWhenTheFolderIsTyped()
+    {
+        AddFile("App.dll");
+        var before = _events.Published.Count(e => e.Name == AppEvents.RunChanged);
+
+        _input.SetOutputFolder(_tempDirectory + Path.DirectorySeparatorChar);
+
+        var runChanges = _events.Published.Where(e => e.Name == AppEvents.RunChanged).Select(e => (RunSnapshot)e.Data!).ToList();
+        runChanges.Count.ShouldBeGreaterThan(before);
+        var pushed = runChanges.Last();
+        pushed.CanStart.ShouldBeFalse();
+        pushed.BlockedReason!.ShouldStartWith("The output folder is the folder of App.dll;");
+    }
+
+    [Theory]
+    [InlineData("upper")]
+    [InlineData("trailingSeparator")]
+    [InlineData("dotDot")]
+    public void Each_ADifferentSpellingOfTheInputFolder_IsBlockedToo(string spelling)
+    {
+        AddFile("App.dll");
+        Directory.CreateDirectory(Path.Combine(_tempDirectory, "sub"));
+        _input.SetOutputFolder(spelling switch
+        {
+            "upper" => _tempDirectory.ToUpperInvariant(),
+            "trailingSeparator" => _tempDirectory + Path.DirectorySeparatorChar,
+            _ => Path.Combine(_tempDirectory, "sub", "..")
+        });
+
+        _run.GetSnapshot().CanStart.ShouldBeFalse();
+        Should.Throw<ObfyApiException>(() => _run.Start()).Code.ShouldBe("run.blocked");
+        _engine.ObfuscateCalls.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ClosedSet_OutputFolderIsTheFolderOfTheInputs_IsBlocked()
+    {
+        AddFile("a.dll");
+        AddFile("b.dll");
+        _input.SetOutputFolder(_tempDirectory);
+
+        ShouldBeBlockedWith(
+            $"The output folder is the folder of a.dll; {ReplaceYourOriginal} Pick another folder, or clear it to write a.dll to {Path.Combine(_tempDirectory, "obfy-out")}.");
+    }
+
+    [Fact]
+    public void ClosedSet_FromASolution_IsBlockedWhenTheFolderIsTheFolderOfABuiltOutput()
+    {
+        AddSessionAssembly("App.dll");
+        _input.SetOutputFolder(_tempDirectory);
+
+        _run.GetSnapshot().Mode.ShouldBe(RunMode.ClosedSet);
+        ShouldBeBlockedWith(
+            $"The output folder is the folder of App.dll; {ReplaceYourOriginal} Pick another folder, or clear it to write App.dll to {Path.Combine(_tempDirectory, "obfy-out")}.");
+    }
+
+    [Fact]
+    public async Task Merge_OutputFolderIsTheInputFolder_IsBlockedOnlyWhenItWouldReplaceAListedFile()
+    {
+        _protection.UpdateSetting("assemblyMerge.enabled", true);
+        AddFile("first.dll");
+        AddFile("second.dll");
+        _input.SetOutputFolder(_tempDirectory);
+
+        // first.obfuscated.dll is a new file beside the two: nothing listed is replaced.
+        _run.GetSnapshot().CanStart.ShouldBeTrue();
+        await RunAsync();
+        _engine.MergeCalls.ShouldHaveSingleItem().Output.ShouldBe(Path.Combine(_tempDirectory, "first.obfuscated.dll"));
+
+        // Once that file is listed too, the merge would replace it, and clearing the folder would not help.
+        AddFile("first.obfuscated.dll");
+        var reason = $"The output folder is the folder of first.obfuscated.dll; {ReplaceYourOriginal} Pick another folder.";
+        _run.GetSnapshot().BlockedReason.ShouldBe(reason);
+        var error = Should.Throw<ObfyApiException>(() => _run.Start());
+        error.Code.ShouldBe("run.blocked");
+        error.Message.ShouldBe(reason);
+        _engine.MergeCalls.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Merge_WithNoFolder_IsBlockedWhenTheDefaultNameIsListed()
+    {
+        _protection.UpdateSetting("assemblyMerge.enabled", true);
+        AddFile("first.dll");
+        AddFile("second.dll");
+        AddFile("first.obfuscated.dll");
+
+        ShouldBeBlockedWith(
+            "The run would write first.obfuscated.dll over your input of the same name. Pick an output folder to write elsewhere.");
+    }
+
+    [Fact]
+    public void Sources_TwoFilesWrittenIntoTheirOwnFolder_AreBlocked()
+    {
+        AddFile("a.cs");
+        AddFile("b.cs");
+        _input.SetOutputFolder(_tempDirectory);
+
+        ShouldBeBlockedWith(
+            $"The output folder is the folder of a.cs; {ReplaceYourOriginal} Pick another folder, or clear it to write a.cs to {Path.Combine(_tempDirectory, "obfy-src")}.");
+    }
+
+    [Fact]
+    public async Task Sources_WithNoFolder_AreNotBlocked()
+    {
+        AddFile("a.cs");
+        AddFile("b.cs");
+
+        _run.GetSnapshot().CanStart.ShouldBeTrue();
+        await RunAsync();
+        _engine.SourcesCalls.ShouldHaveSingleItem().Output.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task NoFolder_NothingListedHasTheDefaultName_IsNotBlocked()
+    {
+        AddFile("App.dll");
+        _run.GetSnapshot().BlockedReason.ShouldBeNull();
+
+        await RunAsync();
+
+        _engine.ObfuscateCalls.ShouldHaveSingleItem().Output.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task OutputFolderInAnotherFolder_IsNotBlocked_InEveryMode()
+    {
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        _input.SetOutputFolder(folder);
+
+        AddFile("one.dll");
+        _run.GetSnapshot().CanStart.ShouldBeTrue();
+        await RunAsync();
+
+        AddFile("two.dll");
+        _run.GetSnapshot().CanStart.ShouldBeTrue();
+        await RunAsync();
+
+        _protection.UpdateSetting("assemblyMerge.enabled", true);
+        _run.GetSnapshot().CanStart.ShouldBeTrue();
+        await RunAsync();
+
+        _engine.ObfuscateCalls.ShouldHaveSingleItem();
+        _engine.ClosedSetCalls.ShouldHaveSingleItem();
+        _engine.MergeCalls.ShouldHaveSingleItem();
+    }
+
+    [JunctionFact]
+    public void AJunctionToTheInputFolder_IsBlocked()
+    {
+        var real = Path.Combine(_tempDirectory, "real");
+        Directory.CreateDirectory(real);
+        var input = Path.Combine(real, "App.dll");
+        File.WriteAllBytes(input, []);
+        _input.AddPaths([input]);
+        var link = Path.Combine(_tempDirectory, "link");
+        Junctions.TryCreate(link, real, out var error).ShouldBeTrue(error);
+
+        _input.SetOutputFolder(link);
+
+        ShouldBeBlockedWith(
+            $"The output folder is the folder of App.dll; {ReplaceYourOriginal} Pick another folder, or clear it to write App.obfuscated.dll beside it.");
+    }
+
     // ---- Closed set ----
 
     [Fact]
@@ -901,7 +1171,7 @@ public sealed class RunCoordinatorTests : IDisposable
             other._input.SetOutputFolder(folder);
             other.AddFile("only.dll");
             await other.RunAsync();
-            other._engine.ObfuscateCalls.ShouldHaveSingleItem().Output.ShouldBe(Path.Combine(folder, "only.obfuscated.dll"));
+            other._engine.ObfuscateCalls.ShouldHaveSingleItem().Output.ShouldBe(Path.Combine(folder, "only.dll"));
         }
         finally
         {

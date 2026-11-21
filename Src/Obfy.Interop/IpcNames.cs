@@ -21,6 +21,7 @@ public static class IpcNames
     {
         public const string AppInfo = "info";
         public const string AppReady = "ready";
+        public const string AppOpenGuide = "openGuide";
         public const string SettingsGet = "get";
         public const string SettingsUpdate = "update";
         public const string SettingsApplyLevel = "applyLevel";

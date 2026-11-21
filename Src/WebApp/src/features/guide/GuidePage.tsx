@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import Keycap from "../../components/Keycap";
 import Notice from "../../components/Notice";
 import { guideTopics, type GuideBlock, type GuideTopic } from "../../content/guideContent";
+import { useOnlineGuide } from "../../hooks/useOnlineGuide";
 import { strings } from "../../strings";
 import "../../components/components.css";
 import "./GuidePage.css";
@@ -77,7 +78,10 @@ function Block({ block }: { block: GuideBlock }): ReactNode {
                 <td>
                   <Keys keys={item.keys} />
                 </td>
-                <td>{item.label}</td>
+                <td>
+                  {item.label}
+                  {item.note && <div className="keynote">{item.note}</div>}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -86,12 +90,13 @@ function Block({ block }: { block: GuideBlock }): ReactNode {
   }
 }
 
-/** The Guide: a topic list on the left and the chosen topic's article on the right. */
+/** The Guide: a short quick-start, a topic list on the left and the chosen topic's article on the right, with a way to the full guide online. */
 export default function GuidePage({ topic, onTopicChange }: GuidePageProps) {
   const current: GuideTopic = guideTopics.find((candidate) => candidate.id === topic) ?? guideTopics[0];
   const article = useRef<HTMLElement>(null);
+  const [openOnline, onlineError] = useOnlineGuide();
 
-  // A new topic starts at its top, whether it was picked here or sent from a "Read more" link.
+  // A new topic starts at its top.
   useEffect(() => {
     article.current?.closest("main")?.scrollTo?.(0, 0);
   }, [current.id]);
@@ -117,6 +122,13 @@ export default function GuidePage({ topic, onTopicChange }: GuidePageProps) {
         {current.blocks.map((block, index) => (
           <Block key={index} block={block} />
         ))}
+        <div className="online">
+          <p>{strings.guide.onlineHint}</p>
+          <button type="button" className="btn primary" onClick={() => void openOnline()}>
+            {strings.guide.online}
+          </button>
+          {onlineError && <Notice tone="error">{onlineError}</Notice>}
+        </div>
       </section>
     </div>
   );

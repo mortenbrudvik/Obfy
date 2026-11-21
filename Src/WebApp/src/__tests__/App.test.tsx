@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../interop/WebViewApiClient", () => ({ apiClient: { call: vi.fn(), on: vi.fn(() => vi.fn()) } }));
@@ -51,7 +51,9 @@ describe("App", () => {
     fireEvent.keyDown(window, { key: "F1" });
 
     expect(screen.getByRole("heading", { name: "Guide" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Getting started" })).toBeTruthy();
   });
+
   it("opensTheGuideAtItsFirstTopic_fromTheSidebar_andKeepsTheTopicOnF1WhileOpen", async () => {
     bridge();
 
@@ -65,21 +67,44 @@ describe("App", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Shortcuts" })).toBeTruthy();
   });
 
-  it("opensTheGuideAtTheTopicOfAReadMoreLink", async () => {
+  it("opensTheOnlineGuide_inTheBrowser_fromAReadMoreLink_andStaysOnProtection", async () => {
+    const openGuide = vi.fn(() => ({}));
     mockBridge({
       "app.info": () => ({ version: "9.9.9" }),
       "run.get": () => idleRun,
       "files.get": () => emptyFiles,
       "settings.get": () => protectionSnapshot({ level: "Standard" }),
       "results.summary": () => notRunResults,
+      "app.openGuide": openGuide,
     });
 
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^Protection/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Read more in the Guide" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Read more online" }));
 
-    expect(screen.getByRole("heading", { level: 2, name: "Techniques" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Techniques" }).getAttribute("aria-current")).toBe("true");
+    await waitFor(() => expect(openGuide).toHaveBeenCalledWith({ topic: "techniques" }));
+    // The page never navigates to the in-app guide for it: the host opens the browser.
+    expect(screen.getByRole("heading", { name: "Protection" })).toBeTruthy();
+    expect(screen.queryByTestId("guide-page")).toBeNull();
+  });
+
+  it("opensTheOnlineGuide_fromTheQuickStartsButton", async () => {
+    const openGuide = vi.fn(() => ({}));
+    mockBridge({
+      "app.info": () => ({ version: "9.9.9" }),
+      "run.get": () => idleRun,
+      "files.get": () => emptyFiles,
+      "settings.get": () => standardSettings,
+      "results.summary": () => notRunResults,
+      "app.openGuide": openGuide,
+    });
+
+    render(<App />);
+    fireEvent.keyDown(window, { key: "F1" });
+    fireEvent.click(screen.getByRole("button", { name: "Open the full guide online" }));
+
+    await waitFor(() => expect(openGuide).toHaveBeenCalledWith({ topic: null }));
+    expect(screen.getByTestId("guide-page")).toBeTruthy();
   });
 
   it("showsARecoverableMessage_insteadOfABlankWindow_whenTheHostSendsSomethingThePageCannotDraw", async () => {

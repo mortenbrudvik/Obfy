@@ -22,6 +22,10 @@ namespace Obfy.App.Tests.Sessions;
 /// </summary>
 public sealed class InputSessionTests : IDisposable
 {
+    // A complete Aggressive configuration: a file whose level is a preset but whose switches are not that preset's loads as Custom.
+    private static readonly string AggressiveConfigJson =
+        Obfy.Common.JsonUtils.Serialize(ObfySettings.ForLevel(ObfuscationLevel.Aggressive));
+
     private readonly FakeSettings _settings = new();
     private readonly FakeDialogs _dialogs = new();
     private readonly FakeShell _shell = new();
@@ -803,6 +807,24 @@ public sealed class InputSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Drop_ConfigWhoseSwitchesDifferFromItsPresetLevel_LoadsAsCustom_AndTheFileIsNotRewritten()
+    {
+        var protection = new ProtectionSession();
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Minimal);
+        settings.StringEncryption.Enabled = true;
+        var config = CreateTestFile("differs.json");
+        await ConfigFile.SaveAsync(settings, config);
+        var before = await File.ReadAllTextAsync(config);
+
+        await Intake(Create(), protection).AddPathsAsync([config], default);
+
+        protection.Level.ShouldBe(ObfuscationLevel.Custom);
+        protection.ToObfySettings().StringEncryption.Enabled.ShouldBeTrue();
+        protection.ConfigPath.ShouldBe(config);
+        (await File.ReadAllTextAsync(config)).ShouldBe(before);
+    }
+
+    [Fact]
     public async Task Drop_ConfigPlusInputs_LoadsFirstConfigOnly_AndAddsInputs()
     {
         // UI-058: a .json is a drop type. With inputs dropped beside configurations, the first configuration loads, the
@@ -810,7 +832,7 @@ public sealed class InputSessionTests : IDisposable
         var input = Create();
         var protection = new ProtectionSession();
         var firstConfig = CreateTestFile("first.json");
-        await File.WriteAllTextAsync(firstConfig, """{ "level": "Aggressive" }""");
+        await File.WriteAllTextAsync(firstConfig, AggressiveConfigJson);
         var secondConfig = CreateTestFile("second.json");
         await File.WriteAllTextAsync(secondConfig, """{ "level": "Minimal" }""");
         var dll = CreateTestFile("app.dll");
@@ -1010,6 +1032,102 @@ public sealed class InputSessionTests : IDisposable
         Create().PlanOutput(false).Mode.ShouldBe(OutputMode.None);
     }
 
+    [Theory]
+    [InlineData("MyApp.dll")]
+    [InlineData("MyApp.cs")]
+    public void PlanOutput_OneFileWithAFolder_HintNamesTheFileUnderItsOwnName(string name)
+    {
+        // The run writes {folder}\{name}: the .obfuscated suffix is only for "next to the input".
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        var session = Create();
+        session.AddPaths([CreateTestFile(name, "in")]);
+        session.SetOutputFolder(folder);
+
+        session.PlanOutput(false).Hint.ShouldBe($"Writes {name} to {folder}.");
+    }
+
+    [Theory]
+    [InlineData("MyApp.dll", "MyApp.obfuscated.dll")]
+    [InlineData("MyApp.cs", "MyApp.obfuscated.cs")]
+    public void PlanOutput_OneFileWithoutAFolder_HintNamesTheObfuscatedFileNextToTheInput(string name, string expected)
+    {
+        var session = Create();
+        session.AddPaths([CreateTestFile(name, "in")]);
+
+        session.PlanOutput(false).Hint.ShouldBe($"Writes {expected} next to the input.");
+    }
+
+    [Fact]
+    public void PlanOutput_TwoSourceFilesWithoutAFolder_HintSaysTheyAreCompiledTogetherIntoObfySrcNextToTheFirst()
+    {
+        // ObfuscationService.ObfuscateSourcesAsync: no folder means obfy-src beside the first file, not "next to its input".
+        var first = CreateTestFile("a.cs", "one");
+        var second = CreateTestFile("b.cs", "two");
+        var session = Create();
+        session.AddPaths([first, second]);
+
+        var plan = session.PlanOutput(false);
+
+        plan.Mode.ShouldBe(OutputMode.Each);
+        plan.Directory.ShouldBeNull();
+        plan.Hint.ShouldContain(Path.Combine(_tempDirectory, "one", "obfy-src"));
+        plan.Hint.ShouldContain("together");
+        plan.Hint.ShouldNotContain("next to its input");
+        plan.Hint.ShouldNotContain("obfuscated.");
+    }
+
+    [Fact]
+    public void PlanOutput_TwoSourceFilesAndAnAssemblyWithoutAFolder_HintCoversBothWays()
+    {
+        var session = Create();
+        session.AddPaths([CreateTestFile("a.cs", "one"), CreateTestFile("b.cs", "two"), CreateTestFile("lib.dll", "three")]);
+
+        var plan = session.PlanOutput(false);
+
+        plan.Mode.ShouldBe(OutputMode.Each);
+        plan.Hint.ShouldContain(Path.Combine(_tempDirectory, "one", "obfy-src"));
+        plan.Hint.ShouldContain("the other file goes next to its input as name.obfuscated.ext");
+    }
+
+    [Fact]
+    public void PlanOutput_SourceFilesAndAssembliesWithoutTwoSources_StayNextToTheirInputs()
+    {
+        var session = Create();
+        session.AddPaths([CreateTestFile("a.cs", "one"), CreateTestFile("lib.dll", "three")]);
+
+        session.PlanOutput(false).Hint.ShouldBe("Writes each file next to its input as name.obfuscated.ext.");
+    }
+
+    [Fact]
+    public void PlanOutput_SeveralFilesWithAFolder_HintSaysEachGoesThere()
+    {
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        var session = Create();
+        session.AddPaths([CreateTestFile("a.cs", "one"), CreateTestFile("b.cs", "two")]);
+        session.SetOutputFolder(folder);
+
+        session.PlanOutput(false).Hint.ShouldBe($"Writes each file to {folder}.");
+        session.PlanOutput(false).Directory.ShouldBe(folder);
+    }
+
+    [Fact]
+    public void PlanOutput_ClosedSetAndMergeWithAFolder_HintNamesWhatTheRunWrites()
+    {
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        var session = Create();
+        session.AddPaths([CreateTestFile("a.dll", "one"), CreateTestFile("b.dll", "two")]);
+        session.SetOutputFolder(folder);
+
+        var closed = session.PlanOutput(false);
+        closed.Mode.ShouldBe(OutputMode.ClosedSet);
+        closed.Hint.ShouldBe($"Writes the protected assemblies to {folder}.");
+
+        var merge = session.PlanOutput(true);
+        merge.Mode.ShouldBe(OutputMode.Merge);
+        merge.MergePath.ShouldBe(Path.Combine(folder, "a.obfuscated.dll"));
+        merge.Hint.ShouldBe($"Merges 2 assemblies into {Path.Combine(folder, "a.obfuscated.dll")}.");
+    }
+
     [Fact]
     public void PlanOutput_ASessionRowMakesAClosedSet_AndSourceFilesCannotMerge()
     {
@@ -1131,7 +1249,7 @@ public sealed class InputSessionTests : IDisposable
     {
         var input = Create();
         var protection = new ProtectionSession();
-        var config = await WriteConfigAsync("startup.json", """{ "level": "Aggressive" }""");
+        var config = await WriteConfigAsync("startup.json", AggressiveConfigJson);
         var dll = CreateTestFile("startup.dll");
         var output = Path.Combine(_tempDirectory, "out");
 
@@ -1168,7 +1286,7 @@ public sealed class InputSessionTests : IDisposable
     public async Task ApplyStartupAsync_UnreadableConfig_IsAnErrorNotice_NotACrash()
     {
         var input = Create();
-        var config = await WriteConfigAsync("locked.json", """{ "level": "Aggressive" }""");
+        var config = await WriteConfigAsync("locked.json", AggressiveConfigJson);
         using var hold = new FileStream(config, FileMode.Open, FileAccess.Read, FileShare.None);
 
         await Should.NotThrowAsync(async () => await Intake(input).ApplyStartupAsync([config, CreateTestFile("a.dll")]));
@@ -1190,7 +1308,7 @@ public sealed class InputSessionTests : IDisposable
         var input = Create();
         var protection = new ProtectionSession(events);
         // Padding makes the read genuinely asynchronous, so there is a continuation to resume.
-        var config = await WriteConfigAsync("big.json", """{ "level": "Aggressive" }""" + new string(' ', 4_000_000));
+        var config = await WriteConfigAsync("big.json", AggressiveConfigJson + new string(' ', 4_000_000));
         var intake = new InputIntake(input, protection, IdleRun.For(input, protection), NullLogger<InputIntake>.Instance);
 
         await pump.RunAsync(() => intake.ApplyStartupAsync([config, CreateTestFile("a.dll")]));

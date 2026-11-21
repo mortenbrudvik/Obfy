@@ -41,11 +41,11 @@ export function DetailSection({ title, children }: { title: string; children: Re
   );
 }
 
-/** The "Read more in the Guide" link at the foot of a detail panel. */
+/** The "Read more online" link at the foot of a detail panel: it opens the online guide in the browser. */
 export function GuideLink({ onClick }: { onClick: () => void }) {
   return (
     <p className="guide-link">
-      <button type="button" className="linkbtn" onClick={onClick}>
+      <button type="button" className="linkbtn" title={strings.protection.readMoreTitle} onClick={onClick}>
         {strings.protection.readMore}
       </button>
     </p>

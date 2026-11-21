@@ -23,8 +23,8 @@ namespace Obfy.App.Sessions;
 /// </para>
 /// <para>
 /// <b>Explicit blockers.</b> <see cref="RunSnapshot.CanStart"/> and <see cref="RunSnapshot.BlockedReason"/> are state, not a
-/// command's <c>CanExecute</c>: a run is blocked while one is running, with nothing included, or while the protection
-/// settings are invalid, and each says why in plain words (UI-052). The settings' reason is the first of
+/// command's <c>CanExecute</c>: a run is blocked while one is running, with nothing included, when an output would replace
+/// a listed file, or while the protection settings are invalid, and each says why in plain words (UI-052). The settings' reason is the first of
 /// <see cref="ProtectionSession.ValidationErrors"/>; no rule is repeated here.
 /// </para>
 /// <para>
@@ -171,7 +171,7 @@ public sealed class RunCoordinator : IDisposable
 
         var capture = _input.CaptureRun(_protection.ToObfySettings().AssemblyMerge.Enabled);
         var plan = Plan(capture);
-        var blocked = BlockedReasonFor(capture.Included.Count);
+        var blocked = BlockedReasonFor(capture.Included.Count, capture.Collision);
         return new RunSnapshot(
             revision, blocked is null, blocked, plan.Mode, Explain(plan.Mode), plan.Output.Hint,
             progress, indeterminate, current, completed, total, failed, status, message);
@@ -180,14 +180,33 @@ public sealed class RunCoordinator : IDisposable
     private const string RunningReason = "A run is already in progress.";
     private const string NoFilesReason = "Add at least one included file.";
 
-    /// <summary>What stops a run from starting now, in plain words, or null. The settings' reason comes from the settings.</summary>
-    private string? BlockedReasonFor(int includedCount)
+    /// <summary>
+    /// What stops a run from starting now, in plain words, or null. The settings' reason comes from the settings; the
+    /// collision's comes from <see cref="OutputCollisions"/>: a run never writes over a file the user listed.
+    /// </summary>
+    private string? BlockedReasonFor(int includedCount, OutputCollision? collision)
     {
         if (includedCount == 0)
             return NoFilesReason;
 
+        if (collision is not null)
+            return collision.Message;
+
         var errors = _protection.ValidationErrors();
         return errors.Count > 0 ? errors[0].Message : null;
+    }
+
+    /// <summary>
+    /// <see cref="BlockedReasonFor(int, OutputCollision?)"/> with the settings' reason already worked out. Validating the
+    /// settings probes the signing key file, so <see cref="Start"/> does that before it takes the gate and passes the
+    /// result here: nothing that touches the disk may hold the lock that IsRunning and EnsureNotRunning wait on.
+    /// </summary>
+    private static string? BlockedReasonFor(int includedCount, OutputCollision? collision, string? settingsError)
+    {
+        if (includedCount == 0)
+            return NoFilesReason;
+
+        return collision is not null ? collision.Message : settingsError;
     }
 
     // ---- The one mode rule -------------------------------------------------------------------------------------
@@ -224,7 +243,7 @@ public sealed class RunCoordinator : IDisposable
     /// Starts a run on the thread pool and returns its task at once; the task never faults. The page does not wait for
     /// it: it follows <c>run.changed</c> and <c>run.completed</c>. Tests await it.
     /// </summary>
-    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, nothing is included, or the settings are invalid; the message says which.</exception>
+    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, nothing is included, an output would replace a listed file, or the settings are invalid; the message says which.</exception>
     public Task Start()
     {
         // Validating the settings probes the signing key file, so it runs before the gate is taken: nothing that touches
@@ -249,7 +268,7 @@ public sealed class RunCoordinator : IDisposable
             settings = _protection.ToObfySettings();
             input = _input.CaptureRun(settings.AssemblyMerge.Enabled);
             included = input.Included;
-            var blocked = included.Count == 0 ? NoFilesReason : settingsError;
+            var blocked = BlockedReasonFor(included.Count, input.Collision, settingsError);
             if (blocked is not null)
             {
                 cts.Dispose();
@@ -604,8 +623,7 @@ public sealed class RunCoordinator : IDisposable
             Report($"Processing {name}...", name, completed);
             _log.Add(LogLevel.Info, $"Processing {name}...");
 
-            // The name the hint promises (name.obfuscated.ext): a chosen folder that is the input's own must not receive the input's name.
-            var outputPath = outputDir is not null ? Path.Combine(outputDir, InputSession.ObfuscatedFileName(name)) : null;
+            var outputPath = outputDir is not null ? run.Plan.Output.OutputPathFor(file.Path) : null;
             var result = await _obfuscation.ObfuscateAsync(file.Path, outputPath, run.Settings, cancellationToken).ConfigureAwait(false);
 
             ApplyResult(file, name, result, outcome);

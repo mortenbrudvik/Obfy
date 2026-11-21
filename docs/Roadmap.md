@@ -1,6 +1,6 @@
 # Obfy Product Roadmap & Backlog
 
-A strategic development plan. Pipeline protection through 1.3.0 is **shipped**, including the native win-x64 FDD packing stub and general IL virtualization v1. Remaining work is platform depth, Pre-JIT / other-RID / self-contained packing, and remaining VM surface (EH/generics/byref and Approach B handler generation).
+A strategic development plan. Pipeline protection through 2.0.0 is **done** (2.0.0 is the next release; 1.3.0 is the latest published), including the native win-x64 FDD packing stub and general IL virtualization v1. Remaining work is platform depth, Pre-JIT / other-RID / self-contained packing, and remaining VM surface (EH/generics/byref and Approach B handler generation).
 
 ---
 
@@ -83,7 +83,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 |----|---------|----------|--------|-------|--------|
 | DX-01 | WPF desktop application | P1 | Medium | High | ✅ Done |
 | DX-02 | Visual Studio extension | P1 | Medium | High | ✅ Done |
-| DX-04 | JetBrains Rider plugin | P2 | Low | Medium | ✅ Done |
+| DX-04 | JetBrains Rider plugin | P2 | Low | Medium | Removed (dropped for good; it was never published to a marketplace or attached to a release) |
 | DX-05 | Configuration wizard | P2 | Low | Medium | ✅ Done |
 | DX-03 | VS Code extension | P2 | Low | Medium | ✅ Partial (schema + problem matcher stub in `Src/Obfy.VSCode`) |
 | DX-06 | Real-time preview | P3 | High | Medium | ✅ Done (post-run ILSpy preview in desktop Results tab) |
@@ -133,7 +133,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 
 ### Testing: remaining coverage gaps
 
-Engine + SDK fixtures (WPF, console, WinForms, examples, merge, Unity stub) run on default CI. FlaUI (`QT-04`, `Category=UI`) runs on the Windows CI job. Coverage CI is wired (`QT-03`). Platform tests run from `platform.yml` (NativeAOT on pull requests; the full set weekly). Remaining: Unity Development Player, MAUI iOS/Android, VS hive / Rider UI. Plan: [Testing-Roadmap.md](Testing-Roadmap.md).
+Engine + SDK fixtures (WPF, console, WinForms, examples, merge, Unity stub) run on default CI. FlaUI (`QT-04`, `Category=UI`) runs on the Windows CI job. Coverage CI is wired (`QT-03`). Platform tests run from `platform.yml` (NativeAOT on pull requests; the full set weekly). Remaining: Unity Development Player, MAUI iOS/Android, VS hive. Plan: [Testing-Roadmap.md](Testing-Roadmap.md).
 
 ### PS-01 / PS-02 / PS-03: real platform tests
 
@@ -163,7 +163,7 @@ In-process `MiniDumpWriteDump` `0xC3` does not stop ProcDump, Task Manager, `dbg
 
 Foundation, protection plus, and developer experience. See changelog 1.1.0 / 1.2.0 / 1.3.0.
 
-Shipped: resource/constant encryption, reports, WPF UI, anti-tamper, anti-decompiler, merge, VS extension, Rider plugin, config wizard, CLI/UI tests, coverage CI, FlaUI tests.
+Shipped: resource/constant encryption, reports, WPF UI, anti-tamper, anti-decompiler, merge, VS extension, config wizard, CLI/UI tests, coverage CI, FlaUI tests.
 
 ### Unreleased on main (next tag)
 
@@ -228,7 +228,7 @@ PF-11, PF-17, PF-16, UF-03 are implemented.
 
 | Phase | KPI | Target |
 |-------|-----|--------|
-| v1.3 | IDE + wizard | VS and Rider usable |
+| v1.3 | IDE + wizard | VS extension usable |
 | next tag | Decompiler resistance + safe defaults | Decryptors/anti-debug not one-NOP; JSON sample works; AOT/IL2CPP do not get `VirtualProtect` |
 | later | Platform coverage | Unity Development Player + VS Code TaskProvider |
 | v2.0+ | Mid-tier extras | Stronger dump resistance, AOT-safe remaining techniques |

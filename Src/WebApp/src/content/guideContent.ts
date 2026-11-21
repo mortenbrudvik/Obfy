@@ -1,11 +1,13 @@
 import raw from "./guide.json";
 
-// The Guide's copy. A paragraph, list item or note is plain text with a little inline markup:
+// The in-app Guide's copy: a short quick-start. The full guide is online (api.app.openGuide). A paragraph, list item or note is plain text with a little inline markup:
 // **bold**, `monospace`, and {Ctrl+Enter} for keycaps (one per key, split on "+").
 
 export interface Shortcut {
   label: string;
   keys: string[];
+  /** When the shortcut does not work, or what it does exactly. */
+  note?: string;
 }
 
 export type GuideBlock =

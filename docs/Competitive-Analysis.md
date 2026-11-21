@@ -23,7 +23,7 @@ GitHub stars and last-push dates were rechecked on 15 September 2026. Shop price
 
 ## Executive Summary
 
-Obfy is a new (first public commit 31 December 2025), MIT-licensed .NET obfuscator with a CLI, Fluent WPF UI, Visual Studio 2022 extension, Rider plugin, Microsoft Store listing, and a dual pipeline: **dnlib assembly obfuscation** plus **Roslyn source obfuscation**. Among free tools it is the broadest protection stack (rename, strings, constants, resources, control flow, anti-debug/dump/tamper/decompiler, method-IL XOR, merge, closed-set / solution rename, embed, watermark, reports, a managed IL virtualizer, and a **win-x64 FDD native packing stub**). It has a **managed-VM** (Babel-class interpreter, not Babel Ultimate coverage). Native packing is a framework-dependent CLR-host stub (not Pre-JIT, not self-contained, not ARM64). Closed-set / solution runs pack each entry-point output. It is not a licensing/RASP product.
+Obfy is a new (first public commit 31 December 2025), MIT-licensed .NET obfuscator with a CLI, Fluent WPF UI, Visual Studio 2022 extension, Microsoft Store listing, and a dual pipeline: **dnlib assembly obfuscation** plus **Roslyn source obfuscation**. Among free tools it is the broadest protection stack (rename, strings, constants, resources, control flow, anti-debug/dump/tamper/decompiler, method-IL XOR, merge, closed-set / solution rename, embed, watermark, reports, a managed IL virtualizer, and a **win-x64 FDD native packing stub**). It has a **managed-VM** (Babel-class interpreter, not Babel Ultimate coverage). Native packing is a framework-dependent CLR-host stub (not Pre-JIT, not self-contained, not ARM64). Closed-set / solution runs pack each entry-point output. It is not a licensing/RASP product.
 
 **Positioning that still holds**
 
@@ -189,7 +189,7 @@ SmartAssembly does not support UWP. Its “What Can I Obfuscate?” index still 
 | **GUI** | Yes (WPF) | Yes | Yes | Yes | Windows | Yes | Yes | — | Web (bitmono.dev) |
 | **MSBuild** | Partial | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | **Visual Studio** | Yes (2022) | Yes | Yes | Yes | Yes | Yes (2005–2022) | — | — | — |
-| **Rider** | Yes | — | — | Yes | — | Yes (2019.1+) | — | — | — |
+| **Rider** | — | — | — | Yes | — | Yes (2019.1+) | — | — | — |
 | **VS Code** | Stub (schema + matcher) | — | — | — | — | — | — | — | — |
 | **NuGet / `dotnet tool`** | Yes (`Obfy`) | Private pkg | Yes | Some pkgs | Ultimate | Yes (smoothest) | Yes | Yes | Yes |
 | **GitHub Actions** | Yes (dotnet) | Yes | — | Official action | Yes | Yes | Yes | Yes | Official action |
@@ -238,7 +238,7 @@ Reactor’s **$249 single-developer license excludes build servers**. CI needs t
 - Native win-x64 FDD packing stub (`packing.enabled`; `portable` keeps the managed launcher). Closed-set / solution runs pack each entry-point output
 - `runtimeProfile` gating so NativeAOT / Unity IL2CPP / Blazor WASM do not get `VirtualProtect` / AssemblyResolve helpers they cannot run
 - Incremental cache (SHA-256 of Obfy version + input bytes + settings)
-- Fluent WPF UI, VS 2022 extension, Rider plugin, CLI wizard, Microsoft Store listing, MSIX, and Setup.exe
+- Fluent WPF UI, VS 2022 extension, CLI wizard, Microsoft Store listing, MSIX, and Setup.exe
 - Honest docs: encryption is obfuscation, not confidentiality
 
 **Weaknesses**
@@ -499,7 +499,7 @@ The most *aggressive* maintained OSS protector. AsmResolver (not dnlib). Started
 
 **Distribution that Obfy lacks:** `BitMono.Integration` MSBuild package, official GitHub Action, Unity `.unitypackage` (2018–19) and UPM `.tgz` (2020+), in-browser obfuscator at [bitmono.dev](https://bitmono.dev). Obfy already ships `dotnet tool install --global Obfy`.
 
-**Gaps vs Obfy:** no control-flow flattening, no constant/resource encryption as first-class peers, no Roslyn source mode, no WPF/VS/Rider product UX. Some protections are Mono/Unity-specific and will no-op or warn elsewhere.
+**Gaps vs Obfy:** no control-flow flattening, no constant/resource encryption as first-class peers, no Roslyn source mode, no WPF/VS product UX. Some protections are Mono/Unity-specific and will no-op or warn elsewhere.
 
 **Best for:** Unity/Mono, people who want decompilers to *crash*, and teams that want a plugin engine. Pair with Obfy’s CF/constants only if you are willing to run two tools — they are not designed as a pipeline.
 
@@ -529,7 +529,7 @@ Last push 23 August 2023, repository archived, 516 stars. Rename, strings, CF, i
 | **Most decompiler-breaking tricks** | BitMono | PE/loader attacks, UnmanagedString, Unity packs |
 | **Most used / most stable rename** | Obfuscar | 3.2k stars, millions of NuGet installs, v3 rewrite |
 | **Best Unity story (OSS)** | BitMono | UPM + unitypackage. Obfy is a recipe. |
-| **Best IDE / desktop UX (OSS)** | Obfy | WPF + VS 2022 + Rider + Store. BitMono is CLI/web. |
+| **Best IDE / desktop UX (OSS)** | Obfy | WPF + VS 2022 + Store. BitMono is CLI/web. |
 | **Best `dotnet tool` / NuGet** | Obfuscar / BitMono / Obfy | Obfy is `dotnet tool install -g Obfy`; Obfuscar has more installs |
 | **Best docs for beginners** | Obfuscar (community) and Obfy (product docs) | ConfuserEx wiki is stale |
 | **Do not use on new .NET 10** | ConfuserEx lineage, LoGiC.NET | Framework-era or archived |

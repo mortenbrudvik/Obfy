@@ -11,6 +11,8 @@ export type MockHandlers = Record<string, MockHandler>;
 export const defaultMockHandlers: MockHandlers = {
   "app.info": (): AppInfo => ({ version: "0.0.0-mock" }),
   "app.ready": () => ({}),
+  // A plain browser has no host to open a browser window for the guide.
+  "app.openGuide": () => ({}),
   "run.get": (): RunSnapshot => ({
     revision: 1, canStart: false, blockedReason: "Add at least one included file.", mode: "None", modeExplanation: "",
     outputHint: "", progress: 0, indeterminate: false, currentFile: null, completed: 0, total: 0, failed: 0,

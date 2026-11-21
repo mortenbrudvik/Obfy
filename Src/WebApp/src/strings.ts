@@ -75,6 +75,9 @@ export const strings = {
   guide: {
     title: "Guide",
     topics: "Guide topics",
+    online: "Open the full guide online",
+    onlineHint: "The full guide covers every technique, what can break, reading a stack trace, the command line and troubleshooting. It opens in your browser.",
+    onlineFailed: "Could not open the online guide",
   },
   protection: {
     title: "Protection",
@@ -109,7 +112,8 @@ export const strings = {
     beforeAndAfter: "Before and after",
     before: "Before",
     after: "After",
-    readMore: "Read more in the Guide",
+    readMore: "Read more online",
+    readMoreTitle: "Opens the online guide in your browser",
     browse: "Browse…",
     failed: {
       update: "Could not change the setting",

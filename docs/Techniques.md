@@ -261,7 +261,7 @@ Enabled in the Aggressive preset (`protection.methodEncryption`).
 
 ### Virtualization
 
-Replaces eligible **instance and static** methods with a stub that calls an imported bytecode interpreter (`Obfy.Runtime.Vm.Run`). Enable with `--virtualize`, the desktop **Virtualize methods** toggle, or `virtualization.enabled`. Off in every level preset (Minimal, Standard, Aggressive). Runs at priority 24, before method IL encryption.
+Replaces eligible **instance and static** methods with a stub that calls an imported bytecode interpreter (`Obfy.Runtime.Vm.Run`). Enable with `--virtualize`, the **Virtualization** switch on the desktop Protection screen, or `virtualization.enabled`. Off in every level preset (Minimal, Standard, Aggressive). Runs at priority 24, before method IL encryption.
 
 This is a **deterrent, not confidentiality**. The interpreter, opcode map, and XOR key are embedded in the output. Anyone who runs or inspects the assembly can recover the original logic.
 

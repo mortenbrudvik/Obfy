@@ -41,7 +41,8 @@ describe("TechniqueDetail", () => {
 
     expect(screen.getByText("Turn off a kind to leave those names as they are.")).toBeTruthy();
     expect(screen.getByText(/Leave public names alone/)).toBeTruthy();
-    expect(screen.getByText(/Keeps names that XAML files refer to by text/)).toBeTruthy();
+    expect(screen.getByText(/Keeps the names of public properties on types that look bindable/)).toBeTruthy();
+    expect(screen.getByText(/It does not keep type names/)).toBeTruthy();
     // A select explains the value it has now.
     expect(screen.getByText(/Look-alike or non-printing characters/)).toBeTruthy();
     // The help belongs to its control, for a screen reader.
@@ -124,13 +125,24 @@ describe("TechniqueDetail", () => {
     expect(screen.queryByText("Before and after")).toBeNull();
   });
 
-  it("opensTheGuide_atTheTechniquesTopic", () => {
+  it("offersReadMoreOnline_atTheTechniquesSectionOfTheOnlineGuide", () => {
     const onOpenGuide = vi.fn();
     renderDetail("antiDebug", protectionSnapshot(), { onOpenGuide });
 
-    fireEvent.click(screen.getByRole("button", { name: "Read more in the Guide" }));
+    const link = screen.getByRole("button", { name: "Read more online" });
+    expect(link.getAttribute("title")).toBe("Opens the online guide in your browser");
+    fireEvent.click(link);
 
-    expect(onOpenGuide).toHaveBeenCalledWith("tech");
+    expect(onOpenGuide).toHaveBeenCalledWith("techniques");
+  });
+
+  it("linksMerge_toTheFilesAndOutputSection", () => {
+    const onOpenGuide = vi.fn();
+    renderDetail("assemblyMerge", protectionSnapshot(), { onOpenGuide });
+
+    fireEvent.click(screen.getByRole("button", { name: "Read more online" }));
+
+    expect(onOpenGuide).toHaveBeenCalledWith("files-and-output");
   });
 
   it("showsTheUnavailableReason_andDisablesTheSwitch", () => {

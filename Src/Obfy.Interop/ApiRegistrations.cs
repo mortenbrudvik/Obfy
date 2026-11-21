@@ -16,6 +16,7 @@ public static class ApiRegistrations
     {
         registry.Register<AppInfoRequest>(IpcNames.Services.App, IpcNames.Methods.AppInfo);
         registry.Register<ReadyRequest>(IpcNames.Services.App, IpcNames.Methods.AppReady);
+        registry.Register<OpenGuideRequest>(IpcNames.Services.App, IpcNames.Methods.AppOpenGuide);
 
         registry.Register<GetSettingsRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsGet);
         registry.Register<UpdateSettingsRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsUpdate);

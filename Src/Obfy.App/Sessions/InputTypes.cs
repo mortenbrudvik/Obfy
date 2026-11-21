@@ -25,7 +25,18 @@ public enum OutputMode
 /// </summary>
 /// <param name="MergePath">The merged assembly's path, in <see cref="OutputMode.Merge"/> only.</param>
 /// <param name="Hint">The sentence the page shows.</param>
-public record OutputPlan(OutputMode Mode, string? Directory, string? MergePath, string Hint);
+/// <param name="Outputs">Every file the run writes for the included inputs, by the rule the hint and the run share.</param>
+public record OutputPlan(OutputMode Mode, string? Directory, string? MergePath, string Hint, IReadOnlyList<PlannedOutput> Outputs)
+{
+    /// <summary>Where the run writes the output of <paramref name="inputPath"/>.</summary>
+    /// <exception cref="InvalidOperationException">The plan has no output for that input.</exception>
+    public string OutputPathFor(string inputPath) =>
+        Outputs.FirstOrDefault(o => string.Equals(o.InputPath, inputPath, StringComparison.OrdinalIgnoreCase))?.OutputPath
+        ?? throw new InvalidOperationException("The output plan has no output for that input.");
+}
+
+/// <summary>One file the run writes: the input it comes from and the path it is written to. A merge has one, from its first input.</summary>
+public record PlannedOutput(string InputPath, string OutputPath);
 
 /// <summary>An included row the run can protect (an assembly or a source file), with what the analysis learnt about it.</summary>
 public record InputFile(string Id, string Path, FileKind Kind, bool FromSession, ProjectSettingsHints? Hints)
@@ -42,12 +53,14 @@ public record InputFile(string Id, string Path, FileKind Kind, bool FromSession,
 /// <param name="Plan">The output plan for <paramref name="Included"/>, by the rule the hint also uses.</param>
 /// <param name="OutputFolderChosen">The user chose an output folder (otherwise the plan's folder is a default).</param>
 /// <param name="SymbolMapPath">Where the symbol map is written, or null while the option is off.</param>
+/// <param name="Collision">A planned output that would replace one of the listed files; null when none would. A run does not start while it is set.</param>
 public record RunInput(
     IReadOnlyList<InputFile> Included,
     IReadOnlyList<FileRow> Skipped,
     OutputPlan Plan,
     bool OutputFolderChosen,
-    string? SymbolMapPath);
+    string? SymbolMapPath,
+    OutputCollision? Collision = null);
 
 /// <summary>What <see cref="InputSession.AddPaths"/> found beyond the files it added.</summary>
 /// <param name="ConfigPath">The first <c>.json</c> among the paths: the configuration to load. Loading it is not the list's business.</param>

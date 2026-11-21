@@ -55,51 +55,6 @@ public sealed class InputSessionOutputNamingTests : IDisposable
     private async Task RunAsync() => await _run.Start().WaitAsync(Guard);
 
     [Fact]
-    public async Task Each_WithAChosenFolder_WritesTheNameTheHintPromises()
-    {
-        var input = AddFile("app.dll");
-        var folder = Path.Combine(_root, "out");
-        _input.SetOutputFolder(folder);
-
-        var hint = _input.GetSnapshot().OutputHint;
-        await RunAsync();
-
-        var call = _engine.ObfuscateCalls.ShouldHaveSingleItem();
-        call.Input.ShouldBe(input);
-        call.Output.ShouldBe(Path.Combine(folder, "app.obfuscated.dll"));
-        hint.ShouldContain("app.obfuscated.dll");
-        hint.ShouldContain(folder);
-    }
-
-    [Fact]
-    public async Task Each_WhenTheChosenFolderIsTheInputsOwn_NeverWritesOverTheInput()
-    {
-        var input = AddFile("app.dll");
-        _input.SetOutputFolder(_inputDir);
-
-        await RunAsync();
-
-        var output = _engine.ObfuscateCalls.ShouldHaveSingleItem().Output.ShouldNotBeNull();
-        Path.GetFullPath(output).Equals(Path.GetFullPath(input), StringComparison.OrdinalIgnoreCase).ShouldBeFalse();
-        output.ShouldBe(Path.Combine(_inputDir, "app.obfuscated.dll"));
-    }
-
-    [Fact]
-    public async Task Each_ManyFiles_EveryOutputIsTheirObfuscatedName_AndNeverTheInput()
-    {
-        // One assembly and one source: not a closed set, so each is written alone.
-        var dll = AddFile("lib.dll");
-        var cs = AddFile("Program.cs");
-        _input.SetOutputFolder(_inputDir);
-
-        await RunAsync();
-
-        var outputs = _engine.ObfuscateCalls.ToDictionary(c => c.Input, c => c.Output);
-        outputs[dll].ShouldBe(Path.Combine(_inputDir, "lib.obfuscated.dll"));
-        outputs[cs].ShouldBe(Path.Combine(_inputDir, "Program.obfuscated.cs"));
-    }
-
-    [Fact]
     public async Task Each_WithoutAChosenFolder_LeavesTheNameToTheEngine()
     {
         AddFile("app.dll");

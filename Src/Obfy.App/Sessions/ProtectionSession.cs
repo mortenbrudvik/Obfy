@@ -40,7 +40,7 @@ public sealed class ProtectionSession
         new("metadataRemoval"),
         new("assemblyMerge"),
         new("signing"),
-        new("packing"),
+        new("packing", GatedByProfile: true),
         new("incremental"),
     ];
 
@@ -182,7 +182,9 @@ public sealed class ProtectionSession
 
     /// <summary>
     /// Loads a configuration. The whole object is kept (cloned), so values no option edits survive the next
-    /// <see cref="ToObfySettings"/>. A Custom configuration becomes the Custom snapshot.
+    /// <see cref="ToObfySettings"/>. A Custom configuration becomes the Custom snapshot. A configuration whose level
+    /// is a preset but whose preset-governed options are not exactly that preset's becomes Custom (see below); the file
+    /// itself is not touched.
     /// </summary>
     /// <param name="configPath">The file it came from, or null when it did not come from a file.</param>
     public void FromObfySettings(ObfySettings settings, string? configPath = null)
@@ -193,10 +195,10 @@ public sealed class ProtectionSession
             Normalize(loaded);
             var preset = loaded.Level;
 
-            // The engine re-applies a non-Custom level on every run, overwriting every option a preset governs (and turning
-            // packing, incremental cache and virtualization off). A file whose options differ from its preset would run as
-            // something other than what the Protection screen shows, so it is Custom, as if the user had edited them here
-            // (the command line does the same for every file). A file that matches its preset keeps the preset's name.
+            // The engine re-applies a non-Custom level on every run, overwriting every preset-governed option (packing,
+            // incremental cache and virtualization included, which no preset turns on). A file whose options are not
+            // exactly its preset's would run as the preset while the screen showed the file's options, so it is Custom,
+            // as if the user had edited the options here. The command line treats a configuration file the same way.
             if (preset != ObfuscationLevel.Custom && DiffersFromPreset(loaded, preset))
                 loaded.Level = ObfuscationLevel.Custom;
 
@@ -267,9 +269,7 @@ public sealed class ProtectionSession
         var settings = _settings;
         var gated = ProfileGatesIlProtections(settings.RuntimeProfile);
         var reason = gated ? $"Not available for {ProfileDisplayName(settings.RuntimeProfile)}" : null;
-        var reference = settings.Clone();
-        reference.Level = _basePreset;
-        reference.ApplyLevel();
+        var reference = PresetReference(settings, _basePreset);
 
         var techniques = Techniques.Select(def => BuildTechnique(def, settings, reference, gated, reason)).ToList();
         return new SettingsSnapshot(
@@ -339,15 +339,6 @@ public sealed class ProtectionSession
         }
     }
 
-    /// <summary>Whether any option a preset governs differs from what the engine would set for <paramref name="preset"/>.</summary>
-    private static bool DiffersFromPreset(ObfySettings loaded, ObfuscationLevel preset)
-    {
-        var reference = loaded.Clone();
-        reference.Level = preset;
-        reference.ApplyLevel();
-        return SettingFields.All.Any(f => !f.LevelIndependent && !f.SameValue(loaded, reference));
-    }
-
     /// <summary>
     /// Gives every section a hand-edited file set to <c>null</c> its default. System.Text.Json assigns <c>"watermark": null</c>
     /// to the init-only property, and everything after reads <c>settings.Watermark.Enabled</c>.
@@ -394,6 +385,25 @@ public sealed class ProtectionSession
             settings.Packing.Rid = "win-x64";
     }
 
+    /// <summary>The settings with <paramref name="preset"/> applied: what a run of that level would use.</summary>
+    private static ObfySettings PresetReference(ObfySettings settings, ObfuscationLevel preset)
+    {
+        var reference = settings.Clone();
+        reference.Level = preset;
+        reference.ApplyLevel();
+        return reference;
+    }
+
+    /// <summary>One rule for "this option is not what the preset gives": the Changed badge and the config load use it.</summary>
+    private static bool DiffersFromReference(SettingField field, ObfySettings settings, ObfySettings reference) =>
+        !field.LevelIndependent && !field.SameValue(settings, reference);
+
+    private static bool DiffersFromPreset(ObfySettings settings, ObfuscationLevel preset)
+    {
+        var reference = PresetReference(settings, preset);
+        return SettingFields.All.Any(f => DiffersFromReference(f, settings, reference));
+    }
+
     private static TechniqueState BuildTechnique(TechniqueDef def, ObfySettings settings, ObfySettings reference, bool gated, string? reason)
     {
         var fields = SettingFields.All.Where(f => f.Group == def.Id).ToList();
@@ -406,7 +416,7 @@ public sealed class ProtectionSession
             || (def.Id == "metadataRemoval" && options.Values.Any(v => v is true));
 
         var unavailable = def.GatedByProfile && gated;
-        var differs = fields.Any(f => !f.LevelIndependent && !f.SameValue(settings, reference));
+        var differs = fields.Any(f => DiffersFromReference(f, settings, reference));
         return new TechniqueState(def.Id, enabled, !unavailable, unavailable ? reason : null, differs, options);
     }
 
@@ -475,7 +485,7 @@ public sealed class ProtectionSession
 
     private static string LevelSummary(ObfuscationLevel level) => level switch
     {
-        ObfuscationLevel.Minimal => "Symbol renaming only.",
+        ObfuscationLevel.Minimal => "Rename symbols and strip debug information.",
         ObfuscationLevel.Standard => "Rename symbols, encrypt strings, and strip metadata.",
         ObfuscationLevel.Aggressive => "All protections at high intensity.",
         _ => "Your technique choices. Select a preset to replace them, then choose Custom to restore this set."

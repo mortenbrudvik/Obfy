@@ -4,85 +4,32 @@
       "id": "start",
       "title": "Getting started",
       "blocks": [
-        { "type": "p", "text": "Obfy renames and hardens your compiled .NET assemblies before you ship them, so the shipped build is harder for others to reverse-engineer. Your original files are never changed. Protected copies are new files, written next to the input unless you choose an output folder (see Where the output goes)." },
-        { "type": "p", "text": "Start on Files. Drop assemblies, a solution or a project onto the window, or choose **Add files**. Standard protection is selected for you and is a good first run." },
-        { "type": "p", "text": "Press **Obfuscate** or {Ctrl+Enter}. When the run finishes, Results opens with a summary, the symbol map and a preview of the output. Always run your own tests against the protected build before you ship it." },
-        { "type": "p", "text": "Obfuscation raises the effort needed to read your code. It does not make anything secret. Read the note under Techniques before you decide what to put in an assembly." }
-      ]
-    },
-    {
-      "id": "files",
-      "title": "Files and output",
-      "blocks": [
-        { "type": "p", "text": "Obfy accepts `.dll`, `.exe`, `.cs`, `.sln`, `.slnx`, `.csproj`, `.vbproj` and `.fsproj`. A solution or project expands into the assemblies it builds. Projects that are skipped, such as test projects and projects with no built output, stay in the list as rows that say why, and their checkbox is disabled. To protect a project that has not been built, build it and add the solution again. A `.json` file loads a saved configuration." },
-        { "type": "p", "text": "Add files ({Ctrl+O}) opens a picker for assemblies, C# source, solutions and projects. You can also drop them anywhere on the window. The checkbox on a row drops a file from the run without removing it, and {Delete} removes the selected files." },
-        { "type": "p", "text": "When two or more assemblies are included, or the files came from a solution or project, they are processed together as a closed set, so references between them keep working after renaming. Turn on **Merge assemblies** in Protection to combine them into one file instead." },
-        { "type": "h3", "text": "Where the output goes" },
-        { "type": "p", "text": "Leave the output folder empty and Obfy chooses for you. One file is written next to the input as `MyApp.obfuscated.dll`. A closed set is written to an `obfy-out` folder next to the first input. A merge is written next to the first input as `*.obfuscated.*`." },
-        { "type": "p", "text": "**Write a symbol map** saves a file that maps the new short names back to the originals. Keep it private. You need it to read stack traces from the protected build." }
-      ]
-    },
-    {
-      "id": "levels",
-      "title": "Settings and levels",
-      "blocks": [
-        { "type": "p", "text": "A level is a ready-made set of protections. **Minimal** renames symbols and strips debug information, and is the safest. **Standard** adds encrypted strings and attribute clean-up. **Aggressive** adds control flow, constant, resource and method body encryption, reference proxies, and the debugger, integrity and memory checks with decompiler decoys, and needs careful testing. Each card shows three small meters for protection, run-time cost and compatibility risk, so you can compare them at a glance." },
-        { "type": "p", "text": "Virtualization, native packing and the incremental cache are off at every level. Turning one on moves you to Custom." },
-        { "type": "p", "text": "Change any option a level controls and you move to **Custom**. A **Changed** badge marks every protection that differs from the level you started from. Choose a level card again to reset, or choose Custom to return to your own mix. Watermark, signing, merge, embedding, the packing target and the scope lists belong to no level, so changing them keeps your level." },
-        { "type": "h3", "text": "Target runtime" },
-        { "type": "p", "text": "Some protections do not work on every runtime. Pick the runtime your app runs on (Default, NativeAOT, Unity IL2CPP or Blazor WebAssembly) and Obfy switches off method body encryption, memory image guard, virtualization and dependency embedding for you. Their settings are kept, so switching back restores them. The debugger check stays available and leaves out its Windows-specific part." },
-        { "type": "h3", "text": "Configuration files" },
-        { "type": "p", "text": "Save ({Ctrl+S}) writes your settings to `obfy.json`. Open ({Ctrl+L}) loads one, and so does dropping a `.json` file onto the window. Check the file in next to your solution so builds on other machines use the same settings." }
-      ]
-    },
-    {
-      "id": "tech",
-      "title": "Techniques",
-      "blocks": [
-        { "type": "p", "text": "Select any row in Protection to read what it does, what it costs and what each option means. The rows are grouped:" },
-        {
-          "type": "ul",
-          "items": [
-            "**Names.** Symbol renaming replaces type, member and namespace names.",
-            "**Data.** String, constant and resource encryption hide the values your code uses.",
-            "**Code.** Control flow, reference proxies, method body encryption and virtualization change how code is stored and run.",
-            "**Runtime checks.** Debugger, integrity and memory image checks, and decoy types for decompilers.",
-            "**Packaging.** Merge, embed dependencies, native packing and strong-name signing.",
-            "**Housekeeping.** Metadata removal, the watermark and the incremental cache.",
-            "**Scope.** Rules that leave types and members alone, or limit protection to some of them."
-          ]
-        },
-        { "type": "note", "title": "Obfuscation is not confidentiality", "text": "String, constant, resource and method body encryption, and native packing, hide values from casual inspection. The key is stored in the output, so anyone who runs or inspects it can recover the content: XOR trivially, AES-256 with a little more effort. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on obfuscation." },
-        { "type": "p", "text": "Obfuscation can break code that looks names up as text, such as reflection, serialization and XAML bindings. Test the protected build, keep the symbol map, and use the scope rules to leave those names alone." }
+        { "type": "p", "text": "Obfy renames and hardens your compiled .NET assemblies before you ship them, so the shipped build is harder for others to reverse-engineer. The app writes protected copies and will not write over an input file: a run whose output would replace one does not start, and the run bar says why. With one file and no output folder, the copy is named `MyApp.obfuscated.dll` and sits next to the original." },
+        { "type": "p", "text": "Start on Files. Drop assemblies, a solution or a project onto the window, or choose **Add files**. **Standard** protection is selected for you and is a good first run." },
+        { "type": "p", "text": "Press **Obfuscate** or {Ctrl+Enter}. The bar at the bottom says what the run will do, and why it cannot start when it cannot. When every file succeeds, Results opens with a summary and the symbols. If a file fails, you stay where you are: open Results and read the Log tab. On Results, **Preview** shows nothing until you choose an output assembly." },
+        { "type": "p", "text": "To read a stack trace from the protected build later, turn on **Write a symbol map** on Files before the run, because it is off by default. Or choose **Export symbol map…** on Results right after the run. Results are not kept after the next run or after you close the app." },
+        { "type": "p", "text": "Always run your own tests against the protected build before you ship it, and test the exact files you ship." },
+        { "type": "note", "title": "Obfuscation is not confidentiality", "text": "String, constant, resource and method body encryption, and native packing, hide values from casual inspection. The key is stored in the output, so anyone who runs or inspects it can recover the content: XOR trivially, AES-256 with a little more effort. Do not ship real secrets such as keys, tokens or credentials in an assembly and rely on obfuscation." }
       ]
     },
     {
       "id": "keys",
       "title": "Shortcuts",
       "blocks": [
-        { "type": "p", "text": "These work anywhere in the window." },
+        { "type": "p", "text": "Most of these work wherever the window has focus. Where one does not, its row says so." },
         {
           "type": "shortcuts",
           "items": [
-            { "label": "Add files", "keys": ["Ctrl", "O"] },
-            { "label": "Save configuration", "keys": ["Ctrl", "S"] },
-            { "label": "Open configuration", "keys": ["Ctrl", "L"] },
-            { "label": "Run", "keys": ["Ctrl", "Enter"] },
-            { "label": "Cancel a run", "keys": ["Esc"] },
+            { "label": "Add files", "keys": ["Ctrl", "O"], "note": "Not during a run." },
+            { "label": "Save configuration", "keys": ["Ctrl", "S"], "note": "Saves to the file you opened or last saved. Asks where the first time." },
+            { "label": "Open configuration", "keys": ["Ctrl", "L"], "note": "Not during a run." },
+            { "label": "Run", "keys": ["Ctrl", "Enter"], "note": "Only while no run is going, and when the run bar says the run can start." },
+            { "label": "Cancel a run", "keys": ["Esc"], "note": "Only during a run." },
             { "label": "Open the Guide", "keys": ["F1"] },
-            { "label": "Copy selected log lines or symbols", "keys": ["Ctrl", "C"] },
-            { "label": "Remove selected files", "keys": ["Delete"] }
+            { "label": "Remove selected files", "keys": ["Delete"], "note": "Click a row in the file list first. Not during a run." }
           ]
-        }
-      ]
-    },
-    {
-      "id": "results",
-      "title": "Results",
-      "blocks": [
-        { "type": "p", "text": "After a run, Results shows four tabs. **Summary** counts what was renamed, encrypted and removed and lists each output file. **Symbols** is the symbol map as a tree: original names first, then the new short names, with members nested under their type." },
-        { "type": "p", "text": "**Preview** decompiles an output assembly so you can see what a reader would see. It only decompiles when you choose a file. **Log** keeps earlier runs and separates them with a line, and can show only warnings and errors." },
-        { "type": "p", "text": "To read a stack trace from the protected build, search the Symbols tab for the short name, or open the exported symbol map. Warnings in the log usually point at code that looks names up as text." }
+        },
+        { "type": "p", "text": "{Ctrl+C} copies selected text, as in any page. To copy log lines, use **Copy** on the Log tab: it copies the lines you can see." }
       ]
     }
   ]

@@ -7,20 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `app.openGuide` bridge endpoint opens the online guide (https://brudvik.com/obfy/guide) in the default browser. The page sends a section id (`getting-started`, `files-and-output`, `levels-and-settings`, `techniques`, `what-can-break`, `results`, `stack-traces`, `shortcuts`, `command-line`, `ide-and-build`, `troubleshooting`); the host builds the `https` URL from the `GuideLinks` allowlist, and an unknown or missing id opens the guide's start. `IShellLauncher.OpenUrl` accepts `https` only. The page never supplies a URL
+- The Guide screen has an "Open the full guide online" button, and a technique's "Read more" link is now "Read more online" and opens its section of the online guide in the browser
+
 ### Changed
-- The desktop window keeps Settings on the left and a compact output row (directory, browse, symbol-map toggle, symbol-map path) above the file list. Output, Results, and Preview are tabs under the files. A successful run opens Results. Preview decompiles only the assembly you select
-- The closed level dropdown shows Minimal, Standard, Aggressive, or Custom. The description stays in the open list and on the line under the dropdown. Choosing Custom again restores the technique switches from before the preset. Each protection switch stays in the card header when the card is collapsed
-- Help content sizes to the dialog
-- Log options (timestamps, auto-scroll, wrap, problems only) are in the log menu. A new run keeps the earlier log and inserts a separator when that log is not empty
+- The in-app Guide is a short quick-start (Getting started and Shortcuts). The full guide moved online. Its text now says that Results opens only when every file succeeds, that the symbol map file is written only when Write a symbol map is on (it is off by default), that Preview needs a chosen assembly, and that results are not kept after the next run. The Ctrl+C row is gone (there is no handler), and each shortcut says when it works
+- Corrected technique copy on the Protection screen: Hash names differ from build to build (the hash is salted per run), type patterns match the short type name only, Preserve XAML keeps public properties of bindable-looking types but not type names, Remove attributes drops nine named compiler and debugger attributes and keeps your own, Merge needs every included file to be an assembly, resource encryption rewrites only `GetManifestResourceStream` calls, and a packed native launcher is not strong-name signed
+- The desktop app is a WPF shell that hosts a WebView2 page built with React. A sidebar has Files, Protection, Results, and Guide, and a run bar along the bottom starts and cancels a run. The output row (folder, Browse, symbol-map toggle and path) is on the Files screen. A successful run opens Results. Preview decompiles only the assembly you select
+- Levels are cards: Minimal, Standard, Aggressive, or Custom. Choosing Custom again restores the technique switches from before the preset
+- The Log tab has Problems only, Timestamps, and Wrap options and Copy and Clear buttons. A new run keeps the earlier log and inserts a separator when that log is not empty
 - The overall progress bar is indeterminate for one included file, a merge, and a closed set
 - Symbol renaming never renames a virtual method: overrides, interface implementations, finalizers and delegate `Invoke` keep their names, in every type. This keeps dispatch through a base type or interface working, at the cost of leaving those member names readable
 - Obfy refuses an input that already contains its own runtime helpers (`Obfy.Runtime.*`), with a message, instead of protecting it a second time and producing output that returns wrong values
 - A protection that cannot apply to the input (for example AntiDebug on source code) now produces one warning that names the skipped techniques, and a run that changed nothing says so
-- A chosen output folder receives `name.obfuscated.ext`, as the window's hint says, instead of a file with the input's own name
 - `obfy config generate` refuses to overwrite an existing file unless `--force` is given, and creates a missing output folder
 - A closed set applies the chosen level and validates its settings, as a single file does
 - The Preview tab waits up to five minutes for a large assembly and the Log tab keeps the latest 5,000 lines in the page (the host keeps the full log)
 - A source-code run honors the `inclusions` and `exclusions` settings and the default exclusion attributes such as `[Serializable]`, as an assembly run does
+
+### Removed
+- The JetBrains Rider plugin (`Src/Obfy.Rider`) was removed, with its Gradle build, JVM tests, and the `rider-tests` CI job. It was never published to a marketplace or attached to a release
 
 ### Fixed
 - Obfuscated output no longer carries the original names and plaintext string or constant literals in its raw bytes. The assembly was written with the original string, user-string and blob heaps preserved, so renaming and string encryption left what they replaced readable to `strings`
@@ -28,7 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Symbol renaming no longer breaks `ToString`, `Equals` and `GetHashCode` overrides in structs and sealed classes, delegate types, and finalizers, which dispatched to the base implementation or failed to load
 - Reference proxies no longer wrap `__arglist` (vararg) calls inside the module, which produced invalid IL
 - The window appears as soon as the page has drawn, instead of after an 8-second wait at every launch
-- Protecting into a chosen output folder can no longer overwrite the original when the folder is the input's own
 - Closing Obfy, or choosing Quit or Restart, during a run asks first, cancels the run and waits for it to stop instead of killing it mid-write. Restart saves preferences before the new instance starts
 - If the page cannot load (missing files, a failed or HTTP-error load) Obfy shows the Restart / Open log folder / Quit panel instead of a blank window. Renderer crashes that recovered no longer add up to the permanent failure panel, and a broken WebView2 loader at startup shows an error and exits instead of leaving an invisible process
 - Crash details are flushed to the log before the process ends, and the failure panel says so when the log folder could not be created. Startup files, `-o` and the configuration are no longer dropped when the saved preferences cannot be read, and failed drops show a notice. The WebView refuses permissions, downloads, script dialogs and pinch zoom
@@ -51,13 +57,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Source string encryption no longer changes the meaning of interpolated strings, writes one file for one input file, and no longer duplicates its helper on re-runs. Source control flow no longer hangs on 900+ statement methods, breaks `out` parameters, throws or overflows in its predicates, transforms methods at intensity 0, or writes unparseable text. Source symbol renaming keeps interface events, anonymous and tuple member names and partial methods consistent, avoids names that collide with existing identifiers, and keeps symbol-map keys unique. Source runs warn when the output has compile errors the input did not
 - A path or file name containing square brackets (such as `App [Release]`) no longer makes a finished run exit with code 1 and skip the map and report. `-c` files are read case-insensitively and unknown keys print a warning. `assemblyMerge.enabled: true` merges, and `--internalize` overrides the config only when typed. `config wizard` writes enums as names so the file validates against the schema, and `-l` rejects numbers that are not a level
 - The installer keeps the system Path expandable, notifies running programs, and on uninstall removes only Obfy's own entry. It no longer ships the original PDBs of the self-obfuscated CLI assemblies, and `build-installer.ps1 -SkipPublish` no longer deletes the publish folders it reuses
-- Visual Studio and Rider no longer re-obfuscate an unchanged output on later builds, Rider obfuscates every target framework, both write the full Minimal, Standard and Aggressive preset values, and both show the CLI's real error text and transformation counts. The Visual Studio extension package includes its license and icon
-- The GitHub Actions UI tests step no longer looks for the test assembly in `bin\x64\Release` (a leaked `Platform=x64` from the MSVC setup step), `publish.yml` only runs for a release, `main` or a tag, and the installer and report-generator tool versions are pinned
+- Visual Studio no longer re-obfuscates an unchanged output on later builds, writes the full Minimal, Standard and Aggressive preset values, and shows the CLI's real error text and transformation counts. The extension package includes its license and icon
+- `publish.yml` only runs for a release, `main` or a tag, and the installer and report-generator tool versions in CI are pinned. The UI tests step records WebView2's processes and listening ports when its debugging port is refused
+- The desktop app refuses to start a run whose output would replace one of its inputs, and the run bar says why and how to get out (pick another folder, or clear the folder). Before, an output folder that was the folder of an input silently overwrote the original, and a closed set also deleted the backup it had made. It checks every mode (one file, closed set, merge, C# files) and the default `*.obfuscated.*` name, ignoring case, trailing separators and `..`, and follows symbolic links and junctions. The CLI is unchanged and still writes where `-o` says
+- The CI UI-automation step ran no tests: `ilammy/msvc-dev-cmd` exports `Platform=x64`, so the project-level `dotnet test --no-build` looked in `bin/x64/Release` and found no DLL. The step now clears `Platform`
+- The desktop app shows and runs a loaded configuration as Custom when its level-controlled options are not exactly what its `level` preset sets, so a run uses the file's switches, as the CLI does. The file on disk is not rewritten
+- The run bar hint names what a run writes: with an output folder it gives the input's own file name (not `*.obfuscated.*`), and two or more C# files without a folder are compiled together into `obfy-src` next to the first
+- Native packing is greyed out on the Protection screen for NativeAOT, Unity IL2CPP, and Blazor WebAssembly, as the engine already turned it off for them
+- The Minimal level is described as symbol renaming and debug information removal in the app, the wizard, and the docs
+- The Results tree nests members under their type. Method keys include the signature, for example `Method:Ns.MyType.Foo(System.Void ())`. Zero counters are hidden, and search waits briefly before filtering
 - Control flow obfuscation with opaque predicates could intermittently produce a method the runtime refuses to load (`InvalidProgramException`). A predicate needs up to three evaluation-stack slots above the depth where it is inserted, but the method's declared maximum was only floored at 8, so one random predicate form at a six-deep site overflowed it. The declared maximum now covers the original depth plus the predicate headroom. This also removes the intermittent failure of the Virtualization full-pipeline tests, because the injected interpreter has such a site
-- The Results tree nests members under their type. Method keys include the signature, for example `Method:Ns.MyType.Foo(System.Void ())`. Zero counters are hidden. Copy copies the selected mapping, and search waits briefly before filtering
 - Files can be dropped on the window. A dropped `.json` file loads that configuration
 - A saved output folder that no longer exists is cleared, and the window says it was not found. A desktop `-o` path is used for that session and is not saved as the default. Editing the box saves the new path, including a folder that does not exist yet
-- File rows have an include checkbox, a status color, and the output path after success. Extended selection and Delete remove the selected rows. The row menu can open the output, reveal it, copy the path, preview it, or remove the row
+- File rows have an include checkbox, a status color, and the output path after success. Extended selection and Delete remove the selected rows. The row menu has Show in folder and Remove
 - Obfuscate explains why it is disabled. The status text is the status bar name
 - NativeAOT, Unity IL2CPP, and Blazor WebAssembly disable the protections those profiles cannot use and keep the stored values. Signing has a key-file browse button, and a missing key or an empty watermark id stays marked invalid
 

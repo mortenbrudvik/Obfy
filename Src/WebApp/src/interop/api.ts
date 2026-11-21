@@ -43,6 +43,11 @@ export const api = {
   app: {
     info: () => call<AppInfo>("app", "info"),
     ready: () => call<unknown>("app", "ready"),
+    /**
+     * Opens the online guide in the default browser. `topic` is an id from the host's closed set (GuideLinks.cs); an
+     * unknown or missing one opens the guide's start. The page never passes a URL: the host builds it.
+     */
+    openGuide: (topic?: string) => call<unknown>("app", "openGuide", { topic: topic ?? null }),
   },
 
   settings: {

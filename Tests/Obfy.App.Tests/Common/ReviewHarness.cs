@@ -145,11 +145,11 @@ internal sealed class ReviewHarness : IDisposable
     public RunCoordinator Run { get; }
     public string Directory { get; } = Path.Combine(Path.GetTempPath(), $"ReviewHarness_{Guid.NewGuid():N}");
 
-    public ReviewHarness(Func<string, bool>? keyFileExists = null)
+    public ReviewHarness(Func<string, bool>? keyFileExists = null, IPathProbe? pathProbe = null)
     {
         System.IO.Directory.CreateDirectory(Directory);
         Protection = new Obfy.App.Sessions.ProtectionSession(Events, keyFileExists);
-        Input = new InputSession(new FakeSettings(), new FakeAnalyzer(), new FakeShell(), Events, NullLogger<InputSession>.Instance, TimeSpan.Zero);
+        Input = new InputSession(new FakeSettings(), new FakeAnalyzer(), new FakeShell(), Events, NullLogger<InputSession>.Instance, TimeSpan.Zero, pathProbe);
         Log = new LogBuffer(Events, TimeSpan.FromHours(1));
         Results = new ResultsStore(Events);
         Run = new RunCoordinator(Engine, new StubReports(), Protection, Input, Log, Results, Events, Logger);

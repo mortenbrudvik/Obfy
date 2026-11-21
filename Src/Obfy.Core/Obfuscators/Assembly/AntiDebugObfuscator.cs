@@ -196,7 +196,7 @@ public class AntiDebugObfuscator : IObfuscator
         var getTickCount = new MemberRefUser(
             module, "get_TickCount",
             MethodSig.CreateStatic(module.CorLibTypes.Int32), env);
-        var dllNotFound = module.CorLibTypes.GetTypeRef("System", "DllNotFoundException");
+        var dllNotFound = FrameworkReferences.Type(module, "System", "DllNotFoundException");
         var entryNotFound = module.CorLibTypes.GetTypeRef("System", "EntryPointNotFoundException");
 
         var afterAttached = Instruction.Create(OpCodes.Nop);

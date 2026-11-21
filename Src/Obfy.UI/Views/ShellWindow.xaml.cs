@@ -130,11 +130,11 @@ public partial class ShellWindow : FluentWindow
     /// <summary>
     /// Closing the window ends the process, and a run executes on background threads that the process would cut off
     /// mid-write. With a run going the close is put on hold: the user is asked, the run is cancelled and waited for, and then
-    /// the window closes for real. With no run it closes at once.
+    /// the window closes for real. With no run it closes at once, and from then on no run can start.
     /// </summary>
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (_shutdown.Approved || !_shutdown.RunIsActive)
+        if (_shutdown.TryApproveWithoutAsking())
             return;
 
         e.Cancel = true;
@@ -152,6 +152,9 @@ public partial class ShellWindow : FluentWindow
         {
             // Nothing awaits this task: a fault here would only surface as an unobserved exception.
             _logger.LogError("Could not close the window after the run stopped ({ExceptionType})", ex.GetType().Name);
+
+            // The window is staying open, so the close that was approved is off: runs must start, and the next close asks again.
+            _shutdown.AbandonClose();
         }
     }
 

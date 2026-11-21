@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -38,7 +39,7 @@ public class WebViewHandler
     public const string FilesDroppedMessage = "files.dropped";
 
     private readonly ILogger _logger;
-    private int _reloads;
+    private readonly ReloadBudget _reloads = new();
     private Task? _start;
 
     public WebViewHandler(WebView2 webview, string initialUrl, string? environmentFolderPath = null, ILogger? logger = null)
@@ -72,6 +73,15 @@ public class WebViewHandler
     /// <see cref="ProcessFailureResponse.GiveUp"/>). Only a new WebView2, in practice a restart of the app, brings it back.
     /// </summary>
     public Action? Unrecoverable { get; set; }
+
+    /// <summary>
+    /// Raised on the UI thread when a navigation to an allowed origin ends with the page not loaded (see
+    /// <see cref="IsLoadFailure"/>). A later successful load raises <see cref="PageLoaded"/>.
+    /// </summary>
+    public Action? LoadFailed { get; set; }
+
+    /// <summary>Raised on the UI thread when a navigation to an allowed origin ends with the page loaded.</summary>
+    public Action? PageLoaded { get; set; }
 
     /// <summary>
     /// Raised on the UI thread with the full paths of the files the user dropped onto the page (see
@@ -166,6 +176,29 @@ public class WebViewHandler
         _ => ProcessFailureResponse.None,
     };
 
+    /// <summary>
+    /// Whether a finished top-level navigation left the page unloaded: it failed (cannot connect, aborted, ...) or the server
+    /// answered 4xx/5xx (a virtual host answers 404 for a file that is not there, with the navigation itself "successful").
+    /// A cancelled navigation is not a failure: <c>NavigationStarting</c> cancels a dropped document or a link out of the app,
+    /// and a newer navigation supersedes an older one.
+    /// </summary>
+    public static bool IsLoadFailure(bool isSuccess, CoreWebView2WebErrorStatus status, int httpStatusCode) =>
+        status != CoreWebView2WebErrorStatus.OperationCanceled && (!isSuccess || httpStatusCode >= 400);
+
+    /// <summary>The page the folder must hold for the virtual host to have anything to show.</summary>
+    public const string EntryPage = "index.html";
+
+    /// <summary>
+    /// Throws when <paramref name="folder"/> has no <see cref="EntryPage"/>: <c>SetVirtualHostNameToFolderMapping</c> does not
+    /// look, and the window would only show a blank page. The message names no path, so it can go to the log.
+    /// </summary>
+    /// <exception cref="FileNotFoundException">The page is missing; the install is damaged.</exception>
+    public static void EnsureWebRoot(string folder)
+    {
+        if (!File.Exists(Path.Combine(folder, EntryPage)))
+            throw new FileNotFoundException($"The page Obfy shows ({EntryPage}, in the Assets folder beside the program) is missing.");
+    }
+
     private void ApplySettings(CoreWebView2Settings settings)
     {
         // DevTools and browser shortcuts (F12, F5/Ctrl+R reload, Ctrl+P, Ctrl+F, zoom keys) follow EnableDevTools,
@@ -179,6 +212,8 @@ public class WebViewHandler
         settings.AreDefaultScriptDialogsEnabled = false;
         settings.IsStatusBarEnabled = false;
         settings.IsZoomControlEnabled = false;
+        // A touchpad pinch would zoom the page, which has no zoom control of its own and is laid out for 100%.
+        settings.IsPinchZoomEnabled = false;
         // Debug keeps the error page so a stopped Vite dev server says so instead of showing a blank window.
         settings.IsBuiltInErrorPageEnabled = EnableDevTools;
         settings.IsPasswordAutosaveEnabled = false;
@@ -194,18 +229,18 @@ public class WebViewHandler
     private void OnProcessFailed(CoreWebView2ProcessFailedKind kind, CoreWebView2ProcessFailedReason reason, int exitCode)
     {
         _logger.LogError("WebView2 process failed: {Kind} ({Reason}, exit code {ExitCode})", kind, reason, exitCode);
-        switch (RespondTo(kind, _reloads))
+        switch (RespondTo(kind, _reloads.Used))
         {
             case ProcessFailureResponse.Reload:
-                _reloads++;
-                _logger.LogInformation("Reloading the page ({Reload} of at most {MaxReloads})", _reloads, MaxReloads);
+                _reloads.Record();
+                _logger.LogInformation("Reloading the page ({Reload} of at most {MaxReloads})", _reloads.Used, MaxReloads);
                 try
                 {
                     WebView.Reload();
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Could not reload the page");
+                    _logger.LogError("Could not reload the page ({ExceptionType})", ex.GetType().Name);
                     RaiseSafely(() => Unrecoverable?.Invoke(), nameof(Unrecoverable));
                 }
 
@@ -248,6 +283,8 @@ public class WebViewHandler
 
             if (!string.IsNullOrEmpty(HostWebRootFolder))
             {
+                EnsureWebRoot(HostWebRootFolder);
+
                 // The page is served from this host, and its own requests are same-origin, which CORS does not govern.
                 // DenyCors only stops pages from other origins (which the filters below block anyway) reading the files.
                 core.SetVirtualHostNameToFolderMapping(
@@ -258,6 +295,7 @@ public class WebViewHandler
 
             InstallRequestFilter(core);
             InstallNavigationGuards(core);
+            InstallDefaultDenials(core);
             core.WebMessageReceived += (_, args) => OnWebMessage(args);
             core.ProcessFailed += (_, args) => OnProcessFailed(args.ProcessFailedKind, args.Reason, args.ExitCode);
 
@@ -266,7 +304,7 @@ public class WebViewHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "WebView2 initialization failed");
+            _logger.LogError("WebView2 initialization failed ({ExceptionType})", ex.GetType().Name);
             RaiseSafely(() => InitializeFailed?.Invoke(ex), nameof(InitializeFailed));
         }
     }
@@ -309,7 +347,7 @@ public class WebViewHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Could not read a message from the page");
+            _logger.LogError("Could not read a message from the page ({ExceptionType})", ex.GetType().Name);
         }
     }
 
@@ -325,7 +363,7 @@ public class WebViewHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "The {Callback} callback threw", name);
+            _logger.LogError("The {Callback} callback threw ({ExceptionType})", name, ex.GetType().Name);
         }
     }
 
@@ -348,7 +386,7 @@ public class WebViewHandler
         }
         catch (Exception ex) when (ex is NotImplementedException or InvalidCastException or COMException)
         {
-            _logger.LogDebug(ex, "This WebView2 runtime cannot take the background colour at creation");
+            _logger.LogDebug("This WebView2 runtime cannot take the background colour at creation ({ExceptionType})", ex.GetType().Name);
             return null;
         }
     }
@@ -378,10 +416,21 @@ public class WebViewHandler
     {
         core.NavigationCompleted += (_, args) =>
         {
-            if (args.IsSuccess)
+            if (IsLoadFailure(args.IsSuccess, args.WebErrorStatus, args.HttpStatusCode))
+            {
+                _logger.LogWarning("Navigation failed: {WebErrorStatus}, HTTP status {HttpStatusCode}", args.WebErrorStatus, args.HttpStatusCode);
+                RaiseSafely(() => LoadFailed?.Invoke(), nameof(LoadFailed));
+            }
+            else if (args.IsSuccess)
+            {
                 _logger.LogDebug("Navigation completed successfully");
+                RaiseSafely(() => PageLoaded?.Invoke(), nameof(PageLoaded));
+            }
             else
-                _logger.LogWarning("Navigation failed: {WebErrorStatus}", args.WebErrorStatus);
+            {
+                // Cancelled: a blocked address or a navigation that a newer one replaced.
+                _logger.LogDebug("Navigation cancelled");
+            }
         };
 
         core.NavigationStarting += (_, args) =>
@@ -407,6 +456,33 @@ public class WebViewHandler
             LogBlocked("popup request to", args.Uri);
             args.Handled = true;
         };
+    }
+
+    /// <summary>
+    /// The page is Obfy's own and asks for nothing from the browser: no camera, microphone, location, notifications or
+    /// clipboard read, no file downloads (exports go through the host's own file dialogs) and no script dialogs. WebView2's
+    /// defaults for the page's origin would prompt for the first, start the second and, with default dialogs off, leave
+    /// the third to whoever handles the event. Each is refused here, explicitly, so a page that is ever compromised or
+    /// changed cannot get more than the host gives it.
+    /// </summary>
+    private void InstallDefaultDenials(CoreWebView2 core)
+    {
+        core.PermissionRequested += (_, args) =>
+        {
+            _logger.LogDebug("Denied a {Kind} permission request", args.PermissionKind);
+            args.State = CoreWebView2PermissionState.Deny;
+            args.Handled = true;
+        };
+
+        core.DownloadStarting += (_, args) =>
+        {
+            _logger.LogDebug("Cancelled a download");
+            args.Cancel = true;
+            args.Handled = true;
+        };
+
+        // Default script dialogs are off (ApplySettings); a dialog the handler does not accept is dismissed.
+        core.ScriptDialogOpening += (_, args) => _logger.LogDebug("Dismissed a {Kind} script dialog", args.Kind);
     }
 
     /// <summary>A warning with only the address's scheme (see <see cref="LoggableAddress"/>); the whole address is not logged.</summary>

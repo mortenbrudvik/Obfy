@@ -48,7 +48,8 @@ public class ObfuscationService : IObfuscationService
         ObfySettings settings,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting obfuscation of {InputPath}", inputPath);
+        // The log keeps Debug and above: no path, no exception text. Counts, stages and exception types only.
+        _logger.LogInformation("Starting obfuscation run");
 
         var isDirectory = Directory.Exists(inputPath);
         if (!File.Exists(inputPath) && !isDirectory)
@@ -58,43 +59,48 @@ public class ObfuscationService : IObfuscationService
 
         var target = ObfuscationTarget.ForFile(inputPath, outputPath, isDirectory);
 
-        // Clone so ApplyLevel cannot mutate the caller's object (UI, batch, or a shared config).
-        settings = settings.Clone();
+        var prepared = TryPrepareSettings(settings, out var settingsFailure);
+        if (prepared is null)
+            return settingsFailure!;
 
-        if (settings.Level != ObfuscationLevel.Custom)
+        settings = prepared;
+        var gatingWarnings = ApplyRuntimeProfileGating(settings, target.TargetType);
+
+        // One cache key per run, from the settings the pipeline will actually use (after profile gating) and
+        // the input as it is before the run starts. The same key serves the hit check and the write.
+        var effectiveOutput = outputPath ?? GenerateOutputPath(inputPath);
+        string? cacheKey = null;
+        ObfySettings? keySettings = null;
+        if (settings.Incremental.Enabled && !isDirectory && target.TargetType == TargetType.Assembly)
         {
-            settings.ApplyLevel();
+            keySettings = settings.Clone();
+            try
+            {
+                cacheKey = IncrementalCache.ComputeKey(inputPath, keySettings);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Unreadable input: the load below reports it. This run just does not use the cache.
+                _logger.LogWarning("Incremental cache key could not be computed ({ExceptionType})", ex.GetType().Name);
+            }
         }
 
-        try
+        if (cacheKey is not null && IncrementalCache.TryHit(effectiveOutput, keySettings!, cacheKey))
         {
-            settings.Validate();
-        }
-        catch (ValidationException ex)
-        {
-            _logger.LogError(ex, "Invalid obfuscation settings");
-            return ObfuscationResult.Failed($"Invalid settings: {ex.Message}", ex);
-        }
-
-        var effectiveOutputEarly = outputPath ?? GenerateOutputPath(inputPath);
-        if (settings.Incremental.Enabled &&
-            !isDirectory &&
-            target.TargetType == TargetType.Assembly &&
-            IncrementalCache.TryHit(inputPath, effectiveOutputEarly, settings))
-        {
-            _logger.LogInformation("Incremental cache hit for {InputPath}", inputPath);
+            _logger.LogInformation("Incremental cache hit");
             string? packed = null;
             var warnings = new List<string> { "Incremental: reused cached output" };
+            warnings.AddRange(gatingWarnings);
             if (settings.Packing.Enabled)
             {
                 if (settings.Packing.IsPortable)
                 {
-                    packed = ManagedLauncherPacker.LauncherPathFor(effectiveOutputEarly);
+                    packed = ManagedLauncherPacker.LauncherPathFor(effectiveOutput);
                     warnings.Add("Packed launcher: " + packed);
                 }
                 else
                 {
-                    packed = effectiveOutputEarly;
+                    packed = effectiveOutput;
                     warnings.Add("Packed native host: " + packed);
                 }
             }
@@ -102,7 +108,7 @@ public class ObfuscationService : IObfuscationService
             return ObfuscationResult.Successful(
                 new ObfuscationStatistics(),
                 inputPath: inputPath,
-                outputPath: effectiveOutputEarly,
+                outputPath: effectiveOutput,
                 warnings: warnings,
                 packedLauncherPath: packed);
         }
@@ -120,14 +126,21 @@ public class ObfuscationService : IObfuscationService
 
             context.InputPath = inputPath;
             context.OutputPath = target.EffectiveOutputPath;
-            RuntimeProfileGating.Apply(settings, context);
-            foreach (var warning in context.Warnings)
-                _logger.LogWarning("{Warning}", warning);
+            context.Warnings.AddRange(gatingWarnings);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to load {InputPath}", inputPath);
+            _logger.LogError("Failed to load input ({ExceptionType})", ex.GetType().Name);
             return ObfuscationResult.Failed($"Failed to load input: {ex.Message}", ex);
+        }
+
+        if (target.TargetType == TargetType.Assembly &&
+            context.Module is not null &&
+            ProtectedInputGuard.ContainsInjectedHelpers(context.Module))
+        {
+            DisposeModule(context);
+            _logger.LogWarning("Input already contains Obfy runtime helper types; run refused");
+            return ObfuscationResult.Failed(ProtectedInputGuard.Refusal(inputPath));
         }
 
         ILifetimeScope? runScope = null;
@@ -148,10 +161,18 @@ public class ObfuscationService : IObfuscationService
                 return result;
             }
 
+            if (context.Statistics.TotalTransformations == 0)
+                context.Warnings.Add(ObfuscationWarnings.NoTransformations);
+
             // Save the result
             try
             {
-                var effectiveOutput = outputPath ?? GenerateOutputPath(inputPath);
+                if (target.TargetType == TargetType.Assembly && !IncrementalCache.Invalidate(effectiveOutput))
+                {
+                    context.Warnings.Add(
+                        "A stale incremental cache file could not be removed: delete '"
+                        + IncrementalCache.CachePath(effectiveOutput) + "' before relying on the cache again.");
+                }
 
                 switch (target.TargetType)
                 {
@@ -163,13 +184,13 @@ public class ObfuscationService : IObfuscationService
                         break;
                 }
 
-                _logger.LogInformation("Obfuscation completed. Output written to {OutputPath}", effectiveOutput);
+                _logger.LogInformation("Obfuscation completed; output written");
 
                 if (settings.Packing.Enabled && target.TargetType != TargetType.Assembly)
                 {
                     context.Warnings.Add(
                         "Packing skipped: it applies only to assemblies with an entry point, not source.");
-                    _logger.LogWarning("Packing enabled but target {Path} is {Type}", inputPath, target.TargetType);
+                    _logger.LogWarning("Packing enabled but the target is {Type}", target.TargetType);
                 }
 
                 string? packedPath = null;
@@ -179,20 +200,17 @@ public class ObfuscationService : IObfuscationService
                     {
                         packedPath = PackingApplicator.Pack(
                             effectiveOutput, settings, inputPath, context.Warnings);
-                        _logger.LogInformation("Packed output written to {Packed}", packedPath);
+                        _logger.LogInformation("Packed output written");
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        _logger.LogError(ex, "Packing failed for {Output}", effectiveOutput);
+                        _logger.LogError("Packing failed ({ExceptionType})", ex.GetType().Name);
                         return ObfuscationResult.Failed($"Packing failed: {ex.Message}", ex);
                     }
                 }
 
-                if (settings.Incremental.Enabled && target.TargetType == TargetType.Assembly &&
-                    !IncrementalCache.TryWrite(inputPath, effectiveOutput, settings))
-                {
-                    _logger.LogWarning("Could not write incremental cache for {Output}", effectiveOutput);
-                }
+                if (cacheKey is not null)
+                    WriteIncrementalCache(inputPath, effectiveOutput, keySettings!, cacheKey, context.Warnings);
 
                 return ObfuscationResult.Successful(
                     context.Statistics,
@@ -207,7 +225,7 @@ public class ObfuscationService : IObfuscationService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogError(ex, "Failed to save obfuscated output");
+                _logger.LogError("Failed to save obfuscated output ({ExceptionType})", ex.GetType().Name);
                 return ObfuscationResult.Failed($"Failed to save output: {ex.Message}", ex);
             }
         }
@@ -216,11 +234,92 @@ public class ObfuscationService : IObfuscationService
             runScope?.Dispose();
             // The loaded module holds native resources. SaveAsync disposes and nulls it on the
             // success path; dispose here too so a pipeline/write failure cannot leak it.
-            if (context.Module is IDisposable module)
-            {
-                module.Dispose();
-                context.Module = null;
-            }
+            DisposeModule(context);
+        }
+    }
+
+    /// <summary>
+    /// Clones the caller's settings (so ApplyLevel cannot mutate the UI's, a batch's or a shared config's
+    /// object), applies a non-Custom level and validates. Custom is left alone: the CLI and the UI hand over
+    /// explicit flags as Custom so a preset cannot overwrite them. Failures come back as a result.
+    /// </summary>
+    private ObfySettings? TryPrepareSettings(ObfySettings settings, out ObfuscationResult? failure)
+    {
+        try
+        {
+            var prepared = settings.Clone();
+            if (prepared.Level != ObfuscationLevel.Custom)
+                prepared.ApplyLevel();
+            prepared.Validate();
+            failure = null;
+            return prepared;
+        }
+        catch (ValidationException ex)
+        {
+            _logger.LogError("Invalid obfuscation settings ({ExceptionType})", ex.GetType().Name);
+            failure = ObfuscationResult.Failed($"Invalid settings: {ex.Message}", ex);
+            return null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError("Could not prepare obfuscation settings ({ExceptionType})", ex.GetType().Name);
+            failure = ObfuscationResult.Failed($"Invalid settings: {ex.Message}", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Switches off what the runtime profile cannot support, on the working clone, before anything keys or
+    /// runs on the settings. The warnings are fixed texts (no user data), so they are safe to log.
+    /// </summary>
+    private List<string> ApplyRuntimeProfileGating(ObfySettings settings, TargetType targetType)
+    {
+        var scratch = new PipelineContext { TargetType = targetType, Settings = settings };
+        RuntimeProfileGating.Apply(settings, scratch);
+        foreach (var warning in scratch.Warnings)
+            _logger.LogWarning("{Warning}", warning);
+
+        return scratch.Warnings;
+    }
+
+    /// <summary>
+    /// Writes the cache for the key computed before the run. The output was built from the inputs as they were
+    /// then, so the cache is written only if they are unchanged now.
+    /// </summary>
+    private void WriteIncrementalCache(
+        string inputPath, string output, ObfySettings keySettings, string cacheKey, List<string> warnings)
+    {
+        string? current = null;
+        try
+        {
+            current = IncrementalCache.ComputeKey(inputPath, keySettings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning("Incremental cache key could not be re-checked ({ExceptionType})", ex.GetType().Name);
+        }
+
+        if (!string.Equals(current, cacheKey, StringComparison.Ordinal))
+        {
+            warnings.Add(
+                "Incremental cache not written: the input or one of its dependencies changed while the run was in progress.");
+            return;
+        }
+
+        if (!IncrementalCache.TryWrite(output, cacheKey))
+        {
+            _logger.LogWarning("Could not write the incremental cache");
+            warnings.Add(
+                "Incremental cache could not be written next to the output, so the next run will not be skipped.");
+        }
+    }
+
+    private static void DisposeModule(PipelineContext context)
+    {
+        if (context.Module is IDisposable module)
+        {
+            module.Dispose();
+            context.Module = null;
         }
     }
 
@@ -330,19 +429,12 @@ public class ObfuscationService : IObfuscationService
         if (inputPaths == null || inputPaths.Count == 0)
             return ObfuscationResult.Failed("No source files were provided.");
 
-        settings = settings.Clone();
-        if (settings.Level != ObfuscationLevel.Custom)
-            settings.ApplyLevel();
+        var prepared = TryPrepareSettings(settings, out var settingsFailure);
+        if (prepared is null)
+            return settingsFailure!;
 
-        try
-        {
-            settings.Validate();
-        }
-        catch (ValidationException ex)
-        {
-            _logger.LogError(ex, "Invalid obfuscation settings");
-            return ObfuscationResult.Failed($"Invalid settings: {ex.Message}", ex);
-        }
+        settings = prepared;
+        var gatingWarnings = ApplyRuntimeProfileGating(settings, TargetType.SourceCode);
 
         var output = outputDirectory;
         if (string.IsNullOrWhiteSpace(output))
@@ -357,13 +449,11 @@ public class ObfuscationService : IObfuscationService
             context = await _sourceProcessor.LoadFilesAsync(inputPaths, settings, cancellationToken)
                 .ConfigureAwait(false);
             context.OutputPath = output;
-            RuntimeProfileGating.Apply(settings, context);
-            foreach (var warning in context.Warnings)
-                _logger.LogWarning("{Warning}", warning);
+            context.Warnings.AddRange(gatingWarnings);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to load source files");
+            _logger.LogError("Failed to load source files ({ExceptionType})", ex.GetType().Name);
             return ObfuscationResult.Failed($"Failed to load input: {ex.Message}", ex);
         }
 
@@ -380,6 +470,9 @@ public class ObfuscationService : IObfuscationService
             var result = await pipeline.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
             if (!result.Success)
                 return result;
+
+            if (context.Statistics.TotalTransformations == 0)
+                context.Warnings.Add(ObfuscationWarnings.NoTransformations);
 
             try
             {
@@ -402,18 +495,14 @@ public class ObfuscationService : IObfuscationService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogError(ex, "Failed to save obfuscated source");
+                _logger.LogError("Failed to save obfuscated source ({ExceptionType})", ex.GetType().Name);
                 return ObfuscationResult.Failed($"Failed to save output: {ex.Message}", ex);
             }
         }
         finally
         {
             runScope?.Dispose();
-            if (context.Module is IDisposable module)
-            {
-                module.Dispose();
-                context.Module = null;
-            }
+            DisposeModule(context);
         }
     }
 
@@ -438,8 +527,7 @@ public class ObfuscationService : IObfuscationService
         var json = JsonSerializer.Serialize(symbolMap, options);
         await File.WriteAllTextAsync(outputPath, json).ConfigureAwait(false);
 
-        _logger.LogInformation("Symbol map written to {OutputPath} with {Count} entries",
-            outputPath, symbolMap.Count);
+        _logger.LogInformation("Symbol map written with {Count} entries", symbolMap.Count);
     }
 
     /// <inheritdoc/>
@@ -474,7 +562,7 @@ public class ObfuscationService : IObfuscationService
 
             if (!mergeResult.Success)
             {
-                _logger.LogError("Assembly merge failed: {Error}", mergeResult.ErrorMessage);
+                _logger.LogError("Assembly merge failed");
                 return ObfuscationResult.Failed($"Merge failed: {mergeResult.ErrorMessage}");
             }
 
@@ -494,9 +582,16 @@ public class ObfuscationService : IObfuscationService
             if (obfuscationResult.Success)
             {
                 _logger.LogInformation(
-                    "Successfully merged and obfuscated {Count} assemblies to {Output}",
-                    mergeResult.MergedAssemblyCount,
-                    outputPath);
+                    "Successfully merged and obfuscated {Count} assemblies",
+                    mergeResult.MergedAssemblyCount);
+
+                var left = LeftOutOfMerge(inputList, mergeResult);
+                if (left.Count > 0)
+                {
+                    obfuscationResult.Warnings.Add(
+                        $"Not merged (excluded by assemblyMerge.excludePatterns): {string.Join(", ", left)}. " +
+                        "They are not part of the output and must stay next to it.");
+                }
             }
 
             return obfuscationResult;
@@ -513,9 +608,23 @@ public class ObfuscationService : IObfuscationService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to cleanup temp directory: {TempDir}", tempDir);
+                _logger.LogWarning("Failed to clean up the merge temp directory ({ExceptionType})", ex.GetType().Name);
             }
         }
+    }
+
+    /// <summary>File names of the inputs the merger dropped (exclude patterns), so the result can say so.</summary>
+    private static List<string> LeftOutOfMerge(List<string> inputs, AssemblyMergeResult merge)
+    {
+        if (merge.MergedAssemblyCount >= inputs.Count)
+            return [];
+
+        var merged = new HashSet<string>(merge.MergedAssemblies, StringComparer.OrdinalIgnoreCase);
+        return inputs
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrEmpty(name) && !merged.Contains(name))
+            .Select(name => name!)
+            .ToList();
     }
 
     /// <inheritdoc/>

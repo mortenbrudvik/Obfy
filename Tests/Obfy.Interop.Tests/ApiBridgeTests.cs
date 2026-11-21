@@ -74,7 +74,6 @@ public class ApiBridgeTests
     [Theory]
     [InlineData(typeof(IOException))]
     [InlineData(typeof(UnauthorizedAccessException))]
-    [InlineData(typeof(ArgumentException))]
     public async Task InvokeMethod_UserFixableException_IsBadRequest(Type exceptionType)
     {
         var (bridge, mediator) = CreateBridge();

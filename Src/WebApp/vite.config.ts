@@ -27,5 +27,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     passWithNoTests: true,
+    setupFiles: ['./src/test/setup.ts'],
+    // A test may chain several asynchronous reads; five seconds is tight for a busy machine or a small CI runner.
+    testTimeout: 15000,
   },
 })

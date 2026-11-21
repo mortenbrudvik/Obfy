@@ -32,12 +32,14 @@ export function useRun({ onCompleted }: UseRunOptions = {}): UseRun {
 
   useWebViewEvent<RunSnapshot>(events.runCompleted, (final) => onCompleted?.(final));
 
+  // A refusal is about the run's state at the time (nothing included, an invalid value): once the host pushes a newer
+  // state the refusal is old news, and the run bar goes back to what the state says.
   const [runStart, startError] = useAppAction(async () => {
     await api.run.start();
-  }, strings.shell.startFailed);
+  }, strings.shell.startFailed, run?.revision);
   const [runCancel, cancelError] = useAppAction(async () => {
     await api.run.cancel();
-  }, strings.shell.cancelFailed);
+  }, strings.shell.cancelFailed, run?.revision);
 
   // A second start while the first is still being asked for would only be refused by the host.
   const starting = useRef(false);

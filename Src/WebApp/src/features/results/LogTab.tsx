@@ -4,18 +4,23 @@ import { strings } from "../../strings";
 import type { LogLine } from "../../types/domain";
 import LogLines from "./LogLines";
 import { logText, visibleLines, type LogOptions } from "./logFormat";
+import { MAX_LOG_LINES } from "./logModel";
 
 interface LogTabProps {
   lines: readonly LogLine[];
   options: LogOptions;
   onOptionsChange: (options: LogOptions) => void;
   onClear: () => void;
+  /** How many older lines the page let go of to keep the list short. */
+  trimmed?: number;
+  /** Why the last clear failed. */
+  clearError?: string | null;
 }
 
 const COPIED_MS = 2000;
 
 /** The whole log: all lines or problems only, with timestamps and wrapping on request, to copy or clear. */
-export default function LogTab({ lines, options, onOptionsChange, onClear }: LogTabProps) {
+export default function LogTab({ lines, options, onOptionsChange, onClear, trimmed = 0, clearError = null }: LogTabProps) {
   const text = strings.results.logView;
   const shown = visibleLines(lines, options.problemsOnly);
   const [copied, setCopied] = useState(false);
@@ -62,7 +67,9 @@ export default function LogTab({ lines, options, onOptionsChange, onClear }: Log
           {text.clear}
         </button>
         {copyFailed && <span className="help" role="alert">{text.copyFailed}</span>}
+        {clearError && <span className="help" role="alert">{clearError}</span>}
       </div>
+      {trimmed > 0 && <p className="help" role="status">{text.trimmed(MAX_LOG_LINES, trimmed)}</p>}
       <div className={`log ${options.wrap ? "wrap" : "nowrap"} tall`} role="log" tabIndex={0} aria-label={strings.results.log}>
         {shown.length === 0 ? (
           <p className="help">{lines.length === 0 ? text.empty : text.noProblems}</p>

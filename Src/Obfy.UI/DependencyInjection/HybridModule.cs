@@ -58,6 +58,8 @@ public class HybridModule : Module
             .SingleInstance();
 
         builder.RegisterType<ThemeController>().AsSelf().SingleInstance();
+        // Closing, Quit and Restart all go through it: a run in progress is asked about and stopped first.
+        builder.RegisterType<ShutdownCoordinator>().AsSelf().SingleInstance();
         builder.RegisterType<ShellViewModel>().AsSelf().SingleInstance();
         builder.RegisterType<ShellWindow>().AsSelf().SingleInstance();
     }

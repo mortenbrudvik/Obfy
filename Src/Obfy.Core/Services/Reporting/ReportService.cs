@@ -179,7 +179,7 @@ public class ReportService : IReportService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            _logger.LogDebug(ex, "Could not read size of {Path} for the report", path);
+            _logger.LogDebug("Could not read a file size for the report ({ExceptionType})", ex.GetType().Name);
             return 0;
         }
     }

@@ -95,7 +95,7 @@ jobs:
 
     - name: Generate Coverage Report
       run: |
-        dotnet tool install -g dotnet-reportgenerator-globaltool
+        dotnet tool install -g dotnet-reportgenerator-globaltool --version 5.6.1
         reportgenerator "-reports:coverage/**/coverage.cobertura.xml" "-targetdir:coverage/report" "-reporttypes:Cobertura;HtmlInline;MarkdownSummaryGithub;Badges"
 
     - name: Upload Coverage Report
@@ -151,7 +151,7 @@ jobs:
     # windows-latest has an interactive session. Default dotnet test still
     # excludes Category=UI; this step is the opt-in run against the Release exe.
     # The web UI tests drive the WebView2 page with Playwright over a remote-debugging port (CDP), so they need no
-    # Playwright browser download; the WebView2 runtime ships with windows-latest.
+    # Playwright browser download.
     - name: UI tests
       shell: pwsh
       run: |
@@ -169,6 +169,18 @@ jobs:
         Remove-Item Env:Platform -ErrorAction SilentlyContinue
         dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --no-build -c Release --filter "Category=UI" --nologo
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    # Only on failure. The app's own log shows whether it started and loaded its page; the failing test's message
+    # (LaunchDiagnostics) says what the window looked like from outside, and this adds the runtime version.
+    - name: UI test diagnostics
+      if: failure()
+      shell: pwsh
+      run: |
+        $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+        Write-Host "WebView2 runtime: $((Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).pv)"
+        $logs = Join-Path $env:LOCALAPPDATA 'Obfy\Logs'
+        $log = if (Test-Path $logs) { Get-ChildItem $logs -Filter 'Obfy.UI-*.log' | Sort-Object LastWriteTime | Select-Object -Last 1 }
+        if ($log) { Write-Host "=== $($log.Name)"; Get-Content $log.FullName -Tail 60 } else { Write-Host "No Obfy.UI log under $logs" }
 
   linux-cli:
     runs-on: ubuntu-latest

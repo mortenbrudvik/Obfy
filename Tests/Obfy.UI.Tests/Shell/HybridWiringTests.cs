@@ -74,7 +74,10 @@ public class HybridWiringTests
     {
         using var container = Build();
 
-        var result = await container.Resolve<IMediator>().Send(new DropPathsRequest(["C:\\x\\a.dll"]));
+        // An empty drop: this test is about the request reaching its handler through Mediator. A drop that changes
+        // state (or raises a notice, as a missing path now does) publishes a bridge event, which resolves the real
+        // WebViewControl, and that needs an STA thread. What a drop does is covered in Obfy.App.Tests.
+        var result = await container.Resolve<IMediator>().Send(new DropPathsRequest([]));
 
         result.ShouldBe(Unit.Value);
     }

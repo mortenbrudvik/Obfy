@@ -95,7 +95,7 @@ public class AntiDebugObfuscator : IObfuscator
                 if (stats.ProtectionsApplied == 0)
                 {
                     const string warning =
-                        "Anti-debug: runtime type was injected but no method body could be instrumented (all P/Invoke/abstract/empty/prefix-only).";
+                        "Anti-debug: runtime type was injected but no method body could be instrumented (all P/Invoke/abstract/empty).";
                     context.Warnings.Add(warning);
                     _logger.LogWarning("{Warning}", warning);
                 }
@@ -107,7 +107,7 @@ public class AntiDebugObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Anti-debug injection failed");
+            _logger.LogError("Anti-debug injection failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Anti-debug injection failed: {ex.Message}", ex));
         }
     }
@@ -333,13 +333,9 @@ public class AntiDebugObfuscator : IObfuscator
             return false;
         }
 
-        var insertAt = 0;
-        while (insertAt < instructions.Count && instructions[insertAt].OpCode.FlowControl == FlowControl.Meta)
-            insertAt++;
-        if (insertAt >= instructions.Count)
-            return false;
-
-        instructions.Insert(insertAt, Instruction.Create(OpCodes.Call, checkMethod));
+        // Insert at the very start: a leading prefix (volatile./unaligned./constrained./tail.) binds to the
+        // instruction right after it, so the call must land before the prefix, never between the two.
+        instructions.Insert(0, Instruction.Create(OpCodes.Call, checkMethod));
         body.UpdateInstructionOffsets();
         return true;
     }

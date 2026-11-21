@@ -48,6 +48,8 @@ public class ObfuscationPipeline : IObfuscationPipeline
 
             _logger.LogDebug("Executing {Count} applicable obfuscators", applicableObfuscators.Count);
 
+            WarnAboutInapplicableTechniques(context, applicableObfuscators);
+
             foreach (var obfuscator in applicableObfuscators)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -63,7 +65,8 @@ public class ObfuscationPipeline : IObfuscationPipeline
 
                     if (!result.Success)
                     {
-                        _logger.LogError("Obfuscator {Name} failed: {Error}", obfuscator.Name, result.ErrorMessage);
+                        // The message can name symbols or paths from the user's input: it goes to the result, not the log.
+                        _logger.LogError("Obfuscator {Name} failed", obfuscator.Name);
                         return ObfuscationResult.Failed(
                             $"Obfuscator '{obfuscator.Name}' failed: {result.ErrorMessage}",
                             result.Exception);
@@ -91,7 +94,8 @@ public class ObfuscationPipeline : IObfuscationPipeline
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Obfuscator {Name} threw an exception", obfuscator.Name);
+                    _logger.LogError(
+                        "Obfuscator {Name} threw an exception ({ExceptionType})", obfuscator.Name, ex.GetType().Name);
                     return ObfuscationResult.Failed($"Obfuscator '{obfuscator.Name}' threw an exception: {ex.Message}", ex);
                 }
             }
@@ -114,8 +118,40 @@ public class ObfuscationPipeline : IObfuscationPipeline
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Pipeline failed with unexpected error");
+            _logger.LogError("Pipeline failed with unexpected error ({ExceptionType})", ex.GetType().Name);
             return ObfuscationResult.Failed($"Pipeline failed: {ex.Message}", ex);
         }
+    }
+
+    /// <summary>
+    /// A technique the user enabled that cannot run on this kind of input (an assembly-only protection on source
+    /// code, or the reverse) would otherwise vanish silently. Some techniques have one implementation per target
+    /// at the same phase (string encryption, control flow, renaming). Those are covered when the counterpart
+    /// runs, so only a technique with no enabled counterpart is reported.
+    /// </summary>
+    private void WarnAboutInapplicableTechniques(PipelineContext context, List<IObfuscator> applicable)
+    {
+        var targetLabel = context.TargetType == TargetType.SourceCode ? "source code" : "assembly";
+        var skipped = new List<string>();
+
+        foreach (var obfuscator in _obfuscators)
+        {
+            if (obfuscator.SupportsTargetType(context.TargetType) || !obfuscator.IsEnabled(context.Settings))
+                continue;
+
+            if (applicable.Any(other => other.Priority == obfuscator.Priority))
+                continue;
+
+            skipped.Add(obfuscator.Name);
+        }
+
+        // One line however many there are: a preset enables several assembly-only protections, so one warning per
+        // technique would bury the run's real warnings under routine ones on every source run.
+        if (skipped.Count == 1)
+            context.Warnings.Add($"{skipped[0]} is enabled but does not apply to {targetLabel} input, so it was skipped.");
+        else if (skipped.Count > 1)
+            context.Warnings.Add(
+                $"{skipped.Count} enabled protections do not apply to {targetLabel} input and were skipped: " +
+                $"{string.Join(", ", skipped)}.");
     }
 }

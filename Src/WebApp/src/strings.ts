@@ -5,6 +5,11 @@ export const strings = {
     unknown: "Something went wrong.",
     bridgeUnavailable: "The WebView2 API bridge is not available.",
   },
+  crash: {
+    title: "Something went wrong",
+    body: "Obfy could not draw this page. Reload to try again. Your files and settings are kept by the app. If it keeps happening, restart Obfy.",
+    reload: "Reload",
+  },
   shell: {
     connecting: "Connecting…",
     unreachable: "Could not reach the app.",
@@ -161,6 +166,8 @@ export const strings = {
       choose: "Choose an assembly…",
       help: "Decompiled from the output file, as a reader would see it.",
       failed: "Could not decompile",
+      decompiling: "Decompiling…",
+      tryAgain: "Try again",
       empty: "Nothing to show for this assembly.",
       noAssemblies: "No output assemblies to preview.",
     },
@@ -177,6 +184,9 @@ export const strings = {
       noProblems: "No warnings or errors.",
       newRun: "Start of a new run",
       copyFailed: "Could not copy the log",
+      clearFailed: "Could not clear the log",
+      trimmed: (kept: number, dropped: number) =>
+        `Showing the latest ${kept.toLocaleString("en-US")} lines. ${dropped.toLocaleString("en-US")} older ${dropped === 1 ? "line was" : "lines were"} trimmed from this view.`,
     },
   },
   run: {

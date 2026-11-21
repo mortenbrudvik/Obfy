@@ -12,6 +12,7 @@ namespace Obfy.VisualStudio.Services;
 public static class CliArgumentBuilder
 {
     private static readonly Regex LastInteger = new(@"-?\d+", RegexOptions.Compiled);
+    private static readonly Regex AnsiEscape = new("\u001b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
     public static IReadOnlyList<string> Build(
         string assemblyPath,
@@ -116,8 +117,10 @@ public static class CliArgumentBuilder
     }
 
     /// <summary>
-    /// Parses CLI summary output. Accepts colon lines (<c>Strings encrypted: 4</c>) and
-    /// Spectre table rows (<c>│ Strings Encrypted │ 42 │</c>).
+    /// Parses CLI summary output. Accepts colon lines (<c>Strings encrypted: 4</c>) and the Spectre table
+    /// the CLI prints (<c>│ Strings Encrypted │ 42 │</c>, or <c>| ... |</c> when stdout is redirected).
+    /// The CLI reports renames as separate "Types Renamed" and "Methods Renamed" rows and never prints a
+    /// "Symbols renamed" row, so <see cref="ObfuscationStatistics.SymbolsRenamed"/> is their sum.
     /// </summary>
     public static ObfuscationStatistics ParseStatistics(string output)
     {
@@ -126,7 +129,7 @@ public static class CliArgumentBuilder
 
         foreach (var raw in output.Split('\n'))
         {
-            var line = StripMarkup(raw);
+            var line = StripMarkup(StripAnsi(raw));
             if (line.IndexOf("strings encrypted", StringComparison.OrdinalIgnoreCase) >= 0
                 && TryLastInt(line, out var strings))
             {
@@ -135,7 +138,13 @@ public static class CliArgumentBuilder
             else if (line.IndexOf("symbols renamed", StringComparison.OrdinalIgnoreCase) >= 0
                 && TryLastInt(line, out var symbols))
             {
-                stats.SymbolsRenamed = symbols;
+                stats.SymbolsRenamed += symbols;
+            }
+            else if ((line.IndexOf("types renamed", StringComparison.OrdinalIgnoreCase) >= 0
+                      || line.IndexOf("methods renamed", StringComparison.OrdinalIgnoreCase) >= 0)
+                && TryLastInt(line, out var renamed))
+            {
+                stats.SymbolsRenamed += renamed;
             }
             else if (line.IndexOf("transformations", StringComparison.OrdinalIgnoreCase) >= 0
                 && TryLastInt(line, out var total))
@@ -150,6 +159,41 @@ public static class CliArgumentBuilder
 
         return stats;
     }
+
+    /// <summary>
+    /// Picks the text to show for a failed run. The CLI writes its errors to stdout ("Error: ..."), not stderr,
+    /// so stderr is used when it has anything, then the CLI's own error lines, then the last line it printed.
+    /// </summary>
+    public static string ExtractErrorMessage(string? stdout, string? stderr, int exitCode)
+    {
+        var fromStderr = StripAnsi(stderr ?? string.Empty).Trim();
+        if (fromStderr.Length > 0)
+            return fromStderr;
+
+        var errors = new List<string>();
+        string? lastLine = null;
+        foreach (var raw in (stdout ?? string.Empty).Split('\n'))
+        {
+            var line = StripAnsi(raw).Trim();
+            if (line.Length == 0)
+                continue;
+
+            lastLine = line;
+            if (line.StartsWith("Error:", StringComparison.OrdinalIgnoreCase))
+            {
+                var text = line.Substring("Error:".Length).Trim();
+                if (text.Length > 0)
+                    errors.Add(text);
+            }
+        }
+
+        if (errors.Count > 0)
+            return string.Join(Environment.NewLine, errors);
+
+        return lastLine ?? $"Process exited with code {exitCode}";
+    }
+
+    private static string StripAnsi(string text) => AnsiEscape.Replace(text, string.Empty);
 
     private static string StripMarkup(string line)
     {

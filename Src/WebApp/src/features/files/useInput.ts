@@ -19,10 +19,12 @@ export interface UseInput {
   reveal: (id: string) => Promise<void>;
   openOutput: () => Promise<void>;
   openConfig: () => Promise<void>;
-  setOutput: (folder: string) => Promise<void>;
+  /** Answers whether the host took the folder in. */
+  setOutput: (folder: string) => Promise<boolean>;
   pickFolder: () => Promise<void>;
   pickSymbolMap: () => Promise<void>;
-  setSymbolMap: (change: { enabled?: boolean; path?: string }) => Promise<void>;
+  /** Answers whether the host took the change in. */
+  setSymbolMap: (change: { enabled?: boolean; path?: string }) => Promise<boolean>;
 }
 
 /**
@@ -72,9 +74,9 @@ export function useInput(): UseInput {
     reveal: async (id) => void (await reveal(id)),
     openOutput: async () => void (await openOutput()),
     openConfig: async () => void (await openConfig()),
-    setOutput: async (folder) => void (await setOutput(folder)),
+    setOutput,
     pickFolder: async () => void (await pickFolder()),
     pickSymbolMap: async () => void (await pickSymbolMap()),
-    setSymbolMap: async (change) => void (await setSymbolMap(change)),
+    setSymbolMap,
   };
 }

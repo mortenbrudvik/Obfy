@@ -73,6 +73,17 @@ public static class BuildEvents
                 return;
             }
 
+            var projectDir = Path.GetDirectoryName(await project.GetAttributeAsync("FullPath"));
+
+            // ProjectBuildDone also fires for projects that were already up to date (nothing was built) and for
+            // other configurations. If the output is the file this step obfuscated last time, building produced
+            // no new assembly: obfuscating it again would protect an already protected file a second time.
+            if (!string.IsNullOrEmpty(projectDir) && PostBuildStamp.IsAlreadyObfuscated(projectDir!, assemblyPath!))
+            {
+                output?.Info($"Skipping post-build obfuscation for {project.Name}: the output was not rebuilt since it was last obfuscated");
+                return;
+            }
+
             // Show output window if configured
             if (options?.ShowOutputWindow ?? true)
             {
@@ -85,7 +96,6 @@ public static class BuildEvents
             await VS.StatusBar.ShowProgressAsync("Post-build obfuscation...", 1, 2);
 
             var cts = new CancellationTokenSource();
-            var projectDir = Path.GetDirectoryName(await project.GetAttributeAsync("FullPath"));
             var configPath = !string.IsNullOrEmpty(projectDir) && settingsService is not null
                 ? settingsService.GetSettingsFilePath(projectDir)
                 : null;
@@ -97,6 +107,9 @@ public static class BuildEvents
 
             if (result.Success)
             {
+                if (!string.IsNullOrEmpty(projectDir))
+                    PostBuildStamp.Record(projectDir!, assemblyPath!);
+
                 output?.Success($"Post-build obfuscation complete for {project.Name}: {result.Statistics.TotalTransformations} transformations");
             }
             else

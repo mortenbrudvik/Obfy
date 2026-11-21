@@ -42,6 +42,18 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
         try
         {
+            if (ContainsObfyResourceLoader(module))
+            {
+                // The runtime loader decrypts ONE layer and the call sites already point at the first
+                // loader, so encrypting again would hand the inner ciphertext to the app. Leave it alone.
+                const string alreadyEncrypted =
+                    "ResourceEncryption: the input already carries Obfy resource encryption (it looks like Obfy output); " +
+                    "its resources were not encrypted again.";
+                context.Warnings.Add(alreadyEncrypted);
+                _logger.LogWarning("{Warning}", alreadyEncrypted);
+                return Task.FromResult(ObfuscationResult.Successful(stats));
+            }
+
             // Generate encryption key
             var key = EncryptionHelper.GenerateKey(settings.Algorithm);
 
@@ -101,10 +113,61 @@ public class ResourceEncryptionObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Resource encryption failed");
+            _logger.LogError("Resource encryption failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Resource encryption failed: {ex.Message}", ex));
         }
     }
+
+    /// <summary>
+    /// Whether the module already holds the loader this pass injects: a static
+    /// <c>Stream (Assembly, string)</c> method that calls <c>GetManifestResourceStream</c> and wraps the
+    /// decrypted bytes with <c>new MemoryStream(byte[])</c>. Matched by shape, not by name, because symbol
+    /// renaming changes the helper type, field and method names of a protected assembly.
+    /// </summary>
+    internal static bool ContainsObfyResourceLoader(ModuleDef module)
+    {
+        foreach (var type in module.GetTypes())
+        {
+            foreach (var method in type.Methods)
+            {
+                if (!method.IsStatic || !method.HasBody || !HasLoaderSignature(method.MethodSig))
+                    continue;
+
+                var callsGetStream = false;
+                var wrapsBytes = false;
+                foreach (var instr in method.Body.Instructions)
+                {
+                    if (instr.Operand is not IMethod called)
+                        continue;
+
+                    if ((instr.OpCode == OpCodes.Callvirt || instr.OpCode == OpCodes.Call) &&
+                        called.Name == "GetManifestResourceStream" &&
+                        called.DeclaringType?.Name == "Assembly")
+                    {
+                        callsGetStream = true;
+                    }
+                    else if (instr.OpCode == OpCodes.Newobj &&
+                             called.DeclaringType?.Name == "MemoryStream" &&
+                             called.MethodSig?.Params.Count == 1 &&
+                             called.MethodSig.Params[0].ElementType == ElementType.SZArray)
+                    {
+                        wrapsBytes = true;
+                    }
+                }
+
+                if (callsGetStream && wrapsBytes)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasLoaderSignature(MethodSig? sig) =>
+        sig is { Params.Count: 2 } &&
+        sig.RetType.FullName == "System.IO.Stream" &&
+        sig.Params[0].FullName == "System.Reflection.Assembly" &&
+        sig.Params[1].ElementType == ElementType.String;
 
     private bool ShouldEncrypt(string resourceName, ResourceEncryptionSettings settings)
     {

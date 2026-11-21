@@ -196,7 +196,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Constant encryption failed");
+            _logger.LogError("Constant encryption failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Constant encryption failed: {ex.Message}", ex));
         }
     }

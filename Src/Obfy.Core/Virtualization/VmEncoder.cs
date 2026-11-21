@@ -11,6 +11,11 @@ namespace Obfy.Core.Virtualization;
 public static class VmEncoder
 {
     private const string IsByRefLikeAttribute = "System.Runtime.CompilerServices.IsByRefLikeAttribute";
+    private const string NullableFullName = "System.Nullable`1";
+
+    // Throws on a lone surrogate instead of silently writing U+FFFD, so a literal the VM could not
+    // reproduce exactly is detected at encode time.
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     public static IReadOnlyList<MethodDef> Select(IEnumerable<MethodDef> candidates, int maxMethods)
     {
@@ -139,6 +144,14 @@ public static class VmEncoder
         int? height = 0;
         VmOp? lastOp = null;
 
+        // A VM frame starts with every local as int32 zero. Locals of any other type get a typed
+        // zero first, so a read before the first store (VB, F#, hand-written IL) sees the CLR value.
+        if (!TryWriteLocalInit(body, buffer, out var initReason))
+        {
+            skipReason = initReason;
+            return false;
+        }
+
         foreach (var instr in body.Instructions)
         {
             if (heightAt.TryGetValue(instr, out var recorded))
@@ -170,18 +183,36 @@ public static class VmEncoder
                 return false;
             }
 
-            if (!TryWrite(
+            bool written;
+            int pop, push;
+            bool terminal;
+            Instruction? target;
+            string? writeReason;
+            VmOp op;
+            try
+            {
+                written = TryWrite(
                     instr,
                     method,
                     virtualizedIds,
                     tables,
                     buffer,
-                    out var pop,
-                    out var push,
-                    out var terminal,
-                    out var target,
-                    out var writeReason,
-                    out var op))
+                    out pop,
+                    out push,
+                    out terminal,
+                    out target,
+                    out writeReason,
+                    out op);
+            }
+            catch (VmMemberTableOverflowException)
+            {
+                // The u16 member index cannot address another entry: skip this method, not the pass.
+                skipReason = VmSkipReasons.IndexOutOfRange;
+                tables.Rollback(methodMark, fieldMark, typeMark);
+                return false;
+            }
+
+            if (!written)
             {
                 skipReason = writeReason;
                 tables.Rollback(methodMark, fieldMark, typeMark);
@@ -306,7 +337,17 @@ public static class VmEncoder
             if (text is null)
                 return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
 
-            var utf8 = Encoding.UTF8.GetBytes(text);
+            byte[] utf8;
+            try
+            {
+                utf8 = StrictUtf8.GetBytes(text);
+            }
+            catch (EncoderFallbackException)
+            {
+                // A lone surrogate has no UTF-8 form; the VM would materialize U+FFFD instead.
+                return Fail(VmSkipReasons.InvalidStringLiteral, out skipReason);
+            }
+
             if (utf8.Length > ushort.MaxValue)
                 return Fail(VmSkipReasons.IndexOutOfRange, out skipReason);
 
@@ -387,10 +428,10 @@ public static class VmEncoder
                 op = VmOp.Ret;
                 return true;
             case Code.Call:
-                return TryWriteCall(instr, virtualizedIds, tables, isCallvirt: false, buffer,
+                return TryWriteCall(instr, method, virtualizedIds, tables, isCallvirt: false, buffer,
                     out pop, out push, out skipReason, out op);
             case Code.Callvirt:
-                return TryWriteCall(instr, virtualizedIds, tables, isCallvirt: true, buffer,
+                return TryWriteCall(instr, method, virtualizedIds, tables, isCallvirt: true, buffer,
                     out pop, out push, out skipReason, out op);
             case Code.Newobj:
                 return TryWriteNewobj(instr, tables, buffer, out pop, out push, out skipReason, out op);
@@ -439,6 +480,7 @@ public static class VmEncoder
 
     private static bool TryWriteCall(
         Instruction instr,
+        MethodDef caller,
         IReadOnlyDictionary<MethodDef, int> virtualizedIds,
         VmMemberTables tables,
         bool isCallvirt,
@@ -459,6 +501,8 @@ public static class VmEncoder
             return Fail(VmSkipReasons.InvalidBytecode, out skipReason);
         if (!isCallvirt && IsVirtualInstance(called))
             return Fail(VmSkipReasons.VirtualBaseCall, out skipReason);
+        if (!IsSupportedSignature(called.MethodSig, out var signatureReason))
+            return Fail(signatureReason!, out skipReason);
 
         var argc = ParameterCount(called);
         if (argc > 255)
@@ -467,7 +511,8 @@ public static class VmEncoder
         pop = argc;
         push = ReturnsVoid(called) ? 0 : 1;
 
-        if (!isCallvirt && called is MethodDef def && virtualizedIds.TryGetValue(def, out var id))
+        if (!isCallvirt && called is MethodDef def && virtualizedIds.TryGetValue(def, out var id)
+            && !NeedsPreciseTypeInit(def, caller))
         {
             if (id is < 0 or > ushort.MaxValue)
                 return Fail(VmSkipReasons.IndexOutOfRange, out skipReason);
@@ -505,6 +550,8 @@ public static class VmEncoder
             return Fail(VmSkipReasons.ValuetypeNewobj, out skipReason);
         if (ctor.MethodSig is null)
             return Fail(VmSkipReasons.InvalidBytecode, out skipReason);
+        if (!IsSupportedSignature(ctor.MethodSig, out var ctorReason))
+            return Fail(ctorReason!, out skipReason);
 
         pop = ctor.MethodSig.Params.Count;
         push = 1;
@@ -532,6 +579,8 @@ public static class VmEncoder
         op = opcode;
         if (instr.Operand is not IField field || IsUnsupportedGenericMember(field))
             return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
+        if (!IsSupportedType(field.FieldSig?.Type, out var fieldReason))
+            return Fail(fieldReason!, out skipReason);
         buffer.Add((byte)opcode);
         WriteU16(buffer, tables.AddField(field));
         return true;
@@ -555,6 +604,11 @@ public static class VmEncoder
         op = opcode;
         if (instr.Operand is not ITypeDefOrRef type)
             return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
+
+        // Nullable<T> has no representation in the VM: box/unbox/isinst/castclass would fault on a
+        // present value and mishandle null (the CLR returns an empty nullable for unbox.any).
+        if (opcode is not VmOp.Newarr && IsNullableType(type))
+            return Fail(VmSkipReasons.NonPrimitiveValuetype, out skipReason);
         buffer.Add((byte)opcode);
         WriteU16(buffer, tables.AddType(type));
         return true;
@@ -934,6 +988,125 @@ public static class VmEncoder
         return false;
     }
 
+    /// <summary>
+    /// A callee (or constructor) the VM can reach only through <c>MethodBase.Invoke</c>: reflection
+    /// cannot pass or return byref/pointer/ref-struct values, and Nullable{T} is not representable.
+    /// Unlike the method's own signature, an unresolved value type is not assumed to be a ref struct.
+    /// </summary>
+    private static bool IsSupportedSignature(MethodSig? sig, out string? reason)
+    {
+        reason = null;
+        if (sig is null)
+            return true;
+        if (!IsSupportedType(sig.RetType, out reason))
+            return false;
+        foreach (var param in sig.Params)
+        {
+            if (!IsSupportedType(param, out reason))
+                return false;
+        }
+
+        if (sig.ParamsAfterSentinel is not null)
+        {
+            foreach (var param in sig.ParamsAfterSentinel)
+            {
+                if (!IsSupportedType(param, out reason))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsSupportedType(TypeSig? sig, out string? reason)
+    {
+        reason = null;
+        sig = sig?.RemovePinnedAndModifiers();
+        if (sig is null)
+            return true;
+        if (sig.ElementType is ElementType.ByRef or ElementType.Ptr or ElementType.FnPtr or ElementType.TypedByRef
+            || IsByRefLike(sig, assumeUnresolvedValueTypeIsByRefLike: false))
+        {
+            reason = VmSkipReasons.ByRef;
+            return false;
+        }
+
+        if (IsNullableSig(sig))
+        {
+            reason = VmSkipReasons.NonPrimitiveValuetype;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsNullableSig(TypeSig? sig) =>
+        sig?.RemovePinnedAndModifiers() is GenericInstSig generic
+        && generic.GenericType?.TypeDefOrRef?.FullName == NullableFullName;
+
+    private static bool IsNullableType(ITypeDefOrRef? type) =>
+        type switch
+        {
+            null => false,
+            TypeSpec spec => IsNullableSig(spec.TypeSig),
+            _ => type.FullName == NullableFullName
+        };
+
+    /// <summary>
+    /// A static callee on another type with a precise-init (not beforefieldinit) static constructor
+    /// must be entered through its stub: CallVm skips the stub, so the type would never initialize.
+    /// Within one type the caller's own stub has already run the initializer.
+    /// </summary>
+    private static bool NeedsPreciseTypeInit(MethodDef callee, MethodDef caller)
+    {
+        if (!callee.IsStatic || callee.DeclaringType is not { } type)
+            return false;
+        if (ReferenceEquals(type, caller.DeclaringType))
+            return false;
+        return !type.IsBeforeFieldInit && type.FindStaticConstructor() is not null;
+    }
+
+    private static bool TryWriteLocalInit(CilBody body, List<byte> buffer, out string? skipReason)
+    {
+        skipReason = null;
+        foreach (var local in body.Variables)
+        {
+            var sig = local.Type.RemovePinnedAndModifiers();
+            switch (sig?.ElementType)
+            {
+                case ElementType.Boolean or ElementType.Char
+                    or ElementType.I1 or ElementType.U1
+                    or ElementType.I2 or ElementType.U2
+                    or ElementType.I4 or ElementType.U4:
+                    continue; // a fresh frame slot already reads as int32 zero
+                case ElementType.I8 or ElementType.U8:
+                    buffer.Add((byte)VmOp.LdcI8);
+                    WriteI64(buffer, 0);
+                    break;
+                case ElementType.R4:
+                    buffer.Add((byte)VmOp.LdcR4);
+                    WriteI32(buffer, 0);
+                    break;
+                case ElementType.R8:
+                    buffer.Add((byte)VmOp.LdcR8);
+                    WriteI64(buffer, 0);
+                    break;
+                case ElementType.Class or ElementType.Object or ElementType.String
+                    or ElementType.SZArray or ElementType.Array or ElementType.GenericInst:
+                    buffer.Add((byte)VmOp.Ldnull);
+                    break;
+                default:
+                    skipReason = VmSkipReasons.NonPrimitiveValuetype;
+                    return false;
+            }
+
+            buffer.Add((byte)VmOp.Stloc);
+            buffer.Add((byte)local.Index);
+        }
+
+        return true;
+    }
+
     private static bool IsForbiddenByRef(TypeSig? sig)
     {
         sig = sig?.RemovePinnedAndModifiers();
@@ -944,7 +1117,7 @@ public static class VmEncoder
         return IsByRefLike(sig);
     }
 
-    private static bool IsByRefLike(TypeSig sig)
+    private static bool IsByRefLike(TypeSig sig, bool assumeUnresolvedValueTypeIsByRefLike = true)
     {
         sig = sig.RemovePinnedAndModifiers();
         if (sig is null)
@@ -959,21 +1132,22 @@ public static class VmEncoder
         {
             return IsByRefLikeName(generic.GenericType.TypeName)
                 || IsByRefLikeFullName(generic.GenericType.FullName)
-                || IsByRefLike(generic.GenericType.TypeDefOrRef);
+                || IsByRefLike(generic.GenericType.TypeDefOrRef, assumeUnresolvedValueTypeIsByRefLike);
         }
 
         if (sig is TypeDefOrRefSig tdr)
         {
-            if (IsByRefLike(tdr.TypeDefOrRef))
+            if (IsByRefLike(tdr.TypeDefOrRef, assumeUnresolvedValueTypeIsByRefLike))
                 return true;
-            return tdr.ElementType is ElementType.ValueType
+            return assumeUnresolvedValueTypeIsByRefLike
+                && tdr.ElementType is ElementType.ValueType
                 && tdr.TypeDefOrRef.ResolveTypeDef() is null;
         }
 
         return false;
     }
 
-    private static bool IsByRefLike(ITypeDefOrRef? typeRef)
+    private static bool IsByRefLike(ITypeDefOrRef? typeRef, bool assumeUnresolvedValueTypeIsByRefLike = true)
     {
         if (typeRef is null)
             return false;
@@ -981,7 +1155,7 @@ public static class VmEncoder
         if (typeRef is TypeSpec spec)
         {
             var inner = spec.TypeSig?.RemovePinnedAndModifiers();
-            return inner is not null && IsByRefLike(inner);
+            return inner is not null && IsByRefLike(inner, assumeUnresolvedValueTypeIsByRefLike);
         }
 
         if (IsByRefLikeName(UTF8String.ToSystemStringOrEmpty(typeRef.Name)) ||

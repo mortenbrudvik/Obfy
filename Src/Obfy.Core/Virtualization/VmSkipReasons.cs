@@ -16,4 +16,5 @@ public static class VmSkipReasons
     public const string InvalidBytecode = "invalid bytecode";
     public const string StackTooDeep = "eval stack exceeds VM limit";
     public const string VirtualBaseCall = "non-virtual call to virtual method";
+    public const string InvalidStringLiteral = "string literal is not valid Unicode";
 }

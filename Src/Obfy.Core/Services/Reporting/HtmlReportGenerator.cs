@@ -35,7 +35,7 @@ public class HtmlReportGenerator : IReportGenerator
         }
 
         await File.WriteAllTextAsync(outputPath, html, cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("HTML report written to {OutputPath}", outputPath);
+        _logger.LogInformation("HTML report written");
     }
 
     /// <inheritdoc/>

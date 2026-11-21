@@ -22,6 +22,8 @@ export default function PreviewTab({ paths, selectedPath, getPreview }: PreviewT
   const text = strings.results.preview;
   const [chosen, setChosen] = useState<string>(selectedPath && paths.includes(selectedPath) ? selectedPath : "");
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // Asking for the same assembly again changes nothing the effect depends on, so a retry counts attempts.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!chosen) return;
@@ -37,10 +39,14 @@ export default function PreviewTab({ paths, selectedPath, getPreview }: PreviewT
     return () => {
       cancelled = true;
     };
-  }, [chosen, getPreview, text.failed]);
+  }, [chosen, attempt, getPreview, text.failed]);
 
   // What is shown is what was decompiled for the assembly in the box; a stale answer is never shown for another one.
   const current = loaded && loaded.path === chosen ? loaded : null;
+  const retry = () => {
+    setLoaded(null);
+    setAttempt((count) => count + 1);
+  };
 
   if (paths.length === 0) return <p className="help">{text.noAssemblies}</p>;
 
@@ -59,7 +65,17 @@ export default function PreviewTab({ paths, selectedPath, getPreview }: PreviewT
         />
         <span className="help">{text.help}</span>
       </div>
-      {current?.error && <Notice tone="error">{current.error}</Notice>}
+      {chosen && !current && <p className="help" role="status">{text.decompiling}</p>}
+      {current?.error && (
+        <>
+          <Notice tone="error">{current.error}</Notice>
+          <div>
+            <button type="button" className="btn" onClick={retry}>
+              {text.tryAgain}
+            </button>
+          </div>
+        </>
+      )}
       {current && !current.error && (
         <pre className="code" role="region" tabIndex={0} aria-label={`${text.assembly}: ${baseName(current.path)}`}>
           {current.text || text.empty}

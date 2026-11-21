@@ -24,4 +24,7 @@ public class IpcLogger(ILogger<IpcLogger> logger)
 
     public void LogError(Exception exception, string message, params object?[] args) =>
         logger.LogError(exception, message, args);
+
+    /// <summary>An error without the exception object: for a failure whose message may hold what the user typed.</summary>
+    public void LogError(string message, params object?[] args) => logger.LogError(message, args);
 }

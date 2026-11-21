@@ -52,7 +52,7 @@ public sealed class VmMemberTables
         if (keys.TryGetValue(NameKey(fullName), out id))
             return id;
         if (list.Count > ushort.MaxValue)
-            throw new InvalidOperationException("VM member table exceeds 65535 entries.");
+            throw new VmMemberTableOverflowException();
 
         id = (ushort)list.Count;
         list.Add(item);
@@ -84,4 +84,16 @@ public sealed class VmMemberTables
     private static string TokenKey(MDToken token) => "t:" + token.Raw.ToString("X8");
 
     private static string NameKey(string fullName) => "n:" + fullName;
+}
+
+/// <summary>
+/// The u16 member index cannot address another entry. <see cref="VmEncoder.TryEncode"/> turns this
+/// into a skipped method instead of letting it fail the whole pass.
+/// </summary>
+public sealed class VmMemberTableOverflowException : InvalidOperationException
+{
+    public VmMemberTableOverflowException()
+        : base("VM member table exceeds 65535 entries.")
+    {
+    }
 }

@@ -53,4 +53,15 @@
     <Resource Include="Resources\Icon.png" />
   </ItemGroup>
 
+  <!-- source.extension.vsixmanifest names these by path (License, Icon, PreviewImage); they must ship in the VSIX. -->
+  <ItemGroup>
+    <Content Include="Resources\Icon.png">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="..\..\LICENSE">
+      <Link>LICENSE.txt</Link>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+  </ItemGroup>
+
 </Project>

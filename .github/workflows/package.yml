@@ -30,8 +30,9 @@ jobs:
         cache: npm
         cache-dependency-path: Src/WebApp/package-lock.json
 
+    # Pinned to the version the windows-latest image resolves today (6.7.1); bump it deliberately.
     - name: Install Inno Setup 6
-      run: choco install innosetup --no-progress -y
+      run: choco install innosetup --version 6.7.1 --no-progress -y
 
     - name: Build MSIX
       shell: pwsh

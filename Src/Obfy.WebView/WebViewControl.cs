@@ -54,7 +54,7 @@ public class WebViewControl : WebView2, IWebViewInterop
             if (!_unreachableLogged)
             {
                 _unreachableLogged = true;
-                _logger.LogWarning(ex, "Messages to the page dropped: WebView2 cannot be reached");
+                _logger.LogWarning("Messages to the page dropped: WebView2 cannot be reached ({ExceptionType})", ex.GetType().Name);
             }
         }
     }

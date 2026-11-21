@@ -226,7 +226,7 @@ describe("ProtectionPage", () => {
     expect(rowSwitch("Control flow").checked).toBe(false);
   });
 
-  it("keepsTheNewestSnapshot_whenAnswersArriveOutOfOrder", async () => {
+  it("appliesQuickEditsInOrder_soTheNewestSnapshotWins", async () => {
     const first = protectionSnapshot({ level: "Custom", revision: 2, on: ["controlFlow"] });
     const second = protectionSnapshot({ level: "Custom", revision: 3, on: ["controlFlow", "referenceProxy"] });
     let releaseFirst!: () => void;
@@ -246,14 +246,14 @@ describe("ProtectionPage", () => {
     await screen.findByRole("switch", { name: "Control flow" });
     fireEvent.click(rowSwitch("Control flow"));
     fireEvent.click(rowSwitch("Reference proxy"));
-    await waitFor(() => expect(rowSwitch("Reference proxy").checked).toBe(true));
 
-    // The older answer comes last and must not take the proxy away again.
+    // The host takes a call per thread, so the second edit waits until it has answered the first: they cannot cross.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls("update")).toHaveLength(1);
     releaseFirst();
     await waitFor(() => expect(calls("update")).toHaveLength(2));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitFor(() => expect(rowSwitch("Reference proxy").checked).toBe(true));
 
-    expect(rowSwitch("Reference proxy").checked).toBe(true);
     expect(rowSwitch("Control flow").checked).toBe(true);
   });
 

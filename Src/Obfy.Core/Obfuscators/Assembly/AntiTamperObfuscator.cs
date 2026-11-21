@@ -100,7 +100,7 @@ public class AntiTamperObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Anti-tamper injection failed");
+            _logger.LogError("Anti-tamper injection failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Anti-tamper injection failed: {ex.Message}", ex));
         }
     }

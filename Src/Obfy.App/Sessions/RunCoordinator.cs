@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Obfy.App.Models;
 using Obfy.App.Services;
 using Obfy.Core.Models;
@@ -33,12 +34,19 @@ namespace Obfy.App.Sessions;
 /// held while another session is called. The loop never throws: cancel, a failure and an unexpected error each end the run
 /// with a status.
 /// </para>
+/// <para>
+/// <b>Push order.</b> A snapshot is taken and pushed under one lock (<c>_publishGate</c>), so pushes leave in revision
+/// order: a late <c>run.changed</c> from one thread can never follow the final one from the run thread with older values.
+/// Pushing does not block (the web view queues it), so the lock is short.
+/// </para>
 /// </summary>
 public sealed class RunCoordinator : IDisposable
 {
     private const string SourceNotInClosedSet = "Source files are not part of a closed-set session";
+    private const string NotProcessed = "The closed set returned no result for this assembly.";
 
     private readonly object _gate = new();
+    private readonly object _publishGate = new();
     private readonly IObfuscationService _obfuscation;
     private readonly IReportService _reports;
     private readonly ProtectionSession _protection;
@@ -46,6 +54,7 @@ public sealed class RunCoordinator : IDisposable
     private readonly LogBuffer _log;
     private readonly ResultsStore _results;
     private readonly IEventPublisher? _events;
+    private readonly ILogger<RunCoordinator>? _logger;
     private readonly Action _onDependencyChanged;
 
     private long _revision;
@@ -63,6 +72,7 @@ public sealed class RunCoordinator : IDisposable
     private bool _disposed;
 
     /// <param name="events">Where <c>run.changed</c> and <c>run.completed</c> go; null for a coordinator nobody listens to.</param>
+    /// <param name="logger">The file log. A failure is logged by its exception type only, never its message: that can hold a path the user chose.</param>
     public RunCoordinator(
         IObfuscationService obfuscation,
         IReportService reports,
@@ -70,7 +80,8 @@ public sealed class RunCoordinator : IDisposable
         InputSession input,
         LogBuffer log,
         ResultsStore results,
-        IEventPublisher? events = null)
+        IEventPublisher? events = null,
+        ILogger<RunCoordinator>? logger = null)
     {
         _obfuscation = obfuscation;
         _reports = reports;
@@ -79,6 +90,7 @@ public sealed class RunCoordinator : IDisposable
         _log = log;
         _results = results;
         _events = events;
+        _logger = logger;
 
         // Whether a run can start, and how, depends on the settings and the files: follow both.
         _onDependencyChanged = OnDependencyChanged;
@@ -166,6 +178,7 @@ public sealed class RunCoordinator : IDisposable
     }
 
     private const string RunningReason = "A run is already in progress.";
+    private const string NoFilesReason = "Add at least one included file.";
 
     /// <summary>
     /// What stops a run from starting now, in plain words, or null. The settings' reason comes from the settings; the
@@ -174,13 +187,26 @@ public sealed class RunCoordinator : IDisposable
     private string? BlockedReasonFor(int includedCount, OutputCollision? collision)
     {
         if (includedCount == 0)
-            return "Add at least one included file.";
+            return NoFilesReason;
 
         if (collision is not null)
             return collision.Message;
 
         var errors = _protection.ValidationErrors();
         return errors.Count > 0 ? errors[0].Message : null;
+    }
+
+    /// <summary>
+    /// <see cref="BlockedReasonFor(int, OutputCollision?)"/> with the settings' reason already worked out. Validating the
+    /// settings probes the signing key file, so <see cref="Start"/> does that before it takes the gate and passes the
+    /// result here: nothing that touches the disk may hold the lock that IsRunning and EnsureNotRunning wait on.
+    /// </summary>
+    private static string? BlockedReasonFor(int includedCount, OutputCollision? collision, string? settingsError)
+    {
+        if (includedCount == 0)
+            return NoFilesReason;
+
+        return collision is not null ? collision.Message : settingsError;
     }
 
     // ---- The one mode rule -------------------------------------------------------------------------------------
@@ -220,17 +246,15 @@ public sealed class RunCoordinator : IDisposable
     /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, nothing is included, an output would replace a listed file, or the settings are invalid; the message says which.</exception>
     public Task Start()
     {
-        var settings = _protection.ToObfySettings();
-        var input = _input.CaptureRun(settings.AssemblyMerge.Enabled);
-        var included = input.Included;
-        var blocked = BlockedReasonFor(included.Count, input.Collision);
-        if (blocked is not null)
-            throw new ObfyApiException("run.blocked", blocked);
-
-        var plan = Plan(input);
-        var context = new RunContext(included, input.Skipped, settings, plan, input.OutputFolderChosen, input.SymbolMapPath);
+        // Validating the settings probes the signing key file, so it runs before the gate is taken: nothing that touches
+        // the disk may hold the lock that IsRunning and EnsureNotRunning wait on.
+        var settingsError = _protection.ValidationErrors() is { Count: > 0 } errors ? errors[0].Message : null;
 
         var cts = new CancellationTokenSource();
+        ObfySettings settings;
+        RunInput input;
+        IReadOnlyList<InputFile> included;
+        RunContext context;
         lock (_gate)
         {
             if (_status == RunStatus.Running || _disposed)
@@ -238,6 +262,21 @@ public sealed class RunCoordinator : IDisposable
                 cts.Dispose();
                 throw new ObfyApiException("run.blocked", RunningReason);
             }
+
+            // The files and the settings are read here, in the same hold that makes the run Running, so a run protects the
+            // files listed when it began: a concurrent remove either lands before this read or is refused afterwards.
+            settings = _protection.ToObfySettings();
+            input = _input.CaptureRun(settings.AssemblyMerge.Enabled);
+            included = input.Included;
+            var blocked = BlockedReasonFor(included.Count, input.Collision, settingsError);
+            if (blocked is not null)
+            {
+                cts.Dispose();
+                throw new ObfyApiException("run.blocked", blocked);
+            }
+
+            var plan = Plan(input);
+            context = new RunContext(included, input.Skipped, settings, plan, input.OutputFolderChosen, input.SymbolMapPath);
 
             _cts = cts;
             _active = plan;
@@ -296,18 +335,12 @@ public sealed class RunCoordinator : IDisposable
         }
 
         cts.Dispose();
+        _logger?.LogError("A run could not start ({ExceptionType})", ex.GetType().Name);
 
-        // Best effort: whatever failed may fail again, and the state is already recovered.
-        try
-        {
-            _results.Clear();
-            _log.Add(LogLevel.Error, $"Obfuscation could not start: {ex.Message}");
-            PublishChanged();
-        }
-        catch (Exception inner)
-        {
-            System.Diagnostics.Debug.WriteLine(inner);
-        }
+        // Best effort, each step on its own: whatever failed may fail again, and the state is already recovered.
+        Attempt("results", _results.Clear);
+        Attempt("log", () => _log.Add(LogLevel.Error, $"Obfuscation could not start: {ex.Message}"));
+        Attempt("publish", PublishChanged);
     }
 
     /// <summary>Asks the running run to stop. Nothing happens when none is running.</summary>
@@ -398,12 +431,20 @@ public sealed class RunCoordinator : IDisposable
                 _results.SetReport(_reports.BuildReport(combined, run.Settings));
                 _results.SetPreviewPaths(outcome.Successful
                     .Select(static r => r.OutputPath)
-                    .Where(static p => p is not null && File.Exists(p) && Path.GetExtension(p) is ".dll" or ".exe")
+                    .Where(static p => p is not null && File.Exists(p) && IsAssemblyFile(p))
                     .Cast<string>());
             }
 
-            if (run.SymbolMapPath is not null && outcome.Symbols.Count > 0)
-                await WriteSymbolMapAsync(outcome.Symbols, run.SymbolMapPath).ConfigureAwait(false);
+            // The map is the only way to read a stack trace from the protected build, so a run that was asked for one and did
+            // not write it says so. The outputs are written by now: it is a warning, never a failed run.
+            string? mapWarning = null;
+            if (run.SymbolMapPath is not null)
+            {
+                if (outcome.Symbols.Count > 0)
+                    mapWarning = await WriteSymbolMapAsync(outcome.Symbols, run.SymbolMapPath).ConfigureAwait(false);
+                else if (outcome.Successful.Count > 0)
+                    mapWarning = NoSymbolsWarning;
+            }
 
             int failed;
             lock (_gate)
@@ -416,11 +457,14 @@ public sealed class RunCoordinator : IDisposable
             }
             else
             {
-                message = "Obfuscation complete";
+                message = mapWarning is null ? "Obfuscation complete" : "Obfuscation complete, but the symbol map was not written";
                 _log.Add(
                     LogLevel.Success,
                     $"Obfuscation completed: {outcome.Statistics.TotalTransformations} total transformations in {stopwatch.Elapsed:mm\\:ss\\.fff}");
             }
+
+            if (mapWarning is not null)
+                Attempt("symbol map warning", () => WarnAboutSymbolMap(mapWarning));
         }
         catch (OperationCanceledException)
         {
@@ -433,6 +477,7 @@ public sealed class RunCoordinator : IDisposable
             // Whatever the engine, the report service or a file system call throws, the run ends with a status.
             status = RunStatus.Faulted;
             message = ex.Message;
+            _logger?.LogError("A run failed unexpectedly ({ExceptionType})", ex.GetType().Name);
             CleanUpAfterStop(() => _log.Add(LogLevel.Error, $"Obfuscation failed: {ex.Message}"), error: ex.Message);
         }
 
@@ -446,20 +491,21 @@ public sealed class RunCoordinator : IDisposable
     private void CleanUpAfterStop(Action log, string? error)
     {
         // Each step on its own: one failing must not skip the others.
-        Attempt(log);
-        Attempt(() => ResetProcessingFiles(error));
-        Attempt(_results.Clear);
+        Attempt("log", log);
+        Attempt("file rows", () => ResetProcessingFiles(error));
+        Attempt("results", _results.Clear);
     }
 
-    private static void Attempt(Action step)
+    /// <summary>Runs one best-effort step. A failure is logged by the step's name and the exception's type, never its message (it can hold a path).</summary>
+    private void Attempt(string step, Action action)
     {
         try
         {
-            step();
+            action();
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(ex);
+            _logger?.LogWarning("A step after a run stopped failed ({Step}, {ExceptionType})", step, ex.GetType().Name);
         }
     }
 
@@ -481,9 +527,13 @@ public sealed class RunCoordinator : IDisposable
 
         cts?.Dispose();
 
-        var snapshot = GetSnapshot();
-        _events?.Publish(AppEvents.RunChanged, snapshot);
-        _events?.Publish(AppEvents.RunCompleted, snapshot);
+        lock (_publishGate)
+        {
+            var snapshot = GetSnapshot();
+            _events?.Publish(AppEvents.RunChanged, snapshot);
+            _events?.Publish(AppEvents.RunCompleted, snapshot);
+        }
+
         Changed?.Invoke();
     }
 
@@ -529,7 +579,11 @@ public sealed class RunCoordinator : IDisposable
 
     private void PublishChanged()
     {
-        _events?.Publish(AppEvents.RunChanged, GetSnapshot());
+        // The snapshot is taken inside the lock that orders the pushes: taken outside it, a thread could be overtaken by the
+        // run thread's final push and then deliver a stale one after it.
+        lock (_publishGate)
+            _events?.Publish(AppEvents.RunChanged, GetSnapshot());
+
         Changed?.Invoke();
     }
 
@@ -758,8 +812,10 @@ public sealed class RunCoordinator : IDisposable
                 continue;
             }
 
-            // The set gave this assembly neither a result nor a failure: it was not processed.
-            SetFile(file.Id, FileStatus.Pending);
+            // The set gave this assembly neither a result nor a failure: it was not protected, and that is a failure.
+            SetFile(file.Id, FileStatus.Error, error: NotProcessed);
+            CountFailed(1);
+            _log.Add(LogLevel.Error, $"{name} was not protected: {NotProcessed}");
         }
 
         foreach (var module in result.ModuleResults.Where(static m => m.Success))
@@ -816,6 +872,13 @@ public sealed class RunCoordinator : IDisposable
 
     // ---- Helpers -----------------------------------------------------------------------------------------------
 
+    private static bool IsAssemblyFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".dll", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".exe", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void LogSkip(FileRow row)
     {
         var name = Path.GetFileNameWithoutExtension(row.Name);
@@ -850,17 +913,31 @@ public sealed class RunCoordinator : IDisposable
             packedLauncherPath: successful.LastOrDefault(static r => r.PackedLauncherPath is not null)?.PackedLauncherPath);
     }
 
-    private async Task WriteSymbolMapAsync(Dictionary<string, string> symbols, string mapPath)
+    private const string NoSymbolsWarning =
+        "No symbol map was written: this run renamed no symbols (renaming is off, or the output was reused from the incremental cache).";
+
+    /// <summary>Writes the symbol map; returns what to tell the user when it could not be written, or null.</summary>
+    private async Task<string?> WriteSymbolMapAsync(Dictionary<string, string> symbols, string mapPath)
     {
         try
         {
             await _obfuscation.WriteSymbolMapAsync(symbols, mapPath).ConfigureAwait(false);
             _log.Add(LogLevel.Info, $"Symbol map written to {mapPath}");
+            return null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _log.Add(LogLevel.Warning, $"Failed to write symbol map: {ex.Message}");
+            // Not only IO errors: a path the OS rejects or a serialization error must not mark a run whose outputs are
+            // already written as failed. The message goes to the page, which is on this machine; the file log gets the type.
+            _logger?.LogWarning("The symbol map could not be written ({ExceptionType})", ex.GetType().Name);
+            return $"The symbol map could not be written ({ex.Message}). Without it, stack traces from the protected build cannot be translated back to your names.";
         }
+    }
+
+    private void WarnAboutSymbolMap(string warning)
+    {
+        _log.Add(LogLevel.Warning, warning);
+        _input.Notify(NoticeLevel.Warning, "Symbol map not written", warning);
     }
 
     public void Dispose()

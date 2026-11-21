@@ -11,7 +11,7 @@ Obfy/
 │   ├── Obfy.UI/               # WPF shell hosting WebView2; composition root
 │   │   ├── Views/             # ShellWindow (title bar, WebView2, native failure panel)
 │   │   ├── ViewModels/        # ShellViewModel (the only ViewModel)
-│   │   ├── Services/          # Theme sync, native file dialogs, startup command line
+│   │   ├── Services/          # Theme sync, native file dialogs, shutdown coordination
 │   │   └── DependencyInjection/ # Autofac modules, HybridBootstrap (Mediator + bridge wiring)
 │   ├── Obfy.App/              # WPF-free UI logic: sessions and Mediator requests/handlers
 │   │   ├── Sessions/          # ProtectionSession, InputSession, LogBuffer, ResultsStore, RunCoordinator
@@ -41,7 +41,7 @@ Obfy/
 │   ├── Obfy.Console.Tests/    # CLI parsing & integration tests
 │   ├── Obfy.App.Tests/        # Session + handler unit tests (UI logic, no WPF)
 │   ├── Obfy.Interop.Tests/    # Bridge, registry, events, request JSON + content contract tests
-│   ├── Obfy.UI.Tests/         # Shell wiring, startup command line, host service
+│   ├── Obfy.UI.Tests/         # Shell wiring, shutdown coordinator, host service
 │   ├── Obfy.ScenarioTests/    # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
 │   ├── Obfy.VisualStudio.Tests/ # VS helpers without a hive
 │   └── Obfy.UI.AutomationTests/ # Locator tests + Playwright-over-WebView2 e2e + one FlaUI smoke (Category=UI)
@@ -139,7 +139,7 @@ The desktop app is a hybrid: a thin WPF shell hosts WebView2, which shows a Reac
 - **WebView2 Runtime**: the Evergreen runtime is required. `App` shows a message with the download link when it is missing; the installer bootstraps it (`build/ObfySetup.iss`, `build-installer.ps1` downloads it into `build\redist`)
 - **Sessions** (`Obfy.App/Sessions`): `ProtectionSession` (settings, levels, the Custom snapshot, profile gates, config open/save), `InputSession` (files, solution/project expansion, include flags, output folder, symbol-map path, mode hint, drops), `LogBuffer` (run log, batched pushes), `ResultsStore` (summary, paged/searchable symbol index, preview decompile, exports), `RunCoordinator` (start/cancel, blockers with reasons, progress). They carry the rules the old ViewModels held; `Obfy.App.Tests` covers them
 - **Screens** (`Src/WebApp/src/features`): a sidebar with **Files** (first-launch empty state, file table, output card with the symbol-map option), **Protection** (level cards, technique list and detail, scope), **Results** (Summary, Symbols, Preview and Log tabs; a running view while obfuscating) and **Guide** (F1: a short in-app quick-start, Getting started and Shortcuts, with a button that opens the full guide online), plus a persistent **run bar** (Obfuscate / Cancel, merge, blockers with reasons, progress). A successful run selects Results. Shortcuts: Ctrl+Enter obfuscate, F1 guide, add files, open/save configuration
-- **Drag-and-drop**: The web area takes the OS drop (`AllowExternalDrop`), so the page shows its drop overlay from its own drag events and posts the dropped files to the host with `postMessageWithAdditionalObjects("files.dropped", files)`; `WebViewHandler` reads each `CoreWebView2File.Path` and the shell sends `DropPathsRequest`. The host refuses input during a run (`RunCoordinator.EnsureNotRunning`): a drop becomes a warning notice, and the picker, remove, clear, include and config-load calls fail with `run.blocked`. The window accepts `.dll`, `.exe`, `.cs`, `.sln`, `.slnx`, `.csproj`, `.vbproj`, `.fsproj`, and `.json`. Solutions and projects expand into included outputs and skipped rows. A `.json` file loads that configuration
+- **Drag-and-drop**: The web area takes the OS drop (`AllowExternalDrop`), so the page shows its drop overlay from its own drag events and posts the dropped files to the host with `postMessageWithAdditionalObjects("files.dropped", files)`; `WebViewHandler` reads each `CoreWebView2File.Path` and the shell sends `DropPathsRequest`. The host refuses input during a run (`RunCoordinator.EnsureNotRunning`): a drop becomes a warning notice, and the picker, remove, clear, include and config-load calls fail with `run.blocked`. The window accepts `.dll`, `.exe`, `.cs`, `.sln`, `.slnx`, `.csproj`, `.vbproj`, `.fsproj`, and `.json`. Solutions and projects expand into included outputs and skipped rows. A `.json` file loads as a configuration only when it is a JSON object with at least one Obfy settings key; `deps.json`, `runtimeconfig.json` and similar files are skipped with a notice
 - **Closed-set**: Obfuscate runs a closed set when two or more included assemblies are listed, or when files came from a session (Merge still wins)
 - **Empty output** (desktop app): One file writes `*.obfuscated.*` next to the input. Two or more `.cs` files compile together into `obfy-src` next to the first. A closed set writes `obfy-out` next to the first included assembly (for a solution, usually inside `bin`). Merge writes `*.obfuscated.*` next to the first input. With an output folder set, each file keeps its input name there. The run bar's hint and the run use one rule (`InputSession`). A run whose planned output (`OutputPlan.Outputs`) is a listed file is blocked with the reason on the run bar (`OutputCollisions`). The CLI differs: `--merge` without `-o` writes `{name}.merged{ext}`, and a solution or project writes `obfy-out` next to the solution or project file (`docs/CLI.md`)
 - **Level presets**: Minimal (symbol renaming and debug information removal), Standard, Aggressive, or Custom. Choosing Custom restores the snapshot taken when leaving Custom. Profile gates disable unavailable protections and keep the stored values. A loaded configuration whose preset-controlled options are not exactly its `level` preset's is shown and run as Custom (`ProtectionSession.FromObfySettings`); the file is not rewritten
@@ -272,4 +272,4 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 | `NameGenerator` | Generates obfuscated symbol names |
 | `EncryptionHelper` | String encryption utilities |
 | `PipelineContext` | Shared state across obfuscators |
-| `IncrementalCache` | SHA-256 of Obfy version + input bytes + settings (`{output}.obfycache`); locked/corrupt cache is a miss |
+| `IncrementalCache` | SHA-256 of the Obfy.Core MVID + input bytes + settings (`{output}.obfycache`); locked/corrupt cache is a miss |

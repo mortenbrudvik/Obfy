@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Obfy.Console.Wizard.Steps;
 using Obfy.Core.Models;
 using Obfy.Core.Utilities;
@@ -108,7 +107,7 @@ public class ConfigurationWizard
         if (context.OutputFile.Exists)
         {
             var overwrite = AnsiConsole.Confirm(
-                $"[yellow]File '{context.OutputFile.Name}' already exists. Overwrite?[/]",
+                $"[yellow]File '{Markup.Escape(context.OutputFile.Name)}' already exists. Overwrite?[/]",
                 defaultValue: false);
 
             if (!overwrite)
@@ -118,14 +117,8 @@ public class ConfigurationWizard
             }
         }
 
-        // Serialize settings
-        var options = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            WriteIndented = true
-        };
-
-        var json = JsonSerializer.Serialize(context.Settings, options);
+        // Same format as `obfy config generate`: enums as names, no nulls (the schema rejects both)
+        var json = ConfigFileFormat.Serialize(context.Settings);
 
         try
         {
@@ -134,19 +127,19 @@ public class ConfigurationWizard
             await File.WriteAllTextAsync(context.OutputFile.FullName, json).ConfigureAwait(false);
 
             AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine($"[green]Configuration saved to:[/] {context.OutputFile.FullName}");
+            AnsiConsole.MarkupLine($"[green]Configuration saved to:[/] {Markup.Escape(context.OutputFile.FullName)}");
             AnsiConsole.WriteLine();
 
             // Show next steps
             AnsiConsole.MarkupLine("[dim]Next steps:[/]");
-            AnsiConsole.MarkupLine($"  [cyan]obfy input.dll -c {context.OutputFile.Name}[/]");
+            AnsiConsole.MarkupLine($"  [cyan]obfy input.dll -c {Markup.Escape(context.OutputFile.Name)}[/]");
             AnsiConsole.WriteLine();
 
             return true;
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[red]Failed to write configuration: {ex.Message}[/]");
+            AnsiConsole.MarkupLine($"[red]Failed to write configuration: {Markup.Escape(ex.Message)}[/]");
             return false;
         }
     }
@@ -180,11 +173,11 @@ public class ConfigurationWizard
         table.AddRow("Preserve XAML", FormatBool(s.SymbolRenaming.PreserveXaml));
         table.AddRow("Runtime Profile", s.RuntimeProfile.ToString());
         if (s.Signing.Enabled)
-            table.AddRow("Signing", s.Signing.KeyFile ?? "(enabled, no key file)");
+            table.AddRow("Signing", Markup.Escape(s.Signing.KeyFile ?? "(enabled, no key file)"));
 
         if (s.Exclusions.Namespaces.Count > 0)
         {
-            table.AddRow("Excluded Namespaces", string.Join(", ", s.Exclusions.Namespaces));
+            table.AddRow("Excluded Namespaces", Markup.Escape(string.Join(", ", s.Exclusions.Namespaces)));
         }
 
         AnsiConsole.Write(table);

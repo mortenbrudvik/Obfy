@@ -260,7 +260,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Symbol renaming failed");
+            _logger.LogError("Symbol renaming failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Symbol renaming failed: {ex.Message}", ex));
         }
     }
@@ -987,15 +987,23 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (ImplementsInterface(method))
             return false;
 
-        if (method.IsVirtual &&
-            !method.DeclaringType.IsSealed &&
-            (method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly))
-        {
+        if (TakesPartInVirtualDispatch(method))
             return false;
-        }
 
         return true;
     }
+
+    /// <summary>
+    /// A virtual method is matched by name and signature against its base type's slot (or an
+    /// interface method), and the base may live in another assembly, so renaming only one side
+    /// turns an override into a new vtable slot and dispatch through the base reaches the wrong
+    /// code (or the type fails to load). Structs and sealed classes are not exempt: their
+    /// overrides (<c>ToString</c>, <c>Finalize</c>, ...), implicit interface implementations
+    /// (including generic and inherited interfaces) and the runtime-implemented delegate
+    /// <c>Invoke</c> all rely on the original name. <c>internal</c> and <c>private protected</c>
+    /// virtuals are covered too: the override is renamed independently of its base otherwise.
+    /// </summary>
+    private static bool TakesPartInVirtualDispatch(MethodDef method) => method.IsVirtual;
 
     private static bool ImplementsInterface(MethodDef method)
     {
@@ -1186,12 +1194,8 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (ImplementsInterface(method))
             return false;
 
-        if (method.IsVirtual &&
-            !method.DeclaringType.IsSealed &&
-            (method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly))
-        {
+        if (TakesPartInVirtualDispatch(method))
             return false;
-        }
 
         return true;
     }

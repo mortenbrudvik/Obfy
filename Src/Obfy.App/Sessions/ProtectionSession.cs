@@ -45,6 +45,7 @@ public sealed class ProtectionSession
     ];
 
     private readonly object _gate = new();
+    private readonly object _publishGate = new();
     private ObfySettings _settings = new();
     private ObfySettings? _customSnapshot;
     private ObfuscationLevel _basePreset = ObfuscationLevel.Standard;
@@ -52,9 +53,15 @@ public sealed class ProtectionSession
     private bool _dirty;
     private long _revision;
     private readonly IEventPublisher? _events;
+    private readonly Func<string, bool> _fileExists;
 
     /// <param name="events">Where <c>settings.changed</c> goes after every change; null for a session nobody listens to.</param>
-    public ProtectionSession(IEventPublisher? events = null) => _events = events;
+    /// <param name="fileExists">Whether the signing key file exists; null uses <see cref="File.Exists(string)"/>. A seam for tests.</param>
+    public ProtectionSession(IEventPublisher? events = null, Func<string, bool>? fileExists = null)
+    {
+        _events = events;
+        _fileExists = fileExists ?? File.Exists;
+    }
 
     /// <summary>Raised once after any change, on the thread that made it, outside the session's lock.</summary>
     public event Action? Changed;
@@ -65,7 +72,11 @@ public sealed class ProtectionSession
     /// </summary>
     private void RaiseChanged()
     {
-        _events?.Publish(AppEvents.SettingsChanged, GetSnapshot());
+        // Snapshot and push under one lock, so pushes leave in revision order: a thread taking its snapshot first could
+        // otherwise push it after a newer one.
+        lock (_publishGate)
+            _events?.Publish(AppEvents.SettingsChanged, GetSnapshot());
+
         Changed?.Invoke();
     }
 
@@ -221,8 +232,12 @@ public sealed class ProtectionSession
     /// </summary>
     public IReadOnlyList<ValidationError> ValidationErrors()
     {
+        // The key file is probed on disk, which can be slow (a network share): only the values are read under the lock.
+        ValidationInput input;
         lock (_gate)
-            return Validate(_settings);
+            input = ValidationInput.Of(_settings);
+
+        return Validate(input, _fileExists);
     }
 
     public string? ConfigPath
@@ -236,33 +251,45 @@ public sealed class ProtectionSession
 
     public SettingsSnapshot GetSnapshot()
     {
+        ValidationInput validation;
+        SettingsSnapshot snapshot;
         lock (_gate)
         {
-            var settings = _settings;
-            var gated = ProfileGatesIlProtections(settings.RuntimeProfile);
-            var reason = gated ? $"Not available for {ProfileDisplayName(settings.RuntimeProfile)}" : null;
-            var reference = PresetReference(settings, _basePreset);
-
-            var techniques = Techniques.Select(def => BuildTechnique(def, settings, reference, gated, reason)).ToList();
-            return new SettingsSnapshot(
-                _revision,
-                settings.Level.ToString(),
-                LevelSummary(settings.Level),
-                techniques,
-                Validate(settings),
-                _configPath,
-                _dirty,
-                settings.RuntimeProfile.ToString(),
-                new NameLists(settings.Exclusions.Namespaces.ToArray(), settings.Exclusions.Types.ToArray(), settings.Exclusions.Methods.ToArray()),
-                new NameLists(settings.Inclusions.Namespaces.ToArray(), settings.Inclusions.Types.ToArray(), settings.Inclusions.Methods.ToArray()),
-                new SettingsChoices(
-                    Enum.GetNames<ObfuscationLevel>(),
-                    Enum.GetNames<EncryptionAlgorithm>(),
-                    Enum.GetNames<ControlFlowMode>(),
-                    Enum.GetNames<NamingMode>(),
-                    Enum.GetNames<RuntimeProfile>(),
-                    PackingRids));
+            validation = ValidationInput.Of(_settings);
+            snapshot = BuildSnapshotLocked();
         }
+
+        // Validated outside the lock, from the values read in the same hold as the rest of the snapshot.
+        return snapshot with { Errors = Validate(validation, _fileExists) };
+    }
+
+    /// <summary>The snapshot without its validation errors, which need the disk and so are added outside the lock.</summary>
+    private SettingsSnapshot BuildSnapshotLocked()
+    {
+        var settings = _settings;
+        var gated = ProfileGatesIlProtections(settings.RuntimeProfile);
+        var reason = gated ? $"Not available for {ProfileDisplayName(settings.RuntimeProfile)}" : null;
+        var reference = PresetReference(settings, _basePreset);
+
+        var techniques = Techniques.Select(def => BuildTechnique(def, settings, reference, gated, reason)).ToList();
+        return new SettingsSnapshot(
+            _revision,
+            settings.Level.ToString(),
+            LevelSummary(settings.Level),
+            techniques,
+            [],
+            _configPath,
+            _dirty,
+            settings.RuntimeProfile.ToString(),
+            new NameLists(settings.Exclusions.Namespaces.ToArray(), settings.Exclusions.Types.ToArray(), settings.Exclusions.Methods.ToArray()),
+            new NameLists(settings.Inclusions.Namespaces.ToArray(), settings.Inclusions.Types.ToArray(), settings.Inclusions.Methods.ToArray()),
+            new SettingsChoices(
+                Enum.GetNames<ObfuscationLevel>(),
+                Enum.GetNames<EncryptionAlgorithm>(),
+                Enum.GetNames<ControlFlowMode>(),
+                Enum.GetNames<NamingMode>(),
+                Enum.GetNames<RuntimeProfile>(),
+                PackingRids));
     }
 
     private static readonly string[] PackingRids = ["win-x64", "portable"];
@@ -312,9 +339,40 @@ public sealed class ProtectionSession
         }
     }
 
+    /// <summary>
+    /// Gives every section a hand-edited file set to <c>null</c> its default. System.Text.Json assigns <c>"watermark": null</c>
+    /// to the init-only property, and everything after reads <c>settings.Watermark.Enabled</c>.
+    /// </summary>
+    private static void FillNullSections(object instance)
+    {
+        foreach (var property in instance.GetType().GetProperties())
+        {
+            var type = property.PropertyType;
+            if (!property.CanRead || !property.CanWrite || property.GetIndexParameters().Length != 0)
+                continue;
+
+            var isList = type == typeof(List<string>);
+            var isSection = type.IsClass && type != typeof(string) && !isList
+                && !typeof(System.Collections.IEnumerable).IsAssignableFrom(type) && type.GetConstructor(Type.EmptyTypes) is not null;
+            if (!isList && !isSection)
+                continue;
+
+            var value = property.GetValue(instance);
+            if (value is null)
+            {
+                value = Activator.CreateInstance(type);
+                property.SetValue(instance, value);
+            }
+
+            if (isSection)
+                FillNullSections(value!);
+        }
+    }
+
     /// <summary>Fills what a hand-edited file may leave null or blank, so the options always read a value.</summary>
     private static void Normalize(ObfySettings settings)
     {
+        FillNullSections(settings);
         settings.Exclusions.Namespaces ??= [];
         settings.Exclusions.Types ??= [];
         settings.Exclusions.Methods ??= [];
@@ -362,33 +420,53 @@ public sealed class ProtectionSession
         return new TechniqueState(def.Id, enabled, !unavailable, unavailable ? reason : null, differs, options);
     }
 
-    private static IReadOnlyList<ValidationError> Validate(ObfySettings settings)
+    /// <summary>The values <see cref="Validate"/> reads, copied under the lock so the checks (one of them a disk probe) run outside it.</summary>
+    private sealed record ValidationInput(
+        bool WatermarkEnabled,
+        string? WatermarkId,
+        bool SigningEnabled,
+        string? KeyFile,
+        string? PasswordEnvironmentVariable,
+        bool PackingEnabled,
+        bool PackingRidValid)
+    {
+        public static ValidationInput Of(ObfySettings settings) => new(
+            settings.Watermark.Enabled,
+            settings.Watermark.Id,
+            settings.Signing.Enabled,
+            settings.Signing.KeyFile,
+            settings.Signing.PasswordEnvironmentVariable,
+            settings.Packing.Enabled,
+            settings.Packing.IsNativeWin64 || settings.Packing.IsPortable);
+    }
+
+    private static IReadOnlyList<ValidationError> Validate(ValidationInput settings, Func<string, bool> fileExists)
     {
         var errors = new List<ValidationError>();
 
-        if (settings.Watermark.Enabled && string.IsNullOrWhiteSpace(settings.Watermark.Id))
+        if (settings.WatermarkEnabled && string.IsNullOrWhiteSpace(settings.WatermarkId))
             errors.Add(new ValidationError("watermark.id", "Watermark is enabled but no id was specified."));
 
-        if (settings.Signing.Enabled)
+        if (settings.SigningEnabled)
         {
-            var keyFile = settings.Signing.KeyFile;
+            var keyFile = settings.KeyFile;
             if (string.IsNullOrWhiteSpace(keyFile))
             {
                 errors.Add(new ValidationError("signing.keyFile", "Signing is enabled but no key file was specified."));
             }
             else
             {
-                if (!File.Exists(keyFile))
+                if (!fileExists(keyFile))
                     errors.Add(new ValidationError("signing.keyFile", $"The key file was not found: {keyFile}"));
                 if ((keyFile.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase) || keyFile.EndsWith(".p12", StringComparison.OrdinalIgnoreCase))
-                    && string.IsNullOrWhiteSpace(settings.Signing.PasswordEnvironmentVariable))
+                    && string.IsNullOrWhiteSpace(settings.PasswordEnvironmentVariable))
                     errors.Add(new ValidationError(
                         "signing.passwordEnvironmentVariable",
                         "PFX signing needs the name of an environment variable that holds the password."));
             }
         }
 
-        if (settings.Packing.Enabled && !settings.Packing.IsNativeWin64 && !settings.Packing.IsPortable)
+        if (settings.PackingEnabled && !settings.PackingRidValid)
             errors.Add(new ValidationError("packing.rid", "The packing target must be win-x64 or portable."));
 
         return errors;

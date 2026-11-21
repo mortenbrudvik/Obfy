@@ -29,7 +29,7 @@ Complete JSON configuration schema for Obfy.
 }
 ```
 
-Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](../schemas/obfy.schema.json) so editors can validate and autocomplete. Extra properties such as `$schema` are ignored when loading. `obfy config generate` writes PascalCase enum names (`"level": "Standard"`, `"algorithm": "Aes256"`) and omits null signing paths.
+Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](../schemas/obfy.schema.json) so editors can validate and autocomplete. Keys that start with `$` (such as `$schema`) are ignored when loading. Any other key that is not a setting is ignored too, but the command line prints a warning for it (so a misspelled technique does not silently run with its defaults). Key names are matched case-insensitively. `obfy config generate` writes PascalCase enum names (`"level": "Standard"`, `"algorithm": "Aes256"`) and omits null signing paths.
 
 In the CLI a `-c` file is authoritative: `level` in the file is not re-applied as a preset. Copy the Minimal/Standard/Aggressive snippets only if you also include the flags you care about (or generate with `obfy config generate -l …`).
 
@@ -406,8 +406,8 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `enabled` | bool | `false` | Enable assembly merging |
-| `internalize` | bool | `true` | Make merged types internal (improves obfuscation) |
+| `enabled` | bool | `false` | Enable assembly merging. On the command line this is the same as `--merge`: two or more input assemblies are merged into one. With a single input the setting is ignored (a warning is printed) |
+| `internalize` | bool | `true` | Make merged types internal (improves obfuscation). `--internalize` on the command line overrides it only when typed |
 | `preserveDebugInfo` | bool | `false` | Preserve debug information in merged assembly |
 | `searchDirectories` | string[] | `[]` | Additional directories to search for dependencies |
 | `excludePatterns` | string[] | `[]` | Assembly patterns to exclude from merging (e.g., `System.*`) |

@@ -1,7 +1,6 @@
 using System.CommandLine;
 using System.Text.Json;
 using System.Xml;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Autofac;
 using Logging.Core.Configuration;
@@ -267,19 +266,26 @@ public class Program
             DefaultValueFactory = _ => "standard"
         };
 
+        var configForceOption = new Option<bool>("--force", "-f")
+        {
+            Description = "Overwrite the output file if it already exists"
+        };
+
         configGenerateCommand.Options.Add(configOutputOption);
         configGenerateCommand.Options.Add(configLevelOption);
+        configGenerateCommand.Options.Add(configForceOption);
 
         configGenerateCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             var output = parseResult.GetValue(configOutputOption);
             var level = parseResult.GetValue(configLevelOption);
+            var force = parseResult.GetValue(configForceOption);
             try
             {
-                await GenerateConfigAsync(output!, level!).ConfigureAwait(false);
+                await GenerateConfigAsync(output!, level!, force).ConfigureAwait(false);
                 return 0;
             }
-            catch (ArgumentException ex)
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
             {
                 parseResult.InvocationConfiguration.Error.WriteLine(ex.Message);
                 AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
@@ -479,12 +485,24 @@ public class Program
                 antiDebug, stripMetadata, encryptResources, preservePublic,
                 antiTamper, antiDecompiler, noStringEncrypt, noRename,
                 antiDump, referenceProxy, encryptConstants, noControlFlow, encryptMethods, proxyExternal,
-                watermarkId, virtualize, incremental).ConfigureAwait(false);
+                watermarkId, virtualize, incremental,
+                onWarning: message => WriteWarning(config?.FullName, message)).ConfigureAwait(false);
 
+            // --merge turns merging on; assemblyMerge.enabled in a -c file does the same. --internalize only
+            // overrides assemblyMerge.internalize when it was typed: its default must not overwrite the config.
             if (merge)
-            {
                 settings.AssemblyMerge.Enabled = true;
+            if (parseResult.GetResult(InternalizeOption) is { Implicit: false })
                 settings.AssemblyMerge.Internalize = internalize;
+
+            merge = settings.AssemblyMerge.Enabled;
+            if (merge && !parseResult.GetValue(MergeOption)
+                && (input ?? []).Length < 2 && !(input ?? []).Any(static i => IsSolutionOrProject(i.FullName)))
+            {
+                // A config shared across runs must not break a single-file run (the desktop app falls back the same way).
+                WriteWarning(config?.FullName,
+                    "assemblyMerge.enabled is set but only one input was given; obfuscating it without merging.");
+                merge = false;
             }
 
             return await RunObfuscationAsync(
@@ -528,7 +546,8 @@ public class Program
         bool proxyExternal = false,
         string? watermarkId = null,
         bool virtualize = false,
-        bool incremental = false)
+        bool incremental = false,
+        Action<string>? onWarning = null)
     {
         ObfySettings settings;
 
@@ -538,11 +557,16 @@ public class Program
                 throw new FileNotFoundException($"Config file not found: {configFile.FullName}");
 
             var json = await File.ReadAllTextAsync(configFile.FullName).ConfigureAwait(false);
-            settings = JsonSerializer.Deserialize<ObfySettings>(json, new JsonSerializerOptions
+            settings = JsonSerializer.Deserialize<ObfySettings>(json, ConfigReadOptions)
+                ?? throw new InvalidOperationException("Config file deserialized to null.");
+
+            // Unknown keys are ignored by the reader (and allowed by the schema), so a typo would otherwise run
+            // with the defaults and report success. Say so; the run itself is not stopped.
+            foreach (var key in ConfigKeyValidator.FindUnknownKeys(json))
             {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-            }) ?? throw new InvalidOperationException("Config file deserialized to null.");
+                onWarning?.Invoke(
+                    $"Unknown configuration key '{key}' in {configFile.Name} was ignored. Check the spelling against the schema.");
+            }
 
             // The per-technique flags in a config file are authoritative. Treat file-sourced settings
             // as Custom so ObfuscationService does not re-run ApplyLevel() and overwrite them
@@ -599,9 +623,21 @@ public class Program
         return settings;
     }
 
+    /// <summary>
+    /// How <c>-c</c> files are read: camelCase names matched case-insensitively and enums as names, the same as the
+    /// desktop app (<c>JsonUtils</c>), so a PascalCase file is not silently read as defaults.
+    /// </summary>
+    private static readonly JsonSerializerOptions ConfigReadOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     private static ObfuscationLevel ParseLevel(string level)
     {
-        if (!Enum.TryParse<ObfuscationLevel>(level, ignoreCase: true, out var parsed))
+        // TryParse alone accepts any number ("9"), which is not a level.
+        if (!Enum.TryParse<ObfuscationLevel>(level, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
         {
             throw new ArgumentException($"Unknown obfuscation level '{level}'. Valid values: minimal, standard, aggressive, custom.");
         }
@@ -673,7 +709,7 @@ public class Program
         if (mapFile != null && allSymbols.Count > 0)
         {
             await service.WriteSymbolMapAsync(allSymbols, mapFile.FullName).ConfigureAwait(false);
-            AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
+            AnsiConsole.MarkupLine($"[green]Symbol map written to {Markup.Escape(mapFile.FullName)}[/]");
         }
 
         // Generate report if requested
@@ -688,7 +724,7 @@ public class Program
                 successfulResults.Select(pair => pair.Result).ToList(),
                 usedSettings);
             await reportService.GenerateReportAsync(report, reportFile.FullName, format).ConfigureAwait(false);
-            AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
+            AnsiConsole.MarkupLine($"[green]Report written to {Markup.Escape(reportFile.FullName)}[/]");
         }
 
         AnsiConsole.WriteLine();
@@ -988,7 +1024,7 @@ public class Program
         if (mapFile != null && symbolMap.Count > 0)
         {
             await service.WriteSymbolMapAsync(symbolMap, mapFile.FullName).ConfigureAwait(false);
-            AnsiConsole.MarkupLine($"[green]Symbol map written to {mapFile.FullName}[/]");
+            AnsiConsole.MarkupLine($"[green]Symbol map written to {Markup.Escape(mapFile.FullName)}[/]");
         }
 
         if (reportFile != null && reportSources.Count > 0)
@@ -998,7 +1034,7 @@ public class Program
                 : ReportFormat.Html;
             var report = reportService.BuildCombinedReport(reportSources, settings);
             await reportService.GenerateReportAsync(report, reportFile.FullName, format).ConfigureAwait(false);
-            AnsiConsole.MarkupLine($"[green]Report written to {reportFile.FullName}[/]");
+            AnsiConsole.MarkupLine($"[green]Report written to {Markup.Escape(reportFile.FullName)}[/]");
         }
     }
 
@@ -1069,7 +1105,7 @@ public class Program
                 Path.GetFileNameWithoutExtension(primaryInput.Name) + ".merged" + Path.GetExtension(primaryInput.Name));
 
         var inputNames = string.Join(", ", inputs.Select(i => i.Name));
-        AnsiConsole.MarkupLine($"[cyan]Merging assemblies:[/] {inputNames}");
+        AnsiConsole.MarkupLine($"[cyan]Merging assemblies:[/] {Markup.Escape(inputNames)}");
 
         if (dryRun)
         {
@@ -1166,11 +1202,11 @@ public class Program
                     if (presentSources.Length >= 2 && IsSourceFile(input.FullName) && input.Exists)
                         continue;
 
-                    var task = ctx.AddTask($"[cyan]{input.Name}[/]");
+                    var task = ctx.AddTask($"[cyan]{Markup.Escape(input.Name)}[/]");
 
                     if (!input.Exists)
                     {
-                        AnsiConsole.MarkupLine($"[red]File not found: {input.FullName}[/]");
+                        AnsiConsole.MarkupLine($"[red]File not found: {Markup.Escape(input.FullName)}[/]");
                         WriteProblem(input.FullName, "error", "File not found");
                         task.Increment(100);
                         failed = true;
@@ -1183,7 +1219,7 @@ public class Program
 
                     if (dryRun)
                     {
-                        AnsiConsole.MarkupLine($"[yellow]Dry run:[/] Would obfuscate {input.Name}");
+                        AnsiConsole.MarkupLine($"[yellow]Dry run:[/] Would obfuscate {Markup.Escape(input.Name)}");
                         task.Increment(100);
                         continue;
                     }
@@ -1223,8 +1259,8 @@ public class Program
             .AddColumn("Value");
 
         table.AddRow("Status", "[green]Success[/]");
-        table.AddRow("File", fileName);
-        table.AddRow("Output", result.OutputPath ?? "N/A");
+        table.AddRow("File", Markup.Escape(fileName));
+        table.AddRow("Output", Markup.Escape(result.OutputPath ?? "N/A"));
         table.AddRow("Duration", $"{result.ElapsedTime.TotalMilliseconds:F0}ms");
 
         if (result.Statistics.TotalTransformations > 0)
@@ -1273,29 +1309,29 @@ public class Program
         }
     }
 
+    private static void WriteWarning(string? file, string message)
+    {
+        AnsiConsole.MarkupLine($"[yellow]Warning: {Markup.Escape(message)}[/]");
+        WriteProblem(file ?? "", "warning", message);
+    }
+
     private static void WriteProblem(string file, string severity, string message)
     {
         System.Console.WriteLine(ProblemMatcherLine.Format(file, severity, message));
     }
 
-    private static async Task GenerateConfigAsync(FileInfo output, string level)
+    private static async Task GenerateConfigAsync(FileInfo output, string level, bool force)
     {
         var parsedLevel = ParseLevel(level);
         var settings = ObfySettings.ForLevel(parsedLevel);
 
-        var options = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            WriteIndented = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            Converters = { new JsonStringEnumConverter() }
-        };
+        // A hand-edited obfy.json is easy to lose; replacing one takes --force.
+        if (output.Exists && !force)
+            throw new IOException($"{output.FullName} already exists. Use --force to overwrite it.");
 
-        var json = JsonSerializer.Serialize(settings, options);
-        var node = JsonNode.Parse(json)!.AsObject();
-        node.Insert(0, "$schema", "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json");
-        await File.WriteAllTextAsync(output.FullName, node.ToJsonString(options)).ConfigureAwait(false);
+        output.Directory?.Create();
+        await File.WriteAllTextAsync(output.FullName, ConfigFileFormat.Serialize(settings)).ConfigureAwait(false);
 
-        AnsiConsole.MarkupLine($"[green]Configuration file created: {output.FullName}[/]");
+        AnsiConsole.MarkupLine($"[green]Configuration file created: {Markup.Escape(output.FullName)}[/]");
     }
 }

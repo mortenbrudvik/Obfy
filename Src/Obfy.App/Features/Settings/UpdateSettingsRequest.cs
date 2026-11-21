@@ -7,14 +7,15 @@ namespace Obfy.App.Features.Settings;
 
 /// <summary>
 /// Changes some settings (<c>settings.update</c>). <paramref name="Patch"/> maps <c>id.name</c> keys, as in the snapshot's
-/// techniques, to new values; see <see cref="ProtectionSession.Update"/>. Answers with the new snapshot.
+/// techniques, to new values; see <see cref="ProtectionSession.Update"/>. Refused with <c>run.blocked</c> while a run goes. Answers with the new snapshot.
 /// </summary>
 public record UpdateSettingsRequest(Dictionary<string, JsonElement> Patch) : IRequest<SettingsSnapshot>;
 
-public class UpdateSettingsRequestHandler(ProtectionSession session) : IRequestHandler<UpdateSettingsRequest, SettingsSnapshot>
+public class UpdateSettingsRequestHandler(ProtectionSession session, RunCoordinator run) : IRequestHandler<UpdateSettingsRequest, SettingsSnapshot>
 {
     public ValueTask<SettingsSnapshot> Handle(UpdateSettingsRequest request, CancellationToken cancellationToken)
     {
+        run.EnsureNotRunning();
         var patch = new Dictionary<string, object?>(request.Patch.Count);
         foreach (var (key, value) in request.Patch)
             patch[key] = ToValue(key, value);

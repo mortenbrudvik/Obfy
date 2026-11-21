@@ -37,6 +37,11 @@
 .drop-overlay.blocked { border-color: var(--dim); background: color-mix(in srgb, var(--dim) 14%, transparent); }
 .drop-overlay.blocked > span { color: var(--muted); font-weight: 400; }
 
+/* Shown by the error boundary in place of a page that could not be drawn. */
+.crash { max-width: 460px; margin: 20vh auto 0; padding: 0 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; color: var(--text); }
+.crash h1 { font-size: 18px; font-weight: 600; color: var(--strong); }
+.crash p { font-size: 13px; line-height: 1.5; color: var(--muted); }
+
 .placeholder-screen { max-width: 520px; }
 
 @media (forced-colors: active) {

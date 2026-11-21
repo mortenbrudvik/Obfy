@@ -7,14 +7,15 @@ namespace Obfy.App.Features.Output;
 /// <summary>
 /// Turns the symbol map on or off and/or sets its path (<c>output.setSymbolMap</c>). Each field left out stays as it is;
 /// an empty <paramref name="Path"/> goes back to the default. The path can only be set while the map is on (the same call
-/// may turn it on). Answers with the snapshot.
+/// may turn it on). Refused with <c>run.blocked</c> while a run goes. Answers with the snapshot.
 /// </summary>
 public record SetSymbolMapRequest(bool? Enabled = null, string? Path = null) : IRequest<InputSnapshot>;
 
-public class SetSymbolMapRequestHandler(InputSession session) : IRequestHandler<SetSymbolMapRequest, InputSnapshot>
+public class SetSymbolMapRequestHandler(InputSession session, RunCoordinator run) : IRequestHandler<SetSymbolMapRequest, InputSnapshot>
 {
     public ValueTask<InputSnapshot> Handle(SetSymbolMapRequest request, CancellationToken cancellationToken)
     {
+        run.EnsureNotRunning();
         if (request.Enabled is { } enabled)
             session.SetWriteSymbolMap(enabled);
         if (request.Path is not null)

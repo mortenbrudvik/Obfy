@@ -65,7 +65,7 @@ public class AntiDumpObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Anti-dump injection failed");
+            _logger.LogError("Anti-dump injection failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Anti-dump injection failed: {ex.Message}", ex));
         }
     }

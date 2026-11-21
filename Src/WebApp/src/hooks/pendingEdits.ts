@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 /** What committing a box came to: it held nothing new, its text reached the host, or the host did not take it in. */
 export type FlushResult = "idle" | "sent" | "failed";
@@ -22,8 +22,10 @@ export async function flushPendingEdits(): Promise<FlushResult> {
 
 /** Makes `flush` known to `flushPendingEdits` while the calling component is on the page. */
 export function usePendingEdit(flush: FlushEdit) {
+  // Published in a layout effect, inside the commit: a shortcut pressed the moment the typed text is on screen must
+  // flush that text, not the previous render's (a passive effect runs later, and on a busy machine after the next key).
   const latest = useRef(flush);
-  useEffect(() => {
+  useLayoutEffect(() => {
     latest.current = flush;
   });
 

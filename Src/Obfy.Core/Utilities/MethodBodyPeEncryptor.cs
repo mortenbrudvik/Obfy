@@ -16,10 +16,11 @@ internal static class MethodBodyPeEncryptor
         var bytes = File.ReadAllBytes(assemblyPath);
         using var loaded = ModuleDefMD.Load(bytes);
 
+        var methodsByFullName = IndexMethods(loaded);
         var entries = new List<(uint Rva, int HeaderSize, int IlSize, byte Key)>(metadata.Entries.Count);
         foreach (var item in metadata.Entries)
         {
-            var match = FindMethod(loaded, item.Method);
+            methodsByFullName.TryGetValue(item.Method.FullName, out var match);
             if (match is null || match.RVA == 0 || match.Body is null)
                 throw new InvalidOperationException($"Could not map {item.Method.FullName} for IL encryption.");
 
@@ -48,19 +49,18 @@ internal static class MethodBodyPeEncryptor
         File.WriteAllBytes(assemblyPath, bytes);
     }
 
-    private static MethodDef? FindMethod(ModuleDef module, MethodDef original)
+    // One pass over the written module; the first method with a given full name wins, as the
+    // per-entry scan this replaces did. FullName is expensive, so it is computed once per method.
+    private static Dictionary<string, MethodDef> IndexMethods(ModuleDef module)
     {
-        var fullName = original.FullName;
+        var index = new Dictionary<string, MethodDef>(StringComparer.Ordinal);
         foreach (var type in module.GetTypes())
         {
             foreach (var method in type.Methods)
-            {
-                if (method.FullName == fullName)
-                    return method;
-            }
+                index.TryAdd(method.FullName, method);
         }
 
-        return null;
+        return index;
     }
 
     private static bool TryReadMethodBodyLayout(byte[] pe, int fileOffset, out int headerSize, out int ilSize)

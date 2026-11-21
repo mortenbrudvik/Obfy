@@ -10,6 +10,7 @@ export type MockHandlers = Record<string, MockHandler>;
 /** A host with nothing added yet, for the shell in a plain browser: Obfuscate is blocked and nothing has run. */
 export const defaultMockHandlers: MockHandlers = {
   "app.info": (): AppInfo => ({ version: "0.0.0-mock" }),
+  "app.ready": () => ({}),
   // A plain browser has no host to open a browser window for the guide.
   "app.openGuide": () => ({}),
   "run.get": (): RunSnapshot => ({

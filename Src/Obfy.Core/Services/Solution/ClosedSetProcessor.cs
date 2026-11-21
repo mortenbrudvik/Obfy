@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using dnlib.DotNet;
 using Microsoft.Extensions.Logging;
 using Obfy.Core.Models;
@@ -12,6 +13,8 @@ namespace Obfy.Core.Services.Solution;
 /// Default closed-set coordinator: one module context, one rename pass, per-module pipeline,
 /// all-or-nothing write. A member that fails to load fails the run before renaming, so the
 /// rest of the set is not rewritten against an incomplete assembly list.
+/// Settings follow the single-file rules: cloned, a non-Custom level is applied, then validated. The log
+/// carries counts, module numbers and exception types, never paths or exception text.
 /// </summary>
 public class ClosedSetProcessor : IClosedSetProcessor
 {
@@ -44,6 +47,22 @@ public class ClosedSetProcessor : IClosedSetProcessor
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
         ArgumentNullException.ThrowIfNull(baseSettings);
 
+        // Same rules as ObfuscationService.ObfuscateAsync: a copy (the caller's object is never mutated), the
+        // level applied unless the caller passed Custom (the CLI and UI do, so explicit flags win), then validated.
+        // A failure is a result, not an exception.
+        try
+        {
+            baseSettings = baseSettings.Clone();
+            if (baseSettings.Level != ObfuscationLevel.Custom)
+                baseSettings.ApplyLevel();
+            baseSettings.Validate();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError("Invalid obfuscation settings ({ExceptionType})", ex.GetType().Name);
+            return ClosedSetResult.Failed($"Invalid settings: {ex.Message}");
+        }
+
         string? tempDir = null;
         var loaded = new List<LoadedModule>();
         var loadFailures = new List<ClosedSetLoadFailure>();
@@ -65,6 +84,23 @@ public class ClosedSetProcessor : IClosedSetProcessor
                     loadFailures);
             }
 
+            var protectedMembers = loaded
+                .Where(m => ProtectedInputGuard.ContainsInjectedHelpers(m.Module))
+                .Select(m => Path.GetFileName(m.Input.AssemblyPath))
+                .ToList();
+            if (protectedMembers.Count > 0)
+            {
+                _logger.LogWarning(
+                    "{Count} closed-set member(s) already contain Obfy runtime helper types; run refused",
+                    protectedMembers.Count);
+                return ClosedSetResult.Failed(
+                    $"Closed-set obfuscation stopped: {string.Join(", ", protectedMembers)} "
+                    + (protectedMembers.Count == 1 ? "is" : "are")
+                    + " already protected (Obfy runtime helper types are present). Running Obfy on its own output "
+                    + "would inject them twice and can corrupt the result. Protect the original builds instead.",
+                    loadFailures);
+            }
+
             var hasEntryPoint = loaded.Any(static m => HasEntryPoint(m.Module));
             var referencedByExe = FindAssembliesReferencedByEntryPoints(loaded);
 
@@ -75,6 +111,19 @@ public class ClosedSetProcessor : IClosedSetProcessor
             var collision = FindOutputCollision(loaded, relativeOutputs);
             if (collision is not null)
                 return ClosedSetResult.Failed(collision, loadFailures);
+
+            if (baseSettings.Signing.Enabled)
+            {
+                try
+                {
+                    RewriteReferenceTokens(loaded, AssemblySigner.LoadKey(baseSettings.Signing));
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _logger.LogError("Could not load the signing key ({ExceptionType})", ex.GetType().Name);
+                    return ClosedSetResult.Failed($"Failed to load the signing key: {ex.Message}", loadFailures);
+                }
+            }
 
             var sessionContext = PipelineContext.ForAssembly(loaded[0].Module, baseSettings.Clone());
             sessionContext.InputPath = loaded[0].Input.AssemblyPath;
@@ -88,6 +137,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 var gatingContext = PipelineContext.ForAssembly(item.Module, settings);
                 gatingContext.InputPath = item.Input.AssemblyPath;
                 RuntimeProfileGating.Apply(settings, gatingContext);
+                // Gating warnings are fixed texts without user data.
                 foreach (var warning in gatingContext.Warnings)
                     _logger.LogWarning("{Warning}", warning);
 
@@ -106,7 +156,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogError(ex, "Closed-set symbol renaming failed");
+                    _logger.LogError("Closed-set symbol renaming failed ({ExceptionType})", ex.GetType().Name);
                     return ClosedSetResult.Failed(
                         $"Closed-set symbol renaming failed: {ex.Message}",
                         loadFailures);
@@ -139,10 +189,8 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 var result = await _pipeline.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
                 if (!result.Success)
                 {
-                    _logger.LogError(
-                        "Closed-set pipeline failed for {Path}: {Error}",
-                        job.Loaded.Input.AssemblyPath,
-                        result.ErrorMessage);
+                    // The error text can name symbols or paths from the input, so it is not logged.
+                    _logger.LogError("Closed-set pipeline failed for module {Index} of {Count}", i + 1, jobs.Count);
                     moduleResults.Add(result);
                     return ClosedSetResult.Failed(
                         result.ErrorMessage ?? "Pipeline failed.",
@@ -159,11 +207,20 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 moduleResults.Add(ToSuccessfulModuleResult(job, outputPath: null, packedLauncherPath: null));
             }
 
+            if (jobs.Sum(static j => j.Context!.Statistics.TotalTransformations) == 0)
+            {
+                // Renaming runs once for the whole set and is counted on the first module, so only the total says
+                // whether anything happened.
+                foreach (var job in jobs)
+                    job.Context!.Warnings.Add(ObfuscationWarnings.NoTransformations);
+            }
+
             tempDir = Path.Combine(Path.GetTempPath(), $"obfy-closed-{Guid.NewGuid():N}");
             Directory.CreateDirectory(tempDir);
 
-            foreach (var job in jobs)
+            for (var jobIndex = 0; jobIndex < jobs.Count; jobIndex++)
             {
+                var job = jobs[jobIndex];
                 cancellationToken.ThrowIfCancellationRequested();
                 var tempPath = Path.Combine(tempDir, job.RelativeOutput);
                 job.Context!.OutputPath = tempPath;
@@ -174,7 +231,9 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogError(ex, "Failed to save {Path}", job.Loaded.Input.AssemblyPath);
+                    _logger.LogError(
+                        "Failed to save closed-set module {Index} of {Count} ({ExceptionType})",
+                        jobIndex + 1, jobs.Count, ex.GetType().Name);
                     return ClosedSetResult.Failed(
                         $"Failed to save output: {ex.Message}",
                         loadFailures,
@@ -198,11 +257,13 @@ public class ClosedSetProcessor : IClosedSetProcessor
                         job.PipelineSettings,
                         job.Loaded.Input.AssemblyPath,
                         job.Context.Warnings);
-                    _logger.LogInformation("Packed closed-set output {Path}", job.PackedPath);
+                    _logger.LogInformation("Packed closed-set module {Index} of {Count}", jobIndex + 1, jobs.Count);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogError(ex, "Packing failed for {Path}", job.Loaded.Input.AssemblyPath);
+                    _logger.LogError(
+                        "Packing failed for closed-set module {Index} of {Count} ({ExceptionType})",
+                        jobIndex + 1, jobs.Count, ex.GetType().Name);
                     return ClosedSetResult.Failed(
                         $"Packing failed: {ex.Message}",
                         loadFailures,
@@ -256,7 +317,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogWarning(ex, "Failed to load {Path}", input.AssemblyPath);
+                _logger.LogWarning("Failed to load a closed-set member ({ExceptionType})", ex.GetType().Name);
                 loadFailures.Add(new ClosedSetLoadFailure
                 {
                     Path = input.AssemblyPath,
@@ -289,6 +350,30 @@ public class ClosedSetProcessor : IClosedSetProcessor
         }
 
         return settings;
+    }
+
+    /// <summary>
+    /// Every member is re-signed with the same key, so its public key token changes. A reference from one
+    /// member to another must name the new token or the CLR (.NET Framework) refuses to bind it.
+    /// </summary>
+    private static void RewriteReferenceTokens(List<LoadedModule> loaded, StrongNameKey key)
+    {
+        var token = new PublicKey(key.PublicKey).Token;
+        var memberNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in loaded)
+        {
+            if (item.Module.Assembly?.Name?.String is { Length: > 0 } name)
+                memberNames.Add(name);
+        }
+
+        foreach (var item in loaded)
+        {
+            foreach (var assemblyRef in item.Module.GetAssemblyRefs())
+            {
+                if (assemblyRef.Name?.String is { } refName && memberNames.Contains(refName))
+                    assemblyRef.PublicKeyOrToken = token;
+            }
+        }
     }
 
     private static HashSet<string> FindAssembliesReferencedByEntryPoints(List<LoadedModule> loaded)
@@ -360,7 +445,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to commit closed-set output to {Path}", outputDirectory);
+            _logger.LogError("Failed to commit closed-set output ({ExceptionType})", ex.GetType().Name);
             var restoreErrors = RestoreCommit(placed, stashes);
             var message = $"Failed to save output: {ex.Message}";
             if (restoreErrors.Count > 0)
@@ -401,11 +486,15 @@ public class ClosedSetProcessor : IClosedSetProcessor
             try
             {
                 if (File.Exists(backup))
+                {
                     File.Copy(backup, dest, overwrite: true);
+                    // Restored: the backup has done its job. A backup that could not be restored stays for the user.
+                    DeleteFile(backup);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to restore {Path} from {Backup}", dest, backup);
+                _logger.LogError("Failed to restore a closed-set output from its backup ({ExceptionType})", ex.GetType().Name);
                 errors.Add($"{dest} (backup: {backup}): {ex.Message}");
             }
         }
@@ -429,7 +518,25 @@ public class ClosedSetProcessor : IClosedSetProcessor
             var backup = Path.Combine(
                 destDir ?? outputDirectory,
                 $".{Path.GetFileName(dest)}.{Guid.NewGuid():N}.obfyprev");
-            File.Copy(dest, backup, overwrite: true);
+            try
+            {
+                File.Copy(dest, backup, overwrite: true);
+            }
+            catch
+            {
+                // A half-written backup must not be left behind, and must never be restored over the output.
+                try
+                {
+                    File.Delete(backup);
+                }
+                catch (Exception)
+                {
+                    // Best effort: the original failure is the one to report.
+                }
+
+                throw;
+            }
+
             stashes.Add((dest, backup));
         }
 
@@ -537,7 +644,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to delete temp directory {Path}", path);
+            _logger.LogWarning("Failed to delete the closed-set temp directory ({ExceptionType})", ex.GetType().Name);
         }
     }
 
@@ -550,7 +657,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to delete {Path}", path);
+            _logger.LogWarning("Failed to delete a closed-set backup file ({ExceptionType})", ex.GetType().Name);
         }
     }
 

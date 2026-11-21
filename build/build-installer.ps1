@@ -88,16 +88,21 @@ if (-not $InnoSetupPath -or -not (Test-Path $InnoSetupPath)) {
 Write-Host "  Found: $InnoSetupPath" -ForegroundColor Green
 
 # Step 2: Clean publish directories
-Write-Host "[2/7] Cleaning publish directories..." -ForegroundColor Yellow
+if (-not $SkipPublish) {
+    Write-Host "[2/7] Cleaning publish directories..." -ForegroundColor Yellow
 
-if (Test-Path $PublishDir) {
-    Remove-Item -Path $PublishDir -Recurse -Force
-    Write-Host "  Removed existing CLI publish directory" -ForegroundColor Green
-}
+    if (Test-Path $PublishDir) {
+        Remove-Item -Path $PublishDir -Recurse -Force
+        Write-Host "  Removed existing CLI publish directory" -ForegroundColor Green
+    }
 
-if (Test-Path $PublishDirUI) {
-    Remove-Item -Path $PublishDirUI -Recurse -Force
-    Write-Host "  Removed existing UI publish directory" -ForegroundColor Green
+    if (Test-Path $PublishDirUI) {
+        Remove-Item -Path $PublishDirUI -Recurse -Force
+        Write-Host "  Removed existing UI publish directory" -ForegroundColor Green
+    }
+} else {
+    # -SkipPublish reuses the existing publish output; deleting it here would leave the installer nothing to package.
+    Write-Host "[2/7] Keeping existing publish directories (--SkipPublish)" -ForegroundColor Gray
 }
 
 # Step 3: Build and publish CLI

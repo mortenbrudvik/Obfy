@@ -161,7 +161,7 @@ public class VmWithRenamingTests
             Probe(output).ShouldBe(native);
 
             using var protectedModule = ModuleDefMD.Load(File.ReadAllBytes(output));
-            DanglingInModuleMemberRefs(protectedModule).ShouldBeEmpty(
+            StaleMemberReferenceScanner.Find(protectedModule).ShouldBeEmpty(
                 "a MemberRef to a def of this module is bound by name; the rename left these behind");
         }
         finally
@@ -297,34 +297,6 @@ public class VmWithRenamingTests
             && run.MethodSig.Params[0].ElementType == ElementType.I4
             && run.MethodSig.Params[1].ElementType == ElementType.SZArray
             && run.MethodSig.RetType.ElementType == ElementType.Object);
-
-    /// <summary>
-    /// MemberRefs in IL whose class is a type defined in this very module and which name no member that
-    /// type still has. The CLR binds such a reference by name and signature when the method is compiled.
-    /// </summary>
-    private static List<string> DanglingInModuleMemberRefs(ModuleDef module)
-    {
-        var dangling = new List<string>();
-        foreach (var type in module.GetTypes())
-        {
-            foreach (var method in type.Methods.Where(m => m.HasBody))
-            {
-                foreach (var instruction in method.Body.Instructions)
-                {
-                    if (instruction.Operand is not MemberRef reference || reference.Class is not TypeDef owner)
-                        continue;
-                    var found = reference.IsFieldRef
-                        ? owner.Fields.Any(f => f.Name == reference.Name)
-                        : owner.Methods.Any(m => m.Name == reference.Name
-                                                 && m.MethodSig.Params.Count == reference.MethodSig.Params.Count);
-                    if (!found)
-                        dangling.Add($"{(reference.IsFieldRef ? "field" : "method")} '{reference.Name}' of {owner.FullName}");
-                }
-            }
-        }
-
-        return dangling.Distinct().ToList();
-    }
 
     private static Dictionary<string, string> Probe(string assemblyPath)
     {

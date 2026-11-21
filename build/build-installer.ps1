@@ -214,38 +214,60 @@ if (-not $SkipObfuscation -and -not $SkipPublish) {
 
     $TempObfyExe = Join-Path $TempObfyDir "obfy.exe"
 
-    # Define which assemblies to obfuscate (our own DLLs only - EXEs are native app hosts)
-    $OurAssemblies = @("obfy.dll", "Obfy.Core.dll", "Settings.Core.dll", "Logging.Core.dll")
+    # Own DLLs only. EXEs are native app hosts. Obfy.VmRuntime.dll is the embedded interpreter
+    # payload inside Obfy.Core, not a reference of the shipped tool; renaming a loose copy would
+    # not update that resource.
+    # These assemblies reference each other. Protecting them one at a time renames public types in
+    # Obfy.Core.dll while obfy.dll (and the UI assemblies) still name the old types, so the shipped
+    # CLI cannot start. One invocation per publish directory is a closed set: cross-assembly
+    # references are rewritten together, and nothing is copied back until every output exists.
+    $ProductAssemblies = @(
+        "obfy.dll",
+        "ObfyUI.dll",
+        "Obfy.App.dll",
+        "Obfy.Core.dll",
+        "Obfy.Interop.dll",
+        "Obfy.WebView.dll",
+        "Obfy.Common.dll",
+        "Settings.Core.dll",
+        "Logging.Core.dll"
+    )
 
-    # Obfuscate CLI assemblies to separate directory
+    function Protect-ProductAssemblies([string]$SourceDir, [string]$OutputDir) {
+        $inputs = @()
+        foreach ($name in $ProductAssemblies) {
+            $path = Join-Path $SourceDir $name
+            if (Test-Path -LiteralPath $path) {
+                $inputs += $path
+            }
+        }
+        if ($inputs.Count -eq 0) { return }
+
+        & $TempObfyExe @inputs -o $OutputDir -l standard --string-encrypt --control-flow --rename --strip-metadata
+        if ($LASTEXITCODE -ne 0) {
+            throw "Self-obfuscation failed (exit $LASTEXITCODE). The installer will not package the original assemblies."
+        }
+        $outputs = @()
+        foreach ($path in $inputs) {
+            $name = Split-Path -Leaf $path
+            $obfuscated = Join-Path $OutputDir $name
+            if (-not (Test-Path -LiteralPath $obfuscated)) {
+                throw "Self-obfuscation did not write $name. The installer will not package the original assembly."
+            }
+            $outputs += $obfuscated
+        }
+        foreach ($obfuscated in $outputs) {
+            $name = Split-Path -Leaf $obfuscated
+            Copy-Item -LiteralPath $obfuscated -Destination (Join-Path $SourceDir $name) -Force
+            Write-Host "    Obfuscated: $name" -ForegroundColor Green
+        }
+    }
+
     Write-Host "  Obfuscating CLI assemblies..." -ForegroundColor Gray
-    foreach ($asmName in $OurAssemblies) {
-        $asmPath = Join-Path $PublishDir $asmName
-        if (Test-Path $asmPath) {
-            $obfuscatedPath = Join-Path $ObfuscatedCliDir $asmName
-            & $TempObfyExe $asmPath -o $ObfuscatedCliDir -l standard --string-encrypt --control-flow --rename --strip-metadata
-            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $obfuscatedPath)) {
-                throw "Self-obfuscation failed for $asmName (exit $LASTEXITCODE). The installer will not package the original assembly."
-            }
-            Copy-Item $obfuscatedPath $PublishDir -Force
-            Write-Host "    Obfuscated: $asmName" -ForegroundColor Green
-        }
-    }
+    Protect-ProductAssemblies $PublishDir $ObfuscatedCliDir
 
-    # Obfuscate UI assemblies to separate directory
     Write-Host "  Obfuscating UI assemblies..." -ForegroundColor Gray
-    foreach ($asmName in $OurAssemblies) {
-        $asmPath = Join-Path $PublishDirUI $asmName
-        if (Test-Path $asmPath) {
-            $obfuscatedPath = Join-Path $ObfuscatedUiDir $asmName
-            & $TempObfyExe $asmPath -o $ObfuscatedUiDir -l standard --string-encrypt --control-flow --rename --strip-metadata
-            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $obfuscatedPath)) {
-                throw "Self-obfuscation failed for UI $asmName (exit $LASTEXITCODE). The installer will not package the original assembly."
-            }
-            Copy-Item $obfuscatedPath $PublishDirUI -Force
-            Write-Host "    Obfuscated: $asmName" -ForegroundColor Green
-        }
-    }
+    Protect-ProductAssemblies $PublishDirUI $ObfuscatedUiDir
 
     # Cleanup temp directories
     Remove-Item $TempObfyDir -Recurse -Force

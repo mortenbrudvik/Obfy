@@ -27,6 +27,9 @@ public static class PackedBootstrap
 
             var bytes = new byte[length];
             Marshal.Copy(payload, bytes, 0, length);
+            // Overlay decryption has already produced the managed PE. Method IL is still XOR'd,
+            // and LoadFromStream does not map a module the in-assembly decryptor can patch.
+            MethodImageDecryptor.Decrypt(bytes);
 
             var alc = AssemblyLoadContext.Default;
             if (Interlocked.Exchange(ref _resolvingHooked, 1) == 0)

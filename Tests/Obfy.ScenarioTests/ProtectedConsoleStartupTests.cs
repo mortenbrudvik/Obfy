@@ -18,9 +18,10 @@ namespace Obfy.ScenarioTests;
 /// </summary>
 /// <remarks>
 /// Each target framework has one theory with the same cases: the Aggressive preset, and AntiDebug, AntiDump,
-/// MethodEncryption, AntiTamper and AES string encryption each alone, so a failure names the technique; plus the
-/// <c>RichConsole</c> fixture (embedded resource, resx, a sibling assembly) with every technique at once. A target
-/// is skipped, visibly, on a machine without its runtime.
+/// MethodEncryption, AntiTamper, AES string encryption and Virtualization each alone, then Virtualization together
+/// with symbol renaming (which renames the interpreter and everything it reaches), so a failure names the technique;
+/// plus the <c>RichConsole</c> fixture (embedded resource, resx, a sibling assembly) with every technique at once,
+/// renaming included. A target is skipped, visibly, on a machine without its runtime or reference assemblies.
 /// </remarks>
 public sealed class ProtectedConsoleStartupTests : IClassFixture<BuiltFixtures>
 {
@@ -37,7 +38,9 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<BuiltFixtures>
         "AntiDump",
         "MethodEncryption",
         "AntiTamper",
-        "StringsAes"
+        "StringsAes",
+        "Virtualization",
+        "VirtualizationWithRenaming"
     };
 
     [SdkRuntimeTheory("net10.0", windowsOnly: true)]
@@ -107,7 +110,12 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<BuiltFixtures>
     {
         var (staged, _, output) = Stage(_built.Hello(targetFramework), "HelloConsole", targetFramework);
 
-        await ScenarioHarness.ObfuscateAsync(staged, output, SettingsFor(protection));
+        var result = await ScenarioHarness.ObfuscateAsync(staged, output, SettingsFor(protection));
+        if (protection.StartsWith("Virtualization", StringComparison.Ordinal))
+        {
+            result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(
+                0, $"{protection} virtualized nothing, so this run would prove nothing about it");
+        }
 
         var marker = InjectedTypeFor(protection);
         using (var module = ModuleDefMD.Load(File.ReadAllBytes(output)))
@@ -153,14 +161,13 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<BuiltFixtures>
         EmbedSiblingAndUseAes(preset);
         await AssertRunsLikeTheOriginalAsync(buildOutput, targetFramework, "Aggressive", preset, original);
 
-        // Everything the preset leaves out as well: the VM and proxies for external calls. (Virtualization together
-        // with symbol renaming is a known, separate problem, so renaming stays off here.)
+        // Everything the preset leaves out as well: the VM and proxies for external calls, with symbol renaming on.
         var everything = new ObfySettings { Level = ObfuscationLevel.Custom };
         everything.StringEncryption.Enabled = true;
         everything.ConstantEncryption.Enabled = true;
         everything.ResourceEncryption.Enabled = true;
         everything.ControlFlow.Enabled = true;
-        everything.SymbolRenaming.Enabled = false;
+        everything.SymbolRenaming.Enabled = true;
         everything.Protection.AntiDebug = true;
         everything.Protection.AntiDump = true;
         everything.Protection.AntiTamper.Enabled = true;
@@ -196,10 +203,11 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<BuiltFixtures>
 
         if (settings.Virtualization.Enabled)
         {
+            // With symbol renaming on, the interpreter has no recognizable name. It is the one type that keeps its
+            // byte tables (code, opcode map, key, ...) as several initialized static blobs; the other helpers have one.
             using var module = ModuleDefMD.Load(File.ReadAllBytes(output));
-            module.Types.ShouldContain(
-                t => t.Name == "Vm" && t.Namespace.String.StartsWith("Obfy.Runtime", StringComparison.Ordinal),
-                $"RichConsole ({label}) did not get the VM, so the run would prove nothing about it");
+            module.GetTypes().Max(t => t.Fields.Count(f => f.HasFieldRVA)).ShouldBeGreaterThanOrEqualTo(
+                3, $"RichConsole ({label}) did not get the VM, so the run would prove nothing about it");
         }
 
         // The embedded sibling must be what the app loads: take the loose copy away, and the dependency manifest that
@@ -246,6 +254,12 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<BuiltFixtures>
             s.StringEncryption.Enabled = true;
             s.StringEncryption.Algorithm = EncryptionAlgorithm.Aes256;
         }),
+        "Virtualization" => Only(s => s.Virtualization.Enabled = true),
+        "VirtualizationWithRenaming" => Only(s =>
+        {
+            s.Virtualization.Enabled = true;
+            s.SymbolRenaming.Enabled = true;
+        }),
         _ => throw new ArgumentOutOfRangeException(nameof(protection), protection, null)
     };
 
@@ -261,12 +275,16 @@ public sealed class ProtectedConsoleStartupTests : IClassFixture<BuiltFixtures>
         return settings;
     }
 
-    /// <summary>The type the technique injects (symbol renaming is off for the single-technique cases).</summary>
+    /// <summary>
+    /// The type the technique injects (symbol renaming is off for the single-technique cases; with it on, the
+    /// interpreter is renamed, so <c>VirtualizationWithRenaming</c> is checked through the statistics instead).
+    /// </summary>
     private static string? InjectedTypeFor(string protection) => protection switch
     {
         "AntiDebug" => "<AntiDebug>",
         "AntiDump" => "<AntiDump>",
         "MethodEncryption" => "<MethodCrypt>",
+        "Virtualization" => "Vm",
         _ => null
     };
 }

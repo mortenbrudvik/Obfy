@@ -1,15 +1,18 @@
+using Obfy.App.Services;
+
 namespace Obfy.App.Sessions;
 
-/// <summary>A file the run would write that is also one of the listed inputs, and the sentence that says so.</summary>
-/// <param name="InputPath">The listed file that would be replaced.</param>
-/// <param name="OutputPath">The planned output that lands on it.</param>
+/// <summary>A file the run would write that is also one of the listed inputs (or, for the symbol map, one of its own outputs), and the sentence that says so.</summary>
+/// <param name="InputPath">The listed file that would be replaced. For a symbol map that lands on a planned output, the input that output is the protected copy of.</param>
+/// <param name="OutputPath">The planned output, or the symbol map's path, that lands on it.</param>
 /// <param name="Message">What the run bar and the <c>run.blocked</c> error say: the problem, then the way out.</param>
 public sealed record OutputCollision(string InputPath, string OutputPath, string Message);
 
 /// <summary>
 /// The data-loss guard: a run must never write over a file the user listed, because the original is gone afterwards (a closed
 /// set even deletes the backup it made). It reads <see cref="OutputPlan.Outputs"/>, the paths the run itself writes by, so
-/// the check and the run cannot disagree, and compares them with the listed files.
+/// the check and the run cannot disagree, and compares them with the listed files. The symbol map is the run's other write:
+/// its location is typed by the user, so it is held to the same rule (it may replace neither a listed file nor an output).
 /// <para>
 /// Paths are compared as full paths, ignoring case, so a trailing separator, a <c>..</c> segment or a different spelling of
 /// the folder does not hide a collision. A symbolic link or a junction, in the file's name or in any folder above it, is
@@ -21,23 +24,61 @@ public static class OutputCollisions
 {
     private const int MaxLinkDepth = 16;
 
-    /// <summary>The first planned output that would replace a listed file, or null when none would. Never throws.</summary>
+    /// <summary>
+    /// The first planned output that would replace a listed file, else the symbol map when it would replace a listed file or a
+    /// planned output, or null when nothing would be replaced. Never throws.
+    /// </summary>
     /// <param name="listedPaths">Every file the user listed, protected or not: the run replaces none of them.</param>
     /// <param name="plan">What the run would write.</param>
     /// <param name="defaultPlan">What it would write with no output folder; null when no folder is chosen. Tells the message whether clearing the folder is a way out.</param>
-    public static OutputCollision? Find(IEnumerable<string> listedPaths, OutputPlan plan, OutputPlan? defaultPlan)
+    /// <param name="symbolMapPath">Where the run would write the symbol map; null while the option is off.</param>
+    /// <param name="probe">Answers the file-system questions (is this entry a link, and to where); the real file system when null.</param>
+    public static OutputCollision? Find(
+        IEnumerable<string> listedPaths, OutputPlan plan, OutputPlan? defaultPlan, string? symbolMapPath = null, IPathProbe? probe = null)
     {
         if (plan.Outputs.Count == 0)
             return null;
 
-        var paths = new PathResolver();
+        var paths = new PathResolver(probe);
         var listed = listedPaths.Select(p => (Path: p, Key: paths.ResolveFile(p))).ToList();
 
         var hit = FindHit(listed, plan, paths);
-        if (hit is null)
-            return null;
+        if (hit is not null)
+            return new OutputCollision(hit.Value.InputPath, hit.Value.OutputPath, Describe(hit.Value, plan, listed, defaultPlan, paths));
 
-        return new OutputCollision(hit.Value.InputPath, hit.Value.OutputPath, Describe(hit.Value, plan, listed, defaultPlan, paths));
+        return symbolMapPath is null ? null : FindSymbolMapHit(listed, plan, symbolMapPath, paths);
+    }
+
+    /// <summary>
+    /// The symbol map written over a listed file (the original would be JSON afterwards) or over a file the run writes (the
+    /// protected assembly would be). The way out is the same in both: the map goes somewhere else.
+    /// </summary>
+    private static OutputCollision? FindSymbolMapHit(
+        List<(string Path, string Key)> listed, OutputPlan plan, string symbolMapPath, PathResolver paths)
+    {
+        var key = paths.ResolveFile(symbolMapPath);
+
+        foreach (var (path, listedKey) in listed)
+        {
+            if (key.Equals(listedKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return new OutputCollision(
+                    path, symbolMapPath,
+                    $"The symbol map would replace {Path.GetFileName(path)}, one of your inputs. Choose another location for the symbol map.");
+            }
+        }
+
+        foreach (var output in plan.Outputs)
+        {
+            if (key.Equals(paths.ResolveFile(output.OutputPath), StringComparison.OrdinalIgnoreCase))
+            {
+                return new OutputCollision(
+                    output.InputPath, symbolMapPath,
+                    $"The symbol map would replace {Path.GetFileName(output.OutputPath)}, which the run itself writes. Choose another location for the symbol map.");
+            }
+        }
+
+        return null;
     }
 
     private static (string InputPath, string OutputPath)? FindHit(
@@ -99,7 +140,7 @@ public static class OutputCollisions
     /// cached for the one call, so a list of files in a few folders costs a few file-system reads, not one per file.
     /// Whatever the file system refuses is left as the text said; nothing here throws.
     /// </summary>
-    private sealed class PathResolver
+    private sealed class PathResolver(IPathProbe? probe)
     {
         private readonly Dictionary<string, string> _folders = new(StringComparer.OrdinalIgnoreCase);
         private int _depth;
@@ -138,7 +179,7 @@ public static class OutputCollisions
         /// <summary>An entry whose parent is already resolved: if it is a link, the place it leads to, with that place's own folders resolved.</summary>
         private string ResolveEntry(string path)
         {
-            if (_depth >= MaxLinkDepth || TryResolveLink(path) is not { } target)
+            if (_depth >= MaxLinkDepth || ResolveLink(path) is not { } target)
                 return path;
 
             var targetPath = Normalize(target.FullName);
@@ -157,23 +198,7 @@ public static class OutputCollisions
             }
         }
 
-        private static FileSystemInfo? TryResolveLink(string path)
-        {
-            try
-            {
-                // One attribute read tells a plain file or folder (nearly always) from a link; a missing entry reads as -1.
-                var attributes = new FileInfo(path).Attributes;
-                if ((int)attributes == -1 || !attributes.HasFlag(FileAttributes.ReparsePoint))
-                    return null;
-
-                FileSystemInfo info = attributes.HasFlag(FileAttributes.Directory) ? new DirectoryInfo(path) : new FileInfo(path);
-                return info.ResolveLinkTarget(returnFinalTarget: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-            {
-                return null;
-            }
-        }
+        private FileSystemInfo? ResolveLink(string path) => probe is null ? FileLinks.Resolve(path) : probe.ResolveLinkTarget(path);
 
         private static string Normalize(string path)
         {

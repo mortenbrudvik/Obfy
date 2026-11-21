@@ -81,7 +81,7 @@ internal static class ScenarioHarness
         return settings;
     }
 
-    public static async Task ObfuscateAsync(string inputPath, string outputPath, ObfySettings settings)
+    public static async Task<ObfuscationResult> ObfuscateAsync(string inputPath, string outputPath, ObfySettings settings)
     {
         var outputDir = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(outputDir))
@@ -95,6 +95,7 @@ internal static class ScenarioHarness
 
         var result = await service.ObfuscateAsync(inputPath, outputPath, settings);
         result.Success.ShouldBeTrue(result.ErrorMessage);
+        return result;
     }
 
     public static string StageBuildOutput(string buildOutputDirectory, string assemblyFileName)

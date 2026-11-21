@@ -52,6 +52,8 @@ public class DotnetToolPackTests : IDisposable
         }
 
         var version = Path.GetFileNameWithoutExtension(nupkg)["Obfy.".Length..];
+        // The package version is the product version in version.json (no -p:Version on this pack).
+        version.ShouldBe(RepoVersion.Read(), "the .nupkg file name carries the version from version.json");
         var toolPath = Path.Combine(_tempDirectory, "tool");
         Directory.CreateDirectory(toolPath);
 

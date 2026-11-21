@@ -79,7 +79,50 @@ public static class ObfySettingsJson
         protection["proxyExternalCalls"] = settings.ProxyExternalCalls;
         node["protection"] = protection;
 
+        WritePresetValues(node, settings.Level);
+
         return node.ToJsonString(WriteOptions);
+    }
+
+    /// <summary>
+    /// The CLI reads a <c>-c</c> file as Custom, so for Minimal/Standard/Aggressive the file has to carry every
+    /// value Core's preset (<c>ObfySettings.ApplyLevel</c>) sets beyond the on/off toggles written above;
+    /// otherwise the same level behaves differently with and without an obfy.json.
+    /// Custom keeps whatever the file already says.
+    /// </summary>
+    private static void WritePresetValues(JsonObject node, ObfuscationLevel level)
+    {
+        int intensity;
+        bool removeAttributes;
+        switch (level)
+        {
+            case ObfuscationLevel.Minimal:
+                intensity = 50;
+                removeAttributes = false;
+                break;
+            case ObfuscationLevel.Standard:
+                intensity = 50;
+                removeAttributes = true;
+                break;
+            case ObfuscationLevel.Aggressive:
+                intensity = 80;
+                removeAttributes = true;
+                break;
+            default:
+                return;
+        }
+
+        var controlFlow = (JsonObject)node["controlFlow"]!;
+        controlFlow["mode"] = "switch";
+        controlFlow["intensity"] = intensity;
+
+        var constants = (JsonObject)node["constantEncryption"]!;
+        constants["algorithm"] = "xor";
+
+        var metadata = node["metadata"] as JsonObject ?? new JsonObject();
+        metadata["removeDebugInfo"] = true;
+        metadata["removeAttributes"] = removeAttributes;
+        node["metadata"] = metadata;
     }
 
     public static string PatchPostBuildEnabled(string existingJson, bool enabled)

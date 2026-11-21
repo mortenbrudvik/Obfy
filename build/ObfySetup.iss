@@ -40,6 +40,8 @@ DisableDirPage=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Require admin privileges for PATH modification
 PrivilegesRequired=admin
+; Tell running programs (Explorer, new shells) that the system Path changed at install and uninstall
+ChangesEnvironment=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -50,8 +52,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; listing it after the publish payload would stall setup on exactly the machines
 ; that lack WebView2. build-installer.ps1 downloads it into build\redist.
 Source: ".\redist\MicrosoftEdgeWebview2Setup.exe"; Flags: dontcopy noencryption
-; CLI files from publish directory
-Source: ".\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; CLI files from publish directory (no symbols: build-installer.ps1 self-obfuscates the DLLs, but the publish
+; folder still holds their original PDBs)
+Source: ".\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb"
 ; UI files from publish-ui directory (includes the web Assets\ folder; no symbols or source maps)
 Source: ".\publish-ui\*"; DestDir: "{app}\UI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.map"
 
@@ -171,40 +174,60 @@ begin
   else
     Paths := Path;
 
-  RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
+  // The system Path is a REG_EXPAND_SZ. Writing it back as REG_SZ would stop %SystemRoot% and
+  // friends from expanding for every program on the machine.
+  RegWriteExpandStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
+end;
+
+// Rebuilds Paths entry by entry and drops only entries equal to Path (case-insensitive).
+// A substring or prefix match would also hit a sibling such as "...\Obfy-Beta" listed earlier.
+// Every other entry, including empty ones, is kept exactly as it was.
+function PathWithoutEntry(Paths, Path: string; var Removed: Boolean): string;
+var
+  Remaining, Entry: string;
+  P: Integer;
+  First: Boolean;
+begin
+  Result := '';
+  Remaining := Paths;
+  Removed := False;
+  First := True;
+  repeat
+    P := Pos(';', Remaining);
+    if P > 0 then
+    begin
+      Entry := Copy(Remaining, 1, P - 1);
+      Remaining := Copy(Remaining, P + 1, Length(Remaining) - P);
+    end
+    else
+    begin
+      Entry := Remaining;
+      Remaining := '';
+    end;
+
+    if CompareText(Entry, Path) = 0 then
+      Removed := True
+    else
+    begin
+      if not First then
+        Result := Result + ';';
+      Result := Result + Entry;
+      First := False;
+    end;
+  until P = 0;
 end;
 
 procedure EnvRemovePath(Path: string);
 var
   Paths: string;
-  P: Integer;
+  Removed: Boolean;
 begin
   if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
     exit;
 
-  // Remove the path (with semicolon handling)
-  P := Pos(';' + Uppercase(Path), Uppercase(Paths));
-  if P > 0 then
-  begin
-    Delete(Paths, P, Length(Path) + 1);
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
-    exit;
-  end;
-
-  P := Pos(Uppercase(Path) + ';', Uppercase(Paths));
-  if P > 0 then
-  begin
-    Delete(Paths, P, Length(Path) + 1);
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
-    exit;
-  end;
-
-  P := Pos(Uppercase(Path), Uppercase(Paths));
-  if P > 0 then
-  begin
-    Delete(Paths, P, Length(Path));
-    RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
-  end;
+  Paths := PathWithoutEntry(Paths, Path, Removed);
+  if Removed then
+    RegWriteExpandStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

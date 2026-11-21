@@ -17,7 +17,13 @@
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ObfyCliLocator.cs" Link="Linked\ObfyCliLocator.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\InPlaceOutputCopy.cs" Link="Linked\InPlaceOutputCopy.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\Services\ProjectSupport.cs" Link="Linked\ProjectSupport.cs" />
+    <Compile Include="..\..\Src\Obfy.VisualStudio\Services\PostBuildStamp.cs" Link="Linked\PostBuildStamp.cs" />
     <Compile Include="..\..\Src\Obfy.VisualStudio\UI\SettingsDialogViewModel.cs" Link="Linked\SettingsDialogViewModel.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Contract test only: the serialized presets are compared with Core's own presets. -->
+    <ProjectReference Include="..\..\Src\Obfy.Core\Obfy.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

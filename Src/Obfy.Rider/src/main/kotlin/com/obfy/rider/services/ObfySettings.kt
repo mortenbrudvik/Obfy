@@ -57,7 +57,35 @@ data class ObfySettings(
         setEnabled(protection, "antiDecompiler", antiDecompiler)
         root.add("protection", protection)
 
+        writePresetValues(root)
+
         return com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root)
+    }
+
+    /**
+     * The CLI reads a `-c` file as Custom, so for Minimal/Standard/Aggressive the file has to carry every value
+     * Core's preset (`ObfySettings.ApplyLevel`) sets beyond the on/off toggles written by [toJson]; otherwise the
+     * same level behaves differently with and without an obfy.json. Custom keeps whatever the file already says.
+     */
+    private fun writePresetValues(root: JsonObject) {
+        val (intensity, removeAttributes) = when (level) {
+            ObfuscationLevel.Minimal -> 50 to false
+            ObfuscationLevel.Standard -> 50 to true
+            ObfuscationLevel.Aggressive -> 80 to true
+            ObfuscationLevel.Custom -> return
+        }
+
+        // setEnabled() above guarantees these two are objects.
+        root.getAsJsonObject("controlFlow").apply {
+            addProperty("mode", "switch")
+            addProperty("intensity", intensity)
+        }
+        root.getAsJsonObject("constantEncryption").addProperty("algorithm", "xor")
+
+        val metadata = root.get("metadata")?.takeIf { it.isJsonObject }?.asJsonObject ?: JsonObject()
+        metadata.addProperty("removeDebugInfo", true)
+        metadata.addProperty("removeAttributes", removeAttributes)
+        root.add("metadata", metadata)
     }
 
     companion object {

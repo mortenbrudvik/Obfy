@@ -95,7 +95,7 @@ jobs:
 
     - name: Generate Coverage Report
       run: |
-        dotnet tool install -g dotnet-reportgenerator-globaltool
+        dotnet tool install -g dotnet-reportgenerator-globaltool --version 5.6.1
         reportgenerator "-reports:coverage/**/coverage.cobertura.xml" "-targetdir:coverage/report" "-reporttypes:Cobertura;HtmlInline;MarkdownSummaryGithub;Badges"
 
     - name: Upload Coverage Report
@@ -152,9 +152,13 @@ jobs:
     # excludes Category=UI; this step is the opt-in run against the Release exe.
     # The web UI tests drive the WebView2 page with Playwright over a remote-debugging port (CDP), so they need no
     # Playwright browser download; the WebView2 runtime ships with windows-latest.
+    # The "Setup MSVC" step (ilammy/msvc-dev-cmd) exports Platform=x64 to every later step. The solution build above
+    # maps its own platform and writes bin\Release, but a lone project run with --no-build reads that variable and
+    # looks in bin\x64\Release, which does not exist ("test source file ... was not found"). Clear it for this step.
     - name: UI tests
       shell: pwsh
       run: |
+        Remove-Item Env:Platform -ErrorAction SilentlyContinue
         dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --no-build -c Release --filter "Category=UI" --nologo
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

@@ -19,6 +19,7 @@ import com.jetbrains.rider.model.BuildResultKind
 import com.obfy.rider.services.AssemblyLocator
 import com.obfy.rider.services.ObfuscationService
 import com.obfy.rider.services.OutputService
+import com.obfy.rider.services.PostBuildStamp
 import com.obfy.rider.services.ProjectSettingsService
 import com.obfy.rider.settings.ObfySettingsState
 import java.io.File
@@ -139,8 +140,10 @@ internal object PostBuildObfuscator {
             indicator.fraction = index.toDouble() / targets.size
             indicator.text = "Obfuscating $projectName..."
 
-            val assembly = AssemblyLocator.findOutputAssembly(dir, projectName, releaseOnly)
-            if (assembly == null) {
+            // Every output of the project (one per target framework), not just the newest file: the build that
+            // just finished may have written any of them, and MSBuild keeps the compiler's timestamp on copies.
+            val assemblies = AssemblyLocator.findOutputAssemblies(dir, projectName, releaseOnly)
+            if (assemblies.isEmpty()) {
                 if (releaseOnly) {
                     outputService.info("Skipping post-build obfuscation for $projectName (Release-only, no Release assembly)")
                 } else {
@@ -149,28 +152,38 @@ internal object PostBuildObfuscator {
                 continue
             }
 
-            if (releaseOnly && !AssemblyLocator.isReleasePath(assembly.absolutePath)) {
-                outputService.info("Skipping post-build obfuscation for $projectName (Release-only)")
-                continue
-            }
+            for (assembly in assemblies) {
+                if (indicator.isCanceled) return
 
-            outputService.info("Post-build obfuscation starting for $projectName...")
-            val assemblyPath = assembly.absolutePath
-            val configFile = java.io.File(dir.path, "obfy.json")
-            val result = obfuscationService.obfuscate(
-                assemblyPath,
-                assemblyPath,
-                settings,
-                outputService,
-                configFile.takeIf { it.exists() }?.absolutePath
-            )
+                // A build can finish without writing this file (a Debug build next to an obfuscated Release
+                // output, or a project that was already up to date). Obfuscating it again would run the
+                // protections over an already protected assembly.
+                if (PostBuildStamp.isAlreadyObfuscated(dir, assembly)) {
+                    outputService.info(
+                        "Skipping post-build obfuscation for $projectName: ${assembly.name} was not rebuilt since it was last obfuscated"
+                    )
+                    continue
+                }
 
-            if (result.success) {
-                outputService.success(
-                    "Post-build obfuscation complete for $projectName: ${result.statistics.totalTransformations} transformations"
+                outputService.info("Post-build obfuscation starting for $projectName...")
+                val assemblyPath = assembly.absolutePath
+                val configFile = java.io.File(dir.path, "obfy.json")
+                val result = obfuscationService.obfuscate(
+                    assemblyPath,
+                    assemblyPath,
+                    settings,
+                    outputService,
+                    configFile.takeIf { it.exists() }?.absolutePath
                 )
-            } else {
-                outputService.error("Post-build obfuscation failed for $projectName: ${result.errorMessage}")
+
+                if (result.success) {
+                    PostBuildStamp.record(dir, assembly)
+                    outputService.success(
+                        "Post-build obfuscation complete for $projectName: ${result.statistics.totalTransformations} transformations"
+                    )
+                } else {
+                    outputService.error("Post-build obfuscation failed for $projectName: ${result.errorMessage}")
+                }
             }
         }
     }

@@ -185,47 +185,18 @@ class ObfuscationService {
         return if (success) {
             ObfuscationResult(
                 success = true,
-                statistics = parseStatistics(outputBuilder.toString())
+                statistics = CliOutput.parseStatistics(outputBuilder.toString())
             )
         } else {
             ObfuscationResult(
                 success = false,
-                errorMessage = errorBuilder.toString().trim().ifEmpty {
-                    "Process exited with code ${process.exitValue()}"
-                }
+                // The CLI reports failures on stdout ("Error: ..."), so stderr alone is usually empty.
+                errorMessage = CliOutput.extractErrorMessage(
+                    outputBuilder.toString(),
+                    errorBuilder.toString(),
+                    process.exitValue()
+                )
             )
         }
-    }
-
-    /**
-     * Parse obfuscation statistics from CLI output
-     */
-    private fun parseStatistics(output: String): ObfuscationStatistics {
-        var total = 0
-        var strings = 0
-        var symbols = 0
-
-        for (line in output.lines()) {
-            when {
-                line.contains("strings encrypted", ignoreCase = true) -> {
-                    strings = extractNumber(line)
-                    total += strings
-                }
-                line.contains("symbols renamed", ignoreCase = true) -> {
-                    symbols = extractNumber(line)
-                    total += symbols
-                }
-                line.contains("transformations", ignoreCase = true) -> {
-                    total = extractNumber(line)
-                }
-            }
-        }
-
-        return ObfuscationStatistics(total, strings, symbols)
-    }
-
-    private fun extractNumber(line: String): Int {
-        val parts = line.split(":")
-        return parts.getOrNull(1)?.trim()?.toIntOrNull() ?: 0
     }
 }

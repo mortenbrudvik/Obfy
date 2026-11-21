@@ -184,9 +184,9 @@ public class ObfuscationServiceWrapper : IObfuscationServiceWrapper
 
         if (!result.Success)
         {
-            result.ErrorMessage = errorBuilder.Length > 0
-                ? errorBuilder.ToString().Trim()
-                : $"Process exited with code {process.ExitCode}";
+            // The CLI reports failures on stdout ("Error: ..."), so stderr alone is usually empty.
+            result.ErrorMessage = CliArgumentBuilder.ExtractErrorMessage(
+                outputBuilder.ToString(), errorBuilder.ToString(), process.ExitCode);
         }
         else
         {

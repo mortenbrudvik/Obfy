@@ -50,6 +50,42 @@ object AssemblyLocator {
         return candidates.maxByOrNull { it.lastModified() }
     }
 
+    /**
+     * Every build output of the project (one per target framework) under bin/Release, and bin/Debug unless
+     * [releaseOnly]. Post-build obfuscation needs all of them rather than the newest by timestamp: MSBuild keeps
+     * the compiler's timestamp when it copies to bin, so "newest" says nothing about which build wrote a file.
+     *
+     * Reference assemblies (`ref`, `refint`) and `publish` folders are not build outputs. An `.exe` beside a
+     * `.dll` of the same name is the native apphost, not a managed assembly; an `.exe` alone is a .NET
+     * Framework executable and is the output.
+     */
+    fun findOutputAssemblies(projectDir: File, projectName: String, releaseOnly: Boolean = true): List<File> {
+        val binDir = File(projectDir, "bin")
+        if (!binDir.isDirectory) return emptyList()
+
+        val configs = if (releaseOnly) listOf("Release") else listOf("Release", "Debug")
+        val skippedFolders = setOf("ref", "refint", "publish")
+        val outputs = mutableListOf<File>()
+
+        for (config in configs) {
+            val configDir = File(binDir, config)
+            if (!configDir.isDirectory) continue
+
+            configDir.walkTopDown()
+                .maxDepth(5)
+                .onEnter { it.name.lowercase() !in skippedFolders }
+                .filter { it.isFile }
+                .filter { it.name.equals("$projectName.dll", ignoreCase = true) || it.name.equals("$projectName.exe", ignoreCase = true) }
+                .filterNot { exe ->
+                    exe.extension.equals("exe", ignoreCase = true) &&
+                        File(exe.parentFile, "$projectName.dll").isFile
+                }
+                .forEach { outputs.add(it) }
+        }
+
+        return outputs
+    }
+
     fun findOutputAssembly(projectDir: VirtualFile, releaseOnly: Boolean = true): String? {
         val name = findProjectName(projectDir)
         return findOutputAssembly(File(projectDir.path), name, releaseOnly)?.absolutePath

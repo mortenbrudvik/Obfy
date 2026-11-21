@@ -1,37 +1,33 @@
 {
-  "level": "Aggressive",
+  "level": "custom",
   "stringEncryption": {
-    "enabled": true,
-    "algorithm": "Aes256",
-    "minStringLength": 3
+    "enabled": true
   },
   "controlFlow": {
     "enabled": true,
-    "mode": "Switch",
+    "mode": "switch",
     "intensity": 50
   },
   "symbolRenaming": {
     "enabled": true,
-    "mode": "Unreadable",
-    "preservePublicApi": false
-  },
-  "protection": {
-    "antiDebug": true,
-    "antiTamper": {
-      "enabled": true
-    },
-    "antiDecompiler": {
-      "enabled": true,
-      "injectJunkTypes": true
-    }
+    "preservePublicApi": false,
+    "preserveXaml": true
   },
   "metadata": {
     "removeDebugInfo": true,
     "removeAttributes": true
   },
   "exclusions": {
-    "namespaces": ["Obfy.Runtime*"],
-    "types": ["*Attribute"],
-    "attributes": ["SerializableAttribute", "DataContractAttribute"]
+    "namespaces": [
+      "Obfy.Core.Models",
+      "Obfy.App.Models"
+    ],
+    "types": [
+      "*Request",
+      "AppInfo",
+      "ApiError",
+      "UiPreferences",
+      "<>*"
+    ]
   }
 }

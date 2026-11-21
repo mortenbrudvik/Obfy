@@ -72,7 +72,12 @@ public class InstallerPackagingTests
         step.ShouldNotContain("foreach ($asmName in $OurAssemblies)");
         var calls = step.Split("& $TempObfyExe").Length - 1;
         calls.ShouldBe(1);
-        step.ShouldContain("& $TempObfyExe @inputs -o $OutputDir -l standard --string-encrypt --control-flow --rename --strip-metadata");
+        step.ShouldContain("& $TempObfyExe @inputs -o $OutputDir -c $SelfObfuscationConfig");
+        step.ShouldContain("self-obfuscation.json");
+        step.ShouldContain("Assert-ProcessedCli");
+        step.ShouldContain("Assert-ProcessedUi");
+        step.ShouldNotContain("-l standard --string-encrypt --control-flow --rename --strip-metadata");
+        script.ShouldContain("HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments");
         var callAt = step.IndexOf("& $TempObfyExe @inputs", StringComparison.Ordinal);
         var copyAt = step.IndexOf("Copy-Item -LiteralPath $obfuscated", StringComparison.Ordinal);
         copyAt.ShouldBeGreaterThan(callAt);

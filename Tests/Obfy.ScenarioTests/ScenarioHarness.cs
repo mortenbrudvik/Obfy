@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Obfy.Core.DependencyInjection;
 using Obfy.Core.Models;
+using Obfy.Core.Models.Solution;
 using Obfy.Core.Services;
 using Shouldly;
 
@@ -96,6 +97,23 @@ internal static class ScenarioHarness
         var result = await service.ObfuscateAsync(inputPath, outputPath, settings);
         result.Success.ShouldBeTrue(result.ErrorMessage);
         return result;
+    }
+
+    public static async Task ObfuscateClosedSetAsync(
+        IReadOnlyList<string> assemblyPaths,
+        string outputDirectory,
+        ObfySettings settings,
+        bool forcePreservePublic = false)
+    {
+        Directory.CreateDirectory(outputDirectory);
+        var builder = new ContainerBuilder();
+        builder.RegisterGeneric(typeof(NullLogger<>)).As(typeof(ILogger<>)).SingleInstance();
+        builder.RegisterModule<ObfuscationModule>();
+        await using var container = builder.Build();
+        var service = container.Resolve<IObfuscationService>();
+        var inputs = assemblyPaths.Select(path => ClosedSetInput.From(path)).ToList();
+        var result = await service.ObfuscateClosedSetAsync(inputs, outputDirectory, settings, forcePreservePublic);
+        result.Success.ShouldBeTrue(result.ErrorMessage);
     }
 
     public static string StageBuildOutput(string buildOutputDirectory, string assemblyFileName)

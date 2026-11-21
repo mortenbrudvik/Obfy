@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { FIRST_GUIDE_TOPIC } from "./content/guideContent";
 import FilesPage from "./features/files/FilesPage";
 import GuidePage from "./features/guide/GuidePage";
@@ -23,16 +24,18 @@ export default function App() {
   };
 
   return (
-    <Shell screen={screen} onNavigate={navigate}>
-      {screen === "files" ? (
-        <FilesPage />
-      ) : screen === "protection" ? (
-        <ProtectionPage onOpenGuide={openGuide} />
-      ) : screen === "results" ? (
-        <ResultsPage />
-      ) : (
-        <GuidePage topic={guideTopic} onTopicChange={setGuideTopic} />
-      )}
-    </Shell>
+    <ErrorBoundary>
+      <Shell screen={screen} onNavigate={navigate}>
+        {screen === "files" ? (
+          <FilesPage />
+        ) : screen === "protection" ? (
+          <ProtectionPage onOpenGuide={openGuide} />
+        ) : screen === "results" ? (
+          <ResultsPage />
+        ) : (
+          <GuidePage topic={guideTopic} onTopicChange={setGuideTopic} />
+        )}
+      </Shell>
+    </ErrorBoundary>
   );
 }

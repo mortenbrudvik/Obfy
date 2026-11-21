@@ -57,7 +57,10 @@ function RowMenu({ file, locked, onReveal, onRemove }: RowMenuProps) {
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      // Esc closes the menu and is done: it must not go on to cancel the run (a window-wide shortcut).
+      event.stopPropagation();
     };
     document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("keydown", onKeyDown);

@@ -4,7 +4,7 @@
       "id": "start",
       "title": "Getting started",
       "blocks": [
-        { "type": "p", "text": "Obfy renames and hardens your compiled .NET assemblies before you ship them, so the shipped build is harder for others to reverse-engineer. Your original files are never changed. Protected copies go to a separate output folder." },
+        { "type": "p", "text": "Obfy renames and hardens your compiled .NET assemblies before you ship them, so the shipped build is harder for others to reverse-engineer. Your original files are never changed. Protected copies are new files, written next to the input unless you choose an output folder (see Where the output goes)." },
         { "type": "p", "text": "Start on Files. Drop assemblies, a solution or a project onto the window, or choose **Add files**. Standard protection is selected for you and is a good first run." },
         { "type": "p", "text": "Press **Obfuscate** or {Ctrl+Enter}. When the run finishes, Results opens with a summary, the symbol map and a preview of the output. Always run your own tests against the protected build before you ship it." },
         { "type": "p", "text": "Obfuscation raises the effort needed to read your code. It does not make anything secret. Read the note under Techniques before you decide what to put in an assembly." }
@@ -14,7 +14,7 @@
       "id": "files",
       "title": "Files and output",
       "blocks": [
-        { "type": "p", "text": "Obfy accepts `.dll`, `.exe`, `.cs`, `.sln`, `.slnx`, `.csproj`, `.vbproj` and `.fsproj`. A solution or project expands into the assemblies it builds. A project with no built output, and test projects, stay in the list as skipped rows with the reason, and you can include them again with the checkbox. A `.json` file loads a saved configuration." },
+        { "type": "p", "text": "Obfy accepts `.dll`, `.exe`, `.cs`, `.sln`, `.slnx`, `.csproj`, `.vbproj` and `.fsproj`. A solution or project expands into the assemblies it builds. Projects that are skipped, such as test projects and projects with no built output, stay in the list as rows that say why, and their checkbox is disabled. To protect a project that has not been built, build it and add the solution again. A `.json` file loads a saved configuration." },
         { "type": "p", "text": "Add files ({Ctrl+O}) opens a picker for assemblies, C# source, solutions and projects. You can also drop them anywhere on the window. The checkbox on a row drops a file from the run without removing it, and {Delete} removes the selected files." },
         { "type": "p", "text": "When two or more assemblies are included, or the files came from a solution or project, they are processed together as a closed set, so references between them keep working after renaming. Turn on **Merge assemblies** in Protection to combine them into one file instead." },
         { "type": "h3", "text": "Where the output goes" },

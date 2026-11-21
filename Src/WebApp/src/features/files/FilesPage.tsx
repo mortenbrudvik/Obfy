@@ -76,10 +76,10 @@ export default function FilesPage() {
       <OutputCard
         input={input}
         locked={locked}
-        onSetOutput={(folder) => void setOutput(folder)}
+        onSetOutput={setOutput}
         onPickFolder={() => void pickFolder()}
         onPickSymbolMap={() => void pickSymbolMap()}
-        onSetSymbolMap={(change) => void setSymbolMap(change)}
+        onSetSymbolMap={setSymbolMap}
       />
     </div>
   );

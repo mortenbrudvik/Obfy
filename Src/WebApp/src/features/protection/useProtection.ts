@@ -5,6 +5,7 @@ import { api, events } from "../../interop/api";
 import { failure } from "../../interop/errorMessage";
 import { strings } from "../../strings";
 import type { SettingsPatch, SettingsSnapshot } from "../../types/domain";
+import { createPatchQueue } from "./patchQueue";
 
 export interface UseProtection {
   /** The host's view of the settings; null until the first read answers. */
@@ -50,9 +51,9 @@ export function useProtection(): UseProtection {
     [],
   );
 
-  const update = useCallback(
-    (patch: SettingsPatch) => act(strings.protection.failed.update, () => api.settings.update(patch))(),
-    [act],
+  // Changes go to the host one at a time, so a fast run of them (typing, a slider) cannot be applied out of order.
+  const [update] = useState(() =>
+    createPatchQueue((patch: SettingsPatch) => act(strings.protection.failed.update, () => api.settings.update(patch))()),
   );
 
   return {

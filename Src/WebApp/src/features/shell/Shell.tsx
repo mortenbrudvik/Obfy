@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useRef, type DragEvent, type ReactNode } from "react";
 import Notice from "../../components/Notice";
 import { flushPendingEdits } from "../../hooks/pendingEdits";
 import { useAppAction } from "../../hooks/useAppAction";
+import { useFileDrag } from "../../hooks/useFileDrag";
 import { usePushedState } from "../../hooks/usePushedState";
+import { useReadySignal } from "../../hooks/useReadySignal";
 import { useRun } from "../../hooks/useRun";
 import { useShortcuts } from "../../hooks/useShortcuts";
 import { api, events } from "../../interop/api";
@@ -16,9 +18,6 @@ import "./Shell.css";
 /** What the host listens for (WebViewHandler.FilesDroppedMessage); the dropped files travel with it. */
 const FILES_DROPPED_MESSAGE = "files.dropped";
 
-/** Whether a drag carries files (not a link or selected text), judged from its types, which a drag exposes before the drop. */
-const carriesFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files");
-
 interface ShellProps {
   screen: Screen;
   onNavigate: (screen: Screen) => void;
@@ -31,10 +30,11 @@ interface ShellProps {
  * It reads the little each of those needs (file count, level, results state, run) from the host.
  */
 export default function Shell({ screen, onNavigate, children }: ShellProps) {
-  const { state: info } = usePushedState<AppInfo>("app", "info", events.appInfoChanged);
-  const { state: files } = usePushedState<InputSnapshot>("files", "get", events.filesChanged);
-  const { state: settings } = usePushedState<SettingsSnapshot>("settings", "get", events.settingsChanged);
-  const { state: results } = usePushedState<ResultsSnapshot>("results", "summary", events.resultsChanged);
+  // The version never changes while the app runs, so nothing is pushed for it.
+  const { state: info } = usePushedState<AppInfo>("app", "info", null);
+  const { state: files, failed: filesFailed } = usePushedState<InputSnapshot>("files", "get", events.filesChanged);
+  const { state: settings, failed: settingsFailed } = usePushedState<SettingsSnapshot>("settings", "get", events.settingsChanged);
+  const { state: results, failed: resultsFailed } = usePushedState<ResultsSnapshot>("results", "summary", events.resultsChanged);
 
   const { run, failed, error: runError, start, cancel } = useRun({
     // The run's end is a cue, not state: a clean run opens its results.
@@ -43,44 +43,34 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
     },
   });
 
+  // The host shows its window once the page has something to draw: each snapshot is in, or its read gave up.
+  useReadySignal(
+    (run !== null || failed) && (files !== null || filesFailed) && (settings !== null || settingsFailed) && (results !== null || resultsFailed),
+  );
+
+  // A shortcut's failure is shown on whatever screen is open, so it goes when the user moves on or the state changes.
+  const staleAfter = [screen, files?.revision, settings?.revision].join("|");
   const [addFiles, addFilesError] = useAppAction(async () => {
     await api.files.pick();
-  }, strings.shell.addFilesFailed);
+  }, strings.shell.addFilesFailed, staleAfter);
   // Text typed into a box is committed when the box is left, which a shortcut does not do: it is sent first, and the
   // host has it before it is asked to save or to run.
   const [saveConfig, saveConfigError] = useAppAction(async () => {
     if ((await flushPendingEdits()) === "failed") throw new Error(strings.protection.failed.pending);
     await api.settings.saveConfig();
-  }, strings.shell.saveConfigFailed);
+  }, strings.shell.saveConfigFailed, staleAfter);
   const [openConfig, openConfigError] = useAppAction(async () => {
     await api.settings.openConfig();
-  }, strings.shell.openConfigFailed);
+  }, strings.shell.openConfigFailed, staleAfter);
 
   const running = run?.status === "Running";
 
   // The web area takes the OS drop, so the page receives it and hands the files to the host, which reads their paths and
-  // applies the rules (a run refuses them with a notice). Child elements make dragenter/dragleave fire in pairs, so the
-  // overlay is shown while more enters than leaves have been seen.
-  const [dragDepth, setDragDepth] = useState(0);
-  const dragging = dragDepth > 0;
-  const onDragEnter = (event: DragEvent) => {
-    if (!carriesFiles(event)) return;
-    event.preventDefault();
-    setDragDepth((depth) => depth + 1);
-  };
-  const onDragOver = (event: DragEvent) => {
-    if (!carriesFiles(event)) return;
-    // Cancelling dragover is what lets the element take a drop; without it the browser would open the file.
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  };
-  const onDragLeave = (event: DragEvent) => {
-    if (!carriesFiles(event)) return;
-    setDragDepth((depth) => Math.max(0, depth - 1));
-  };
+  // applies the rules (a run refuses them with a notice). The overlay is shown while a drag of files is over the window.
+  const { dragging, onDragEnter, onDragOver, onDragLeave, end: endDrag } = useFileDrag();
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
-    setDragDepth(0);
+    endDrag();
     const dropped = Array.from(event.dataTransfer.files);
     if (dropped.length > 0) window.chrome?.webview?.postMessageWithAdditionalObjects(FILES_DROPPED_MESSAGE, dropped);
   };

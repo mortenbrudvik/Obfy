@@ -13,7 +13,6 @@ import { apiClient } from "./WebViewApiClient";
 
 /** The events the host pushes, each carrying its service's snapshot (Obfy.App/AppEvents.cs). */
 export const events = {
-  appInfoChanged: "app.infoChanged",
   settingsChanged: "settings.changed",
   filesChanged: "files.changed",
   logAppended: "log.appended",
@@ -22,6 +21,12 @@ export const events = {
   runChanged: "run.changed",
   runCompleted: "run.completed",
 } as const;
+
+/**
+ * The host decompiles the whole output module on every `preview.get`, so a large assembly takes far longer than the
+ * handlers that answer in milliseconds. Five minutes still ends a call whose handler hangs.
+ */
+export const PREVIEW_TIMEOUT_MS = 5 * 60_000;
 
 /** A call that waits on the user (a native file dialog): it may take as long as the user does. */
 const forUser = { timeoutMs: null } as const;
@@ -83,7 +88,7 @@ export const api = {
   },
 
   preview: {
-    get: (path: string | null) => call<PreviewResult>("preview", "get", { path }),
+    get: (path: string | null) => call<PreviewResult>("preview", "get", { path }, { timeoutMs: PREVIEW_TIMEOUT_MS }),
   },
 
   run: {

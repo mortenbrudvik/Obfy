@@ -10,6 +10,7 @@ export type MockHandlers = Record<string, MockHandler>;
 /** A host with nothing added yet, for the shell in a plain browser: Obfuscate is blocked and nothing has run. */
 export const defaultMockHandlers: MockHandlers = {
   "app.info": (): AppInfo => ({ version: "0.0.0-mock" }),
+  "app.ready": () => ({}),
   "run.get": (): RunSnapshot => ({
     revision: 1, canStart: false, blockedReason: "Add at least one included file.", mode: "None", modeExplanation: "",
     outputHint: "", progress: 0, indeterminate: false, currentFile: null, completed: 0, total: 0, failed: 0,

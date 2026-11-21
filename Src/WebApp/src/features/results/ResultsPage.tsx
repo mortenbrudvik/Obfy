@@ -25,7 +25,7 @@ export default function ResultsPage() {
   const text = strings.results;
   const { results, failed, symbolsGeneration, error: exportError, exportedTo, querySymbols, getPreview, exportMap, exportReport } = useResults();
   const { input, error: inputError, reveal, openOutput } = useInput();
-  const { lines, clear } = useLog();
+  const { lines, trimmed, error: logError, clear } = useLog();
   const [tab, setTab] = useState<TabKey>("summary");
   const [logOptions, setLogOptions] = useState<LogOptions>(defaultLogOptions);
 
@@ -103,7 +103,7 @@ export default function ResultsPage() {
         {tab === "summary" && <SummaryTab groups={results.groups} files={files} onReveal={(id) => void reveal(id)} />}
         {tab === "symbols" && <SymbolsTab querySymbols={querySymbols} generation={symbolsGeneration} />}
         {tab === "preview" && <PreviewTab paths={results.previewPaths} selectedPath={results.selectedPreviewPath} getPreview={getPreview} />}
-        {tab === "log" && <LogTab lines={lines} options={logOptions} onOptionsChange={setLogOptions} onClear={() => void clear()} />}
+        {tab === "log" && <LogTab lines={lines} options={logOptions} onOptionsChange={setLogOptions} onClear={() => void clear()} trimmed={trimmed} clearError={logError} />}
       </div>
     </div>
   );

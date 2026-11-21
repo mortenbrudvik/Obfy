@@ -54,13 +54,15 @@ public record InputFile(string Id, string Path, FileKind Kind, bool FromSession,
 /// <param name="OutputFolderChosen">The user chose an output folder (otherwise the plan's folder is a default).</param>
 /// <param name="SymbolMapPath">Where the symbol map is written, or null while the option is off.</param>
 /// <param name="Collision">A planned output, or the symbol map at <paramref name="SymbolMapPath"/>, that would replace one of the listed files (the map: or one of the planned outputs); null when none would. A run does not start while it is set.</param>
+/// <param name="Revision">The session's <see cref="InputSession.Revision"/> in the hold that read the rows. The collision is worked out afterwards, outside any lock, and is about exactly those rows only while the session still has this revision.</param>
 public record RunInput(
     IReadOnlyList<InputFile> Included,
     IReadOnlyList<FileRow> Skipped,
     OutputPlan Plan,
     bool OutputFolderChosen,
     string? SymbolMapPath,
-    OutputCollision? Collision = null);
+    OutputCollision? Collision = null,
+    long Revision = 0);
 
 /// <summary>What <see cref="InputSession.AddPaths"/> found beyond the files it added.</summary>
 /// <param name="ConfigPath">The first <c>.json</c> among the paths: the configuration to load. Loading it is not the list's business.</param>

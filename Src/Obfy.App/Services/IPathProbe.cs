@@ -11,6 +11,36 @@ public interface IPathProbe
 
     /// <summary>Whether a folder is at <paramref name="path"/>. False when it is not, cannot be asked, or does not answer in time.</summary>
     bool DirectoryExists(string path);
+
+    /// <summary>
+    /// Where the file or folder at <paramref name="path"/> leads when it is a symbolic link or a junction (the final target),
+    /// or null when it is not a link, is not there, or cannot be read. The output-collision check asks this for every listed
+    /// file and every folder above it, so it is the question that touches the disk when a run is checked. The default asks
+    /// the real file system, without a time limit.
+    /// </summary>
+    FileSystemInfo? ResolveLinkTarget(string path) => FileLinks.Resolve(path);
+}
+
+/// <summary>The real file system's answer to <see cref="IPathProbe.ResolveLinkTarget"/>.</summary>
+internal static class FileLinks
+{
+    public static FileSystemInfo? Resolve(string path)
+    {
+        try
+        {
+            // One attribute read tells a plain file or folder (nearly always) from a link; a missing entry reads as -1.
+            var attributes = new FileInfo(path).Attributes;
+            if ((int)attributes == -1 || !attributes.HasFlag(FileAttributes.ReparsePoint))
+                return null;
+
+            FileSystemInfo info = attributes.HasFlag(FileAttributes.Directory) ? new DirectoryInfo(path) : new FileInfo(path);
+            return info.ResolveLinkTarget(returnFinalTarget: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>

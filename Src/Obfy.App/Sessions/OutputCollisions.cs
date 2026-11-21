@@ -1,3 +1,5 @@
+using Obfy.App.Services;
+
 namespace Obfy.App.Sessions;
 
 /// <summary>A file the run would write that is also one of the listed inputs (or, for the symbol map, one of its own outputs), and the sentence that says so.</summary>
@@ -30,13 +32,14 @@ public static class OutputCollisions
     /// <param name="plan">What the run would write.</param>
     /// <param name="defaultPlan">What it would write with no output folder; null when no folder is chosen. Tells the message whether clearing the folder is a way out.</param>
     /// <param name="symbolMapPath">Where the run would write the symbol map; null while the option is off.</param>
+    /// <param name="probe">Answers the file-system questions (is this entry a link, and to where); the real file system when null.</param>
     public static OutputCollision? Find(
-        IEnumerable<string> listedPaths, OutputPlan plan, OutputPlan? defaultPlan, string? symbolMapPath = null)
+        IEnumerable<string> listedPaths, OutputPlan plan, OutputPlan? defaultPlan, string? symbolMapPath = null, IPathProbe? probe = null)
     {
         if (plan.Outputs.Count == 0)
             return null;
 
-        var paths = new PathResolver();
+        var paths = new PathResolver(probe);
         var listed = listedPaths.Select(p => (Path: p, Key: paths.ResolveFile(p))).ToList();
 
         var hit = FindHit(listed, plan, paths);
@@ -137,7 +140,7 @@ public static class OutputCollisions
     /// cached for the one call, so a list of files in a few folders costs a few file-system reads, not one per file.
     /// Whatever the file system refuses is left as the text said; nothing here throws.
     /// </summary>
-    private sealed class PathResolver
+    private sealed class PathResolver(IPathProbe? probe)
     {
         private readonly Dictionary<string, string> _folders = new(StringComparer.OrdinalIgnoreCase);
         private int _depth;
@@ -176,7 +179,7 @@ public static class OutputCollisions
         /// <summary>An entry whose parent is already resolved: if it is a link, the place it leads to, with that place's own folders resolved.</summary>
         private string ResolveEntry(string path)
         {
-            if (_depth >= MaxLinkDepth || TryResolveLink(path) is not { } target)
+            if (_depth >= MaxLinkDepth || ResolveLink(path) is not { } target)
                 return path;
 
             var targetPath = Normalize(target.FullName);
@@ -195,23 +198,7 @@ public static class OutputCollisions
             }
         }
 
-        private static FileSystemInfo? TryResolveLink(string path)
-        {
-            try
-            {
-                // One attribute read tells a plain file or folder (nearly always) from a link; a missing entry reads as -1.
-                var attributes = new FileInfo(path).Attributes;
-                if ((int)attributes == -1 || !attributes.HasFlag(FileAttributes.ReparsePoint))
-                    return null;
-
-                FileSystemInfo info = attributes.HasFlag(FileAttributes.Directory) ? new DirectoryInfo(path) : new FileInfo(path);
-                return info.ResolveLinkTarget(returnFinalTarget: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-            {
-                return null;
-            }
-        }
+        private FileSystemInfo? ResolveLink(string path) => probe is null ? FileLinks.Resolve(path) : probe.ResolveLinkTarget(path);
 
         private static string Normalize(string path)
         {

@@ -623,6 +623,16 @@ public sealed class InputSession
     // ---- What a run needs --------------------------------------------------------------------------------------
 
     /// <summary>
+    /// Counts every change to the rows, the output folder, the symbol-map choice and the notices; it is how
+    /// <see cref="RunCoordinator"/> confirms that what <see cref="CaptureRun"/> read is still what the session holds.
+    /// Read without the lock, on purpose: the caller holds a lock of its own that <c>IsRunning</c> waits on, and this
+    /// session's lock is held while an output plan is worked out, which for two or more C# files asks the file system
+    /// one folder-exists question. Writes are under the lock, together with the change they count, so a read sees a
+    /// revision no later than the change it belongs to: at worst a change that is landing now is counted as landing after.
+    /// </summary>
+    public long Revision => Volatile.Read(ref _revision);
+
+    /// <summary>
     /// Where a run writes, by the one rule the hint on the page also uses. With <paramref name="merge"/> and two or more
     /// included assemblies the result is merged; two or more included assemblies, or any from a solution, are a closed set;
     /// otherwise each file goes next to its input. Nothing is created.
@@ -635,8 +645,13 @@ public sealed class InputSession
 
     /// <summary>
     /// What a run reads from the list, in one read under one lock: the included rows, the skipped ones, the plan made from
-    /// exactly those rows, and the symbol-map location. Use this, not <see cref="IncludedInputs"/> and
-    /// <see cref="PlanOutput"/> one after the other, which a concurrent edit could split.
+    /// exactly those rows, the symbol-map location and the <see cref="Revision"/> they were read at. Use this, not
+    /// <see cref="IncludedInputs"/> and <see cref="PlanOutput"/> one after the other, which a concurrent edit could split.
+    /// <para>
+    /// The collision check runs after the lock is released, because it asks the file system about every listed path and a
+    /// path on an unreachable share can take a long time: the session must stay answerable meanwhile. The caller that
+    /// acts on <see cref="RunInput.Collision"/> compares <see cref="RunInput.Revision"/> with <see cref="Revision"/> first.
+    /// </para>
     /// </summary>
     public RunInput CaptureRun(bool merge)
     {
@@ -653,7 +668,8 @@ public sealed class InputSession
                 skipped,
                 PlanLocked(merge),
                 _outputFolder.Length > 0,
-                _writeSymbolMap ? ResolveSymbolMapLocked() : null);
+                _writeSymbolMap ? ResolveSymbolMapLocked() : null,
+                Revision: _revision);
 
             // What clearing the folder would write, so the message can say whether that way out is open.
             defaultPlan = _outputFolder.Length > 0 ? PlanLocked(merge, folder: null) : null;
@@ -661,7 +677,7 @@ public sealed class InputSession
 
         // Outside the lock: telling two paths apart may ask the file system about links.
         var listed = captured.Included.Select(static f => f.Path).Concat(captured.Skipped.Select(static r => r.Path));
-        return captured with { Collision = OutputCollisions.Find(listed, captured.Plan, defaultPlan, captured.SymbolMapPath) };
+        return captured with { Collision = OutputCollisions.Find(listed, captured.Plan, defaultPlan, captured.SymbolMapPath, _probe) };
     }
 
     /// <summary>The symbol map's file: the typed path (a relative one against the output folder), or the default name there.</summary>

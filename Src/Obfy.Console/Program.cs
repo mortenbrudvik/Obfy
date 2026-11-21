@@ -709,11 +709,14 @@ public class Program
         // Every output of these modes is known now; the closed-set modes check theirs where they plan them.
         if (merge || !ShouldUseLooseClosedSet(inputs))
         {
-            var planned = merge
-                ? RunPathGuard.WithCompanions(MergeOutputPath(inputs, output), settings, cacheFile: true)
-                : PlanStandardOutputs(inputs, output, settings);
-            if (RefuseCollidingPaths(RunPathGuard.Find(mapFile, reportFile, [new ProtectedPaths(PathRole.Output, planned)])))
+            if (RefuseCollidingPaths(RunPathGuard.Find(
+                    mapFile, reportFile,
+                    () => [new ProtectedPaths(
+                        PathRole.Output,
+                        merge ? PlanMergeOutputs(inputs, output, settings) : PlanStandardOutputs(inputs, output, settings))])))
+            {
                 return 1;
+            }
         }
 
         if (merge)
@@ -872,6 +875,7 @@ public class Program
         var sessionFolder = output?.FullName ?? DefaultClosedSetFolder(session.SourcePath);
         if (RefuseCollidingPaths(RunPathGuard.Find(
                 mapFile, reportFile,
+                () =>
                 [
                     new ProtectedPaths(PathRole.Input, session.Entries.SelectMany(static e => new[] { e.ProjectPath, e.OutputPath })),
                     new ProtectedPaths(
@@ -1007,12 +1011,15 @@ public class Program
 
         var closedSetInputs = session.Included.Select(ClosedSetInput.FromIncluded).ToList();
 
-        var plannedFolder = output?.FullName ?? DefaultClosedSetFolder(present[0].FullName);
         if (RefuseCollidingPaths(RunPathGuard.Find(
                 mapFile, reportFile,
-                [new ProtectedPaths(
+                () => [new ProtectedPaths(
                     PathRole.Output,
-                    PlanClosedSetOutputs([.. present.Select(static f => f.FullName)], plannedFolder, merged: false, settings))])))
+                    PlanClosedSetOutputs(
+                        [.. present.Select(static f => f.FullName)],
+                        output?.FullName ?? DefaultClosedSetFolder(present[0].FullName),
+                        merged: false,
+                        settings))])))
         {
             return 1;
         }
@@ -1198,6 +1205,7 @@ public class Program
     /// </summary>
     internal static IReadOnlyList<string> PlanStandardOutputs(FileInfo[] inputs, DirectoryInfo? output, ObfySettings settings)
     {
+        RunPathGuard.NotePlanned();
         var planned = new List<string>();
         var present = inputs.Where(static input => input.Exists).ToList();
         var sources = present.Where(static input => IsSourceFile(input.FullName)).ToList();
@@ -1225,6 +1233,13 @@ public class Program
         return planned;
     }
 
+    /// <summary>What a merge writes: the merged file, its packing files and its cache file.</summary>
+    internal static IReadOnlyList<string> PlanMergeOutputs(FileInfo[] inputs, DirectoryInfo? output, ObfySettings settings)
+    {
+        RunPathGuard.NotePlanned();
+        return [.. RunPathGuard.WithCompanions(MergeOutputPath(inputs, output), settings, cacheFile: true)];
+    }
+
     /// <summary>
     /// What a closed set writes under <paramref name="outputDirectory"/>: each assembly under the engine's own name for it
     /// (a shared name goes into a folder of its own), or the single merged file when the set is merged.
@@ -1232,6 +1247,7 @@ public class Program
     internal static IReadOnlyList<string> PlanClosedSetOutputs(
         IReadOnlyList<string> assemblyPaths, string outputDirectory, bool merged, ObfySettings settings)
     {
+        RunPathGuard.NotePlanned();
         if (assemblyPaths.Count == 0)
             return [];
 

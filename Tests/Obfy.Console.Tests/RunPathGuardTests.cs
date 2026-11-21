@@ -105,6 +105,20 @@ public class RunPathGuardTests : IDisposable
     }
 
     [Fact]
+    public void WithNeitherOption_TheGroupsAreNeverBuilt()
+    {
+        var built = false;
+
+        RunPathGuard.Find(null, null, () => { built = true; return []; }, compareMapWithReport: true).ShouldBeEmpty();
+        RunPathGuard.Find(new FileInfo(P("map.json")), null, () => { built = true; return []; }).ShouldBeEmpty();
+
+        built.ShouldBeTrue("with an option the groups are asked for");
+        var builtForNothing = false;
+        RunPathGuard.Find(null, null, () => { builtForNothing = true; return []; });
+        builtForNothing.ShouldBeFalse();
+    }
+
+    [Fact]
     public void NothingGiven_NothingFound_AndBlankPathsAreIgnored()
     {
         RunPathGuard.Find(null, null, [new ProtectedPaths(PathRole.Input, [P("app.dll")])], compareMapWithReport: true).ShouldBeEmpty();

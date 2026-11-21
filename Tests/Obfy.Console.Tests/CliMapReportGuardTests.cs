@@ -361,6 +361,37 @@ public class CliMapReportGuardTests : IDisposable
         await AssertRefusedAsync($"\"{app}\" -o \"{outDir}\" --incremental --map \"{cache}\"", "--map", cache, before);
     }
 
+    // ---- A run with nothing to guard does not plan at all -------------------------------------------------------------
+
+    public static IEnumerable<object[]> Modes() => Enum.GetValues<Mode>().Select(static mode => new object[] { mode });
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public async Task RunWithoutMapOrReport_DoesNotPlanItsOutputs(Mode mode)
+    {
+        var scenario = Setup(mode);
+        var before = RunPathGuard.PlansBuilt;
+
+        var (exit, text, _) = await RunAsync($"{scenario.Args} --dry-run");
+
+        exit.ShouldBe(0, text);
+        RunPathGuard.PlansBuilt.ShouldBe(before, "planning is only worth doing when there is a map or a report to compare with it");
+    }
+
+    [Theory]
+    [MemberData(nameof(ModesAndOptions))]
+    public async Task RunWithMapOrReport_PlansItsOutputs(Mode mode, string option)
+    {
+        var scenario = Setup(mode);
+        var elsewhere = Path.Combine(_root, "elsewhere", "result.json");
+        var before = RunPathGuard.PlansBuilt;
+
+        var (exit, text, _) = await RunAsync($"{scenario.Args} --dry-run {option} \"{elsewhere}\"");
+
+        exit.ShouldBe(0, text);
+        RunPathGuard.PlansBuilt.ShouldBeGreaterThan(before, "the counter is wired: a guarded run does plan");
+    }
+
     // ---- What is still allowed ----------------------------------------------------------------------------------
 
     [Fact]

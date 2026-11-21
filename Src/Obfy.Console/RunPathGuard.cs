@@ -40,6 +40,16 @@ internal sealed record PathCollision(string Option, string File, string Message)
 /// </summary>
 internal static class RunPathGuard
 {
+    private static int _plansBuilt;
+
+    /// <summary>
+    /// How many times a run has planned the files it writes, for the guard. A run with neither <c>--map</c> nor
+    /// <c>--report</c> has nothing to guard and must not plan at all; tests read this to see that.
+    /// </summary>
+    internal static int PlansBuilt => Volatile.Read(ref _plansBuilt);
+
+    internal static void NotePlanned() => Interlocked.Increment(ref _plansBuilt);
+
     private const string MapOption = "--map";
     private const string ReportOption = "--report";
 
@@ -50,13 +60,21 @@ internal static class RunPathGuard
     /// with it. At most one collision per option. Never throws.
     /// </summary>
     public static IReadOnlyList<PathCollision> Find(
-        FileInfo? map, FileInfo? report, IReadOnlyList<ProtectedPaths> groups, bool compareMapWithReport = false)
+        FileInfo? map, FileInfo? report, IReadOnlyList<ProtectedPaths> groups, bool compareMapWithReport = false) =>
+        Find(map, report, () => groups, compareMapWithReport);
+
+    /// <summary>
+    /// The same, with the groups built on demand: <paramref name="groups"/> is not called when neither option was given, so
+    /// a run with nothing to guard pays nothing for planning the files it writes.
+    /// </summary>
+    public static IReadOnlyList<PathCollision> Find(
+        FileInfo? map, FileInfo? report, Func<IReadOnlyList<ProtectedPaths>> groups, bool compareMapWithReport = false)
     {
         var found = new List<PathCollision>(2);
         if (map is null && report is null)
             return found;
 
-        var candidates = groups
+        var candidates = groups()
             .SelectMany(static group => group.Paths
                 .Where(static path => !string.IsNullOrWhiteSpace(path))
                 .Select(path => (Path: path!, group.Role)))

@@ -780,7 +780,7 @@ public class SymbolRenamingGenericInstantiationTests
             result.Success.ShouldBeTrue(result.ErrorMessage);
 
             using var protectedModule = ModuleDefMD.Load(File.ReadAllBytes(output));
-            var framework = MemberRefNamesOnGenericInstantiations(protectedModule);
+            var framework = FrameworkMemberRefNamesInUse(protectedModule);
             foreach (var name in new[] { "Add", "get_Count", "get_Item", "set_Item", "Sum", "Select", "Where", "ToArray", "get_Key", "get_Value" })
                 framework.ShouldContain(name, $"the framework member {name} must not have been touched");
         }
@@ -1036,21 +1036,19 @@ public class SymbolRenamingGenericInstantiationTests
         return names;
     }
 
-    /// <summary>Names of the MemberRefs whose parent is a generic instantiation of a type from outside the module.</summary>
-    private static HashSet<string> MemberRefNamesOnGenericInstantiations(ModuleDefMD module)
-    {
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        for (uint rid = 1; rid <= module.TablesStream.MemberRefTable.Rows; rid++)
-        {
-            var reference = module.ResolveMemberRef(rid);
-            if (reference.Class is TypeSpec { TypeSig: GenericInstSig { GenericType.TypeDefOrRef: TypeRef } })
-                names.Add(reference.Name.String);
-            else if (reference.Class is TypeRef)
-                names.Add(reference.Name.String);
-        }
-
-        return names;
-    }
+    /// <summary>
+    /// Names of the member references the code actually uses (IL operands, however the method is reached, attribute
+    /// constructors, overrides) whose parent is a type from outside the module or a generic instantiation of one. Rows of
+    /// the MemberRef table that nothing refers to are not looked at: while the writer kept the original rows next to
+    /// the rewritten ones, a row named <c>Add</c> under <c>List&lt;!0&gt;</c> always existed, whatever the renamer did to the
+    /// reference the code used.
+    /// </summary>
+    private static HashSet<string> FrameworkMemberRefNamesInUse(ModuleDef module) =>
+        StaleMemberReferenceScanner.EnumerateMemberRefs(module)
+            .Where(reference => reference.Class is TypeRef
+                or TypeSpec { TypeSig: GenericInstSig { GenericType.TypeDefOrRef: TypeRef } })
+            .Select(reference => reference.Name.String)
+            .ToHashSet(StringComparer.Ordinal);
 
     private static IObfuscationService CreateService()
     {

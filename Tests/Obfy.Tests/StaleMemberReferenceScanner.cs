@@ -30,18 +30,63 @@ internal static class StaleMemberReferenceScanner
         {
             foreach (var reference in EnumerateMemberRefs(module))
             {
+                var kind = reference.IsFieldRef ? "field" : "method";
                 if (IsStale(reference, set) is { } owner)
                 {
                     findings.Add(
-                        $"{(reference.IsFieldRef ? "field" : "method")} '{reference.Name}' of {owner.FullName} " +
+                        $"{kind} '{reference.Name}' of {owner.FullName} " +
                         $"(parent {reference.Class?.GetType().Name}, in {module.Name})");
                 }
+
+                if (UnresolvableParent(reference, set) is { } parent)
+                    findings.Add($"{kind} '{reference.Name}' on {parent.FullName}, which no type of its assembly is named (in {module.Name})");
             }
 
+            findings.AddRange(FindUnresolvableTypeRefs(module, set));
             findings.AddRange(FindStaleNamedArguments(module, set));
         }
 
         return findings.Distinct().OrderBy(f => f, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// The type reference a member reference names as its parent (or as the generic type of its parent), when it names an
+    /// assembly of the set but no type of it: a parent that cannot be resolved there is a finding, not "somebody else's type".
+    /// A framework type or a type of an assembly outside the set is not.
+    /// </summary>
+    private static TypeRef? UnresolvableParent(MemberRef reference, IReadOnlyList<ModuleDef> set)
+    {
+        var parent = reference.Class switch
+        {
+            TypeRef typeRef => typeRef,
+            TypeSpec { TypeSig: GenericInstSig { GenericType.TypeDefOrRef: TypeRef generic } } => generic,
+            TypeSpec { TypeSig: ClassOrValueTypeSig { TypeDefOrRef: TypeRef plain } } => plain,
+            _ => null
+        };
+        return parent is not null && NamesNothingOfItsAssembly(parent, set) ? parent : null;
+    }
+
+    /// <summary>
+    /// Every type reference of the module that names an assembly of the set but no type of it: the name of a type
+    /// the renamer renamed was not rewritten in the reference, which no longer finds the type when it is loaded.
+    /// </summary>
+    private static IEnumerable<string> FindUnresolvableTypeRefs(ModuleDef module, IReadOnlyList<ModuleDef> set)
+    {
+        foreach (var typeRef in module.GetTypeRefs())
+        {
+            if (NamesNothingOfItsAssembly(typeRef, set))
+                yield return $"type reference {typeRef.FullName} names no type of its assembly (in {module.Name})";
+        }
+    }
+
+    private static bool NamesNothingOfItsAssembly(TypeRef typeRef, IReadOnlyList<ModuleDef> set)
+    {
+        var target = SetModuleOf(typeRef, set);
+        if (target is null || FindTypeDef(target, typeRef) is not null)
+            return false;
+
+        // A type the assembly forwards elsewhere is found by the runtime through the forwarder.
+        return !target.ExportedTypes.Any(e => e.TypeName == typeRef.Name && e.TypeNamespace == typeRef.Namespace);
     }
 
     /// <summary>
@@ -163,22 +208,18 @@ internal static class StaleMemberReferenceScanner
             _ => null
         };
 
-    private static TypeDef? ResolveTypeRef(TypeRef typeRef, IReadOnlyList<ModuleDef> set)
+    private static TypeDef? ResolveTypeRef(TypeRef typeRef, IReadOnlyList<ModuleDef> set) =>
+        SetModuleOf(typeRef, set) is { } module ? FindTypeDef(module, typeRef) : null;
+
+    /// <summary>The module of the set whose assembly the type reference names, or null (framework, outside the set).</summary>
+    private static ModuleDef? SetModuleOf(TypeRef typeRef, IReadOnlyList<ModuleDef> set)
     {
         var assemblyName = typeRef.DefinitionAssembly?.Name?.String;
         if (string.IsNullOrEmpty(assemblyName))
             return null;
 
-        foreach (var module in set)
-        {
-            if (module.Assembly?.Name?.String is not { } name
-                || !name.Equals(assemblyName, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            return FindTypeDef(module, typeRef);
-        }
-
-        return null;
+        return set.FirstOrDefault(module => module.Assembly?.Name?.String is { } name
+            && name.Equals(assemblyName, StringComparison.OrdinalIgnoreCase));
     }
 
     private static TypeDef? FindTypeDef(ModuleDef module, TypeRef typeRef)
@@ -242,7 +283,7 @@ internal static class StaleMemberReferenceScanner
     /// inert, so it is not looked at (the output holds none that carries an original name:
     /// <c>SymbolRenamingLeftoverNamesTests</c>).
     /// </summary>
-    private static IEnumerable<MemberRef> EnumerateMemberRefs(ModuleDef module)
+    internal static IEnumerable<MemberRef> EnumerateMemberRefs(ModuleDef module)
     {
         foreach (var owner in CustomAttributeOwners(module))
         {

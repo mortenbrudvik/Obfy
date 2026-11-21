@@ -32,7 +32,7 @@ obfy <input>... [options]
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
-| `--output <dir>` | `-o` | Output directory for obfuscated files | Single file: sibling `{name}.obfuscated{ext}`. `--merge` without `-o`: sibling `{name}.merged{ext}`. Solution/project or two+ loose assemblies: `{dir}/obfy-out/` |
+| `--output <dir>` | `-o` | Output directory for obfuscated files | CLI rules, with no `-o`: one file is written next to the input as `{name}.obfuscated{ext}`; `--merge` writes `{name}.merged{ext}` next to the first input; a solution or project writes `obfy-out/` next to the solution or project file; two or more loose assemblies write `obfy-out/` next to the first assembly. With `-o`, each file keeps its input name in that folder. The desktop app has its own rules (a merge there is named `*.obfuscated.*`, and a closed set goes next to the first included assembly) |
 | `--config <file>` | `-c` | Path to JSON configuration file. Technique flags in the file are used as-is; `--level` is ignored when `-c` is set (a warning is printed), and `level` inside the file is not re-applied as a preset (`obfy config generate -l …` writes fully resolved flags) | None |
 | `--level <level>` | `-l` | Obfuscation level: `minimal`, `standard`, `aggressive`, `custom`. Applied only when `-c` is omitted | `standard` |
 | `--string-encrypt` | | Enable string encryption | Off |
@@ -136,7 +136,7 @@ obfy MyApp.dll -o output/
 # Obfuscate with aggressive protection
 obfy MyApp.dll -l aggressive -o output/
 
-# Obfuscate with minimal protection (symbol renaming only)
+# Obfuscate with minimal protection (symbol renaming and debug information removal)
 obfy MyApp.dll -l minimal -o output/
 ```
 
@@ -261,9 +261,9 @@ obfy MyApp.dll -v -o output/
 - Two `.sln` / `.slnx` arguments in one invocation is an error (exit 1).
 - A named extra that does not exist fails the run (exit 1), including `--dry-run`.
 - `--merge` on a session with fewer than two included assemblies warns and continues as a closed set.
-- Load failures omit that module, print the path and cause, write the remaining set, and exit 1.
+- A load failure stops the whole set: the CLI prints the path and cause of each assembly that failed, writes no modules (`No modules were written`), and exits 1.
 
-`obfy App.dll Lib.dll` without a solution/project is still a closed set (same rename consistency as a solution drop). `--merge` still merges. Without `-o`, output is `{first-assembly-dir}/obfy-out/`.
+`obfy App.dll Lib.dll` without a solution/project is still a closed set (same rename consistency as a solution drop). `--merge` still merges. Without `-o`, the CLI writes `obfy-out/` next to the first assembly. For a solution or project it is `obfy-out/` next to the solution or project file. (The desktop app puts a closed set's `obfy-out` next to the first included assembly, which for a solution is usually inside its `bin` folder.)
 
 ## Exit Codes
 
@@ -283,7 +283,7 @@ Obfy stores configuration and logs in the following locations:
 | UI preferences | `%APPDATA%\Obfy\ui-preferences.json` (last output folder and the symbol-map toggle). The desktop app clears a saved folder that no longer exists. A desktop `-o` path is used for that session and is not saved. `OBFY_UI_PREFERENCES` overrides the file path |
 | Logs | `LocalApplicationData/Obfy/Logs/` (`%LOCALAPPDATA%\Obfy\Logs\` on Windows) |
 
-The WPF UI, method IL encryption (`VirtualProtect`), and anti-dump MiniDump hook are Windows-only. The CLI can obfuscate assemblies on any OS; PE-level Windows protections warn or no-op off-Windows.
+The desktop app (WPF shell with WebView2), method IL encryption (`VirtualProtect`), and anti-dump MiniDump hook are Windows-only. The CLI can obfuscate assemblies on any OS; PE-level Windows protections warn or no-op off-Windows.
 
 ## See Also
 

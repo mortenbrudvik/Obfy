@@ -7,18 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `app.openGuide` bridge endpoint opens the online guide (https://brudvik.com/obfy/guide) in the default browser. The page sends a section id (`getting-started`, `files-and-output`, `levels-and-settings`, `techniques`, `what-can-break`, `results`, `stack-traces`, `shortcuts`, `command-line`, `ide-and-build`, `troubleshooting`); the host builds the `https` URL from the `GuideLinks` allowlist, and an unknown or missing id opens the guide's start. `IShellLauncher.OpenUrl` accepts `https` only. The page never supplies a URL
+- The Guide screen has an "Open the full guide online" button, and a technique's "Read more" link is now "Read more online" and opens its section of the online guide in the browser
+
 ### Changed
-- The desktop window keeps Settings on the left and a compact output row (directory, browse, symbol-map toggle, symbol-map path) above the file list. Output, Results, and Preview are tabs under the files. A successful run opens Results. Preview decompiles only the assembly you select
-- The closed level dropdown shows Minimal, Standard, Aggressive, or Custom. The description stays in the open list and on the line under the dropdown. Choosing Custom again restores the technique switches from before the preset. Each protection switch stays in the card header when the card is collapsed
-- Help content sizes to the dialog
-- Log options (timestamps, auto-scroll, wrap, problems only) are in the log menu. A new run keeps the earlier log and inserts a separator when that log is not empty
+- The in-app Guide is a short quick-start (Getting started and Shortcuts). The full guide moved online. Its text now says that Results opens only when every file succeeds, that the symbol map file is written only when Write a symbol map is on (it is off by default), that Preview needs a chosen assembly, and that results are not kept after the next run. The Ctrl+C row is gone (there is no handler), and each shortcut says when it works
+- Corrected technique copy on the Protection screen: Hash names differ from build to build (the hash is salted per run), type patterns match the short type name only, Preserve XAML keeps public properties of bindable-looking types but not type names, Remove attributes drops nine named compiler and debugger attributes and keeps your own, Merge needs every included file to be an assembly, resource encryption rewrites only `GetManifestResourceStream` calls, and a packed native launcher is not strong-name signed
+- The desktop app is a WPF shell that hosts a WebView2 page built with React. A sidebar has Files, Protection, Results, and Guide, and a run bar along the bottom starts and cancels a run. The output row (folder, Browse, symbol-map toggle and path) is on the Files screen. A successful run opens Results. Preview decompiles only the assembly you select
+- Levels are cards: Minimal, Standard, Aggressive, or Custom. Choosing Custom again restores the technique switches from before the preset
+- The Log tab has Problems only, Timestamps, and Wrap options and Copy and Clear buttons. A new run keeps the earlier log and inserts a separator when that log is not empty
 - The overall progress bar is indeterminate for one included file, a merge, and a closed set
 
+### Removed
+- The JetBrains Rider plugin (`Src/Obfy.Rider`) was removed, with its Gradle build, JVM tests, and the `rider-tests` CI job. It was never published to a marketplace or attached to a release
+
 ### Fixed
-- The Results tree nests members under their type. Method keys include the signature, for example `Method:Ns.MyType.Foo(System.Void ())`. Zero counters are hidden. Copy copies the selected mapping, and search waits briefly before filtering
+- The desktop app shows and runs a loaded configuration as Custom when its level-controlled options are not exactly what its `level` preset sets, so a run uses the file's switches, as the CLI does. The file on disk is not rewritten
+- The run bar hint names what a run writes: with an output folder it gives the input's own file name (not `*.obfuscated.*`), and two or more C# files without a folder are compiled together into `obfy-src` next to the first
+- Native packing is greyed out on the Protection screen for NativeAOT, Unity IL2CPP, and Blazor WebAssembly, as the engine already turned it off for them
+- The Minimal level is described as symbol renaming and debug information removal in the app, the wizard, and the docs
+- The Results tree nests members under their type. Method keys include the signature, for example `Method:Ns.MyType.Foo(System.Void ())`. Zero counters are hidden, and search waits briefly before filtering
 - Files can be dropped on the window. A dropped `.json` file loads that configuration
 - A saved output folder that no longer exists is cleared, and the window says it was not found. A desktop `-o` path is used for that session and is not saved as the default. Editing the box saves the new path, including a folder that does not exist yet
-- File rows have an include checkbox, a status color, and the output path after success. Extended selection and Delete remove the selected rows. The row menu can open the output, reveal it, copy the path, preview it, or remove the row
+- File rows have an include checkbox, a status color, and the output path after success. Extended selection and Delete remove the selected rows. The row menu has Show in folder and Remove
 - Obfuscate explains why it is disabled. The status text is the status bar name
 - NativeAOT, Unity IL2CPP, and Blazor WebAssembly disable the protections those profiles cannot use and keep the stored values. Signing has a key-file browse button, and a missing key or an empty watermark id stays marked invalid
 

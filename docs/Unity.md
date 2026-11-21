@@ -9,8 +9,10 @@ Set `runtimeProfile` to `UnityIl2Cpp` (the wizard Game/Unity preset does this). 
 - Method IL encryption (`VirtualProtect`)
 - Anti-dump PE wipe
 - Dependency embedding (`AssemblyResolve`)
+- Virtualization (the managed VM uses `MethodBase.Invoke`)
+- Native packing (the framework-dependent host stub is not used on IL2CPP)
 
-**Safe to keep:** symbol renaming (with `UnityEngine` / `UnityEngine.*` / `Unity` / `Unity.*` exclusions), string/constant encryption, control flow, reference proxy (in-module). `UnityIl2Cpp` omits `kernel32` P/Invoke from anti-debug; managed `Debugger` / TickCount checks can still run. Leave anti-debug off for IL2CPP unless you have confirmed the player still runs. Anti-tamper and opt-in virtualization are not gated by this profile.
+**Safe to keep:** symbol renaming (with `UnityEngine` / `UnityEngine.*` / `Unity` / `Unity.*` exclusions), string/constant encryption, control flow, reference proxy (in-module). `UnityIl2Cpp` omits `kernel32` P/Invoke from anti-debug; managed `Debugger` / TickCount checks can still run. Leave anti-debug off for IL2CPP unless you have confirmed the player still runs. Anti-tamper is not gated by this profile. Each protection the profile turns off is logged as a run warning, and your stored values are kept.
 
 ## Config
 

@@ -1,6 +1,6 @@
 # Testing improvements roadmap
 
-Technique coverage is strong; SDK and platform scenarios now exist (see Current position). Remaining: Unity Development Player, MAUI iOS/Android, VS hive / Rider UI. This is a testing plan, not a product-feature plan. Product items it unblocks are cited as `QT-*` / `PS-*` from [Roadmap.md](Roadmap.md).
+Technique coverage is strong; SDK and platform scenarios now exist (see Current position). Remaining: Unity Development Player, MAUI iOS/Android, VS hive. This is a testing plan, not a product-feature plan. Product items it unblocks are cited as `QT-*` / `PS-*` from [Roadmap.md](Roadmap.md).
 
 How to run the current suite: [Testing.md](Testing.md).
 
@@ -19,7 +19,7 @@ Six projects; counts live in [Testing.md](Testing.md). That volume is real. What
 | FlaUI smoke | Local-only | Chrome plus `ObfuscateFlowTests` (command-line DLL, click Obfuscate, non-empty output file). `Category=UI`. |
 | SDK projects / solutions | Good | WPF, console+lib, WinForms, examples, satellites, MSBuild AfterBuild |
 | Platform recipes | Partial | Unity stub in default CI; Blazor WASM / NativeAOT / MAUI Windows are `Category=Platform` |
-| IDE extensions | Partial | VS helpers + Rider JVM unit tests; no VS hive / Rider UI tests |
+| IDE extension | Partial | VS helpers tested without a hive; no VS hive tests |
 
 Phase 0 (`TR-01` / `TR-02`) filters FlaUI out of default `dotnet test` / CI and resolves `ObfyUI.exe` per configuration. `TR-03` is ✅ Done (coverage report + 80% warning on GitHub Actions). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran. Later: [CI run 72](https://github.com/mortenbrudvik/Obfy/actions/runs/34750086309) — tests and coverage succeeded, then the sticky PR comment 403 (`Resource not accessible by integration`) skipped the summary and 80% warning.
 
@@ -146,7 +146,7 @@ These are the product `PS-*` items. Do not advertise first-class support until t
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
 | TR-40 | Visual Studio: unit-test `ObfuscationServiceWrapper` / settings JSON / `GetOutputAssemblyPathAsync` without a VS hive. Optional vsix integration later. | M | Medium | ✅ Done (`Obfy.VisualStudio.Tests`: JSON, CLI args, `OutputAssemblyLocator`, `ObfyCliLocator`; wrapper process still needs a hive/CLI) |
-| TR-41 | Rider: JVM unit tests for settings + `AssemblyLocator`. | M | Low | ✅ Done (`src/test/kotlin`; `./gradlew test` needs JDK 21 + Rider SDK) |
+| TR-41 | Rider: JVM unit tests for settings + `AssemblyLocator`. | M | Low | Removed (the Rider plugin and its tests were dropped) |
 | TR-42 | FlaUI: one path that adds a built fixture DLL and clicks Obfuscate (needs TR-02). Still local-or-trait-filtered. | M | Low | ✅ Done (`ObfuscateFlowTests`; command-line DLL + Obfuscate; `Category=UI`) |
 | TR-43 | Dedicated tests for `Settings.Core` validation if scenario work does not already hit it. | S | Low | ✅ Done (`SettingsValidatorTests`) |
 
@@ -182,7 +182,6 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 | Default (every PR) | exclude `UI`, `Platform` | Always (`ci.yml` `build`) |
 | Coverage | same as default | Always (80% *warning*, not a hard fail; PR comment is best-effort) |
 | Linux CLI | `Obfy.Console.Tests` | Always (`ci.yml` `linux-cli` on `ubuntu-latest`) |
-| Rider | Gradle `test` | Always (`ci.yml` `rider-tests`) |
 | UI | `Category=UI` | Windows `ci.yml` `build` job, after the default suite |
 | Platform | `Category=Platform` | `platform.yml`: NativeAOT on pull requests; full set weekly and on `workflow_dispatch`. A skipped test fails the job |
 

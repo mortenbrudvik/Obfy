@@ -17,7 +17,7 @@ These techniques raise the cost of casual reverse engineering. They are **not** 
 
 ![Obfy desktop application](docs/images/ui-overview.png)
 
-*Screenshot of the earlier WPF window. The desktop app is now a WebView2 + React UI, described under [Desktop Application](#desktop-application).*
+*The Files screen on first launch. The desktop app is a WebView2 + React UI, described under [Desktop Application](#desktop-application).*
 
 ## Why Obfy?
 
@@ -25,7 +25,7 @@ These techniques raise the cost of casual reverse engineering. They are **not** 
 - **Configurable** - From minimal to aggressive protection levels, plus an interactive `config wizard`
 - **Modern** - Built for .NET 10; CLI runs cross-platform, the desktop UI is Windows
 - **Extensible** - JSON configuration for fine-grained control
-- **IDE Integration** - Visual Studio 2022 and JetBrains Rider extensions with right-click obfuscation
+- **IDE Integration** - A Visual Studio 2022 extension with right-click obfuscation
 - **Fast** - Efficient obfuscation with minimal overhead
 
 ## Installation
@@ -110,24 +110,26 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -c Release -- MyApp.dll -o outpu
 .\scripts\dev.ps1
 ```
 
-The window has a sidebar with four screens: **Files** (drop or add inputs, choose the output folder and symbol map), **Protection** (level presets and a detail view for every technique), **Results** (summary, symbol map, decompiled preview, and the run log), and **Guide** (F1). A run bar along the bottom starts or cancels a run and says why it cannot start when it cannot. The screenshots on this page show the earlier WPF window.
+The window has a sidebar with four screens: **Files** (drop or add inputs, choose the output folder and symbol map), **Protection** (level presets and a detail view for every technique), **Results** (summary, symbol map, decompiled preview, and the run log), and **Guide** (F1: a short quick-start with a button that opens the [full guide online](https://brudvik.com/obfy/guide) in your browser). A run bar along the bottom starts or cancels a run and says why it cannot start when it cannot.
 
 ![Obfy with assemblies loaded](docs/images/ui-ready.png)
+
+*The Files screen with one assembly added, an output folder chosen, and the run bar showing what Obfuscate will do.*
 
 **Features:**
 - Drag and drop assemblies, source files, a solution or project, or a `.json` configuration onto the window. A solution or project expands into included outputs and skipped rows
 - Closed-set protection when two or more *included* assemblies are listed, or when files came from a solution/project session (the Merge toggle still wins)
-- An empty Output Directory writes one file next to the input as `*.obfuscated.*`, a closed set to an `obfy-out` folder next to the first input, and a merge next to the first input as `*.obfuscated.*`
+- An empty Output Directory writes one file next to the input as `*.obfuscated.*`, two or more C# files compiled together to an `obfy-src` folder next to the first, a closed set to an `obfy-out` folder next to the first included assembly, and a merge next to the first input as `*.obfuscated.*`.. With an Output Directory set, each file keeps its name there. (The command line differs: a merge without `-o` is `{name}.merged{ext}`, and a solution's `obfy-out` goes next to the solution file. See the [CLI Reference](docs/CLI.md))
 - Level presets (Minimal, Standard, Aggressive, Custom). Choosing Custom again restores the switches from before the preset
 - Runtime profiles disable protections that profile cannot use and keep the stored values
-- An in-app Guide (F1) and a description and options for every technique on the Protection screen
+- An in-app quick-start Guide (F1) with a button to the full guide online ([brudvik.com/obfy/guide](https://brudvik.com/obfy/guide), opened in your browser), and a description and options for every technique on the Protection screen, each with a **Read more online** link to its section of the online guide
 - A path passed with `-o` applies to that session and is not saved as the default. A saved folder that no longer exists is cleared, with a warning
 - Indeterminate progress for one file, a merge, and a closed set. The log keeps earlier runs. Obfuscate stays disabled, with the reason shown, until the settings and inputs allow a run
 - Results group symbols under their types, hide zero counters, and export the symbol map. Preview decompiles only after you pick a file
 
 ![Obfuscation results and symbol map](docs/images/ui-results.png)
 
-*Earlier results pane (WPF window).*
+*The Results screen after a run, on the Summary tab. Symbols, Preview and Log are the other tabs.*
 
 ### Visual Studio Extension
 
@@ -145,26 +147,7 @@ Then in Visual Studio: Extensions → Manage Extensions → Install from VSIX, a
 - **Obfy Settings** dialog with level presets (Minimal/Standard/Aggressive/Custom)
 - Per-project configuration stored in `obfy.json`
 - Output window integration for real-time progress
-- Tools → Options → Obfy for global defaults
-
-### JetBrains Rider Extension
-
-For JetBrains Rider users, Obfy provides IDE integration from a local Gradle build (the plugin is versioned independently of the 1.3.0 product; it is not attached to GitHub Releases). Requires JDK 21:
-
-```bash
-cd Src/Obfy.Rider
-./gradlew.bat build   # Unix: ./gradlew build
-```
-
-The zip is `Src/Obfy.Rider/build/distributions/Obfy.Rider-1.0.1.zip`. In Rider: Settings → Plugins → Gear icon → Install Plugin from Disk.
-
-**Features:**
-- Right-click project → **Obfy** → **Obfuscate** to protect your output assembly
-- **Enable / Disable Post-Build Obfuscation** for automatic protection on each build
-- **Settings** dialog with level presets (Minimal/Standard/Aggressive/Custom)
-- Per-project configuration stored in `obfy.json`
-- Tool window integration for real-time progress
-- Settings → Tools → Obfy for global defaults
+- Tools → Options → Obfy for global defaults, including **Generate Symbol Map** (off by default; writes `{name}.map.json` beside the assembly)
 
 ### Visual Studio Code (stub)
 
@@ -202,7 +185,7 @@ String/constant “encryption” is obfuscation. The key is in the assembly and 
 
 | Level | Description | Use Case |
 |-------|-------------|----------|
-| `minimal` | Symbol renaming only | Quick protection, debugging easier |
+| `minimal` | Symbol renaming and debug information removal | Quick protection, debugging easier |
 | `standard` | String encryption + renaming + metadata | Balanced protection (default) |
 | `aggressive` | Most protections on (control-flow intensity 80; method IL encryption on Windows) | Stronger protection; test thoroughly |
 | `custom` | Configure via flags or config file | Fine-tuned control |
@@ -239,7 +222,7 @@ Replaces eligible instance and static methods with a bytecode interpreter (`--vi
 XOR-encrypts method bodies in the PE (Windows) and hides call targets behind `calli` trampolines.
 
 ### Metadata Removal
-Strips debug information, custom attributes, and documentation, reducing attack surface and file size.
+Strips debug information, nine named compiler and debugger attributes (`CompilerGenerated`, `Nullable`, `NullableContext`, `DebuggerNonUserCode`, `DebuggerStepThrough`, `DebuggerHidden`, `DebuggerDisplay`, `DebuggerBrowsable`, `SuppressMessage`), and optionally XML documentation, reducing attack surface and file size. Your own attributes are kept.
 
 ### Obfuscation Reports
 Generate detailed HTML or JSON reports with statistics, file size comparison, processing times, and warnings.
@@ -283,7 +266,7 @@ Create an `obfy.json` configuration file:
 }
 ```
 
-A `-c` file is used as-is (`level` inside it is not re-applied as a preset). Use `obfy config generate -l standard` when you want a fully resolved Standard file.
+In the CLI a `-c` file is used as-is (`level` inside it is not re-applied as a preset). Use `obfy config generate -l standard` when you want a fully resolved Standard file. The desktop app shows and runs a loaded file as Custom when its level-controlled settings are not exactly what its `level` preset sets, so a run uses the file's switches. See [Configuration](docs/Configuration.md).
 
 ## Examples
 

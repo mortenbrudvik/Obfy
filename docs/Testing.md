@@ -6,21 +6,21 @@ How to run and extend the current suite. Remaining gaps (Unity Development Playe
 
 Technique-level coverage is strong. SDK project scenarios (WPF, console, WinForms, examples, Unity stub) run in `Obfy.ScenarioTests`. Blazor WASM, NativeAOT, and MAUI Windows are `Category=Platform` (see [Testing-Roadmap.md](Testing-Roadmap.md) Phase 3).
 
-| Project | Tests | Coverage |
-|---------|-------|----------|
-| Obfy.Tests | 769 | Core obfuscation logic, including ILSpy decompiler-resistance fixtures, schema contract, Settings.Core validation of `ObfySettings`, and build/CI/installer/MSIX guards (`HybridBuildTests`, `CiUiWorkflowTests`, `InstallerWebView2Tests`, `MsixPackageTests`) |
-| Obfy.Console.Tests | 165 | CLI parsing (`CommandParsingTests`, `SolutionInputTests`), `Program.Main` process tests, wizard file write |
-| Obfy.App.Tests | 300 | The UI sessions (`ProtectionSession`, `InputSession`, `LogBuffer`, `ResultsStore`, `RunCoordinator`), settings endpoint handlers, `JsonUtils`. No WPF, no WebView2 |
-| Obfy.Interop.Tests | 126 | The bridge (`ApiBridge`, `ApiRegistry`, `ApiRegistrations`), event aggregator and publisher, `WebViewHandler`, request JSON contracts, and `TechniqueContentContractTests` |
-| Obfy.UI.Tests | 22 | Shell wiring (`HybridWiringTests`), host service, startup command line |
-| Obfy.UI.AutomationTests | 12 | 6 locator unit tests (default CI) + 6 `Category=UI` tests: 5 Playwright-over-WebView2 end-to-end (`WebUiTests`) and 1 FlaUI window smoke (`FlaUiSmokeTests`) |
-| Obfy.ScenarioTests | 37 | 34 default SDK fixtures and checks (Unity stub, merge, WPF, WinForms, console, examples) + 3 `Category=Platform` |
-| Obfy.VisualStudio.Tests | 28 | VS settings JSON, settings dialog ViewModel, CLI argv, in-place copy, output-assembly locator, CLI path locator (no VS hive) |
-| Obfy.Rider (Gradle) | 17 | JVM unit tests for settings, CLI argv, assembly locator (CI job `rider-tests`) |
-| **.NET total** | **1450** | Default CI (`Category!=UI&Category!=Platform`): 769+165+300+126+22+6+34+28. Project counts include `Category=UI` and `Category=Platform`; the total is the default filter (excludes those and Rider). Counts are xUnit cases (`[Theory]` expansions included) |
-| Web app (Vitest, `Src/WebApp`) | 124 | 16 test files: shell and run bar, Files, Protection, Results, Guide, shared components, interop client, content |
+This page gives no test counts, because they change with almost every commit. Each command below prints its own total; run it to see the current number.
 
-Counts were taken from `dotnet test -c Release --filter "Category!=UI&Category!=Platform"` per project and from `npm run test:run`. They drift as tests are added; re-run to refresh.
+| Project | Covers | Run |
+|---------|--------|-----|
+| Obfy.Tests | Core obfuscation logic, including ILSpy decompiler-resistance fixtures, schema contract, Settings.Core validation of `ObfySettings`, and build/CI/installer/MSIX guards (`HybridBuildTests`, `CiUiWorkflowTests`, `InstallerWebView2Tests`, `MsixPackageTests`) | `dotnet test Tests/Obfy.Tests` |
+| Obfy.Console.Tests | CLI parsing (`CommandParsingTests`, `SolutionInputTests`), `Program.Main` process tests, wizard file write | `dotnet test Tests/Obfy.Console.Tests` |
+| Obfy.App.Tests | The UI sessions (`ProtectionSession`, `InputSession`, `LogBuffer`, `ResultsStore`, `RunCoordinator`), the endpoint handlers, `JsonUtils`. No WPF, no WebView2 | `dotnet test Tests/Obfy.App.Tests` |
+| Obfy.Interop.Tests | The bridge (`ApiBridge`, `ApiRegistry`, `ApiRegistrations`), event aggregator and publisher, `WebViewHandler`, request JSON contracts, and `TechniqueContentContractTests` | `dotnet test Tests/Obfy.Interop.Tests` |
+| Obfy.UI.Tests | Shell wiring (`HybridWiringTests`), host service, startup command line | `dotnet test Tests/Obfy.UI.Tests` |
+| Obfy.UI.AutomationTests | Locator unit tests (default CI), plus `Category=UI` tests: Playwright-over-WebView2 end-to-end (`WebUiTests`) and one FlaUI window smoke (`FlaUiSmokeTests`) | `dotnet test Tests/Obfy.UI.AutomationTests` for the locator tests; `--filter Category=UI` for the end-to-end cases (see below) |
+| Obfy.ScenarioTests | SDK fixtures and checks (Unity stub, merge, WPF, WinForms, console, examples), plus `Category=Platform` tests (Blazor, NativeAOT, MAUI Windows) | `dotnet test Tests/Obfy.ScenarioTests` (default job); `--filter Category=Platform` for the platform tests |
+| Obfy.VisualStudio.Tests | VS settings JSON, settings dialog ViewModel, CLI argv, in-place copy, output-assembly locator, CLI path locator (no VS hive) | `dotnet test Tests/Obfy.VisualStudio.Tests` |
+| Web app (Vitest, `Src/WebApp`) | The page: shell and run bar, Files, Protection (including the Read more online calls), Results, the in-app Guide quick-start and its online-guide button, shared components, interop client and the `api.app.openGuide` wrapper, content | `npm run test:run` in `Src/WebApp` |
+
+The default CI filter is `Category!=UI&Category!=Platform`, so the `Category=UI` and `Category=Platform` tests are not part of a plain `dotnet test`. Counts are xUnit cases (`[Theory]` expansions included), so a project's total is not its number of methods.
 
 ## Test Stack
 
@@ -174,7 +174,7 @@ Location: `Tests/Obfy.UI.Tests/`
 
 Launches `ObfyUI.exe` (`Category=UI`, run after the default suite in CI):
 
-- `WebUiTests` (Playwright): first launch shows the Files screen, toggling a technique on the Protection screen is reflected in its switch, F1 and the sidebar open the Guide, and obfuscating from startup arguments writes the output and shows Results
+- `WebUiTests` (Playwright): first launch shows the Files screen, toggling a technique on the Protection screen is reflected in its switch, F1 and the sidebar open the in-app Guide quick-start (its "Open the full guide online" button is checked, not clicked, so no browser starts), and obfuscating from startup arguments writes the output and shows Results
 - `FlaUiSmokeTests` (FlaUI): the window opens with its title bar
 
 Locator unit tests in the same project (no trait) resolve Debug vs Release `ObfyUI.exe` and run in the default suite.
@@ -185,15 +185,13 @@ Location: `Tests/Obfy.UI.AutomationTests/`
 
 ### Web app (`Src/WebApp`)
 
-Vitest tests for the page: shell and run bar, Files, Protection, Results, Guide, shared components, the interop client and content. See [Web app (Vitest)](#web-app-vitest).
+Vitest tests for the page: shell and run bar, Files, Protection, Results, the Guide quick-start (including the button that opens the online guide through `app.openGuide`), shared components, the interop client and content. See [Web app (Vitest)](#web-app-vitest).
 
 ### Obfy.VisualStudio.Tests
 
 Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBuilder`, `OutputAssemblyLocator`, `ObfyCliLocator`, `SettingsDialogViewModel`). Linked from `Src/Obfy.VisualStudio/Services` so CI does not load the VSIX SDK.
 
 Location: `Tests/Obfy.VisualStudio.Tests/`
-
-Rider JVM tests live in `Src/Obfy.Rider/src/test/kotlin` (`./gradlew test`; JDK 21 + Rider SDK).
 
 ### Obfy.ScenarioTests (SDK fixtures)
 
@@ -289,6 +287,5 @@ PRs and pushes to `main` run `.github/workflows/ci.yml`:
 |-----|------|
 | `build` | Windows: Node 24, `npm ci`, `npm run lint` and `npm run test:run` in `Src/WebApp` (the .NET build then builds the page), then `dotnet test -c Release` with `Category!=UI&Category!=Platform` and `coverage.runsettings`. Coverage report + 80% **warning** (not a hard fail). Sticky PR comment is best-effort (`continue-on-error`, same-repo PRs only). The same job then runs `Category=UI`. |
 | `linux-cli` | Ubuntu `dotnet test Tests/Obfy.Console.Tests` (cross-platform CLI claim). |
-| `rider-tests` | `./gradlew test` (JDK 21). |
 
 The `Category=UI` tests run on the Windows `build` job after the default suite. That runner's session is interactive and has the WebView2 Runtime, so they can launch `ObfyUI.exe` and attach Playwright to it over a debug port. Default `dotnet test` still skips `Category=UI`, so a local run does not open the window. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml`: NativeAOT on pull requests, and the full set on the weekly schedule and `workflow_dispatch`. A skipped platform test fails that job. `dotnet new maui` is allowed 180s because the first run restores the template pack. See [Testing-Roadmap.md](Testing-Roadmap.md).

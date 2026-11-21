@@ -21,7 +21,7 @@ public class SourceProcessor : ISourceProcessor
     /// <inheritdoc/>
     public async Task<PipelineContext> LoadAsync(string path, ObfySettings settings, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Loading source code from {Path}", path);
+        _logger.LogDebug("Loading source code");
 
         var syntaxTrees = new List<SyntaxTree>();
 
@@ -140,7 +140,7 @@ public class SourceProcessor : ISourceProcessor
             throw new InvalidOperationException("No compilation in context");
         }
 
-        _logger.LogDebug("Saving obfuscated source code to {Path}", outputPath);
+        _logger.LogDebug("Saving obfuscated source code");
 
         // Ensure output directory exists
         var directory = Path.GetDirectoryName(outputPath);
@@ -149,9 +149,19 @@ public class SourceProcessor : ISourceProcessor
             Directory.CreateDirectory(directory);
         }
 
-        // If single file input, write to single file output
-        if (context.Compilation.SyntaxTrees.Count() == 1)
+        // One input file gives one output file. A directory input always gives a directory, even when
+        // it held a single file (and the string-encryption helper lives in the file it serves, so the
+        // tree count alone no longer tells the two apart).
+        var directoryInput = !string.IsNullOrEmpty(context.InputPath) && Directory.Exists(context.InputPath);
+        if (context.Compilation.SyntaxTrees.Count() == 1 && !directoryInput)
         {
+            if (Directory.Exists(outputPath))
+            {
+                throw new IOException(
+                    "The output path is an existing directory, but one source file is written as one file. " +
+                    "Remove the directory or choose another output path.");
+            }
+
             var tree = context.Compilation.SyntaxTrees.First();
             var sourceText = tree.GetRoot(cancellationToken).ToFullString();
             await File.WriteAllTextAsync(outputPath, sourceText, cancellationToken).ConfigureAwait(false);
@@ -184,6 +194,12 @@ public class SourceProcessor : ISourceProcessor
     {
         if (string.IsNullOrEmpty(treePath))
             return $"obfuscated_{Guid.NewGuid():N}.cs";
+
+        // A tree Obfy added (the string-decryption helper) carries a plain relative name. Keep it as is
+        // rather than resolving it against the current directory.
+        if (!Path.IsPathRooted(treePath) &&
+            !treePath.Split('/', '\\').Contains(".."))
+            return treePath;
 
         if (!string.IsNullOrEmpty(inputRoot))
         {

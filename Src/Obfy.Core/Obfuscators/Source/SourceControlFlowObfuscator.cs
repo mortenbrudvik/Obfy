@@ -44,6 +44,8 @@ public class SourceControlFlowObfuscator : IObfuscator
         try
         {
             var newTrees = new List<SyntaxTree>();
+            var scope = new SourceScope(context.Settings);
+            scope.WarnIfInclusionsMatchedNothing(compilation, context.Warnings);
 
             foreach (var tree in compilation.SyntaxTrees)
             {
@@ -51,7 +53,7 @@ public class SourceControlFlowObfuscator : IObfuscator
 
                 var root = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
                 var model = compilation.GetSemanticModel(tree);
-                var rewriter = new ControlFlowRewriter(settings, model);
+                var rewriter = new ControlFlowRewriter(settings, model, scope);
                 var newRoot = rewriter.Visit(root);
 
                 stats.MethodsControlFlowObfuscated += rewriter.MethodsObfuscated;
@@ -59,9 +61,16 @@ public class SourceControlFlowObfuscator : IObfuscator
                 newTrees.Add(newRoot.SyntaxTree.WithFilePath(tree.FilePath));
             }
 
-            context.Compilation = compilation
+            var newCompilation = compilation
                 .RemoveAllSyntaxTrees()
                 .AddSyntaxTrees(newTrees);
+            context.Compilation = newCompilation;
+
+            if (stats.MethodsControlFlowObfuscated > 0)
+            {
+                SourceOutputCheck.WarnOnNewErrors(
+                    "Source control flow", compilation, newCompilation, context.Warnings, cancellationToken);
+            }
 
             _logger.LogInformation("Obfuscated control flow in {Count} methods", stats.MethodsControlFlowObfuscated);
 
@@ -69,7 +78,7 @@ public class SourceControlFlowObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Source control flow obfuscation failed");
+            _logger.LogError("Source control flow obfuscation failed ({ExceptionType})", ex.GetType().Name);
             return ObfuscationResult.Failed($"Source control flow obfuscation failed: {ex.Message}", ex);
         }
     }
@@ -78,14 +87,16 @@ public class SourceControlFlowObfuscator : IObfuscator
     {
         private readonly ControlFlowSettings _settings;
         private readonly SemanticModel _model;
+        private readonly SourceScope _scope;
         private readonly Random _random = new();
 
         public int MethodsObfuscated { get; private set; }
 
-        public ControlFlowRewriter(ControlFlowSettings settings, SemanticModel model)
+        public ControlFlowRewriter(ControlFlowSettings settings, SemanticModel model, SourceScope scope)
         {
             _settings = settings;
             _model = model;
+            _scope = scope;
         }
 
         public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
@@ -97,8 +108,12 @@ public class SourceControlFlowObfuscator : IObfuscator
             if (symbol != null && ObfuscationAttributeRules.IsExcluded(symbol, ObfuscationFeature.ControlFlow))
                 return base.VisitMethodDeclaration(node);
 
-            // Skip based on intensity
-            if (_random.Next(100) > _settings.Intensity)
+            if (!_scope.Allows(symbol))
+                return base.VisitMethodDeclaration(node);
+
+            // Skip based on intensity: Next(100) is 0..99, so the method is kept with probability
+            // Intensity/100 (0 never transforms, 100 always does).
+            if (_random.Next(100) >= _settings.Intensity)
                 return base.VisitMethodDeclaration(node);
 
             // Value-returning methods need a terminal statement after the switch dispatcher's loop,
@@ -109,8 +124,8 @@ public class SourceControlFlowObfuscator : IObfuscator
             var newBody = _settings.Mode switch
             {
                 ControlFlowMode.OpaquePredicate => InsertOpaquePredicates(node.Body),
-                ControlFlowMode.Switch => ConvertToSwitchDispatcher(node.Body, needsReturnValue),
-                ControlFlowMode.Combined => InsertOpaquePredicates(ConvertToSwitchDispatcher(node.Body, needsReturnValue)),
+                ControlFlowMode.Switch => ConvertToSwitchDispatcher(node, needsReturnValue),
+                ControlFlowMode.Combined => InsertOpaquePredicates(ConvertToSwitchDispatcher(node, needsReturnValue)),
                 _ => node.Body
             };
 
@@ -157,7 +172,7 @@ public class SourceControlFlowObfuscator : IObfuscator
             }
 
             // Nothing eligible was wrapped — return the original body so we don't churn it needlessly.
-            return transformedAny ? SyntaxFactory.Block(newStatements) : body;
+            return transformedAny ? body.WithStatements(SyntaxFactory.List(newStatements)) : body;
         }
 
         /// <summary>
@@ -201,50 +216,57 @@ public class SourceControlFlowObfuscator : IObfuscator
             return true;
         }
 
+        // n * (n + 1) is always even, even when the product wraps (2^32 is even). TickCount is not a
+        // compile-time constant, so the C# compiler and decompilers cannot fold the branch.
+        // It is read ONCE into a local: two reads can straddle a tick, making n * (n + 1) odd and the
+        // else branch throw at run time. The product is unchecked because it overflows int for any
+        // machine up more than ~46 seconds, which a project built with checked arithmetic would turn
+        // into an OverflowException. The outer block keeps the local out of the surrounding scope.
+        // The shell is parsed from text (not built with SyntaxFactory) so that it carries real
+        // whitespace: factory nodes print as "thrownew" and "int__state" when written to a file.
+        private const string OriginalMarker = "__obfyOriginal";
+
+        private const string OpaquePredicateShell = """
+            {
+                int __obfyTick = global::System.Environment.TickCount;
+                if (unchecked(__obfyTick * (__obfyTick + 1)) % 2 == 0)
+                {
+                    __obfyOriginal;
+                }
+                else
+                {
+                    throw new global::System.InvalidOperationException();
+                }
+            }
+            """;
+
         private StatementSyntax CreateOpaquePredicate(StatementSyntax originalStatement)
         {
-            // n*(n+1) is always even. TickCount is not a compile-time constant, so the C# compiler
-            // and decompilers cannot fold the branch.
-            var tick = SyntaxFactory.MemberAccessExpression(
-                SyntaxKind.SimpleMemberAccessExpression,
-                SyntaxFactory.ParseTypeName("System.Environment"),
-                SyntaxFactory.IdentifierName("TickCount"));
+            var shell = (BlockSyntax)SyntaxFactory.ParseStatement(OpaquePredicateShell);
+            var marker = shell.DescendantNodes().OfType<ExpressionStatementSyntax>()
+                .Single(e => e.Expression is IdentifierNameSyntax { Identifier.ValueText: OriginalMarker });
 
-            var condition = SyntaxFactory.BinaryExpression(
-                SyntaxKind.EqualsExpression,
-                SyntaxFactory.BinaryExpression(
-                    SyntaxKind.ModuloExpression,
-                    SyntaxFactory.ParenthesizedExpression(
-                        SyntaxFactory.BinaryExpression(
-                            SyntaxKind.MultiplyExpression,
-                            tick,
-                            SyntaxFactory.ParenthesizedExpression(
-                                SyntaxFactory.BinaryExpression(
-                                    SyntaxKind.AddExpression,
-                                    SyntaxFactory.MemberAccessExpression(
-                                        SyntaxKind.SimpleMemberAccessExpression,
-                                        SyntaxFactory.ParseTypeName("System.Environment"),
-                                        SyntaxFactory.IdentifierName("TickCount")),
-                                    SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(1)))))),
-                    SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(2))),
-                SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(0)));
+            // The leading and trailing trivia of the original statement (comments, #if/#endif pairs,
+            // line breaks) stays around the wrapper, where it was.
+            var leading = originalStatement.GetLeadingTrivia();
+            var trailing = originalStatement.GetTrailingTrivia();
+            var inner = originalStatement
+                .WithLeadingTrivia(SyntaxFactory.Whitespace(" "))
+                .WithTrailingTrivia(SyntaxFactory.Whitespace(" "));
 
-            // if (condition) { original } else { /* unreachable dead code */ }
-            var ifStatement = SyntaxFactory.IfStatement(
-                condition,
-                originalStatement is BlockSyntax block ? block : SyntaxFactory.Block(originalStatement),
-                SyntaxFactory.ElseClause(
-                    SyntaxFactory.Block(
-                        SyntaxFactory.ThrowStatement(
-                            SyntaxFactory.ObjectCreationExpression(
-                                SyntaxFactory.ParseTypeName("System.InvalidOperationException"))
-                            .WithArgumentList(SyntaxFactory.ArgumentList())))));
+            var wrapped = originalStatement is BlockSyntax
+                ? shell.ReplaceNode(marker.Parent!, inner)
+                : shell.ReplaceNode(marker, inner);
 
-            return ifStatement;
+            return wrapped.WithLeadingTrivia(leading).WithTrailingTrivia(trailing);
         }
 
         private static bool CanFlatten(BlockSyntax body)
         {
+            // #if/#endif pairs would end up in different switch sections.
+            if (body.DescendantTrivia().Any(t => t.IsDirective))
+                return false;
+
             for (var i = 0; i < body.Statements.Count; i++)
             {
                 var statement = body.Statements[i];
@@ -295,9 +317,15 @@ public class SourceControlFlowObfuscator : IObfuscator
             return true;
         }
 
-        private BlockSyntax ConvertToSwitchDispatcher(BlockSyntax body, bool needsReturnValue)
+        private BlockSyntax ConvertToSwitchDispatcher(MethodDeclarationSyntax method, bool needsReturnValue)
         {
+            var body = method.Body!;
             if (body.Statements.Count < 3)
+                return body;
+
+            // An out parameter must be definitely assigned before the method returns. Once each
+            // statement sits in its own switch section the compiler can no longer prove that (CS0177).
+            if (method.ParameterList.Parameters.Any(p => p.Modifiers.Any(SyntaxKind.OutKeyword)))
                 return body;
 
             if (!CanFlatten(body))
@@ -307,104 +335,44 @@ public class SourceControlFlowObfuscator : IObfuscator
             var statements = body.Statements.ToList();
             var stateVar = $"__state_{_random.Next(1000, 9999)}";
 
-            // Assign random state numbers
-            var stateMap = new Dictionary<int, int>();
+            // Assign random, distinct state numbers. The range grows with the statement count so a long
+            // method (a large InitializeComponent) can never run out of unused states and spin forever;
+            // it stays far above the count, so the draw below finishes after a few retries at most.
+            var stateRange = Math.Max(900, statements.Count * 4);
+            var states = new int[statements.Count];
             var usedStates = new HashSet<int>();
             for (var i = 0; i < statements.Count; i++)
             {
                 int state;
                 do
                 {
-                    state = _random.Next(100, 999);
+                    state = _random.Next(100, 100 + stateRange);
                 } while (!usedStates.Add(state));
-                stateMap[i] = state;
+                states[i] = state;
             }
 
-            // Build switch cases
-            var switchSections = new List<SwitchSectionSyntax>();
-
+            // The dispatcher is parsed from text with a placeholder statement per original statement, so
+            // it carries real whitespace; each placeholder is then swapped for the original statement.
+            var text = new System.Text.StringBuilder();
+            text.AppendLine("{");
+            text.AppendLine($"    int {stateVar} = {states[0]};");
+            text.AppendLine($"    while ({stateVar} >= 0)");
+            text.AppendLine("    {");
+            text.AppendLine($"        switch ({stateVar})");
+            text.AppendLine("        {");
             for (var i = 0; i < statements.Count; i++)
             {
-                var nextState = i + 1 < statements.Count ? stateMap[i + 1] : -1;
-
-                var caseStatements = new List<StatementSyntax> { statements[i] };
-
-                if (nextState >= 0)
-                {
-                    // state = nextState;
-                    caseStatements.Add(
-                        SyntaxFactory.ExpressionStatement(
-                            SyntaxFactory.AssignmentExpression(
-                                SyntaxKind.SimpleAssignmentExpression,
-                                SyntaxFactory.IdentifierName(stateVar),
-                                SyntaxFactory.LiteralExpression(
-                                    SyntaxKind.NumericLiteralExpression,
-                                    SyntaxFactory.Literal(nextState)))));
-                    caseStatements.Add(SyntaxFactory.BreakStatement());
-                }
-                else
-                {
-                    // state = -1; break;
-                    caseStatements.Add(
-                        SyntaxFactory.ExpressionStatement(
-                            SyntaxFactory.AssignmentExpression(
-                                SyntaxKind.SimpleAssignmentExpression,
-                                SyntaxFactory.IdentifierName(stateVar),
-                                SyntaxFactory.PrefixUnaryExpression(
-                                    SyntaxKind.UnaryMinusExpression,
-                                    SyntaxFactory.LiteralExpression(
-                                        SyntaxKind.NumericLiteralExpression,
-                                        SyntaxFactory.Literal(1))))));
-                    caseStatements.Add(SyntaxFactory.BreakStatement());
-                }
-
-                var section = SyntaxFactory.SwitchSection(
-                    SyntaxFactory.SingletonList<SwitchLabelSyntax>(
-                        SyntaxFactory.CaseSwitchLabel(
-                            SyntaxFactory.LiteralExpression(
-                                SyntaxKind.NumericLiteralExpression,
-                                SyntaxFactory.Literal(stateMap[i])))),
-                    SyntaxFactory.List(caseStatements));
-
-                switchSections.Add(section);
+                var nextState = i + 1 < statements.Count ? states[i + 1] : -1;
+                text.AppendLine($"            case {states[i]}:");
+                text.AppendLine($"                {StatementMarkerPrefix}{i};");
+                text.AppendLine($"                {stateVar} = {nextState};");
+                text.AppendLine("                break;");
             }
 
-            // Add default case
-            switchSections.Add(
-                SyntaxFactory.SwitchSection(
-                    SyntaxFactory.SingletonList<SwitchLabelSyntax>(SyntaxFactory.DefaultSwitchLabel()),
-                    SyntaxFactory.SingletonList<StatementSyntax>(SyntaxFactory.BreakStatement())));
-
-            // Build the switch statement
-            var switchStatement = SyntaxFactory.SwitchStatement(
-                SyntaxFactory.IdentifierName(stateVar),
-                SyntaxFactory.List(switchSections));
-
-            // Build while loop: while (state >= 0) { switch... }
-            var whileLoop = SyntaxFactory.WhileStatement(
-                SyntaxFactory.BinaryExpression(
-                    SyntaxKind.GreaterThanOrEqualExpression,
-                    SyntaxFactory.IdentifierName(stateVar),
-                    SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(0))),
-                SyntaxFactory.Block(switchStatement));
-
-            // Build new body: var state = initialState; while (state >= 0) { switch... }
-            var newStatements = new List<StatementSyntax>
-            {
-                // var state = initialState;
-                SyntaxFactory.LocalDeclarationStatement(
-                    SyntaxFactory.VariableDeclaration(
-                        SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.IntKeyword)))
-                    .WithVariables(
-                        SyntaxFactory.SingletonSeparatedList(
-                            SyntaxFactory.VariableDeclarator(stateVar)
-                            .WithInitializer(
-                                SyntaxFactory.EqualsValueClause(
-                                    SyntaxFactory.LiteralExpression(
-                                        SyntaxKind.NumericLiteralExpression,
-                                        SyntaxFactory.Literal(stateMap[0]))))))),
-                whileLoop
-            };
+            text.AppendLine("            default:");
+            text.AppendLine("                break;");
+            text.AppendLine("        }");
+            text.AppendLine("    }");
 
             // For a value-returning method the original return lives inside a switch case, so the
             // compiler cannot see that the loop always returns and reports CS0161. CanFlatten forbids
@@ -412,15 +380,28 @@ public class SourceControlFlowObfuscator : IObfuscator
             // body already returns or throws, so this terminal is unreachable and only satisfies
             // definite-assignment.
             if (needsReturnValue)
-            {
-                newStatements.Add(
-                    SyntaxFactory.ThrowStatement(
-                        SyntaxFactory.ObjectCreationExpression(
-                            SyntaxFactory.ParseTypeName("System.InvalidOperationException"))
-                        .WithArgumentList(SyntaxFactory.ArgumentList())));
-            }
+                text.AppendLine("    throw new global::System.InvalidOperationException();");
 
-            return SyntaxFactory.Block(newStatements);
+            text.AppendLine("}");
+
+            var shell = (BlockSyntax)SyntaxFactory.ParseStatement(text.ToString());
+            var markers = shell.DescendantNodes().OfType<ExpressionStatementSyntax>()
+                .Where(e => e.Expression is IdentifierNameSyntax id &&
+                            id.Identifier.ValueText.StartsWith(StatementMarkerPrefix, StringComparison.Ordinal))
+                .ToList();
+
+            var dispatcher = shell.ReplaceNodes(markers, (original, _) =>
+            {
+                var name = ((IdentifierNameSyntax)original.Expression).Identifier.ValueText;
+                return statements[int.Parse(name[StatementMarkerPrefix.Length..])];
+            });
+
+            // Keep the layout around the original braces (and any comment before the closing one).
+            return dispatcher
+                .WithOpenBraceToken(dispatcher.OpenBraceToken.WithTriviaFrom(body.OpenBraceToken))
+                .WithCloseBraceToken(dispatcher.CloseBraceToken.WithTriviaFrom(body.CloseBraceToken));
         }
+
+        private const string StatementMarkerPrefix = "__obfyStatement";
     }
 }

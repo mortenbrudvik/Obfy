@@ -46,7 +46,7 @@ public class SourceSymbolRenamer : IObfuscator
     {
         var compilation = context.RequireCompilation();
         var settings = context.Settings.SymbolRenaming;
-        var exclusions = context.Settings.Exclusions;
+        var scope = new SourceScope(context.Settings);
         var stats = new ObfuscationStatistics();
 
         _logger.LogDebug("Starting source symbol renaming with mode {Mode}", settings.Mode);
@@ -54,10 +54,24 @@ public class SourceSymbolRenamer : IObfuscator
         try
         {
             _nameGenerator.Reset();
+            scope.WarnIfInclusionsMatchedNothing(compilation, context.Warnings);
 
             // Pass 1: choose a new name for every renamable source-declared symbol, keyed by symbol
             // identity so the decision is independent of how the name is spelled at each use site.
             var renames = new Dictionary<ISymbol, string>(SymbolEqualityComparer.Default);
+
+            // A generated name must not equal an identifier the code already uses: a kept parameter "a"
+            // would capture a renamed method "a" at its call sites (CS0149), and so on.
+            var reservedNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var tree in compilation.SyntaxTrees)
+            {
+                var treeRoot = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
+                foreach (var token in treeRoot.DescendantTokens())
+                {
+                    if (token.IsKind(SyntaxKind.IdentifierToken))
+                        reservedNames.Add(token.ValueText);
+                }
+            }
 
             foreach (var tree in compilation.SyntaxTrees)
             {
@@ -70,16 +84,20 @@ public class SourceSymbolRenamer : IObfuscator
                     if (!TryGetDeclarationIdentifier(node, model, out _, out var symbol) || symbol == null)
                         continue;
 
-                    var definition = symbol.OriginalDefinition;
+                    var definition = Canonical(symbol);
                     if (renames.ContainsKey(definition))
                         continue;
 
-                    if (!ShouldRenameDeclaration(node, definition, settings, exclusions))
+                    if (!ShouldRenameDeclaration(node, definition, settings, scope))
                         continue;
                     if (ObfuscationAttributeRules.IsExcluded(definition, ObfuscationFeature.Renaming))
                         continue;
 
-                    var newName = _nameGenerator.Generate(definition.Name, settings.Mode);
+                    string newName;
+                    do
+                    {
+                        newName = _nameGenerator.Generate(definition.Name, settings.Mode);
+                    } while (reservedNames.Contains(newName));
                     renames[definition] = newName;
 
                     // A record positional parameter also declares a synthesized property of the same
@@ -118,10 +136,12 @@ public class SourceSymbolRenamer : IObfuscator
                     // Declaration identifiers
                     if (TryGetDeclarationIdentifier(node, model, out var token, out var declared) &&
                         declared != null &&
-                        renames.TryGetValue(declared.OriginalDefinition, out var declName))
+                        renames.TryGetValue(Canonical(declared), out var declName))
                     {
                         tokenRenames[token] = declName;
-                        CountDeclaration(declared, stats);
+                        // A partial method is declared twice (definition and implementation) but is one method.
+                        if (declared is not IMethodSymbol { PartialDefinitionPart: not null })
+                            CountDeclaration(declared, stats);
                         continue;
                     }
 
@@ -145,9 +165,10 @@ public class SourceSymbolRenamer : IObfuscator
                     var symbol = info.Symbol ?? info.CandidateSymbols.FirstOrDefault();
                     if (symbol is IMethodSymbol { ReducedFrom: { } reduced })
                         symbol = reduced;
-                    symbol = symbol?.OriginalDefinition;
                     if (symbol == null)
                         continue;
+
+                    symbol = Canonical(symbol);
 
                     if (renames.TryGetValue(symbol, out var refName))
                     {
@@ -176,14 +197,24 @@ public class SourceSymbolRenamer : IObfuscator
                 newTrees.Add(newRoot.SyntaxTree.WithFilePath(tree.FilePath));
             }
 
+            // Keys are symbol identities. Locals and parameters print as just their name, so they carry
+            // their owner, and a key that is still taken (two "i" in one method) gets a number.
+            var usedKeys = new HashSet<string>(StringComparer.Ordinal);
             foreach (var (symbol, newName) in renames)
             {
-                context.SymbolMap[$"{symbol.Kind}:{symbol.ToDisplayString()}"] = newName;
+                var key = $"{symbol.Kind}:{SymbolMapDisplay(symbol)}";
+                var unique = key;
+                for (var n = 2; !usedKeys.Add(unique); n++)
+                    unique = $"{key}#{n}";
+                context.SymbolMap[unique] = newName;
             }
 
-            context.Compilation = compilation
+            var newCompilation = compilation
                 .RemoveAllSyntaxTrees()
                 .AddSyntaxTrees(newTrees);
+            context.Compilation = newCompilation;
+            SourceOutputCheck.WarnOnNewErrors(
+                "Source symbol renaming", compilation, newCompilation, context.Warnings, cancellationToken);
 
             _logger.LogInformation(
                 "Renamed {Types} types, {Methods} methods, {Fields} fields, {Properties} properties, {Parameters} parameters",
@@ -194,10 +225,30 @@ public class SourceSymbolRenamer : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Source symbol renaming failed");
+            _logger.LogError("Source symbol renaming failed ({ExceptionType})", ex.GetType().Name);
             return ObfuscationResult.Failed($"Source symbol renaming failed: {ex.Message}", ex);
         }
     }
+
+    /// <summary>
+    /// The symbol that stands for a declaration everywhere: the generic definition and the defining part
+    /// of a partial method (its implementation is declared separately but must share the name).
+    /// </summary>
+    private static ISymbol Canonical(ISymbol symbol)
+    {
+        symbol = symbol.OriginalDefinition;
+        return symbol switch
+        {
+            IMethodSymbol { PartialDefinitionPart: { } definition } => definition.OriginalDefinition,
+            IPropertySymbol { PartialDefinitionPart: { } definition } => definition.OriginalDefinition,
+            _ => symbol
+        };
+    }
+
+    private static string SymbolMapDisplay(ISymbol symbol) =>
+        symbol is ILocalSymbol or IParameterSymbol
+            ? $"{symbol.ContainingSymbol?.ToDisplayString()}.{symbol.Name}"
+            : symbol.ToDisplayString();
 
     private static void MapContainingTypeName(
         SyntaxToken identifier,
@@ -236,7 +287,7 @@ public class SourceSymbolRenamer : IObfuscator
         return true;
     }
 
-    private static bool ShouldRenameDeclaration(SyntaxNode node, ISymbol symbol, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    private static bool ShouldRenameDeclaration(SyntaxNode node, ISymbol symbol, SymbolRenamingSettings settings, SourceScope scope)
     {
         switch (node)
         {
@@ -274,10 +325,10 @@ public class SourceSymbolRenamer : IObfuscator
                 return false;
         }
 
-        return IsRenamable(symbol, settings, exclusions);
+        return IsRenamable(symbol, settings, scope);
     }
 
-    private static bool IsRenamable(ISymbol symbol, SymbolRenamingSettings settings, ExclusionRules exclusions)
+    private static bool IsRenamable(ISymbol symbol, SymbolRenamingSettings settings, SourceScope scope)
     {
         // Never rename anything not declared in the source (framework/metadata symbols).
         if (!symbol.Locations.Any(l => l.IsInSource))
@@ -300,8 +351,9 @@ public class SourceSymbolRenamer : IObfuscator
             return false;
 
         // Renaming an override, virtual/abstract member, or interface implementation would break the
-        // contract with the base type or interface.
-        if (symbol is IMethodSymbol or IPropertySymbol)
+        // contract with the base type or interface. Events follow the same rule (an event that
+        // implements INotifyPropertyChanged.PropertyChanged must keep its name).
+        if (symbol is IMethodSymbol or IPropertySymbol or IEventSymbol)
         {
             if (symbol.IsOverride || symbol.IsVirtual || symbol.IsAbstract)
                 return false;
@@ -313,14 +365,52 @@ public class SourceSymbolRenamer : IObfuscator
         if (settings.PreservePublicApi && IsExternallyVisible(symbol))
             return false;
 
-        // Honor type and method exclusion patterns. Namespace/attribute exclusions apply to the
-        // assembly renamer only.
-        if (symbol.Kind == SymbolKind.NamedType && exclusions.Types.Any(t => MatchesPattern(symbol.Name, t)))
+        // Exclusions: an excluded namespace, type name or attribute protects the type and everything in
+        // it; excluded method names protect those methods.
+        if (scope.IsExcluded(symbol))
             return false;
-        if (symbol.Kind == SymbolKind.Method && exclusions.Methods.Any(m => MatchesPattern(symbol.Name, m)))
+        if (symbol.Kind == SymbolKind.Method && scope.IsMethodNameExcluded(symbol))
             return false;
 
+        // Allow-list: only matching types (and their members) and matching methods are candidates.
+        if (!scope.IsIncluded(symbol, methodNameCounts: symbol is IMethodSymbol or IParameterSymbol or ILocalSymbol))
+            return false;
+
+        // Public instance properties of XAML-bindable types are looked up by name from markup.
+        if (settings.PreserveXaml &&
+            symbol is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsStatic: false } &&
+            symbol.ContainingType is { } owner &&
+            LooksLikeXamlBindable(owner))
+        {
+            return false;
+        }
+
         return true;
+    }
+
+    /// <summary>
+    /// Heuristic for XAML-bindable types, mirroring the assembly renamer: a name ending in ViewModel or
+    /// View, INotifyPropertyChanged, a DependencyProperty field, or a DependencyObject base. WPF bases
+    /// usually do not resolve here, so the name checks carry most of the weight.
+    /// </summary>
+    private static bool LooksLikeXamlBindable(INamedTypeSymbol type)
+    {
+        if (type.Name.EndsWith("ViewModel", StringComparison.OrdinalIgnoreCase) ||
+            type.Name.EndsWith("View", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (type.AllInterfaces.Any(i => i.Name.Contains("INotifyPropertyChanged", StringComparison.Ordinal)))
+            return true;
+
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            if (current.Name.Contains("DependencyObject", StringComparison.Ordinal))
+                return true;
+            if (current.GetMembers().OfType<IFieldSymbol>().Any(f => f.Type.Name == "DependencyProperty"))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool ImplementsInterfaceMember(ISymbol symbol)
@@ -391,8 +481,6 @@ public class SourceSymbolRenamer : IObfuscator
         }
     }
 
-    private static bool MatchesPattern(string value, string pattern) => WildcardMatcher.IsMatch(value, pattern);
-
     /// <summary>
     /// Rewrites a fixed set of identifier tokens (identified by position within one tree) to new
     /// names. Only the tokens chosen via the semantic model are changed; every other token is left
@@ -415,5 +503,101 @@ public class SourceSymbolRenamer : IObfuscator
             }
             return base.VisitToken(token);
         }
+
+        /// <summary>
+        /// <c>new { p.Name }</c> names its member after the property. When the property is renamed, the
+        /// member would be renamed with it and break every <c>x.Name</c> consumer (and change what a
+        /// serializer writes), so the original name is spelled out: <c>new { Name = p.A }</c>.
+        /// </summary>
+        public override SyntaxNode? VisitAnonymousObjectMemberDeclarator(AnonymousObjectMemberDeclaratorSyntax node)
+        {
+            if (node.NameEquals == null &&
+                InferredNameToken(node.Expression) is { } token &&
+                _tokenRenames.ContainsKey(token))
+            {
+                var expression = (ExpressionSyntax)Visit(node.Expression)!;
+                var nameEquals = SyntaxFactory.NameEquals(
+                    SyntaxFactory.IdentifierName(SyntaxFactory.Identifier(token.ValueText))
+                        .WithLeadingTrivia(expression.GetLeadingTrivia()));
+                return node.WithNameEquals(nameEquals).WithExpression(expression.WithoutLeadingTrivia());
+            }
+
+            return base.VisitAnonymousObjectMemberDeclarator(node);
+        }
+
+        /// <summary>
+        /// Same for tuples: <c>(p.Name, p.Age)</c> infers element names. Elements whose inferred name
+        /// would not apply anyway (a duplicate, or a reserved name such as Item1) are left alone.
+        /// </summary>
+        public override SyntaxNode? VisitTupleExpression(TupleExpressionSyntax node)
+        {
+            var inferred = node.Arguments
+                .Select(a => a.NameColon == null ? InferredNameToken(a.Expression) : null)
+                .ToList();
+
+            var explicitNames = node.Arguments
+                .Where(a => a.NameColon != null)
+                .Select(a => a.NameColon!.Name.Identifier.ValueText)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var isDeconstructionTarget = node.Parent is AssignmentExpressionSyntax assignment && assignment.Left == node;
+            var arguments = new List<ArgumentSyntax>(node.Arguments.Count);
+            var changed = false;
+
+            for (var i = 0; i < node.Arguments.Count; i++)
+            {
+                var argument = node.Arguments[i];
+                if (!isDeconstructionTarget &&
+                    inferred[i] is { } nameToken &&
+                    _tokenRenames.ContainsKey(nameToken) &&
+                    CanNameTupleElement(nameToken.ValueText, i, inferred, explicitNames))
+                {
+                    var expression = (ExpressionSyntax)Visit(argument.Expression)!;
+                    var nameColon = SyntaxFactory.NameColon(
+                        SyntaxFactory.IdentifierName(SyntaxFactory.Identifier(nameToken.ValueText))
+                            .WithLeadingTrivia(expression.GetLeadingTrivia()),
+                        SyntaxFactory.Token(SyntaxKind.ColonToken).WithTrailingTrivia(SyntaxFactory.Space));
+                    arguments.Add(argument.WithNameColon(nameColon).WithExpression(expression.WithoutLeadingTrivia()));
+                    changed = true;
+                }
+                else
+                {
+                    arguments.Add((ArgumentSyntax)Visit(argument)!);
+                }
+            }
+
+            return changed
+                ? node.WithArguments(SyntaxFactory.SeparatedList(arguments, node.Arguments.GetSeparators()))
+                : base.VisitTupleExpression(node);
+        }
+
+        private static bool CanNameTupleElement(
+            string name, int index, List<SyntaxToken?> inferred, HashSet<string> explicitNames)
+        {
+            if (explicitNames.Contains(name))
+                return false;
+
+            // Two elements inferring the same name get no names at all.
+            for (var i = 0; i < inferred.Count; i++)
+            {
+                if (i != index && inferred[i] is { } other && other.ValueText == name)
+                    return false;
+            }
+
+            // Item1, Rest and the object members cannot be used as inferred element names.
+            var reservedItem = name.StartsWith("Item", StringComparison.Ordinal) &&
+                               name.Length > 4 && name.Skip(4).All(char.IsDigit);
+            return !(reservedItem || name is "Rest" or "ToString" or "GetHashCode" or "Equals" or "GetType");
+        }
+
+        /// <summary>The identifier C# infers a member or element name from: x, a.x or a?.x.</summary>
+        private static SyntaxToken? InferredNameToken(ExpressionSyntax expression) => expression switch
+        {
+            IdentifierNameSyntax name => name.Identifier,
+            MemberAccessExpressionSyntax { Name: IdentifierNameSyntax name } => name.Identifier,
+            MemberBindingExpressionSyntax { Name: IdentifierNameSyntax name } => name.Identifier,
+            ConditionalAccessExpressionSyntax access => InferredNameToken(access.WhenNotNull),
+            _ => null
+        };
     }
 }

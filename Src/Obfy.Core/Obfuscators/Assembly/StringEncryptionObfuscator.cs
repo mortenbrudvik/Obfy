@@ -420,8 +420,8 @@ public class StringEncryptionObfuscator : IObfuscator
 
     private static MethodDef CreateResourceStringHook(ModuleDef module, MethodDef decode, int paramCount)
     {
-        var rmType = new TypeRefUser(module, "System.Resources", "ResourceManager", module.CorLibTypes.AssemblyRef);
-        var cultureType = new TypeRefUser(module, "System.Globalization", "CultureInfo", module.CorLibTypes.AssemblyRef);
+        var rmType = FrameworkReferences.Type(module, "System.Resources", "ResourceManager");
+        var cultureType = FrameworkReferences.Type(module, "System.Globalization", "CultureInfo");
 
         MethodSig sig = paramCount == 1
             ? MethodSig.CreateStatic(module.CorLibTypes.String, new ClassSig(rmType), module.CorLibTypes.String)
@@ -454,8 +454,8 @@ public class StringEncryptionObfuscator : IObfuscator
     private static MethodDef CreateResourceStringDecode(
         ModuleDef module, MethodDef bytesDecrypt, FieldDef keyField, MethodDef utf16ToString)
     {
-        var convertType = new TypeRefUser(module, "System", "Convert", module.CorLibTypes.AssemblyRef);
-        var stringType = new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef);
+        var convertType = FrameworkReferences.Type(module, "System", "Convert");
+        var stringType = FrameworkReferences.Type(module, "System", "String");
 
         var method = new MethodDefUser(
             "Dr",

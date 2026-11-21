@@ -1,6 +1,7 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Obfy.Core.Pipeline;
+using Obfy.Core.Utilities;
 
 namespace Obfy.Core.Virtualization;
 
@@ -413,7 +414,7 @@ public static class VmImporter
         }
 
         if (typeRef.ResolutionScope is AssemblyRef assemblyRef && IsCorlibAssembly(assemblyRef.Name))
-            typeRef.ResolutionScope = dest.CorLibTypes.AssemblyRef;
+            typeRef.ResolutionScope = FrameworkReferences.Scope(dest, typeRef.Namespace, typeRef.Name);
     }
 
     private static void RetargetSig(CallingConventionSig? sig, ModuleDef dest)
@@ -701,7 +702,7 @@ public static class VmImporter
     {
         var dataType = new TypeDefUser(
             name + "Data",
-            new TypeRefUser(dest, "System", "ValueType", dest.CorLibTypes.AssemblyRef))
+            FrameworkReferences.Type(dest, "System", "ValueType"))
         {
             Attributes = TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout |
                          TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit,
@@ -726,7 +727,7 @@ public static class VmImporter
             $"Virtualization failed: '{member.FullName}' has no declaring type for Get*FromHandle.");
 
     private static TypeRef CorlibRef(ModuleDef dest, string ns, string name) =>
-        dest.CorLibTypes.GetTypeRef(ns, name);
+        FrameworkReferences.Type(dest, ns, name);
 
     private static byte[] ReadEmbeddedBytes()
     {
@@ -765,7 +766,7 @@ public static class VmImporter
                 return (TypeDef)mapped;
 
             if (source is TypeRef typeRef && IsCorlibAssembly(typeRef.DefinitionAssembly?.Name))
-                return _dest.CorLibTypes.GetTypeRef(typeRef.Namespace, typeRef.Name);
+                return FrameworkReferences.Type(_dest, typeRef.Namespace, typeRef.Name);
 
             return null;
         }

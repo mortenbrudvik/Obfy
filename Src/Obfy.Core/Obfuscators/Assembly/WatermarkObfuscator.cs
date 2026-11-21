@@ -101,7 +101,7 @@ public class WatermarkObfuscator : IObfuscator
                 var attrType = new TypeDefUser(
                     AttributeNamespace,
                     AttributeTypeName,
-                    new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))
+                    FrameworkReferences.Type(module, "System", "Attribute"))
                 {
                     Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit
                 };
@@ -119,7 +119,7 @@ public class WatermarkObfuscator : IObfuscator
                 ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
                 ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call,
                     new MemberRefUser(module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void),
-                        new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))));
+                        FrameworkReferences.Type(module, "System", "Attribute"))));
                 ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
                 ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
                 ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Stfld, idField));

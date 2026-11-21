@@ -153,12 +153,32 @@ public class AntiDumpObfuscator : IObfuscator
 
         var body = new CilBody { InitLocals = true };
         method.Body = body;
-        var architectureType = new TypeRefUser(module, "System.Runtime.InteropServices", "Architecture", module.CorLibTypes.AssemblyRef);
-        var runtimeInformationType = new TypeRefUser(module, "System.Runtime.InteropServices", "RuntimeInformation", module.CorLibTypes.AssemblyRef);
-        var getProcessArchitecture = new MemberRefUser(module, "get_ProcessArchitecture",
-            MethodSig.CreateStatic(new ValueTypeSig(architectureType)), runtimeInformationType);
+        TypeSig archSig;
+        MemberRefUser getProcessArchitecture;
+        int x86;
+        int x64;
+        if (FrameworkReferences.SupportsRuntimeInformation(module))
+        {
+            var architectureType = FrameworkReferences.Type(module, "System.Runtime.InteropServices", "Architecture");
+            var runtimeInformationType = FrameworkReferences.Type(module, "System.Runtime.InteropServices", "RuntimeInformation");
+            archSig = new ValueTypeSig(architectureType);
+            getProcessArchitecture = new MemberRefUser(module, "get_ProcessArchitecture",
+                MethodSig.CreateStatic(archSig), runtimeInformationType);
+            x86 = (int)Architecture.X86;
+            x64 = (int)Architecture.X64;
+        }
+        else
+        {
+            // .NET Framework before 4.7.1 has no RuntimeInformation, and does not run natively on ARM64:
+            // the pointer size tells x86 from x64.
+            archSig = module.CorLibTypes.Int32;
+            getProcessArchitecture = new MemberRefUser(module, "get_Size",
+                MethodSig.CreateStatic(module.CorLibTypes.Int32), FrameworkReferences.Type(module, "System", "IntPtr"));
+            x86 = 4;
+            x64 = 8;
+        }
 
-        var archLocal = new Local(new ValueTypeSig(architectureType));
+        var archLocal = new Local(archSig);
         var moduleLocal = new Local(module.CorLibTypes.IntPtr);
         var procLocal = new Local(module.CorLibTypes.IntPtr);
         var oldProtect = new Local(module.CorLibTypes.UInt32);
@@ -182,10 +202,10 @@ public class AntiDumpObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, getProcessArchitecture));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, archLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, archLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4((int)Architecture.X86));
+        body.Instructions.Add(Instruction.CreateLdcI4(x86));
         body.Instructions.Add(Instruction.Create(OpCodes.Beq, loadDbghelp));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, archLocal));
-        body.Instructions.Add(Instruction.CreateLdcI4((int)Architecture.X64));
+        body.Instructions.Add(Instruction.CreateLdcI4(x64));
         body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, ret));
 
         body.Instructions.Add(loadDbghelp);
@@ -237,9 +257,9 @@ public class AntiDumpObfuscator : IObfuscator
         method.Body = body;
 
         var marshalType = FrameworkReferences.Type(module, "System.Runtime.InteropServices", "Marshal");
-        var moduleType = new TypeRefUser(module, "System.Reflection", "Module", module.CorLibTypes.AssemblyRef);
-        var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
-        var runtimeTypeHandle = new TypeRefUser(module, "System", "RuntimeTypeHandle", module.CorLibTypes.AssemblyRef);
+        var moduleType = FrameworkReferences.Type(module, "System.Reflection", "Module");
+        var typeType = FrameworkReferences.Type(module, "System", "Type");
+        var runtimeTypeHandle = FrameworkReferences.Type(module, "System", "RuntimeTypeHandle");
 
         var getTypeFromHandle = new MemberRefUser(module, "GetTypeFromHandle",
             MethodSig.CreateStatic(new ClassSig(typeType), new ValueTypeSig(runtimeTypeHandle)),

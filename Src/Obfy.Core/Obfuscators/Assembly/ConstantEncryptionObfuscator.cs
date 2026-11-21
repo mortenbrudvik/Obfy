@@ -395,7 +395,7 @@ public class ConstantEncryptionObfuscator : IObfuscator
         var body = new CilBody();
         method.Body = body;
 
-        var bitConverterRef = new TypeRefUser(module, "System", "BitConverter", module.CorLibTypes.AssemblyRef);
+        var bitConverterRef = FrameworkReferences.Type(module, "System", "BitConverter");
         var toValue = new MemberRefUser(
             module,
             bitConverterMethod,

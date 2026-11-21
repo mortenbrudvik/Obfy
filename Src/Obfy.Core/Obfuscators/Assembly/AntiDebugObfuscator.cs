@@ -185,19 +185,19 @@ public class AntiDebugObfuscator : IObfuscator
         body.Variables.Add(remoteLocal);
         body.Variables.Add(tickLocal);
 
-        var debuggerType = module.CorLibTypes.GetTypeRef("System.Diagnostics", "Debugger");
+        var debuggerType = FrameworkReferences.Type(module, "System.Diagnostics", "Debugger");
         var isAttachedGetter = new MemberRefUser(
             module, "get_IsAttached",
             MethodSig.CreateStatic(module.CorLibTypes.Boolean), debuggerType);
         var isLogging = new MemberRefUser(
             module, "IsLogging",
             MethodSig.CreateStatic(module.CorLibTypes.Boolean), debuggerType);
-        var env = module.CorLibTypes.GetTypeRef("System", "Environment");
+        var env = FrameworkReferences.Type(module, "System", "Environment");
         var getTickCount = new MemberRefUser(
             module, "get_TickCount",
             MethodSig.CreateStatic(module.CorLibTypes.Int32), env);
         var dllNotFound = FrameworkReferences.Type(module, "System", "DllNotFoundException");
-        var entryNotFound = module.CorLibTypes.GetTypeRef("System", "EntryPointNotFoundException");
+        var entryNotFound = FrameworkReferences.Type(module, "System", "EntryPointNotFoundException");
 
         var afterAttached = Instruction.Create(OpCodes.Nop);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isAttachedGetter));
@@ -279,7 +279,7 @@ public class AntiDebugObfuscator : IObfuscator
 
     private void EmitFail(CilBody body, ModuleDef module)
     {
-        var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
+        var environmentType = FrameworkReferences.Type(module, "System", "Environment");
         switch (_nextFail)
         {
             case FailKind.Exit:
@@ -299,7 +299,7 @@ public class AntiDebugObfuscator : IObfuscator
                 body.Instructions.Add(Instruction.Create(OpCodes.Call, failFast));
                 break;
             default:
-                var exType = module.CorLibTypes.GetTypeRef("System", "Exception");
+                var exType = FrameworkReferences.Type(module, "System", "Exception");
                 var ctor = new MemberRefUser(
                     module, ".ctor",
                     MethodSig.CreateInstance(module.CorLibTypes.Void),

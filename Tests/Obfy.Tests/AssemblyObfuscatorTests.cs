@@ -4062,7 +4062,13 @@ public class AssemblyObfuscatorTests
     [Fact]
     public async Task AntiTamper_VerifyFallsBackToProcessPath()
     {
-        var module = CreateTestModule();
+        // Environment.ProcessPath exists from .NET 6, so the fallback is for a module that targets modern .NET;
+        // FrameworkReferencesTests covers the targets that have no ProcessPath (no fallback is emitted there).
+        var module = new ModuleDefUser(
+            "TestAssembly",
+            Guid.NewGuid(),
+            new AssemblyRefUser("System.Runtime", new Version(10, 0, 0, 0), new PublicKeyToken("b03f5f7f11d50a3a"), UTF8String.Empty));
+        new AssemblyDefUser("TestAssembly", new Version(1, 0, 0, 0)).Modules.Add(module);
         var obfuscator = new AntiTamperObfuscator(new Mock<ILogger<AntiTamperObfuscator>>().Object);
         var context = PipelineContext.ForAssembly(module, new ObfySettings
         {

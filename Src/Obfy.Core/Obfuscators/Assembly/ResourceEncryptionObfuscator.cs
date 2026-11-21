@@ -277,9 +277,9 @@ public class ResourceEncryptionObfuscator : IObfuscator
         FieldDef keyField,
         FieldDef namesField)
     {
-        var streamType = new TypeRefUser(module, "System.IO", "Stream", module.CorLibTypes.AssemblyRef);
-        var memoryStreamType = new TypeRefUser(module, "System.IO", "MemoryStream", module.CorLibTypes.AssemblyRef);
-        var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
+        var streamType = FrameworkReferences.Type(module, "System.IO", "Stream");
+        var memoryStreamType = FrameworkReferences.Type(module, "System.IO", "MemoryStream");
+        var assemblyType = FrameworkReferences.Type(module, "System.Reflection", "Assembly");
         var stringType = module.CorLibTypes.String.ToTypeDefOrRef();
 
         var method = new MethodDefUser(
@@ -306,7 +306,7 @@ public class ResourceEncryptionObfuscator : IObfuscator
             MethodSig.CreateInstance(module.CorLibTypes.Void, new ClassSig(streamType)), streamType);
         var dispose = new MemberRefUser(module, "Dispose",
             MethodSig.CreateInstance(module.CorLibTypes.Void),
-            new TypeRefUser(module, "System", "IDisposable", module.CorLibTypes.AssemblyRef));
+            FrameworkReferences.Type(module, "System", "IDisposable"));
         var toArray = new MemberRefUser(module, "ToArray",
             MethodSig.CreateInstance(new SZArraySig(module.CorLibTypes.Byte)), memoryStreamType);
         var msByteCtor = new MemberRefUser(module, ".ctor",
@@ -380,10 +380,10 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
     private static MethodDef CreateLoadResourceStreamTypedMethod(ModuleDef module, MethodDef loadResource)
     {
-        var streamType = new TypeRefUser(module, "System.IO", "Stream", module.CorLibTypes.AssemblyRef);
-        var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
-        var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
-        var stringType = new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef);
+        var streamType = FrameworkReferences.Type(module, "System.IO", "Stream");
+        var assemblyType = FrameworkReferences.Type(module, "System.Reflection", "Assembly");
+        var typeType = FrameworkReferences.Type(module, "System", "Type");
+        var stringType = FrameworkReferences.Type(module, "System", "String");
 
         var method = new MethodDefUser(
             "LoadResourceStreamTyped",
@@ -443,9 +443,9 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
     private static MethodDef CreateLoadResourceStreamModuleMethod(ModuleDef module, MethodDef loadResource)
     {
-        var streamType = new TypeRefUser(module, "System.IO", "Stream", module.CorLibTypes.AssemblyRef);
-        var moduleType = new TypeRefUser(module, "System.Reflection", "Module", module.CorLibTypes.AssemblyRef);
-        var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
+        var streamType = FrameworkReferences.Type(module, "System.IO", "Stream");
+        var moduleType = FrameworkReferences.Type(module, "System.Reflection", "Module");
+        var assemblyType = FrameworkReferences.Type(module, "System.Reflection", "Assembly");
 
         var method = new MethodDefUser(
             "LoadResourceStreamModule",

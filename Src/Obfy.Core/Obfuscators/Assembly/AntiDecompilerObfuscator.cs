@@ -118,11 +118,7 @@ public class AntiDecompilerObfuscator : IObfuscator
         }
 
         // Create reference to SuppressIldasmAttribute
-        var attrType = new TypeRefUser(
-            module,
-            "System.Runtime.CompilerServices",
-            "SuppressIldasmAttribute",
-            module.CorLibTypes.AssemblyRef);
+        var attrType = FrameworkReferences.Type(module, "System.Runtime.CompilerServices", "SuppressIldasmAttribute");
 
         var ctor = new MemberRefUser(
             module,
@@ -168,7 +164,7 @@ public class AntiDecompilerObfuscator : IObfuscator
         else
         {
             attrType = new TypeDefUser("", typeName,
-                new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))
+                FrameworkReferences.Type(module, "System", "Attribute"))
             {
                 Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit
             };
@@ -180,7 +176,7 @@ public class AntiDecompilerObfuscator : IObfuscator
             ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
             ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call,
                 new MemberRefUser(module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void),
-                    new TypeRefUser(module, "System", "Attribute", module.CorLibTypes.AssemblyRef))));
+                    FrameworkReferences.Type(module, "System", "Attribute"))));
             ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
             attrType.Methods.Add(ctor);
             module.Types.Add(attrType);

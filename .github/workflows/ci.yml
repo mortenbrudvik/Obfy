@@ -155,6 +155,9 @@ jobs:
     - name: UI tests
       shell: pwsh
       run: |
+        # ilammy/msvc-dev-cmd exports Platform=x64 for the rest of the job. The solution build ignores it, but a
+        # project-level `dotnet test --no-build` then looks in bin\x64\Release and finds no DLL, so no test ran.
+        Remove-Item Env:Platform -ErrorAction SilentlyContinue
         dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --no-build -c Release --filter "Category=UI" --nologo
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

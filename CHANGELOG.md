@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The JetBrains Rider plugin (`Src/Obfy.Rider`) was removed, with its Gradle build, JVM tests, and the `rider-tests` CI job. It was never published to a marketplace or attached to a release
 
 ### Fixed
+- The CI UI-automation step ran no tests: `ilammy/msvc-dev-cmd` exports `Platform=x64`, so the project-level `dotnet test --no-build` looked in `bin/x64/Release` and found no DLL. The step now clears `Platform`
 - The desktop app shows and runs a loaded configuration as Custom when its level-controlled options are not exactly what its `level` preset sets, so a run uses the file's switches, as the CLI does. The file on disk is not rewritten
 - The run bar hint names what a run writes: with an output folder it gives the input's own file name (not `*.obfuscated.*`), and two or more C# files without a folder are compiled together into `obfy-src` next to the first
 - Native packing is greyed out on the Protection screen for NativeAOT, Unity IL2CPP, and Blazor WebAssembly, as the engine already turned it off for them

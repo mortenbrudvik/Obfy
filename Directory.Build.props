@@ -1,4 +1,44 @@
-<Project>
+<Project InitialTargets="ObfyRequireProductVersion">
+  <!--
+    The product version. version.json at the repository root is the only place it is written: this file reads it
+    while each project is evaluated (an MSBuild property function, so no task, and the same on Windows and Linux)
+    and the projects under Src\ take it as their Version (assembly, file and informational version, the NuGet
+    package version of the Obfy tool). Nothing else in a project file states a version; a test pins that.
+    build-installer.ps1 and build-msix.ps1 read version.json too, and package\AppxManifest.xml is pinned to it.
+
+    A command-line -p:Version=... still wins, because a global property cannot be overwritten here. The publish
+    workflow passes the release tag that way, so a prerelease suffix (2.1.0-beta.1) is possible there.
+
+    These projects keep their own version and are skipped: Obfy.VisualStudio (the VSIX has its own version in
+    source.extension.vsixmanifest), Obfy.PackedBootstrap (embedded in the native host stub, whose source stamp
+    covers its project file) and Obfy.VmRuntime (embedded into protected assemblies). Tests and examples are
+    outside Src\ and are not touched.
+  -->
+  <PropertyGroup>
+    <ObfyVersionFile>$(MSBuildThisFileDirectory)version.json</ObfyVersionFile>
+    <!--
+      version.json must be exactly the three top-level integer keys major, minor and patch: each 0..65535 with no
+      leading zeros, none repeated, nothing else (a nested or extra key could be read as the wrong number by a
+      first-match reader). build/Get-ProductVersion.ps1 applies the same rule, and a test feeds both the same files.
+    -->
+    <ObfyVersionNumber>(?:0|[1-9]\d{0,3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])</ObfyVersionNumber>
+    <ObfyVersionShape>(?i)^\s*\{\s*"(major|minor|patch)"\s*:\s*$(ObfyVersionNumber)\s*,\s*"(?!\1")(major|minor|patch)"\s*:\s*$(ObfyVersionNumber)\s*,\s*"(?!\1")(?!\2")(major|minor|patch)"\s*:\s*$(ObfyVersionNumber)\s*\}\s*$</ObfyVersionShape>
+    <ObfyVersionIsValid Condition="Exists('$(ObfyVersionFile)')">$([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(ObfyVersionFile)')), '$(ObfyVersionShape)'))</ObfyVersionIsValid>
+    <ObfyVersionMajor Condition="'$(ObfyVersionIsValid)' == 'True'">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(ObfyVersionFile)')), '(?i)"major"\s*:\s*(\d+)').Groups[1].Value)</ObfyVersionMajor>
+    <ObfyVersionMinor Condition="'$(ObfyVersionIsValid)' == 'True'">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(ObfyVersionFile)')), '(?i)"minor"\s*:\s*(\d+)').Groups[1].Value)</ObfyVersionMinor>
+    <ObfyVersionPatch Condition="'$(ObfyVersionIsValid)' == 'True'">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(ObfyVersionFile)')), '(?i)"patch"\s*:\s*(\d+)').Groups[1].Value)</ObfyVersionPatch>
+    <ObfyProductVersion Condition="'$(ObfyVersionIsValid)' == 'True'">$(ObfyVersionMajor).$(ObfyVersionMinor).$(ObfyVersionPatch)</ObfyProductVersion>
+    <!-- The folder separator is part of the prefix, so a sibling folder such as SrcGen is not taken for Src. -->
+    <ObfySrcDirectory>$([MSBuild]::EnsureTrailingSlash('$(MSBuildThisFileDirectory)Src'))</ObfySrcDirectory>
+  </PropertyGroup>
+  <!-- Case-insensitive: Windows keeps the case a path was typed in, and a miss here would silently build 1.0.0. -->
+  <PropertyGroup Condition="$(MSBuildProjectFullPath.StartsWith('$(ObfySrcDirectory)', System.StringComparison.OrdinalIgnoreCase)) and '$(MSBuildProjectName)' != 'Obfy.VisualStudio' and '$(MSBuildProjectName)' != 'Obfy.PackedBootstrap' and '$(MSBuildProjectName)' != 'Obfy.VmRuntime'">
+    <ObfyUsesProductVersion>true</ObfyUsesProductVersion>
+    <Version Condition="'$(Version)' == ''">$(ObfyProductVersion)</Version>
+  </PropertyGroup>
+  <Target Name="ObfyRequireProductVersion" Condition="'$(ObfyUsesProductVersion)' == 'true' and '$(ObfyProductVersion)' == ''">
+    <Error Text="$(MSBuildProjectName) takes its version from $(ObfyVersionFile), which is missing or is not exactly the three integer keys major, minor and patch (0..65535, no leading zeros, no other keys)." />
+  </Target>
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>

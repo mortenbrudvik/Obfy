@@ -126,6 +126,53 @@ describe("RunBar's blocked reason", () => {
     expect(within(screen.getByRole("status")).queryByText(/2 of 3 files/)).toBeNull();
   });
 
+  it("hasTheRegionBeforeTheHostHasAnswered_soAReasonOnFirstLoadIsAnnouncedAsAChange", () => {
+    const { rerender } = render(<RunBar run={null} {...props} />);
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("");
+    expect(screen.getByText("Connecting…").closest("[role=status]")).toBeNull();
+
+    rerender(<RunBar run={blockedBecause("Add at least one included file.")} {...props} />);
+
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status.textContent).toBe("Add at least one included file.");
+  });
+
+  it("announcesThatTheAppCannotBeReached_inTheSameRegion", () => {
+    const { rerender } = render(<RunBar run={null} {...props} />);
+    const status = screen.getByRole("status");
+
+    rerender(<RunBar run={null} unreachable {...props} />);
+
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status.textContent).toBe("Could not reach the app.");
+  });
+
+  it("hasTheRegionWhileRunning_soAFaultWhenItEndsIsAnnouncedAsAChange", () => {
+    const running: RunSnapshot = { ...idle, canStart: false, status: "Running", currentFile: "App.dll", total: 1, message: "Processing App.dll" };
+    const { rerender } = render(<RunBar run={running} {...props} />);
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("");
+    expect(screen.getByText(/Processing App.dll — 1 of 1/).closest("[role=status]")).toBeNull();
+
+    rerender(<RunBar run={{ ...idle, status: "Faulted", message: "Obfuscation failed: access denied." }} {...props} />);
+
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status.textContent).toBe("Obfuscation failed: access denied.");
+  });
+
+  it("keepsOneRegion_fromTheFirstLoadThroughARunToItsEnd", () => {
+    const { rerender } = render(<RunBar run={null} {...props} />);
+    const status = screen.getByRole("status");
+
+    rerender(<RunBar run={idle} {...props} />);
+    rerender(<RunBar run={{ ...idle, canStart: false, status: "Running", currentFile: "App.dll", total: 1 }} {...props} />);
+    rerender(<RunBar run={blockedBecause("Add at least one included file.")} {...props} />);
+
+    expect(screen.getAllByRole("status")).toEqual([status]);
+    expect(status.textContent).toBe("Add at least one included file.");
+  });
+
   it("leavesTheAlertToAFailedStart_andTheRegionEmpty", () => {
     renderBar(blockedBecause("Add at least one included file."), { error: "Could not start the run (nothing included)." });
 

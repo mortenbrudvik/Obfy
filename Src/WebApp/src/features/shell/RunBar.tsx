@@ -29,12 +29,27 @@ function runningText(run: RunSnapshot): string {
   return run.message;
 }
 
+/**
+ * Why Obfuscate is unavailable, read out politely. Every state of the bar starts with this region, empty while there is
+ * no reason, so that it is one element for as long as the bar is there: a screen reader announces text put into a region
+ * it already knows (the reason that appears on first load, or when a run ends in a fault), which it may not for a region
+ * that arrives together with its text. While empty it is out of the layout.
+ */
+function ReasonRegion({ reason }: { reason: string | null }) {
+  return (
+    <div role="status" className={reason ? "sum blocked" : "live-region"}>
+      {reason}
+    </div>
+  );
+}
+
 /** The bar that never leaves: what a run would do, why it cannot start, or how the running one is going. */
 export default function RunBar({ run, unreachable, fileCount, includedCount, level, error, onStart, onCancel }: RunBarProps) {
   if (!run) {
     return (
       <div className="runbar" aria-busy={!unreachable}>
-        <div className={unreachable ? "sum blocked" : "sum"}>{unreachable ? strings.shell.unreachable : strings.shell.connecting}</div>
+        <ReasonRegion reason={unreachable ? strings.shell.unreachable : null} />
+        {!unreachable && <div className="sum">{strings.shell.connecting}</div>}
         <button type="button" className="btn primary" disabled>
           {strings.run.obfuscate}
         </button>
@@ -45,6 +60,7 @@ export default function RunBar({ run, unreachable, fileCount, includedCount, lev
   if (run.status === "Running") {
     return (
       <div className="runbar">
+        <ReasonRegion reason={null} />
         <div className="prog">
           {run.indeterminate ? (
             <div className="bar indeterminate" role="progressbar" aria-label={strings.run.progress} aria-valuemin={0} aria-valuemax={100}>
@@ -69,13 +85,10 @@ export default function RunBar({ run, unreachable, fileCount, includedCount, lev
   const blocked = !run.canStart ? (run.blockedReason ?? run.message) : run.status === "Faulted" ? run.message : null;
   const summary = `${includedCount} of ${fileCount} files · ${level ?? "…"} · Output: ${run.outputHint}`;
 
-  // The reason is read out politely, and its region is always there (empty while there is no reason): a screen reader
-  // announces text put into a region it already knows, which a region that arrives together with its text may not be.
   // A failed start has its own alert, and the summary is no live region: it changes with every file and level.
-  const reason = error ? null : blocked;
   return (
     <div className="runbar">
-      <div role="status" className={reason ? "sum blocked" : "live-region"}>{reason}</div>
+      <ReasonRegion reason={error ? null : blocked} />
       {error ? <div className="sum blocked" role="alert">{error}</div> : !blocked && <div className="sum">{summary}</div>}
       <span className="kbd">Ctrl+Enter</span>
       <button type="button" className="btn primary" data-testid="run-button" disabled={!run.canStart} onClick={onStart}>

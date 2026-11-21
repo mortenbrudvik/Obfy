@@ -76,6 +76,43 @@ describe("an error that no longer applies", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull(), { timeout: 3000 });
   });
 
+  it("keepsAFailedCancel_whenAProgressPushWithTheSameStatusArrives", async () => {
+    const running: RunSnapshot = { ...readyRun, canStart: false, status: "Running", currentFile: "a.dll", total: 2, completed: 0 };
+    const host = startHost(running, { "run.cancel": () => { throw new Error("Nothing to cancel."); } });
+    render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/Processing a.dll/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not cancel the run");
+
+    // The host bumps the revision with every progress report (RunCoordinator.Report): the run is still running, and the
+    // user has not yet read that the cancel failed.
+    host.push("run.changed", { ...running, revision: 7, currentFile: "b.dll", completed: 1, progress: 50 });
+
+    expect(screen.getByText(/Processing b.dll/)).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("Could not cancel the run");
+  });
+
+  it("dropsAFailedCancel_whenTheUserTriesAgainAndItWorks", async () => {
+    const running: RunSnapshot = { ...readyRun, canStart: false, status: "Running", currentFile: "a.dll", total: 1 };
+    let refuse = true;
+    startHost(running, {
+      "run.cancel": () => {
+        if (refuse) throw new Error("Nothing to cancel.");
+        return running;
+      },
+    });
+    render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
+    await screen.findByText(/Processing a.dll/);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await screen.findByRole("alert");
+
+    refuse = false;
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
   it("clearsAShortcutError_whenTheUserMovesToAnotherScreen", async () => {
     startHost(readyRun, { "files.pick": () => { throw new Error("The picker failed."); } });
     const { rerender } = render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);

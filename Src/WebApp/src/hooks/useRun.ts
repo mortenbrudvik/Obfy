@@ -37,9 +37,12 @@ export function useRun({ onCompleted }: UseRunOptions = {}): UseRun {
   const [runStart, startError] = useAppAction(async () => {
     await api.run.start();
   }, strings.shell.startFailed, run?.revision);
+  // A failed cancel is about a run that is still going, and the host pushes a newer state with every progress report
+  // (the revision rises each time): going by the revision, the message would be gone before it could be read. It stays
+  // until the run's status changes (it ended) or the user tries again.
   const [runCancel, cancelError] = useAppAction(async () => {
     await api.run.cancel();
-  }, strings.shell.cancelFailed, run?.revision);
+  }, strings.shell.cancelFailed, run?.status);
 
   // A second start while the first is still being asked for would only be refused by the host.
   const starting = useRef(false);

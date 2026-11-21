@@ -13,6 +13,22 @@ public class ShutdownCoordinatorTests
     internal sealed class Fixture
     {
         public bool Running;
+
+        /// <summary>New runs are refused: the shell has agreed to go away.</summary>
+        public bool DoorClosed;
+
+        /// <summary>Whether new runs were already refused at the moment the run was cancelled.</summary>
+        public bool DoorClosedAtCancel;
+
+        /// <summary>How many times new runs were allowed again.</summary>
+        public int DoorOpenings;
+
+        /// <summary>Thrown by the cancel, as a run whose cancel event handler throws would.</summary>
+        public Exception? CancelFailure;
+
+        /// <summary>Thrown by the shutdown itself, after it is counted.</summary>
+        public Exception? ShutdownFailure;
+
         public bool UserSaysYes = true;
         public int Asked;
         public int Cancelled;
@@ -30,13 +46,29 @@ public class ShutdownCoordinatorTests
             cancelRun: () =>
             {
                 Cancelled++;
+                DoorClosedAtCancel = DoorClosed;
                 Order.Add("cancel");
+                if (CancelFailure is not null)
+                    throw CancelFailure;
             },
             runCompletion: () => RunEnded.Task,
             confirmCancelRun: () =>
             {
                 Asked++;
                 return UserSaysYes;
+            },
+            tryRefuseNewRuns: () =>
+            {
+                if (Running)
+                    return false;
+                DoorClosed = true;
+                return true;
+            },
+            refuseNewRuns: () => DoorClosed = true,
+            allowNewRuns: () =>
+            {
+                DoorClosed = false;
+                DoorOpenings++;
             },
             flushPreferences: async () =>
             {
@@ -54,6 +86,8 @@ public class ShutdownCoordinatorTests
             {
                 Order.Add("shutdown");
                 Shutdowns++;
+                if (ShutdownFailure is not null)
+                    throw ShutdownFailure;
             },
             runStopTimeout: RunTimeout,
             preferencesTimeout: PreferenceTimeout,
@@ -129,6 +163,9 @@ public class ShutdownCoordinatorTests
                 f.Running = false;
                 return true;
             },
+            tryRefuseNewRuns: () => !f.Running,
+            refuseNewRuns: () => { },
+            allowNewRuns: () => { },
             flushPreferences: () => Task.CompletedTask,
             startNewInstance: () => true,
             shutdown: () => { },
@@ -250,5 +287,146 @@ public class ShutdownCoordinatorTests
         f.NewInstances.ShouldBe(0);
         f.Shutdowns.ShouldBe(0);
         f.Order.ShouldBeEmpty();
+    }
+
+    // ---- New runs are refused once the shell has agreed to go (a Start still checking its files must not become a run) ----
+
+    [Fact]
+    public async Task NoRun_ApprovingTheCloseRefusesNewRuns()
+    {
+        var f = new Fixture();
+        var shutdown = f.Build();
+
+        (await shutdown.PrepareToCloseAsync()).ShouldBeTrue();
+
+        f.DoorClosed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void NoRun_ApprovingWithoutAskingRefusesNewRuns_AtTheSameMoment()
+    {
+        var f = new Fixture();
+        var shutdown = f.Build();
+
+        shutdown.TryApproveWithoutAsking().ShouldBeTrue();
+
+        shutdown.Approved.ShouldBeTrue();
+        f.DoorClosed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ARunIsGoing_ThereIsNothingToApproveWithoutAsking_AndRunsStayPossible()
+    {
+        var f = new Fixture { Running = true };
+        var shutdown = f.Build();
+
+        shutdown.TryApproveWithoutAsking().ShouldBeFalse();
+
+        shutdown.Approved.ShouldBeFalse();
+        f.DoorClosed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ARunIsGoing_AndTheUserDeclines_RunsStayPossible()
+    {
+        var f = new Fixture { Running = true, UserSaysYes = false };
+        var shutdown = f.Build();
+
+        (await shutdown.PrepareToCloseAsync()).ShouldBeFalse();
+
+        f.DoorClosed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ARunIsGoing_AndTheUserAgrees_NewRunsAreRefusedBeforeTheRunIsCancelled()
+    {
+        var f = new Fixture { Running = true };
+        var shutdown = f.Build();
+
+        var closing = shutdown.PrepareToCloseAsync();
+        await Task.Delay(100);
+
+        // A Start that was still checking when the user said yes must not become the next run behind the cancel.
+        f.Cancelled.ShouldBe(1);
+        f.DoorClosedAtCancel.ShouldBeTrue();
+
+        f.RunEnded.SetResult();
+        (await closing).ShouldBeTrue();
+        f.DoorClosed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Restart_ThatCannotStartANewProcess_AllowsNewRunsAgain()
+    {
+        var f = new Fixture { NewInstanceStarts = false };
+        var shutdown = f.Build();
+        f.PreferencesWritten.SetResult();
+
+        await shutdown.RestartAsync();
+
+        f.Shutdowns.ShouldBe(0);
+        shutdown.Approved.ShouldBeFalse();
+        f.DoorClosed.ShouldBeFalse();
+    }
+
+    // ---- A close that was approved but is not going to happen must not leave the door closed ----
+
+    [Fact]
+    public async Task ARunIsGoing_AndCancellingItThrows_NothingIsApproved_AndNewRunsAreAllowedAgain()
+    {
+        var f = new Fixture { Running = true, CancelFailure = new InvalidOperationException("the cancel event failed") };
+        var shutdown = f.Build();
+
+        await Should.ThrowAsync<InvalidOperationException>(shutdown.PrepareToCloseAsync());
+
+        shutdown.Approved.ShouldBeFalse();
+        f.DoorClosed.ShouldBeFalse();
+
+        // The shell is not stuck in "preparing": the next close asks again and can go through.
+        f.CancelFailure = null;
+        f.RunEnded.SetResult();
+        (await shutdown.PrepareToCloseAsync()).ShouldBeTrue();
+        f.Asked.ShouldBe(2);
+        f.DoorClosed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Quit_WhoseShutdownThrows_StaysOpen_NothingIsApproved_AndNewRunsAreAllowedAgain()
+    {
+        var f = new Fixture { ShutdownFailure = new InvalidOperationException("shutdown failed") };
+        var shutdown = f.Build();
+
+        await Should.ThrowAsync<InvalidOperationException>(shutdown.QuitAsync());
+
+        shutdown.Approved.ShouldBeFalse();
+        f.DoorClosed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Restart_WhoseShutdownThrows_StaysOpen_NothingIsApproved_AndNewRunsAreAllowedAgain()
+    {
+        var f = new Fixture { ShutdownFailure = new InvalidOperationException("shutdown failed") };
+        var shutdown = f.Build();
+        f.PreferencesWritten.SetResult();
+
+        await Should.ThrowAsync<InvalidOperationException>(shutdown.RestartAsync());
+
+        shutdown.Approved.ShouldBeFalse();
+        f.DoorClosed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AbandoningAnApprovedClose_AllowsNewRunsAgain_AndTheNextCloseIsAskedAboutAgain()
+    {
+        var f = new Fixture();
+        var shutdown = f.Build();
+        shutdown.TryApproveWithoutAsking().ShouldBeTrue();
+
+        shutdown.AbandonClose();
+
+        shutdown.Approved.ShouldBeFalse();
+        f.DoorClosed.ShouldBeFalse();
+        f.Running = true;
+        shutdown.TryApproveWithoutAsking().ShouldBeFalse();
     }
 }

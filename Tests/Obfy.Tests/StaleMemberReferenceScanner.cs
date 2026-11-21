@@ -194,21 +194,43 @@ internal static class StaleMemberReferenceScanner
 
     /// <summary>
     /// Whether <paramref name="owner"/>, or a base type inside the set, declares a field or method with the
-    /// reference's name and signature.
+    /// reference's name and signature. A member of a base type is compared the way the CLR does it: with the generic
+    /// arguments of the base type's instantiation substituted (<c>T Get()</c> of <c>Box&lt;T&gt;</c> is <c>int32 ()</c> for
+    /// <c>IntBox : Box&lt;int&gt;</c>), expressed in the owner's own generic parameters.
     /// </summary>
     private static bool HasMember(TypeDef owner, MemberRef reference, IReadOnlyList<ModuleDef> set)
     {
-        for (var type = owner; type is not null; type = ResolveType(type.BaseType, set))
+        IList<TypeSig>? arguments = null; // what the generic parameters of `type` stand for; null: as declared
+        var seen = new HashSet<TypeDef>();
+        for (var type = owner; type is not null && seen.Add(type);)
         {
             if (reference.IsFieldRef)
             {
-                if (type.Fields.Any(f => f.Name == reference.Name && Comparer.Equals(f.FieldSig, reference.FieldSig)))
+                if (type.Fields.Any(f => f.Name == reference.Name
+                        && Comparer.Equals(arguments is null ? f.FieldSig : TypeSigSubstitution.Substitute(f.FieldSig, arguments), reference.FieldSig)))
                     return true;
             }
-            else if (type.Methods.Any(m => m.Name == reference.Name && Comparer.Equals(m.MethodSig, reference.MethodSig)))
+            else if (type.Methods.Any(m => m.Name == reference.Name
+                         && Comparer.Equals(arguments is null ? m.MethodSig : TypeSigSubstitution.Substitute(m.MethodSig, arguments), reference.MethodSig)))
             {
                 return true;
             }
+
+            // The next type up and what its generic parameters stand for.
+            var baseType = type.BaseType;
+            var next = ResolveType(baseType, set);
+            if (baseType is TypeSpec { TypeSig: GenericInstSig instantiation })
+            {
+                arguments = arguments is null
+                    ? instantiation.GenericArguments.ToList()
+                    : instantiation.GenericArguments.Select(a => TypeSigSubstitution.Substitute(a, arguments)!).ToList();
+            }
+            else
+            {
+                arguments = null;
+            }
+
+            type = next;
         }
 
         return false;

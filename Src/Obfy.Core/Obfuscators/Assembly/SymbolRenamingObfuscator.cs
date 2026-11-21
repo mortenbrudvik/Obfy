@@ -789,7 +789,7 @@ public class SymbolRenamingObfuscator : IObfuscator
     private static IMemberDef? FindNamedArgumentMember(
         TypeDef attributeDef, CANamedArgument argument, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet)
     {
-        foreach (var type in TypeAndBases(attributeDef, set, resolveOutsideSet))
+        foreach (var (type, _) in TypeAndBases(attributeDef, set, resolveOutsideSet))
         {
             if (argument.IsField)
             {
@@ -815,17 +815,81 @@ public class SymbolRenamingObfuscator : IObfuscator
     /// <summary>
     /// <paramref name="start"/> and its base types as far as they are definitions of the set (or, with
     /// <paramref name="resolveOutsideSet"/>, resolvable). A base given as a generic instantiation
-    /// (<c>Base&lt;int&gt;</c>) is followed through its generic type.
+    /// (<c>Base&lt;int&gt;</c>) is followed through its generic type, and each type comes with what its generic
+    /// parameters stand for, written in terms of the generic parameters of <paramref name="start"/> (null: they stand
+    /// for themselves, which is how a member reference to <paramref name="start"/> itself writes them).
     /// </summary>
-    private static IEnumerable<TypeDef> TypeAndBases(TypeDef start, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet)
+    private static IEnumerable<(TypeDef Type, IList<TypeSig>? TypeArguments)> TypeAndBases(
+        TypeDef start, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet)
     {
         var seen = new HashSet<TypeDef>();
+        IList<TypeSig>? arguments = null;
         for (var type = start; type != null && seen.Add(type); )
         {
-            yield return type;
-            type = ResolveTypeInSet(type.BaseType, type.Module, set, resolveOutsideSet);
+            yield return (type, arguments);
+
+            var baseType = type.BaseType;
+            var next = ResolveTypeInSet(baseType, type.Module, set, resolveOutsideSet);
+            if (baseType is TypeSpec { TypeSig: GenericInstSig instantiation })
+            {
+                // The base's generic parameters stand for the instantiation's arguments, which may mention the
+                // generic parameters of `type`, which in turn stand for `arguments`.
+                arguments = arguments is null
+                    ? instantiation.GenericArguments
+                    : instantiation.GenericArguments.Select(a => Substitute(a, arguments)!).ToList();
+            }
+            else
+            {
+                arguments = null;
+            }
+
+            type = next;
         }
     }
+
+    /// <summary>
+    /// Replaces the generic parameters (<c>!0</c>) of <paramref name="sig"/> with <paramref name="typeArguments"/>: how
+    /// the CLR reads a member of a base type, <c>T Get()</c> of <c>Box&lt;T&gt;</c>, when it compares it with a reference
+    /// written for a derived type, <c>int32 ()</c> for <c>IntBox : Box&lt;int&gt;</c>. Method generic parameters
+    /// (<c>!!0</c>) stay. (dnlib has the same helper, but not public.)
+    /// </summary>
+    private static TypeSig? Substitute(TypeSig? sig, IList<TypeSig> typeArguments)
+    {
+        switch (sig)
+        {
+            case null:
+                return null;
+            case GenericVar variable:
+                return variable.Number < typeArguments.Count ? typeArguments[(int)variable.Number] : sig;
+            case GenericInstSig generic:
+                return new GenericInstSig(
+                    generic.GenericType,
+                    generic.GenericArguments.Select(argument => Substitute(argument, typeArguments)!).ToArray());
+            case SZArraySig array:
+                return new SZArraySig(Substitute(array.Next, typeArguments));
+            case ArraySig array:
+                return new ArraySig(Substitute(array.Next, typeArguments), array.Rank, array.Sizes, array.LowerBounds);
+            case PtrSig pointer:
+                return new PtrSig(Substitute(pointer.Next, typeArguments));
+            case ByRefSig byRef:
+                return new ByRefSig(Substitute(byRef.Next, typeArguments));
+            case PinnedSig pinned:
+                return new PinnedSig(Substitute(pinned.Next, typeArguments));
+            case CModReqdSig required:
+                return new CModReqdSig(required.Modifier, Substitute(required.Next, typeArguments));
+            case CModOptSig optional:
+                return new CModOptSig(optional.Modifier, Substitute(optional.Next, typeArguments));
+            default:
+                return sig;
+        }
+    }
+
+    private static MethodSig Substitute(MethodSig sig, IList<TypeSig> typeArguments) =>
+        new(
+            sig.CallingConvention,
+            sig.GenParamCount,
+            Substitute(sig.RetType, typeArguments),
+            sig.Params.Select(parameter => Substitute(parameter, typeArguments)!).ToList());
 
     /// <summary>
     /// The definition a type reference, a definition or an instantiation of a generic type
@@ -904,10 +968,50 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (typeDef is null)
             return resolveOutsideSet ? memberRef.Resolve() as IMemberDef : null;
 
-        if (memberRef.IsFieldRef)
-            return typeDef.FindField(memberRef.Name, memberRef.FieldSig);
+        // The member is on the type the reference names or, like the CLR looks for it, on a base type. A reference
+        // written for a derived type (no compiler does it, but the metadata allows it) names the base type's member the
+        // way the derived type sees it: with the arguments of the base's instantiation in place of its generic parameters.
+        foreach (var (type, arguments) in TypeAndBases(typeDef, set, resolveOutsideSet))
+        {
+            IMemberDef? found = memberRef.IsFieldRef
+                ? FindField(type, arguments, memberRef)
+                : FindMethod(type, arguments, memberRef);
+            if (found != null)
+                return found;
+        }
 
-        return typeDef.FindMethod(memberRef.Name, memberRef.MethodSig);
+        return null;
+    }
+
+    private static FieldDef? FindField(TypeDef type, IList<TypeSig>? typeArguments, MemberRef memberRef)
+    {
+        if (typeArguments is null)
+            return type.FindField(memberRef.Name, memberRef.FieldSig);
+
+        var comparer = new SigComparer();
+        foreach (var field in type.Fields)
+        {
+            if (field.Name == memberRef.Name
+                && comparer.Equals(new FieldSig(Substitute(field.FieldSig.Type, typeArguments)), memberRef.FieldSig))
+                return field;
+        }
+
+        return null;
+    }
+
+    private static MethodDef? FindMethod(TypeDef type, IList<TypeSig>? typeArguments, MemberRef memberRef)
+    {
+        if (typeArguments is null)
+            return type.FindMethod(memberRef.Name, memberRef.MethodSig);
+
+        var comparer = new SigComparer();
+        foreach (var method in type.Methods)
+        {
+            if (method.Name == memberRef.Name && comparer.Equals(Substitute(method.MethodSig, typeArguments), memberRef.MethodSig))
+                return method;
+        }
+
+        return null;
     }
 
     private static TypeDef? FindExportedTypeInSet(

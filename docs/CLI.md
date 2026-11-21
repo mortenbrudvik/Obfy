@@ -226,10 +226,10 @@ obfy MyApp.dll -o output/ --map symbols.json
 
 #### Map and report paths
 
-The map and the report are written after the run, so a path that names a file the run needs would replace it. The CLI refuses such a command line before it reads or writes anything: it prints which option and which file, adds one problem-matcher line (an error against that file), and exits with code 1. The `--map` or `--report` path may not be:
+The map and the report are written after the run, so a path that names a file the run needs would replace it. The CLI refuses such a command line before it obfuscates or writes any output: it prints which option and which file, adds one problem-matcher line (an error against that file), and exits with code 1. The checks that need only the command line (the listed inputs, the `-c` file, `--map` against `--report`) run first; for a solution or project the CLI has to read the solution and project files to know what it lists, so that check comes after this analysis, still before anything is written. As a last check, before the map and the report are written, the paths of the outputs the run really wrote are compared once more, which can refuse after the outputs exist (the map and the report are then not written). The `--map` or `--report` path may not be:
 
 - one of the inputs: every listed file (`.dll`, `.exe`, `.cs`, the solution or project file), and for a solution or project the project files and built outputs it lists, including the ones it skips;
-- a file the run writes: each output, with `-o` or without (`{name}.obfuscated{ext}`, `{name}.merged{ext}`, `obfy-out/`, `obfy-src/`), the files packing writes beside an output (`{name}.runtimeconfig.json`, or `{name}.launcher.exe` and `{name}.launcher.runtimeconfig.json` with `packing.rid: portable`), and, for a single assembly or a merge, the incremental cache file `{output}.obfycache`;
+- a file the run may write or remove: each output, with `-o` or without (`{name}.obfuscated{ext}`, `{name}.merged{ext}`, `obfy-out/`, `obfy-src/`), the files packing may write beside an output (`{name}.runtimeconfig.json`, or `{name}.launcher.exe` and `{name}.launcher.runtimeconfig.json` with `packing.rid: portable`; an assembly without an entry point gets none), and, for a single assembly or a merge, the incremental cache file `{output}.obfycache` (written with `--incremental`, removed when it exists without it);
 - the file given with `-c`;
 - for `--report`, the same file as `--map`.
 

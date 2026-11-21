@@ -48,10 +48,12 @@ public class RunPathGuardTests : IDisposable
 
         Say(PathRole.Input).ShouldBe(
             $"--report cannot be '{report.FullName}': it is an input file and the run would replace it with the report. Choose another path for --report.");
+        Say(PathRole.SessionFile).ShouldBe(
+            $"--report cannot be '{report.FullName}': it is a project file or build output that the solution or project lists, and the run would replace it with the report. Choose another path for --report.");
         Say(PathRole.Config).ShouldBe(
             $"--report cannot be '{report.FullName}': it is the configuration file given with -c and the run would replace it with the report. Choose another path for --report.");
         Say(PathRole.Output).ShouldBe(
-            $"--report cannot be '{report.FullName}': it is a file the run writes and the report would replace it. Choose another path for --report.");
+            $"--report cannot be '{report.FullName}': it is a file the run may write or remove, and the report would replace it. Choose another path for --report.");
     }
 
     [Fact]
@@ -221,7 +223,7 @@ public class RunPathGuardTests : IDisposable
         var collision = report.ShouldHaveSingleItem();
         collision.Option.ShouldBe("--report");
         collision.Message.ShouldContain(Path.GetFullPath(launcher));
-        collision.Message.ShouldContain("a file the run writes");
+        collision.Message.ShouldContain("a file the run may write or remove");
         clear.ShouldBeEmpty();
     }
 

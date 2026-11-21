@@ -6,13 +6,19 @@ namespace Obfy.Console;
 /// <summary>What a path the run must not replace is to the run.</summary>
 internal enum PathRole
 {
-    /// <summary>A file the run reads: a listed input, or a project file or built output a solution session reads.</summary>
+    /// <summary>A file named on the command line.</summary>
     Input,
+
+    /// <summary>A project file or build output that a solution or project session lists, read or not.</summary>
+    SessionFile,
 
     /// <summary>The <c>-c</c> configuration file.</summary>
     Config,
 
-    /// <summary>A file the run writes: an output, the files packing adds beside it, its incremental cache file.</summary>
+    /// <summary>
+    /// A file the run may write or remove: an output, the files packing adds beside it (not written for an assembly
+    /// without an entry point), its incremental cache file (written with <c>--incremental</c>, removed without it).
+    /// </summary>
     Output
 }
 
@@ -161,8 +167,10 @@ internal static class RunPathGuard
         var why = role switch
         {
             PathRole.Input => $"it is an input file and the run would replace it with the {noun}",
+            PathRole.SessionFile =>
+                $"it is a project file or build output that the solution or project lists, and the run would replace it with the {noun}",
             PathRole.Config => $"it is the configuration file given with -c and the run would replace it with the {noun}",
-            _ => $"it is a file the run writes and the {noun} would replace it"
+            _ => $"it is a file the run may write or remove, and the {noun} would replace it"
         };
 
         return $"{option} cannot be '{path}': {why}. Choose another path for {option}.";

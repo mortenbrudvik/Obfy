@@ -273,6 +273,44 @@ public class CliMapReportGuardTests : IDisposable
         await AssertRefusedAsync($"{scenario.Args} --dry-run {option} \"{given}\"", option, given, before);
     }
 
+    [Theory]
+    [InlineData("--map")]
+    [InlineData("--report")]
+    public async Task OptionNamingAProjectFileOrBuildOutputOfASolution_SaysTheSolutionListsIt(string option)
+    {
+        var scenario = Setup(Mode.Solution);
+        var before = Snapshot();
+
+        foreach (var listed in scenario.Inputs.Skip(1))
+        {
+            var (exit, text, problems) = await RunAsync($"{scenario.Args} {option} \"{listed}\"");
+
+            exit.ShouldBe(1, text);
+            var message = problems.ShouldHaveSingleItem(text).Message;
+            message.ShouldContain("a project file or build output that the solution or project lists");
+            message.ShouldNotContain("an input file");
+        }
+
+        var (solutionExit, _, solutionProblems) = await RunAsync($"{scenario.Args} {option} \"{scenario.Inputs[0]}\"");
+        solutionExit.ShouldBe(1);
+        solutionProblems.ShouldHaveSingleItem().Message.ShouldContain("it is an input file");
+        Snapshot().ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task OptionNamingAFileTheRunOnlyMayWrite_SaysSo()
+    {
+        // The incremental cache file is written with --incremental and removed without it, and a library's packing files
+        // are not written at all: "writes" would be wrong for some of these, "may write or remove" is true for all.
+        var scenario = Setup(Mode.SingleFile);
+        var cache = scenario.Outputs[0] + ".obfycache";
+
+        var (exit, text, problems) = await RunAsync($"{scenario.Args} --map \"{cache}\"");
+
+        exit.ShouldBe(1, text);
+        problems.ShouldHaveSingleItem(text).Message.ShouldContain("it is a file the run may write or remove");
+    }
+
     // ---- The option names the configuration file --------------------------------------------------------------
 
     [Theory]

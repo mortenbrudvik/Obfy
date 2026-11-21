@@ -877,7 +877,7 @@ public class Program
                 mapFile, reportFile,
                 () =>
                 [
-                    new ProtectedPaths(PathRole.Input, session.Entries.SelectMany(static e => new[] { e.ProjectPath, e.OutputPath })),
+                    new ProtectedPaths(PathRole.SessionFile, session.Entries.SelectMany(static e => new[] { e.ProjectPath, e.OutputPath })),
                     new ProtectedPaths(
                         PathRole.Output,
                         PlanClosedSetOutputs([.. closedSetInputs.Select(static i => i.AssemblyPath)], sessionFolder, useMerge, settings))

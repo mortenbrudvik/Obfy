@@ -237,7 +237,7 @@ Reactor’s **$249 single-developer license excludes build servers**. CI needs t
 - Method IL XOR (Windows), managed IL virtualization (eligible methods; see limits), dependency embedding, assembly merge, closed-set / solution rename, watermark, HTML/JSON reports
 - Native win-x64 FDD packing stub (`packing.enabled`; `portable` keeps the managed launcher). Closed-set / solution runs pack each entry-point output
 - `runtimeProfile` gating so NativeAOT / Unity IL2CPP / Blazor WASM do not get `VirtualProtect` / AssemblyResolve helpers they cannot run
-- Incremental cache (SHA-256 of Obfy version + input bytes + settings)
+- Incremental cache (SHA-256 of Obfy build + input bytes + settings, plus the cached run's statistics and a fingerprint of the output)
 - Fluent WPF UI, VS 2022 extension, CLI wizard, Microsoft Store listing, MSIX, and Setup.exe
 - Honest docs: encryption is obfuscation, not confidentiality
 

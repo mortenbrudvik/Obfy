@@ -35,6 +35,7 @@ internal static class ProtectionCases
             ["SymbolRenaming"] = s => s.SymbolRenaming.Enabled = true,
             ["Metadata"] = s => { s.Metadata.RemoveDebugInfo = true; s.Metadata.RemoveAttributes = true; },
             ["Virtualization"] = s => s.Virtualization.Enabled = true,
+            ["VirtualizationWithRenaming"] = s => { s.Virtualization.Enabled = true; s.SymbolRenaming.Enabled = true; },
             ["Everything"] = s =>
             {
                 s.StringEncryption.Enabled = true;
@@ -50,6 +51,7 @@ internal static class ProtectionCases
                 s.Protection.MethodEncryption = true;
                 s.Protection.ReferenceProxy = true;
                 s.Protection.ProxyExternalCalls = true;
+                s.Virtualization.Enabled = true;
                 s.ControlFlow.Enabled = true;
                 s.SymbolRenaming.Enabled = true;
                 s.Metadata.RemoveDebugInfo = true;
@@ -64,7 +66,8 @@ internal static class ProtectionCases
     /// cases, so it keeps its name). A case that should but did not has proved nothing.
     /// </summary>
     public static bool InjectsRuntimeType(string name) => name is not
-        ("AntiDecompiler" or "ControlFlowSwitch" or "ControlFlowOpaque" or "Metadata" or "SymbolRenaming" or "Everything");
+        ("AntiDecompiler" or "ControlFlowSwitch" or "ControlFlowOpaque" or "Metadata" or "SymbolRenaming" or "Everything"
+            or "VirtualizationWithRenaming");
 
     /// <summary>Custom level with every default-on technique off, then the case's own switches.</summary>
     public static ObfySettings SettingsFor(string name)

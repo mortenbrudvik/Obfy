@@ -33,9 +33,44 @@ internal static class InstalledRuntimes
         if (windowsOnly && !OperatingSystem.IsWindows())
             return "Windows-only: method encryption and anti-dump use kernel32.";
 
-        return Has(targetFramework)
-            ? null
-            : $"The runtime for {targetFramework} is not installed, so the fixture cannot run.";
+        if (!Has(targetFramework))
+            return $"The runtime for {targetFramework} is not installed, so the fixture cannot run.";
+
+        // An SDK build of an older .NET Framework target compiles against reference assemblies that come from a
+        // targeting pack or from a NuGet package. Without either on this machine (an offline box that never
+        // restored them) the build would fail, not the code under test, so that is a skip too.
+        if (IsNetFramework(targetFramework) && !HasNetFrameworkReferenceAssemblies(targetFramework))
+        {
+            return $"The reference assemblies for {targetFramework} are not on this machine (no targeting pack, and no " +
+                   $"Microsoft.NETFramework.ReferenceAssemblies.{targetFramework} package in the NuGet cache); " +
+                   "restore them once by building any project that targets it.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The mscorlib of a .NET Framework version's reference assemblies, from the targeting pack (the older ones ship
+    /// IntelliSense files only) or the Microsoft.NETFramework.ReferenceAssemblies package the SDK restores.
+    /// </summary>
+    public static bool HasNetFrameworkReferenceAssemblies(string targetFramework)
+    {
+        var digits = targetFramework["net".Length..];
+        var version = string.Join('.', digits.ToCharArray());
+
+        var pack = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            "Reference Assemblies", "Microsoft", "Framework", ".NETFramework", "v" + version, "mscorlib.dll");
+        if (File.Exists(pack))
+            return true;
+
+        var packages = Environment.GetEnvironmentVariable("NUGET_PACKAGES") is { Length: > 0 } custom
+            ? custom
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
+        var package = Path.Combine(packages, "microsoft.netframework.referenceassemblies." + targetFramework);
+        return Directory.Exists(package) &&
+               Directory.GetDirectories(package).Any(d =>
+                   File.Exists(Path.Combine(d, "build", ".NETFramework", "v" + version, "mscorlib.dll")));
     }
 
     /// <summary>

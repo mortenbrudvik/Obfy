@@ -167,7 +167,7 @@ public class AntiDumpObfuscator : IObfuscator
         body.Variables.Add(procLocal);
         body.Variables.Add(oldProtect);
 
-        var marshalType = new TypeRefUser(module, "System.Runtime.InteropServices", "Marshal", module.CorLibTypes.AssemblyRef);
+        var marshalType = FrameworkReferences.Type(module, "System.Runtime.InteropServices", "Marshal");
         var writeByte = new MemberRefUser(module, "WriteByte",
             MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.IntPtr, module.CorLibTypes.Byte),
             marshalType);
@@ -236,7 +236,7 @@ public class AntiDumpObfuscator : IObfuscator
         var body = new CilBody { InitLocals = true };
         method.Body = body;
 
-        var marshalType = new TypeRefUser(module, "System.Runtime.InteropServices", "Marshal", module.CorLibTypes.AssemblyRef);
+        var marshalType = FrameworkReferences.Type(module, "System.Runtime.InteropServices", "Marshal");
         var moduleType = new TypeRefUser(module, "System.Reflection", "Module", module.CorLibTypes.AssemblyRef);
         var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
         var runtimeTypeHandle = new TypeRefUser(module, "System", "RuntimeTypeHandle", module.CorLibTypes.AssemblyRef);

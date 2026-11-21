@@ -14,7 +14,7 @@ describe("useLog", () => {
   it("keepsTheLinesOfABatchThatArrivesAfterANewerOne", async () => {
     const host = mockBridge({ "log.get": (): LogSnapshot => ({ revision: 2, lines: [line(1, "Info", "a"), line(2, "Info", "b")] }) });
     const { result } = renderHook(() => useLog());
-    await waitFor(() => expect(result.current.lines).toHaveLength(2), { timeout: 3000 });
+    await waitFor(() => expect(result.current.lines).toHaveLength(2));
 
     host.push("log.appended", { revision: 6, lines: [line(5, "Info", "e"), line(6, "Info", "f")] });
     host.push("log.appended", { revision: 4, lines: [line(3, "Info", "c"), line(4, "Info", "d")] });
@@ -30,7 +30,7 @@ describe("useLog", () => {
       },
     });
     const { result } = renderHook(() => useLog());
-    await waitFor(() => expect(result.current.lines).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(result.current.lines).toHaveLength(1));
 
     await act(async () => {
       await result.current.clear();
@@ -50,7 +50,7 @@ describe("useLog", () => {
       },
     });
     const { result } = renderHook(() => useLog());
-    await waitFor(() => expect(result.current.lines).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(result.current.lines).toHaveLength(1));
     await act(async () => result.current.clear());
     expect(result.current.error).not.toBeNull();
 
@@ -66,7 +66,7 @@ describe("useLog", () => {
     mockBridge({ "log.get": (): LogSnapshot => ({ revision: 5100, lines }) });
 
     const { result } = renderHook(() => useLog());
-    await waitFor(() => expect(result.current.lines.length).toBeGreaterThan(0), { timeout: 3000 });
+    await waitFor(() => expect(result.current.lines.length).toBeGreaterThan(0));
 
     expect(result.current.lines).toHaveLength(5000);
     expect(result.current.trimmed).toBe(100);

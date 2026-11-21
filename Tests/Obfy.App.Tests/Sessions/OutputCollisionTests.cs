@@ -360,6 +360,204 @@ public sealed class OutputCollisionTests : IDisposable
         ]);
     }
 
+    // ---- The symbol map (B-44: a map typed onto a listed assembly replaced it with JSON after the run) ----
+
+    private static string MapOverInput(string name) =>
+        $"The symbol map would replace {name}, one of your inputs. Choose another location for the symbol map.";
+
+    private static string MapOverOutput(string name) =>
+        $"The symbol map would replace {name}, which the run itself writes. Choose another location for the symbol map.";
+
+    private InputSession WithSymbolMap(string mapPath, params string[] files)
+    {
+        var session = With(files);
+        session.SetWriteSymbolMap(true);
+        session.SetSymbolMapPath(mapPath);
+        return session;
+    }
+
+    [Fact]
+    public void SymbolMap_PathIsAnIncludedInput_Collides_AndTheMessageSaysHowToGetOut()
+    {
+        var input = Make("App.dll");
+        var session = WithSymbolMap(input, input);
+
+        var collision = Collision(session).ShouldNotBeNull();
+
+        collision.InputPath.ShouldBe(input);
+        collision.OutputPath.ShouldBe(input);
+        collision.Message.ShouldBe(MapOverInput("App.dll"));
+    }
+
+    [Fact]
+    public void SymbolMap_PathIsASkippedListedRow_Collides()
+    {
+        var included = Make("App.dll");
+        var skipped = Make("Other.dll");
+        var session = With(included, skipped);
+        session.SetIncluded(session.GetSnapshot().Files.Single(f => f.Path == skipped).Id, included: false);
+        session.SetWriteSymbolMap(true);
+        session.SetSymbolMapPath(skipped);
+
+        var collision = Collision(session).ShouldNotBeNull();
+
+        collision.InputPath.ShouldBe(skipped);
+        collision.Message.ShouldBe(MapOverInput("Other.dll"));
+    }
+
+    [Theory]
+    [InlineData("upper")]
+    [InlineData("lower")]
+    [InlineData("dotDot")]
+    [InlineData("dot")]
+    [InlineData("doubleSeparators")]
+    public void SymbolMap_ADifferentSpellingOfTheInput_StillCollides(string spelling)
+    {
+        var input = Make("App.dll");
+        Folder("sub");
+        var typed = spelling switch
+        {
+            "upper" => input.ToUpperInvariant(),
+            "lower" => input.ToLowerInvariant(),
+            "dotDot" => Path.Combine(_temp, "sub", "..", "App.dll"),
+            "dot" => Path.Combine(_temp, ".", "App.dll"),
+            _ => _temp + Path.DirectorySeparatorChar + Path.DirectorySeparatorChar + "App.dll"
+        };
+
+        var session = WithSymbolMap(typed, input);
+
+        Collision(session).ShouldNotBeNull().Message.ShouldBe(MapOverInput("App.dll"));
+    }
+
+    [Fact]
+    public void SymbolMap_ARelativePathOntoAListedFileInTheOutputFolder_Collides()
+    {
+        // The protected copy goes to out\App.dll; the skipped row out\Lib.dll is a different file the map would replace.
+        var included = Make(Path.Combine("a", "App.dll"));
+        var skipped = Make(Path.Combine("out", "Lib.dll"));
+        var session = With(included, skipped);
+        session.SetIncluded(session.GetSnapshot().Files.Single(f => f.Path == skipped).Id, included: false);
+        session.SetOutputFolder(Path.Combine(_temp, "out"));
+        session.SetWriteSymbolMap(true);
+        session.SetSymbolMapPath("Lib.dll");
+
+        session.ResolveSymbolMapPath().ShouldBe(skipped);
+        Collision(session).ShouldNotBeNull().Message.ShouldBe(MapOverInput("Lib.dll"));
+    }
+
+    [Fact]
+    public void SymbolMap_ARelativePathWithDotDotOntoAnIncludedInput_Collides()
+    {
+        var input = Make(Path.Combine("a", "App.dll"));
+        var session = With(input);
+        session.SetOutputFolder(Path.Combine(_temp, "out"));
+        session.SetWriteSymbolMap(true);
+        session.SetSymbolMapPath(Path.Combine("..", "a", "App.dll"));
+
+        Collision(session).ShouldNotBeNull().InputPath.ShouldBe(input);
+    }
+
+    [Fact]
+    public void SymbolMap_ARelativePathWithNoFolder_ResolvesBesideTheFirstInput()
+    {
+        var first = Make(Path.Combine("a", "App.dll"));
+        var other = Make(Path.Combine("a", "Lib.dll"));
+        var session = With(first);
+        session.SetWriteSymbolMap(true);
+        session.SetSymbolMapPath("Lib.dll");
+        Collision(session).ShouldBeNull();
+
+        session.AddPaths([other]);
+        session.SetIncluded(session.GetSnapshot().Files.Single(f => f.Path == other).Id, included: false);
+
+        Collision(session).ShouldNotBeNull().InputPath.ShouldBe(other);
+    }
+
+    [Fact]
+    public void SymbolMap_PathIsAPlannedOutput_Collides()
+    {
+        var input = Make("App.dll");
+        var session = WithSymbolMap(Path.Combine(_temp, "out", "App.dll"), input);
+        session.SetOutputFolder(Path.Combine(_temp, "out"));
+
+        var collision = Collision(session).ShouldNotBeNull();
+
+        collision.InputPath.ShouldBe(input);
+        collision.OutputPath.ShouldBe(Path.Combine(_temp, "out", "App.dll"));
+        collision.Message.ShouldBe(MapOverOutput("App.dll"));
+    }
+
+    [Fact]
+    public void SymbolMap_PathIsTheMergedAssembly_Collides()
+    {
+        var session = WithSymbolMap(Path.Combine(_temp, "a.obfuscated.dll"), Make("a.dll"), Make("b.dll"));
+
+        Collision(session, merge: true).ShouldNotBeNull().Message.ShouldBe(MapOverOutput("a.obfuscated.dll"));
+        // Not a merge run: a.obfuscated.dll is not something the run writes.
+        Collision(session, merge: false).ShouldBeNull();
+    }
+
+    [Fact]
+    public void SymbolMap_PathIsAClosedSetOutput_Collides()
+    {
+        var session = WithSymbolMap(Path.Combine(_temp, "out", "b.dll"), Make("a.dll"), Make("b.dll"));
+        session.SetOutputFolder(Path.Combine(_temp, "out"));
+
+        Collision(session).ShouldNotBeNull().Message.ShouldBe(MapOverOutput("b.dll"));
+    }
+
+    [Fact]
+    public void SymbolMap_AnOutputThatReplacesAnInputIsReportedFirst()
+    {
+        // Both are wrong; the guard that was there first speaks first, so its message and tests stay what they were.
+        var input = Make("App.dll");
+        var session = WithSymbolMap(input, input);
+        session.SetOutputFolder(_temp);
+
+        Collision(session).ShouldNotBeNull().Message.ShouldStartWith("The output folder is the folder of App.dll;");
+    }
+
+    [Fact]
+    public void SymbolMap_DefaultOrAnotherFile_DoesNotCollide()
+    {
+        var input = Make("App.dll");
+        var session = With(input);
+        session.SetWriteSymbolMap(true);
+        Collision(session).ShouldBeNull();
+
+        session.SetSymbolMapPath(Path.Combine(_temp, "maps", "app.map.json"));
+        Collision(session).ShouldBeNull();
+
+        // Beside the input, under a name no input has and no run writes.
+        session.SetSymbolMapPath(Path.Combine(_temp, "App.dll.map"));
+        Collision(session).ShouldBeNull();
+    }
+
+    [Fact]
+    public void SymbolMap_OptionOff_AMapPathOnAListedFileDoesNotCollide()
+    {
+        var input = Make("App.dll");
+        var session = WithSymbolMap(input, input);
+        Collision(session).ShouldNotBeNull();
+
+        session.SetWriteSymbolMap(false);
+
+        session.CaptureRun(merge: false).SymbolMapPath.ShouldBeNull();
+        Collision(session).ShouldBeNull();
+    }
+
+    [JunctionFact]
+    public void SymbolMap_PathReachedThroughAJunction_IsTheListedFileInTheRealFolder()
+    {
+        var input = Make(Path.Combine("real", "App.dll"));
+        var link = Path.Combine(_temp, "link");
+        Junctions.TryCreate(link, Path.GetDirectoryName(input)!, out var error).ShouldBeTrue(error);
+
+        var session = WithSymbolMap(Path.Combine(link, "App.dll"), input);
+
+        Collision(session).ShouldNotBeNull().Message.ShouldBe(MapOverInput("App.dll"));
+    }
+
     // ---- Links ----
 
     [JunctionFact]

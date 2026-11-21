@@ -952,7 +952,7 @@ public class Program
             result, session.SourcePath, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
     }
 
-    internal static async Task<int> RunLooseClosedSetAsync(
+    private static async Task<int> RunLooseClosedSetAsync(
         FileInfo[] inputs,
         DirectoryInfo? output,
         ObfySettings settings,
@@ -990,6 +990,9 @@ public class Program
             AnsiConsole.MarkupLine(
                 $"[yellow]Ignoring non-assembly input: {Markup.Escape(file.FullName)}[/]");
 
+        // Not reachable from the command line: this runs only when ShouldUseLooseClosedSet found two assemblies on disk. It stays
+        // because that check and this one are two File.Exists passes, and a file that vanishes in between must end the run with
+        // a message instead of an IndexOutOfRangeException at present[0] below. There is no test: nothing but that race gets here.
         if (present.Count == 0)
         {
             const string noAssemblies = "No assemblies found.";

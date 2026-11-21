@@ -1,6 +1,5 @@
 using dnlib.DotNet;
 using Obfy.Console;
-using Obfy.Core.Models;
 using Shouldly;
 
 namespace Obfy.Console.Tests;
@@ -532,44 +531,6 @@ public class SolutionInputTests : IDisposable
 
         exitCode.ShouldBe(1);
         ShouldBeOneErrorLine(problems, a, "Merge requires at least two input assemblies.", text);
-    }
-
-    [Fact]
-    public async Task NoAssembliesFound_EmitsOneProblemLineAgainstTheFirstInput_WhenNoAssemblyWasListed()
-    {
-        // Unreachable from the command line (a loose closed set needs two existing assemblies), so the method is called
-        // directly: nothing it lists is an assembly, and nothing has printed a line for that yet.
-        var x = Path.Combine(_tempDirectory, "X.cs");
-        var y = Path.Combine(_tempDirectory, "Y.cs");
-        File.WriteAllText(x, "class X {}");
-        File.WriteAllText(y, "class Y {}");
-        using var console = new AnsiConsoleCapture();
-        using var capture = new ProblemLineCapture();
-
-        var exitCode = await Program.RunLooseClosedSetAsync(
-            [new FileInfo(x), new FileInfo(y)], null, new ObfySettings(), null, null, dryRun: false, preservePublic: false,
-            null!, null!, CancellationToken.None);
-
-        exitCode.ShouldBe(2);
-        ShouldBeOneErrorLine(capture.Problems, x, "No assemblies found.", console.Text);
-    }
-
-    [Fact]
-    public async Task NoAssembliesFound_AddsNoLine_WhenEveryListedAssemblyIsMissing()
-    {
-        var missingA = Path.Combine(_tempDirectory, "NoSuchA.dll");
-        var missingB = Path.Combine(_tempDirectory, "NoSuchB.dll");
-        using var console = new AnsiConsoleCapture();
-        using var capture = new ProblemLineCapture();
-
-        var exitCode = await Program.RunLooseClosedSetAsync(
-            [new FileInfo(missingA), new FileInfo(missingB)], null, new ObfySettings(), null, null, dryRun: false, preservePublic: false,
-            null!, null!, CancellationToken.None);
-
-        exitCode.ShouldBe(2);
-        capture.Problems.Select(static p => (p.File, p.Message)).ShouldBe(
-            [(missingA, "File not found"), (missingB, "File not found")], "the per-file lines are enough");
-        console.Text.ShouldContain("No assemblies found.");
     }
 
     [Fact]

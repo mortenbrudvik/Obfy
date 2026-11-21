@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using Obfy.Core.Models.Solution;
 using Shouldly;
 using static Obfy.Tests.RenamingTestSupport;
@@ -285,4 +286,209 @@ public class SymbolRenamingDerivedParentTests
         memberRef.Signature = memberRef.IsFieldRef
             ? TypeSigSubstitution.Substitute(memberRef.FieldSig, arguments)
             : TypeSigSubstitution.Substitute(memberRef.MethodSig, arguments);
+
+    /// <summary>
+    /// Several members of one generic base can share a signature once the base is instantiated (<c>Pick(T)</c> and
+    /// <c>Pick(int)</c> on <c>Base&lt;int&gt;</c>). The runtime, faced with a reference that names the derived type,
+    /// prefers a virtual match over a non-virtual one and otherwise takes the last match in metadata order. Hiding,
+    /// an explicit interface method under its own name, and an overload that does not collapse must keep the member
+    /// the reference actually names. The call is hand-built: no compiler emits a derived parent.
+    /// </summary>
+    [Theory]
+    [InlineData("nonvirtual-generic-first", "Pick", false, "2")]
+    [InlineData("nonvirtual-int-first", "Pick", false, "1")]
+    [InlineData("plain-then-virtual", "Pick", false, "1")]
+    [InlineData("virtual-then-plain", "Pick", false, "1")]
+    [InlineData("two-virtuals-generic-first", "Pick", false, "2")]
+    [InlineData("two-virtuals-int-first", "Pick", false, "1")]
+    [InlineData("hiding", "Value", false, "2")]
+    [InlineData("explicit-interface", "M", false, "1")]
+    [InlineData("distinct-overload", "Pick", false, "1")]
+    [InlineData("distinct-through-generic-base", "Pick", false, "1")]
+    [InlineData("collapsed-through-generic-base", "Pick", false, "2")]
+    [InlineData("hiding-field", "Item", true, "2")]
+    public async Task CollapsedSignaturesOnABase_AreBoundLikeTheRuntime(string name, string member, bool isField, string expected)
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var path = Compile(Usings + BindingSource(name) + BindingDriver, dir, "ShapeApp");
+            InstallDerivedCall(path, member, isField);
+            Run(path).ShouldBe(expected, $"{name}: the hand-built call is not what this runtime binds");
+
+            var outDir = Path.Combine(dir, "out");
+            Directory.CreateDirectory(outDir);
+            var output = Path.Combine(outDir, Path.GetFileName(path));
+            var result = await CreateService().ObfuscateAsync(path, output, SettingsFor("rename-only"));
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Warnings.Any(w => w.Contains("not rewritten", StringComparison.Ordinal))
+                .ShouldBeFalse(string.Join(" | ", result.Warnings));
+
+            Run(output).ShouldBe(expected, name);
+        }
+        finally
+        {
+            TryDelete(dir);
+        }
+    }
+
+    private const string BindingDriver = """
+
+        [System.Reflection.Obfuscation(Feature = "renaming", Exclude = true, ApplyToMembers = true)]
+        public static class Driver
+        {
+            public static string Run() => "unset";
+        }
+        """;
+
+    private static string BindingSource(string name) => name switch
+    {
+        "nonvirtual-generic-first" => GenericBase("""
+            public int Pick(T value) => 1;
+            public int Pick(int value) => 2;
+            """),
+        "nonvirtual-int-first" => GenericBase("""
+            public int Pick(int value) => 2;
+            public int Pick(T value) => 1;
+            """),
+        "plain-then-virtual" => GenericBase("""
+            public int Pick(int value) => 2;
+            public virtual int Pick(T value) => 1;
+            """),
+        "virtual-then-plain" => GenericBase("""
+            public virtual int Pick(T value) => 1;
+            public int Pick(int value) => 2;
+            """),
+        "two-virtuals-generic-first" => GenericBase("""
+            public virtual int Pick(T value) => 1;
+            public virtual int Pick(int value) => 2;
+            """),
+        "two-virtuals-int-first" => GenericBase("""
+            public virtual int Pick(int value) => 2;
+            public virtual int Pick(T value) => 1;
+            """),
+        "distinct-overload" => GenericBase("""
+            public int Pick(T value) => 1;
+            public int Pick(string value) => 2;
+            """),
+        "distinct-through-generic-base" => GenericBase("""
+            public int Pick(T value) => 1;
+            public int Pick(string value) => 2;
+            """, derivedBase: "Mid<int>", after: "public class Mid<U> : Base<U> { }"),
+        "collapsed-through-generic-base" => GenericBase("""
+            public int Pick(T value) => 1;
+            public int Pick(int value) => 2;
+            """, derivedBase: "Mid<int>", after: "public class Mid<U> : Base<U> { }"),
+        "hiding" => """
+            public class Base
+            {
+                public int Value() => 1;
+            }
+
+            public class Derived : Base
+            {
+                public new int Value() => 2;
+                public Derived() { }
+            }
+            """,
+        "explicit-interface" => """
+            public interface IFace
+            {
+                int Other();
+            }
+
+            public class Base
+            {
+                public int M() => 1;
+            }
+
+            public class Derived : Base, IFace
+            {
+                int IFace.Other() => 9;
+                public Derived() { }
+            }
+            """,
+        "hiding-field" => """
+            public class Base<T>
+            {
+                public T Item;
+            }
+
+            public class Derived : Base<int>
+            {
+                public new int Item = 2;
+                public Derived() { }
+            }
+            """,
+        _ => throw new ArgumentOutOfRangeException(nameof(name), name, null)
+    };
+
+    private static string GenericBase(string methods, string derivedBase = "Base<int>", string after = "") => $$"""
+        public class Base<T>
+        {
+            {{methods}}
+        }
+
+        {{after}}
+        public class Derived : {{derivedBase}}
+        {
+            public Derived() { }
+        }
+        """;
+
+    /// <summary>
+    /// Replaces <c>Driver.Run</c> with <c>new Derived().Member(...).ToString()</c>. The member reference names
+    /// <c>Derived</c> and, for <c>Pick</c>, carries the instantiated signature <c>int32 (int32)</c>.
+    /// </summary>
+    private static void InstallDerivedCall(string path, string member, bool isField)
+    {
+        byte[] bytes;
+        using (var module = ModuleDefMD.Load(File.ReadAllBytes(path)))
+        {
+            var derived = module.Types.Single(t => t.Name == "Derived");
+            var ctor = derived.Methods.Single(m => m.IsConstructor && !m.IsStatic);
+            var run = module.Types.Single(t => t.Name == "Driver").Methods.Single(m => m.Name == "Run");
+
+            MemberRef target = isField
+                ? new MemberRefUser(module, member, new FieldSig(module.CorLibTypes.Int32), derived)
+                : new MemberRefUser(
+                    module,
+                    member,
+                    member == "Pick"
+                        ? MethodSig.CreateInstance(module.CorLibTypes.Int32, module.CorLibTypes.Int32)
+                        : MethodSig.CreateInstance(module.CorLibTypes.Int32),
+                    derived);
+            module.UpdateRowId(target);
+
+            var toString = module.UpdateRowId(new MemberRefUser(
+                module,
+                "ToString",
+                MethodSig.CreateInstance(module.CorLibTypes.String),
+                module.CorLibTypes.Object.TypeDefOrRef));
+
+            var body = new CilBody { MaxStack = 3 };
+            body.Instructions.Add(Instruction.Create(OpCodes.Newobj, ctor));
+            if (isField)
+            {
+                body.Instructions.Add(Instruction.Create(OpCodes.Ldfld, target));
+            }
+            else
+            {
+                if (member == "Pick")
+                    body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+                body.Instructions.Add(Instruction.Create(OpCodes.Call, target));
+            }
+
+            body.Instructions.Add(Instruction.Create(OpCodes.Box, module.CorLibTypes.Int32.TypeDefOrRef));
+            body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, toString));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+            run.Body = body;
+
+            using var stream = new MemoryStream();
+            module.Write(stream);
+            bytes = stream.ToArray();
+        }
+
+        File.WriteAllBytes(path, bytes);
+    }
 }

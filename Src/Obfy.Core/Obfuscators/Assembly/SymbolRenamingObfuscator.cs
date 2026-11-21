@@ -1004,14 +1004,36 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (typeArguments is null)
             return type.FindMethod(memberRef.Name, memberRef.MethodSig);
 
+        // Substitution can make several methods share the reference's signature: Pick(T) and Pick(int) are
+        // different methods on Base<T> and the same method shape on Base<int>. CoreCLR then prefers a virtual
+        // match over a non-virtual one and, within that group, the last method in metadata order. Taking the
+        // first match renames the reference to the other method, and the call runs that method instead.
         var comparer = new SigComparer();
+        MethodDef? match = null;
         foreach (var method in type.Methods)
         {
-            if (method.Name == memberRef.Name && comparer.Equals(Substitute(method.MethodSig, typeArguments), memberRef.MethodSig))
-                return method;
+            if (method.Name != memberRef.Name
+                || !comparer.Equals(Substitute(method.MethodSig, typeArguments), memberRef.MethodSig))
+                continue;
+
+            if (match is null || PreferCollapsedMethod(method, match))
+                match = method;
         }
 
-        return null;
+        return match;
+    }
+
+    /// <summary>
+    /// <paramref name="candidate"/> is the match CoreCLR would keep when both methods share a signature after
+    /// substitution. A virtual method beats a non-virtual one. Otherwise the later method wins, because this is
+    /// called as the type's methods are walked in metadata order.
+    /// </summary>
+    private static bool PreferCollapsedMethod(MethodDef candidate, MethodDef current)
+    {
+        if (candidate.IsVirtual != current.IsVirtual)
+            return candidate.IsVirtual;
+
+        return true;
     }
 
     private static TypeDef? FindExportedTypeInSet(

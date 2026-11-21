@@ -152,26 +152,31 @@ public class AssemblyProcessor : IAssemblyProcessor
     }
 
     /// <summary>
-    /// The row ids of every table are preserved except MemberRef; the string, user-string and blob heaps are not,
-    /// so names and literals the pipeline removed or replaced are not carried into the output.
+    /// The row ids of every table are preserved except MemberRef and MethodSpec; the string, user-string and blob
+    /// heaps are not, so names and literals the pipeline removed or replaced are not carried into the output.
     /// <para>
     /// Preserving ids means the writer also emits, at each original id nothing claimed, the row it reads from the
     /// ORIGINAL metadata. A member reference whose signature mentions a generic parameter (<c>Box&lt;T&gt;.Item</c>
     /// used through <c>Box&lt;int&gt;</c>) is never claimed: dnlib hands every reader a fresh copy of it, so the
     /// renamer renames the copies the code uses and the writer adds the untouched originals next to them, still
-    /// carrying their original names. Not preserving MemberRef ids drops those rows. The other tables did not
-    /// grow in any output probed (TypeRef, TypeSpec, MethodSpec, StandAloneSig, Param, Property, Event), and
-    /// TypeSpec, MethodSpec and StandAloneSig rows hold no name anyway, so their ids stay. The tokens that
+    /// carrying their original names. Not preserving MemberRef ids drops those rows. A MethodSpec whose
+    /// instantiation contains a generic parameter is a fresh copy as well. Preserving that id makes the writer
+    /// emit the copy's member reference, and that reference still has the original name. MethodSpec rows hold no
+    /// name themselves, but the member reference they point at does, so those ids are not preserved either.
+    /// TypeSpec and StandAloneSig rows hold no name and do not point at one, so their ids stay. The tokens that
     /// survive are the ones token-based reflection can reach: TypeDef, Field, Method, Param, Event and Property
     /// (the members reflection hands out as <c>MetadataToken</c>, and what <c>Module.ResolveMethod(int)</c> and
-    /// the like accept), plus TypeRef, TypeSpec, MethodSpec and StandAloneSig, which only IL and signatures use.
-    /// A MemberRef token appears only in IL operands, where the writer writes the new row id itself; nothing in
-    /// this tool keeps one as a number (the post-save steps find methods by full name and by RVA, the VM tables
-    /// are indexes into helpers that load their members with <c>ldtoken</c>).
+    /// the like accept), plus TypeRef, TypeSpec and StandAloneSig, which only IL and signatures use.
+    /// A MemberRef or MethodSpec token appears only in IL operands, where the writer writes the new row id
+    /// itself; nothing in this tool keeps one as a number (the post-save steps find methods by full name and by
+    /// RVA, the VM tables are indexes into helpers that load their members with <c>ldtoken</c>).
     /// </para>
     /// </summary>
     private const MetadataFlags OutputMetadataFlags =
-        (MetadataFlags.PreserveRids & ~MetadataFlags.PreserveMemberRefRids) | MetadataFlags.PreserveExtraSignatureData;
+        (MetadataFlags.PreserveRids
+            & ~MetadataFlags.PreserveMemberRefRids
+            & ~MetadataFlags.PreserveMethodSpecRids)
+        | MetadataFlags.PreserveExtraSignatureData;
 
     private static void ReplaceTarget(string tempPath, string targetPath, bool targetExisted)
     {

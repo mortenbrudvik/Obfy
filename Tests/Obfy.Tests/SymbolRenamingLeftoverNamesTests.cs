@@ -10,7 +10,10 @@ namespace Obfy.Tests;
 /// Renamed names must not stay readable in the output file. A member reference whose signature mentions a generic
 /// parameter (a member of <c>Box&lt;T&gt;</c> used through <c>Box&lt;int&gt;</c>) is handed to the renamer as a fresh
 /// copy of the metadata row, and a writer that preserves row ids also emits the ORIGINAL row next to it: unreferenced,
-/// and still carrying the original name. Every case protects a program whose generic types have distinctive names
+/// and still carrying the original name. The same happens for a MethodSpec whose instantiation is a generic
+/// parameter (<c>ZqxHolder&lt;T&gt;.ZqxPassMethod&lt;U&gt;</c> calls <c>ZqxBox&lt;T&gt;.ZqxOpenMethod&lt;U&gt;</c>):
+/// preserving MethodSpec ids pulls the unrenamed member reference back in. That method is referenced only that way.
+/// Every case protects a program whose generic types have distinctive names
 /// and demands that none of them (UTF-8 for the #Strings heap, UTF-16 for #US) is found anywhere in the output
 /// file, and that the protected program still answers like the original.
 /// </summary>
@@ -41,6 +44,7 @@ public class SymbolRenamingLeftoverNamesTests
             public event Action<T> ZqxChangedEvent;
             public void ZqxRaiseMethod(T zqxRaiseArg) { ZqxChangedEvent?.Invoke(zqxRaiseArg); }
             public U ZqxConvertMethod<U>(Func<T, U> zqxConvertArg) => zqxConvertArg(ZqxItemField);
+            public U ZqxOpenMethod<U>(T zqxOpenArg) => default!;
             [IndexerName("ZqxIndexer")]
             public T this[int zqxIndexArg] => ZqxItemField;
 
@@ -75,6 +79,14 @@ public class SymbolRenamingLeftoverNamesTests
             public static T ZqxEchoMethod<T>(T zqxEchoArg) => zqxEchoArg;
         }
 
+        public class ZqxHolder<T>
+        {
+            // The only call to ZqxOpenMethod. Its type argument is this method's own type parameter, so the
+            // MethodSpec is not a cached row and a writer that preserves MethodSpec ids emits the original name too.
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            public U ZqxPassMethod<U>(ZqxBox<T> zqxPassBox, T zqxPassArg) => zqxPassBox.ZqxOpenMethod<U>(zqxPassArg);
+        }
+
         """;
 
     /// <summary>What uses them, through generic instantiations of every kind the C# compiler writes.</summary>
@@ -98,7 +110,8 @@ public class SymbolRenamingLeftoverNamesTests
                     + "/" + a.ZqxConvertMethod(x => x * 2) + "/" + a[0] + "/" + inner.ZqxInnerOtherField + inner.ZqxInnerPickMethod(1, "u")
                     + "/" + a.ZqxMakeInnerMethod().ZqxInnerOtherField + "/" + pair.ZqxPickMethod(true) + "/" + derived.ZqxTwiceMethod()
                     + "/" + nested.ZqxItemField.ZqxGetMethod() + nested.ZqxGetMethod().ZqxItemField
-                    + "/" + ZqxUtil.ZqxEchoMethod(7) + ZqxUtil.ZqxEchoMethod("e") + "/" + ZqxBox<int>.ZqxCountField;
+                    + "/" + ZqxUtil.ZqxEchoMethod(7) + ZqxUtil.ZqxEchoMethod("e") + "/" + ZqxBox<int>.ZqxCountField
+                    + "/" + new ZqxHolder<int>().ZqxPassMethod<string>(new ZqxBox<int>(1), 1);
             }
         }
         """;
@@ -117,7 +130,9 @@ public class SymbolRenamingLeftoverNamesTests
         "add_ZqxChangedEvent", "remove_ZqxChangedEvent", "ZqxRaiseMethod", "ZqxConvertMethod", "ZqxIndexer",
         "get_ZqxIndexer", "ZqxInnerOtherField", "ZqxInnerPickMethod", "ZqxMakeInnerMethod", "ZqxFirstField",
         "ZqxPickMethod", "ZqxBaseField", "ZqxBaseGetMethod", "ZqxTwiceMethod", "ZqxEchoMethod",
-        "zqxRaiseArg", "zqxConvertArg", "zqxPickArg", "zqxPickOther", "zqxPickFlag", "zqxEchoArg"
+        "ZqxOpenMethod", "ZqxHolder", "ZqxPassMethod",
+        "zqxRaiseArg", "zqxConvertArg", "zqxPickArg", "zqxPickOther", "zqxPickFlag", "zqxEchoArg",
+        "zqxOpenArg", "zqxPassArg", "zqxPassBox"
     };
 
     public static TheoryData<string, string> Runs
@@ -126,7 +141,7 @@ public class SymbolRenamingLeftoverNamesTests
         {
             var data = new TheoryData<string, string>();
             foreach (var shape in new[] { "single", "closed-set", "merge" })
-                foreach (var configuration in new[] { "minimal", "aggressive" })
+                foreach (var configuration in new[] { "minimal", "standard", "aggressive" })
                     data.Add(shape, configuration);
             return data;
         }

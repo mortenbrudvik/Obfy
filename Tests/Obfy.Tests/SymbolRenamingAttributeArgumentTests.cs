@@ -57,6 +57,7 @@ public class SymbolRenamingAttributeArgumentTests
             public Type Type { get; set; }
             public string[] Tags { get; set; }
             public Type[] Types { get; set; }
+            public K[] Kinds { get; set; }
             public object Obj { get; set; }
             [System.Reflection.Obfuscation(Feature = "renaming", Exclude = true)]
             public string Keep { get; set; }
@@ -90,6 +91,7 @@ public class SymbolRenamingAttributeArgumentTests
             public string Label { get; }
             public string GenNote { get; set; }
             public int GenLevel;
+            public T GenValue { get; set; }
         }
 
         public class IntInfoAttribute : GenInfoAttribute<int>
@@ -113,6 +115,8 @@ public class SymbolRenamingAttributeArgumentTests
         [GenInfo<int>("generic", GenNote = "gn", GenLevel = 6)]
         [GenInfo<Box<string>>("generic-box", GenNote = "gb")]
         [IntInfo("int-info", GenNote = "in", GenLevel = 8)]
+        [Info("enum-array", Kinds = new[] { K.A, K.B })]
+        [GenInfo<K>("generic-enum", GenNote = "gk", GenValue = K.B)]
         internal class Target
         {
             [Info("field", Note = "f", Level = 1)]
@@ -194,7 +198,10 @@ public class SymbolRenamingAttributeArgumentTests
                     case InfoAttribute info:
                         return $"Info[{info.Label}|{info.Note}|{info.Level}|{info.Kind}|{info.Type == typeof(Box<int>)}"
                             + $"|{info.Type == typeof(Plain)}|{info.Of == typeof(Box<int>)}|{info.Of == typeof(Plain)}"
-                            + $"|{(info.Tags == null ? "-" : string.Join(",", info.Tags))}|{Types(info.Types)}|{info.Obj}|{info.Keep}]";
+                            + $"|{(info.Tags == null ? "-" : string.Join(",", info.Tags))}|{Types(info.Types)}|{info.Obj}|{info.Keep}"
+                            + $"|{(info.Kinds == null ? "-" : string.Join(",", info.Kinds))}]";
+                    case GenInfoAttribute<K> genericEnum:
+                        return $"Gen<K>[{genericEnum.Label}|{genericEnum.GenNote}|{genericEnum.GenValue}]";
                     case IntInfoAttribute intInfo:
                         return $"Int[{intInfo.Label}|{intInfo.GenNote}|{intInfo.GenLevel}]";
                     case GenInfoAttribute<int> generic:
@@ -244,7 +251,7 @@ public class SymbolRenamingAttributeArgumentTests
         """;
 
     private static readonly string[] RenamedMembers =
-        { "Note", "Level", "Kind", "Tags", "Types", "Obj", "BaseNote", "BaseLevel", "Extra", "LeafKind", "GenNote", "GenLevel" };
+        { "Note", "Level", "Kind", "Tags", "Types", "Kinds", "Obj", "BaseNote", "BaseLevel", "Extra", "LeafKind", "GenNote", "GenLevel", "GenValue" };
 
     public static TheoryData<string, string> Runs
     {
@@ -268,7 +275,7 @@ public class SymbolRenamingAttributeArgumentTests
             var (inputs, driverAssembly) = Build(shape, dir);
             var expected = Run(driverAssembly);
             expected.StartsWith("!", StringComparison.Ordinal).ShouldBeFalse($"the unprotected program itself failed: {expected}");
-            expected.Split('\n').Length.ShouldBe(21, "the sample must carry attributes on every kind of target");
+            expected.Split('\n').Length.ShouldBe(23, "the sample must carry attributes on every kind of target");
 
             var outDir = Path.Combine(dir, "out");
             var outputs = await ProtectAsync(shape, inputs, outDir, SettingsFor(configuration));

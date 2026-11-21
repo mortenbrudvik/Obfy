@@ -8,8 +8,8 @@ namespace Obfy.Tests;
 /// <summary>
 /// The output keeps the row ids of the tables whose tokens reflection can see, so code that resolves a metadata token
 /// it holds as a number (<c>Module.ResolveMethod(0x06000002)</c>) still reaches the same member after the members were
-/// renamed. (MemberRef ids are not kept: see <c>AssemblyProcessor.OutputMetadataFlags</c>. A MemberRef token only
-/// appears in IL, where the writer writes the id itself.)
+/// renamed. (MemberRef and MethodSpec ids are not kept: see <c>AssemblyProcessor.OutputMetadataFlags</c>.
+/// Those tokens only appear in IL, where the writer writes the id itself.)
 /// </summary>
 public class SymbolRenamingRowIdTests
 {

@@ -31,7 +31,7 @@ internal static class LaunchDiagnostics
             else
             {
                 text.Append($"ObfyUI.exe (pid {process.Id}) is still running, responding={process.Responding}.");
-                text.Append($" Its windows: {Windows(process.Id)}.");
+                text.Append($" Its visible windows: {VisibleWindows(process.Id)}.");
                 text.Append($" {FailurePanel(process.Id)}");
             }
         }
@@ -89,20 +89,20 @@ internal static class LaunchDiagnostics
         }
     }
 
-    /// <summary>The process's top-level windows as <c>class "title" (visible|hidden)</c>; a message box is class #32770.</summary>
-    private static string Windows(int processId)
+    /// <summary>The process's visible top-level windows as <c>class "title"</c>; a message box is class #32770.</summary>
+    private static string VisibleWindows(int processId)
     {
         var windows = new List<string>();
         EnumWindows((handle, _) =>
         {
             GetWindowThreadProcessId(handle, out var owner);
-            if (owner == processId)
+            if (owner == processId && IsWindowVisible(handle))
             {
                 var title = new StringBuilder(256);
                 var className = new StringBuilder(256);
                 GetWindowText(handle, title, title.Capacity);
                 GetClassName(handle, className, className.Capacity);
-                windows.Add($"{className} \"{title}\" ({(IsWindowVisible(handle) ? "visible" : "hidden")})");
+                windows.Add($"{className} \"{title}\"");
             }
 
             return true;

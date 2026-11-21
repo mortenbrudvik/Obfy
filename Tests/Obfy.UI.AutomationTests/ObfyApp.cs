@@ -101,7 +101,7 @@ internal sealed class ObfyApp : IAsyncDisposable
     }
 
     /// <summary>The port in the first line of the browser's port file, or null while the file is missing or still being written.</summary>
-    private static int? ReadPort(string portFile)
+    internal static int? ReadPort(string portFile)
     {
         try
         {

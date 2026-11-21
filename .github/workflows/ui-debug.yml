@@ -109,24 +109,36 @@ jobs:
           Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         }
         $lines = & {
-          "WebView2 runtime before: $(Get-WebViewVersion)"
-          Invoke-ObfyProbe 'env var, runtime as imaged' 9341 '--remote-debugging-port=9341 --remote-allow-origins=* --enable-logging --v=1'
+          "WebView2 runtime: $(Get-WebViewVersion)"
+          '--- Token of this step (integrity level, admin group) ---'
+          (whoami /groups | Select-String 'Mandatory Label|Administrators') | ForEach-Object { $_.Line.Trim() }
+          "EnableLUA: $((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').EnableLUA)  ConsentPromptBehaviorAdmin: $((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').ConsentPromptBehaviorAdmin)"
 
-          # The same through the machine policy that WebView2 reads for every host app.
-          $key = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+          # Machine-wide policy, which an elevated host cannot be argued out of by a user-level env var or HKCU value.
+          $key = 'HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
           New-Item -Path $key -Force | Out-Null
-          New-ItemProperty -Path $key -Name '*' -Value '--remote-debugging-port=9342 --remote-allow-origins=* --enable-logging --v=1' -PropertyType String -Force | Out-Null
-          Invoke-ObfyProbe 'registry policy AdditionalBrowserArguments, runtime as imaged' 9342 $null
-          Remove-Item 'HKCU:\Software\Policies\Microsoft\Edge\WebView2' -Recurse -Force
+          New-ItemProperty -Path $key -Name '*' -Value '--remote-debugging-port=9351 --remote-allow-origins=* --enable-logging --v=1' -PropertyType String -Force | Out-Null
+          Invoke-ObfyProbe 'HKLM policy AdditionalBrowserArguments for *' 9351 $null
+          Remove-Item 'HKLM:\Software\Policies\Microsoft\Edge\WebView2' -Recurse -Force
 
-          '--- Updating the WebView2 runtime with the Evergreen bootstrapper ---'
-          $setup = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
-          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $setup
-          $install = Start-Process $setup -ArgumentList '/silent', '/install' -Wait -PassThru
-          "bootstrapper exit code: $($install.ExitCode)"
-          "WebView2 runtime after: $(Get-WebViewVersion)"
-          Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' | ForEach-Object { "  $($_.Name)" }
-          Invoke-ObfyProbe 'env var, after the update' 9343 '--remote-debugging-port=9343 --remote-allow-origins=* --enable-logging --v=1'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name 'ObfyUI.exe' -Value '--remote-debugging-port=9352 --remote-allow-origins=* --enable-logging --v=1' -PropertyType String -Force | Out-Null
+          Invoke-ObfyProbe 'HKLM policy AdditionalBrowserArguments for ObfyUI.exe' 9352 $null
+          Remove-Item 'HKLM:\Software\Policies\Microsoft\Edge\WebView2' -Recurse -Force
+
+          '--- Same env var, but the app started with a basic-user token (runas /trustlevel) ---'
+          $work = Join-Path $env:TEMP 'probe-obfy-9353'
+          New-Item -ItemType Directory -Force $work | Out-Null
+          $env:OBFY_UI_PREFERENCES = Join-Path $work 'ui-preferences.json'
+          $env:OBFY_WEBVIEW2_USER_DATA = Join-Path $work 'webview2'
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9353 --remote-allow-origins=* --enable-logging --v=1'
+          & runas.exe /trustlevel:0x20000 "`"$exe`"" 2>&1 | Out-String
+          $r = Wait-Cdp 9353 25
+          "ObfyUI via runas /trustlevel:0x20000: $(if ($r) { 'PORT OPEN' } else { 'NO ANSWER' }); chrome_debug.log: $(Test-Path (Join-Path $work 'webview2\EBWebView\chrome_debug.log'))"
+          Get-Process ObfyUI -ErrorAction SilentlyContinue | ForEach-Object { "  ObfyUI pid $($_.Id) session $($_.SessionId)" }
+          Get-Process ObfyUI -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Remove-Item Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, Env:OBFY_UI_PREFERENCES, Env:OBFY_WEBVIEW2_USER_DATA
         }
         $lines | Tee-Object $out
 

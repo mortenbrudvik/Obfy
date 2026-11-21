@@ -73,6 +73,12 @@ public sealed class InputSessionTests : IDisposable
 
     private static FileRow Only(InputSession session) => session.GetSnapshot().Files.Single();
 
+    private PickOutputFolderRequestHandler PickFolderHandler(InputSession input) =>
+        new(input, _dialogs, IdleRun.For(input, new ProtectionSession()));
+
+    private PickSymbolMapRequestHandler PickMapHandler(InputSession input) =>
+        new(input, _dialogs, IdleRun.For(input, new ProtectionSession()));
+
     private string WriteAppAndTestsSolution()
     {
         var appProj = Path.Combine(_tempDirectory, "App", "App.csproj");
@@ -608,7 +614,7 @@ public sealed class InputSessionTests : IDisposable
     [Fact]
     public async Task BrowseOutputDirectoryCommand_CallsFileDialogService()
     {
-        await new PickOutputFolderRequestHandler(Create(), _dialogs).Handle(new PickOutputFolderRequest(), default);
+        await PickFolderHandler(Create()).Handle(new PickOutputFolderRequest(), default);
 
         _dialogs.FolderPicks.ShouldBe(1);
     }
@@ -618,7 +624,7 @@ public sealed class InputSessionTests : IDisposable
     {
         _dialogs.Folder = @"C:\Selected\Output";
 
-        var snapshot = await new PickOutputFolderRequestHandler(Create(), _dialogs).Handle(new PickOutputFolderRequest(), default);
+        var snapshot = await PickFolderHandler(Create()).Handle(new PickOutputFolderRequest(), default);
 
         snapshot.OutputFolder.ShouldBe(@"C:\Selected\Output");
     }
@@ -628,7 +634,7 @@ public sealed class InputSessionTests : IDisposable
     {
         _dialogs.Folder = @"C:\Selected\Output";
 
-        await new PickOutputFolderRequestHandler(Create(), _dialogs).Handle(new PickOutputFolderRequest(), default);
+        await PickFolderHandler(Create()).Handle(new PickOutputFolderRequest(), default);
 
         _settings.OutputAssignments.ShouldBe([@"C:\Selected\Output"]);
     }
@@ -638,7 +644,7 @@ public sealed class InputSessionTests : IDisposable
     {
         _dialogs.Folder = @"C:\Selected\Output";
 
-        await new PickOutputFolderRequestHandler(Create(), _dialogs).Handle(new PickOutputFolderRequest(), default);
+        await PickFolderHandler(Create()).Handle(new PickOutputFolderRequest(), default);
 
         _settings.Saves.ShouldBe(1);
     }
@@ -650,7 +656,7 @@ public sealed class InputSessionTests : IDisposable
         session.SetOutputFolder(@"C:\Original");
         _dialogs.Folder = null;
 
-        var snapshot = await new PickOutputFolderRequestHandler(session, _dialogs).Handle(new PickOutputFolderRequest(), default);
+        var snapshot = await PickFolderHandler(session).Handle(new PickOutputFolderRequest(), default);
 
         snapshot.OutputFolder.ShouldBe(@"C:\Original");
     }
@@ -662,7 +668,7 @@ public sealed class InputSessionTests : IDisposable
         session.SetWriteSymbolMap(true);
         _dialogs.SavePath = @"C:\Maps\my.json";
 
-        var snapshot = await new PickSymbolMapRequestHandler(session, _dialogs).Handle(new PickSymbolMapRequest(), default);
+        var snapshot = await PickMapHandler(session).Handle(new PickSymbolMapRequest(), default);
 
         _dialogs.SavePicks.ShouldBe(1);
         snapshot.SymbolMapPath.ShouldBe(@"C:\Maps\my.json");
@@ -676,7 +682,7 @@ public sealed class InputSessionTests : IDisposable
         session.SetSymbolMapPath("maps/m.json");
         _dialogs.SavePath = null;
 
-        var snapshot = await new PickSymbolMapRequestHandler(session, _dialogs).Handle(new PickSymbolMapRequest(), default);
+        var snapshot = await PickMapHandler(session).Handle(new PickSymbolMapRequest(), default);
 
         _dialogs.SavePicks.ShouldBe(1);
         snapshot.SymbolMapPath.ShouldBe("maps/m.json");
@@ -902,7 +908,8 @@ public sealed class InputSessionTests : IDisposable
         var dll = CreateTestFile("a.dll");
 
         session.AddPaths([dll]);
-        session.AddPaths([dll]);
+        // A drop that adds nothing and has nothing to say changes nothing. (A duplicate now says so in a notice: see InputSessionDropTests.)
+        session.AddPaths([]);
 
         raised.ShouldBe(1);
     }

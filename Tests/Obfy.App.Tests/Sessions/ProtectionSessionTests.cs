@@ -479,7 +479,7 @@ public class ProtectionSessionTests
     public void FromObfySettings_LoadsLevel()
     {
         var session = new ProtectionSession();
-        session.FromObfySettings(new ObfySettings { Level = ObfuscationLevel.Aggressive });
+        session.FromObfySettings(ObfySettings.ForLevel(ObfuscationLevel.Aggressive));
         session.Level.ShouldBe(ObfuscationLevel.Aggressive);
     }
 
@@ -967,7 +967,7 @@ public class ProtectionSessionTests
     {
         var session = new ProtectionSession();
 
-        session.FromObfySettings(new ObfySettings { Level = ObfuscationLevel.Aggressive });
+        session.FromObfySettings(ObfySettings.ForLevel(ObfuscationLevel.Aggressive));
 
         session.Level.ShouldBe(ObfuscationLevel.Aggressive);
     }

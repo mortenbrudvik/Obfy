@@ -61,7 +61,7 @@ public sealed class SettingsHandlersTests : IDisposable
               "exclusions.types": ["A", "B"], "watermark.id": "x" }
             """);
 
-        var snapshot = await new UpdateSettingsRequestHandler(_session).Handle(new UpdateSettingsRequest(patch), default);
+        var snapshot = await new UpdateSettingsRequestHandler(_session, IdleRun.For(_input, _session)).Handle(new UpdateSettingsRequest(patch), default);
 
         snapshot.Level.ShouldBe("Custom");
         var settings = _session.ToObfySettings();
@@ -78,7 +78,7 @@ public sealed class SettingsHandlersTests : IDisposable
         var patch = JsonPatch("""{ "controlFlow.enabled": "yes" }""");
 
         var ex = await Should.ThrowAsync<ObfyApiException>(async () =>
-            await new UpdateSettingsRequestHandler(_session).Handle(new UpdateSettingsRequest(patch), default));
+            await new UpdateSettingsRequestHandler(_session, IdleRun.For(_input, _session)).Handle(new UpdateSettingsRequest(patch), default));
 
         ex.Code.ShouldBe("settings.invalidValue");
     }
@@ -86,7 +86,7 @@ public sealed class SettingsHandlersTests : IDisposable
     [Fact]
     public async Task ApplyLevel_ParsesTheNameCaseInsensitively()
     {
-        var snapshot = await new ApplyLevelRequestHandler(_session).Handle(new ApplyLevelRequest("aggressive"), default);
+        var snapshot = await new ApplyLevelRequestHandler(_session, IdleRun.For(_input, _session)).Handle(new ApplyLevelRequest("aggressive"), default);
 
         snapshot.Level.ShouldBe("Aggressive");
         _session.Level.ShouldBe(ObfuscationLevel.Aggressive);
@@ -96,7 +96,7 @@ public sealed class SettingsHandlersTests : IDisposable
     public async Task ApplyLevel_RejectsAnUnknownLevel()
     {
         var ex = await Should.ThrowAsync<ObfyApiException>(async () =>
-            await new ApplyLevelRequestHandler(_session).Handle(new ApplyLevelRequest("Extreme"), default));
+            await new ApplyLevelRequestHandler(_session, IdleRun.For(_input, _session)).Handle(new ApplyLevelRequest("Extreme"), default));
 
         ex.Code.ShouldBe("settings.invalidValue");
     }
@@ -105,7 +105,9 @@ public sealed class SettingsHandlersTests : IDisposable
     public async Task OpenConfig_LoadsThePickedFile_AndRemembersItsPath()
     {
         var path = Path.Combine(_dir, "in.json");
-        var source = new ObfySettings { Level = ObfuscationLevel.Aggressive, Watermark = { Enabled = true, Id = "w" } };
+        var source = ObfySettings.ForLevel(ObfuscationLevel.Aggressive); // flags that match the preset keep its name
+        source.Watermark.Enabled = true;
+        source.Watermark.Id = "w";
         await ConfigFile.SaveAsync(source, path);
         _dialogs.Files = [path];
 
@@ -213,7 +215,7 @@ public sealed class SettingsHandlersTests : IDisposable
     [Fact]
     public async Task PickSigningKey_SetsTheKeyFile_AndCancelChangesNothing()
     {
-        var handler = new PickSigningKeyRequestHandler(_session, _dialogs);
+        var handler = new PickSigningKeyRequestHandler(_session, _dialogs, IdleRun.For(_input, _session));
 
         _dialogs.Key = null;
         await handler.Handle(new PickSigningKeyRequest(), default);

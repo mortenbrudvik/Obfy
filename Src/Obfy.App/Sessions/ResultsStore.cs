@@ -10,7 +10,8 @@ namespace Obfy.App.Sessions;
 /// reads a <see cref="ResultsSnapshot"/>, asks for the tree one page at a time and follows <c>results.changed</c>.
 /// <para>
 /// Every change runs under a lock, bumps <see cref="ResultsSnapshot.Revision"/>, raises <see cref="Changed"/> and publishes
-/// <c>results.changed</c> after it, outside the lock, once.
+/// <c>results.changed</c> after it, outside the lock, once. The snapshot a push carries is taken inside a second lock that
+/// orders the pushes, so a push never reaches the page after a newer one.
 /// </para>
 /// <para>
 /// The two heavy jobs never run on the calling thread. <see cref="LoadResultsAsync"/> parses the symbol keys once, in
@@ -25,6 +26,7 @@ public sealed class ResultsStore
     private const int MaxPageSize = 1000;
 
     private readonly object _gate = new();
+    private readonly object _publishGate = new();
     private readonly IEventPublisher? _events;
     private readonly IAssemblyDecompiler _decompiler;
     private readonly Action? _onParse;
@@ -96,7 +98,6 @@ public sealed class ResultsStore
 
     private void Reset(ResultsState state)
     {
-        ResultsSnapshot snapshot;
         lock (_gate)
         {
             _generation++;
@@ -111,10 +112,10 @@ public sealed class ResultsStore
             _previewText = string.Empty;
             _previewError = null;
             _state = state;
-            snapshot = BumpLocked();
+            _revision++;
         }
 
-        Publish(snapshot);
+        Publish();
     }
 
     /// <summary>
@@ -135,7 +136,6 @@ public sealed class ResultsStore
             return (SymbolIndex.Build(map), BuildGroups(statistics));
         }).ConfigureAwait(false);
 
-        ResultsSnapshot snapshot;
         lock (_gate)
         {
             if (generation != _generation)
@@ -146,10 +146,10 @@ public sealed class ResultsStore
             _groups = groups;
             _elapsedMs = (long)elapsedTime.TotalMilliseconds;
             _state = ResultsState.Finished;
-            snapshot = BumpLocked();
+            _revision++;
         }
 
-        Publish(snapshot);
+        Publish();
     }
 
     /// <summary>Keeps the report so it can be exported.</summary>
@@ -157,14 +157,13 @@ public sealed class ResultsStore
     {
         ArgumentNullException.ThrowIfNull(report);
 
-        ResultsSnapshot snapshot;
         lock (_gate)
         {
             _report = report;
-            snapshot = BumpLocked();
+            _revision++;
         }
 
-        Publish(snapshot);
+        Publish();
     }
 
     /// <summary>Records the assemblies the user can decompile. Decompiles nothing until one is chosen.</summary>
@@ -175,7 +174,6 @@ public sealed class ResultsStore
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        ResultsSnapshot snapshot;
         lock (_gate)
         {
             _previewVersion++;
@@ -183,10 +181,10 @@ public sealed class ResultsStore
             _selectedPreviewPath = null;
             _previewText = string.Empty;
             _previewError = null;
-            snapshot = BumpLocked();
+            _revision++;
         }
 
-        Publish(snapshot);
+        Publish();
     }
 
     /// <summary>Whether <paramref name="assemblyPath"/> is one of the assemblies set with <see cref="SetPreviewPaths"/>. <c>preview.get</c> decompiles nothing else.</summary>
@@ -212,7 +210,6 @@ public sealed class ResultsStore
 
         var result = await Task.Run(() => ResolvePreview(assemblyPath)).ConfigureAwait(false);
 
-        ResultsSnapshot snapshot;
         lock (_gate)
         {
             if (version != _previewVersion)
@@ -221,10 +218,10 @@ public sealed class ResultsStore
             _selectedPreviewPath = assemblyPath;
             _previewText = result.Text;
             _previewError = result.Error;
-            snapshot = BumpLocked();
+            _revision++;
         }
 
-        Publish(snapshot);
+        Publish();
         return result;
     }
 
@@ -353,12 +350,6 @@ public sealed class ResultsStore
 
     private static StatisticChip? Chip(string label, int value) => value == 0 ? null : new StatisticChip(label, value);
 
-    private ResultsSnapshot BumpLocked()
-    {
-        _revision++;
-        return SnapshotLocked();
-    }
-
     private ResultsSnapshot SnapshotLocked() => new(
         _revision,
         _state,
@@ -371,9 +362,13 @@ public sealed class ResultsStore
         _selectedPreviewPath,
         _previewError);
 
-    private void Publish(ResultsSnapshot snapshot)
+    private void Publish()
     {
-        _events?.Publish(AppEvents.ResultsChanged, snapshot);
+        // The snapshot is taken inside the lock that orders the pushes: one taken before waiting for it could be pushed
+        // after a newer one.
+        lock (_publishGate)
+            _events?.Publish(AppEvents.ResultsChanged, GetSnapshot());
+
         Changed?.Invoke();
     }
 }

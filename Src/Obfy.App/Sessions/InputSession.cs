@@ -1,5 +1,8 @@
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Xml;
 using Microsoft.Extensions.Logging;
 using Obfy.App.Models;
@@ -37,6 +40,7 @@ public sealed class InputSession
     private readonly IEventPublisher? _events;
     private readonly ILogger<InputSession>? _logger;
     private readonly TimeSpan _preferenceDelay;
+    private readonly IPathProbe _probe;
 
     private string _outputFolder = string.Empty;
     private string? _outputWarning;
@@ -54,13 +58,15 @@ public sealed class InputSession
     /// <param name="shell">Opens folders for Reveal and OpenOutputFolder.</param>
     /// <param name="events">Where <c>files.changed</c> goes after every change; null for a session nobody listens to.</param>
     /// <param name="preferenceDelay">How long a preference change waits for the next one before it is saved. Default 300 ms; zero saves at once.</param>
+    /// <param name="pathProbe">Asks whether a folder or file is there; the real file system, with a time limit, when null.</param>
     public InputSession(
         ISettingsService settings,
         ISolutionAnalyzer? analyzer = null,
         IShellLauncher? shell = null,
         IEventPublisher? events = null,
         ILogger<InputSession>? logger = null,
-        TimeSpan? preferenceDelay = null)
+        TimeSpan? preferenceDelay = null,
+        IPathProbe? pathProbe = null)
     {
         _settings = settings;
         _analyzer = analyzer;
@@ -68,7 +74,8 @@ public sealed class InputSession
         _events = events;
         _logger = logger;
         _preferenceDelay = preferenceDelay ?? TimeSpan.FromMilliseconds(300);
-        ReadPreferencesLocked();
+        _probe = pathProbe ?? new BoundedPathProbe();
+        ReadPreferences();
     }
 
     /// <summary>Raised once after any change but a quiet one, on the thread that made it, outside the session's lock.</summary>
@@ -97,29 +104,43 @@ public sealed class InputSession
     /// </summary>
     public void ApplyPreferences()
     {
+        ReadPreferences();
         lock (_gate)
-        {
-            ReadPreferencesLocked();
             _revision++;
-        }
     }
 
-    private void ReadPreferencesLocked()
+    /// <summary>
+    /// Takes the preferences from the settings service. The saved folder is probed first and outside the lock: on a dead
+    /// share the probe can stall, and a snapshot the page asks for meanwhile must not wait behind it.
+    /// </summary>
+    private void ReadPreferences()
     {
-        _writeSymbolMap = _settings.GenerateSymbolMap;
-        if (_sessionOutputOverride)
-            return;
-
+        var writeSymbolMap = _settings.GenerateSymbolMap;
         var stored = _settings.LastOutputDirectory;
-        if (!string.IsNullOrWhiteSpace(stored) && !Directory.Exists(stored))
-        {
-            _outputWarning = $"Saved output directory was not found: {stored}";
-            _outputFolder = string.Empty;
-            return;
-        }
 
-        _outputWarning = null;
-        _outputFolder = stored ?? string.Empty;
+        bool overridden;
+        lock (_gate)
+            overridden = _sessionOutputOverride;
+
+        // A folder from the command line is the folder: the saved one is not even looked at.
+        var folderFound = !overridden && !string.IsNullOrWhiteSpace(stored) && _probe.DirectoryExists(stored);
+
+        lock (_gate)
+        {
+            _writeSymbolMap = writeSymbolMap;
+            if (overridden || _sessionOutputOverride)
+                return;
+
+            if (!string.IsNullOrWhiteSpace(stored) && !folderFound)
+            {
+                _outputWarning = $"Saved output directory was not found: {stored}";
+                _outputFolder = string.Empty;
+                return;
+            }
+
+            _outputWarning = null;
+            _outputFolder = stored ?? string.Empty;
+        }
     }
 
     /// <summary>
@@ -239,20 +260,30 @@ public sealed class InputSession
         var incoming = new List<Entry>();
         var notices = new List<InputNotice>();
         var configs = new List<string>();
+        var unsupported = new List<string>();
+        var missing = new List<string>();
+        var notConfigurations = new List<string>();
 
         foreach (var path in paths)
         {
             try
             {
                 // A .json is a configuration, not an input (UI-058).
-                if (IsConfigPath(path))
+                switch (Classify(path))
                 {
-                    configs.Add(Path.GetFullPath(path));
-                    continue;
+                    case PathKind.Configuration:
+                        configs.Add(Path.GetFullPath(path));
+                        continue;
+                    case PathKind.NotConfiguration:
+                        notConfigurations.Add(NameForNotice(path));
+                        continue;
+                    case PathKind.Unsupported:
+                        unsupported.Add(NameForNotice(path));
+                        continue;
+                    case PathKind.Missing:
+                        missing.Add(NameForNotice(path));
+                        continue;
                 }
-
-                if (!IsSupportedInputPath(path))
-                    continue;
 
                 if (IsSolutionOrProjectExtension(Path.GetExtension(path)))
                     ExpandSolution(path, incoming, notices);
@@ -278,6 +309,14 @@ public sealed class InputSession
                 $"Only {Path.GetFileName(configs[0])} was used. Ignored: {ignored}."));
         }
 
+        // What was skipped is said, one notice per reason however many files: the page is told, the log gets counts only.
+        AddSkipNotice(notices, NoticeLevel.Warning, "Unsupported files skipped", unsupported,
+            "not a file type Obfy can protect. Add .dll, .exe, .cs, .sln, .slnx, .csproj, .vbproj or .fsproj files.");
+        AddSkipNotice(notices, NoticeLevel.Warning, "Files not found", missing, "not found, or not a file.");
+        AddSkipNotice(notices, NoticeLevel.Warning, "Not an Obfy configuration", notConfigurations,
+            "holds no Obfy settings, so it was not loaded.");
+
+        var duplicates = new List<string>();
         var added = 0;
         bool changed;
         lock (_gate)
@@ -285,20 +324,55 @@ public sealed class InputSession
             foreach (var entry in incoming)
             {
                 if (_entries.Exists(e => SamePath(e.Path, entry.Path)))
+                {
+                    duplicates.Add(entry.Name);
                     continue;
+                }
+
                 _entries.Add(entry);
                 added++;
             }
 
+            AddSkipNotice(notices, NoticeLevel.Info, "Already in the list", duplicates, "already in the list.");
             changed = added > 0 || notices.Count > 0 || _notices.Count > 0;
             _notices = notices;
             if (changed)
                 _revision++;
         }
 
+        var skipped = unsupported.Count + missing.Count + notConfigurations.Count + duplicates.Count;
+        if (skipped > 0)
+        {
+            _logger?.LogDebug(
+                "Skipped {Unsupported} unsupported, {Missing} missing, {NotConfiguration} non-configuration and {Duplicate} duplicate path(s)",
+                unsupported.Count, missing.Count, notConfigurations.Count, duplicates.Count);
+        }
+
         if (changed && publish)
             RaiseChanged();
         return new AddPathsResult(configs.Count > 0 ? configs[0] : null, added);
+    }
+
+    private static void AddSkipNotice(List<InputNotice> notices, NoticeLevel level, string title, List<string> names, string reason)
+    {
+        if (names.Count > 0)
+            notices.Add(new InputNotice(level, title, $"{Summarize(names)}: {reason}"));
+    }
+
+    /// <summary>The first few names, then how many more: a drop of fifty files is one short line.</summary>
+    private static string Summarize(IReadOnlyList<string> names)
+    {
+        const int Shown = 3;
+        var head = string.Join(", ", names.Take(Shown));
+        return names.Count > Shown ? $"{head} and {names.Count - Shown} more" : head;
+    }
+
+    /// <summary>The last part of a path, for a message: a dropped folder has no file name, so its own name.</summary>
+    private static string NameForNotice(string? path)
+    {
+        var text = path ?? string.Empty;
+        var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(text));
+        return name.Length > 0 ? name : text.Length > 0 ? text : "(empty path)";
     }
 
     private void ExpandSolution(string path, List<Entry> incoming, List<InputNotice> notices)
@@ -490,7 +564,8 @@ public sealed class InputSession
                 throw new ObfyApiException("output.symbolMapOff", "Turn on the symbol map before choosing where it goes.");
             if (value.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
                 throw new ObfyApiException("output.invalidPath", "The symbol map path contains characters a path cannot hold.");
-            if (!IsUsablePath(value))
+            // Empty is the default, not a path: Path.GetFullPath("") throws.
+            if (value.Length > 0 && (IsDevicePath(value) || !IsUsablePath(value)))
                 throw new ObfyApiException("output.invalidPath", "That is not a usable symbol map path.");
             if (value == _symbolMapPath)
                 return;
@@ -503,7 +578,7 @@ public sealed class InputSession
         RaiseChanged();
     }
 
-    private static string NormalizeFolder(string? text)
+    private string NormalizeFolder(string? text)
     {
         var trimmed = (text ?? string.Empty).Trim();
         if (trimmed.Length == 0)
@@ -514,18 +589,35 @@ public sealed class InputSession
         {
             if (trimmed.Contains('\0'))
                 throw new ArgumentException("A path cannot hold a null character.");
+            if (IsDevicePath(trimmed))
+                throw new ArgumentException("A device path is not a folder Obfy can write to.");
             full = Path.GetFullPath(trimmed);
+            if (IsDevicePath(full))
+                throw new ArgumentException("A device path is not a folder Obfy can write to.");
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or IOException)
         {
             throw new ObfyApiException("output.invalidPath", $"That is not a usable folder path: {ex.Message}");
         }
 
-        if (File.Exists(full))
+        // Outside any lock, and bounded: a path on an unreachable share must not hold the caller.
+        if (_probe.FileExists(full))
             throw new ObfyApiException("output.isFile", "That path is a file, not a folder.");
 
         var root = Path.GetPathRoot(full);
         return full == root ? full : Path.TrimEndingDirectorySeparator(full);
+    }
+
+    /// <summary>
+    /// A Win32 device or extended-length path (<c>\\.\</c>, <c>\\?\</c>, the NT <c>\??\</c>), with either slash. Ordinary
+    /// <c>\\server\share</c> paths are not. A run should not be pointed at either: <c>\\.\PhysicalDrive0</c> is a disk.
+    /// </summary>
+    private static bool IsDevicePath(string text)
+    {
+        var normal = text.Replace('/', '\\');
+        return normal.StartsWith(@"\\.\", StringComparison.Ordinal)
+            || normal.StartsWith(@"\\?\", StringComparison.Ordinal)
+            || normal.StartsWith(@"\??\", StringComparison.Ordinal);
     }
 
     // ---- What a run needs --------------------------------------------------------------------------------------
@@ -609,13 +701,32 @@ public sealed class InputSession
             return new OutputPlan(OutputMode.ClosedSet, directory, null, $"Writes the protected assemblies to {directory}.");
         }
 
-        var hint = inputs.Count == 1
-            ? folder is null
-                ? $"Writes {ObfuscatedName(inputs[0])} next to the input."
-                : $"Writes {ObfuscatedName(inputs[0])} to {folder}."
-            : folder is null
-                ? "Writes each file next to its input as name.obfuscated.ext."
-                : $"Writes each file to {folder}.";
+        var sources = inputs.Where(e => e.Kind == FileKind.Source).ToList();
+        string hint;
+        if (sources.Count >= 2)
+        {
+            // Two or more C# files are one compilation, written to a folder by the engine: the chosen one, or obfy-src
+            // next to the first file. The rest (at most one assembly) is written alone.
+            var compiled = folder ?? Path.Combine(DirectoryOf(sources[0]), "obfy-src");
+            hint = sources.Count == inputs.Count
+                ? $"Compiles the C# files together into {compiled}."
+                : folder is null
+                    ? $"Writes {ObfuscatedName(assemblies[0])} next to the input; the C# files are compiled together into {compiled}."
+                    : $"Writes {ObfuscatedName(assemblies[0])} and the compiled C# files to {folder}.";
+        }
+        else
+        {
+            // The run writes exactly these names (ObfuscatedFileName): never the input's own, so a chosen folder that is
+            // the input's folder cannot overwrite the input.
+            hint = inputs.Count == 1
+                ? folder is null
+                    ? $"Writes {ObfuscatedName(inputs[0])} next to the input."
+                    : $"Writes {ObfuscatedName(inputs[0])} to {folder}."
+                : folder is null
+                    ? "Writes each file next to its input as name.obfuscated.ext."
+                    : $"Writes each file to {folder} as name.obfuscated.ext.";
+        }
+
         return new OutputPlan(OutputMode.Each, folder, null, hint);
     }
 
@@ -662,8 +773,14 @@ public sealed class InputSession
 
     private static string DirectoryOf(Entry entry) => Path.GetDirectoryName(entry.Path) ?? ".";
 
-    private static string ObfuscatedName(Entry entry) =>
-        $"{Path.GetFileNameWithoutExtension(entry.Name)}.obfuscated{Path.GetExtension(entry.Name)}";
+    private static string ObfuscatedName(Entry entry) => ObfuscatedFileName(entry.Name);
+
+    /// <summary>
+    /// The name a protected file is written under: <c>app.dll</c> becomes <c>app.obfuscated.dll</c>. The one rule for the
+    /// hint and for the run, so output can never carry the input's own name.
+    /// </summary>
+    internal static string ObfuscatedFileName(string fileName) =>
+        $"{Path.GetFileNameWithoutExtension(fileName)}.obfuscated{Path.GetExtension(fileName)}";
 
     // ---- Reveal and open ---------------------------------------------------------------------------------------
 
@@ -687,13 +804,13 @@ public sealed class InputSession
             return;
         }
 
-        if (File.Exists(path))
+        if (_probe.FileExists(path))
         {
             Launch(shell => shell.RevealFile(path));
             return;
         }
 
-        if (Directory.Exists(path))
+        if (_probe.DirectoryExists(path))
         {
             Launch(shell => shell.OpenFolder(path));
             return;
@@ -708,26 +825,31 @@ public sealed class InputSession
     /// </summary>
     public void OpenOutputFolder()
     {
-        string? directory = null;
+        string[] outputs;
+        string chosen;
         lock (_gate)
         {
-            var outputs = _entries.Select(e => e.OutputPath).Where(p => !string.IsNullOrEmpty(p)).Reverse();
-            foreach (var path in outputs)
-            {
-                if (File.Exists(path))
-                    directory = Path.GetDirectoryName(path);
-                else if (Directory.Exists(path))
-                    directory = path;
-                if (directory is not null)
-                    break;
-            }
-
-            if (directory is null && _outputFolder.Length > 0 && Directory.Exists(_outputFolder))
-                directory = _outputFolder;
+            outputs = _entries.Select(e => e.OutputPath).Where(p => !string.IsNullOrEmpty(p)).Reverse().ToArray()!;
+            chosen = _outputFolder;
             _notices = [];
         }
 
-        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+        // Asked outside the lock: a path on a dead share can stall the probe.
+        string? directory = null;
+        foreach (var path in outputs)
+        {
+            if (_probe.FileExists(path))
+                directory = Path.GetDirectoryName(path);
+            else if (_probe.DirectoryExists(path))
+                directory = path;
+            if (directory is not null)
+                break;
+        }
+
+        if (directory is null && chosen.Length > 0 && _probe.DirectoryExists(chosen))
+            directory = chosen;
+
+        if (string.IsNullOrEmpty(directory))
         {
             AddNotice(
                 new InputNotice(NoticeLevel.Warning, "Output folder not found", "There is no output folder to open yet."),
@@ -817,37 +939,95 @@ public sealed class InputSession
     public static bool CanAcceptDrop(IEnumerable<string>? paths) =>
         paths != null && paths.Any(path => IsSupportedInputPath(path) || IsConfigPath(path));
 
-    /// <summary>An existing <c>.json</c> file: a configuration to load.</summary>
-    public static bool IsConfigPath(string path)
-    {
-        try
-        {
-            return !string.IsNullOrWhiteSpace(path)
-                && File.Exists(path)
-                && Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (ex is ArgumentException or IOException)
-        {
-            return false;
-        }
-    }
+    /// <summary>
+    /// An existing <c>.json</c> file to load as the configuration: a JSON object with at least one Obfy setting in it
+    /// (<c>level</c>, <c>stringEncryption</c>, ...; any letter case). A <c>MyApp.deps.json</c> or <c>runtimeconfig.json</c>
+    /// is not, and loading one would make it the file Save writes over. A file that cannot be read or parsed does count,
+    /// so the loader names the problem; it adopts nothing from it.
+    /// </summary>
+    public static bool IsConfigPath(string path) => Classify(path) == PathKind.Configuration;
 
     /// <summary>An existing assembly, C# source, solution or project file.</summary>
-    public static bool IsSupportedInputPath(string path)
+    public static bool IsSupportedInputPath(string path) => Classify(path) == PathKind.Supported;
+
+    /// <summary>What a path is to the list. Never throws on what the user dropped.</summary>
+    private enum PathKind
+    {
+        /// <summary>Not a file that exists (also a folder).</summary>
+        Missing,
+
+        /// <summary>A file of a kind Obfy does not take.</summary>
+        Unsupported,
+
+        /// <summary>An assembly, C# source, solution or project.</summary>
+        Supported,
+
+        /// <summary>A <c>.json</c> to load as the configuration.</summary>
+        Configuration,
+
+        /// <summary>A <c>.json</c> that holds no Obfy settings.</summary>
+        NotConfiguration
+    }
+
+    private static PathKind Classify(string? path)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                return false;
+                return PathKind.Missing;
+
             var ext = Path.GetExtension(path);
-            return ext.Equals(".dll", StringComparison.OrdinalIgnoreCase)
+            if (ext.Equals(".json", StringComparison.OrdinalIgnoreCase))
+                return HoldsObfySettings(path) ? PathKind.Configuration : PathKind.NotConfiguration;
+
+            var supported = ext.Equals(".dll", StringComparison.OrdinalIgnoreCase)
                 || ext.Equals(".exe", StringComparison.OrdinalIgnoreCase)
                 || ext.Equals(".cs", StringComparison.OrdinalIgnoreCase)
                 || IsSolutionOrProjectExtension(ext);
+            return supported ? PathKind.Supported : PathKind.Unsupported;
         }
-        catch (Exception ex) when (ex is ArgumentException or IOException)
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException or UnauthorizedAccessException)
         {
-            return false;
+            return PathKind.Missing;
+        }
+    }
+
+    /// <summary>A configuration is a few kilobytes; nothing near this size is one, and it is not worth reading.</summary>
+    private const long MaxConfigurationBytes = 16 * 1024 * 1024;
+
+    /// <summary>The top-level names <see cref="Obfy.Core.Models.ObfySettings"/> reads, from the model itself so a new setting needs no second list.</summary>
+    private static readonly HashSet<string> SettingsKeys = BuildSettingsKeys();
+
+    private static HashSet<string> BuildSettingsKeys()
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in typeof(Obfy.Core.Models.ObfySettings).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.GetSetMethod() is null
+                || property.GetCustomAttribute<JsonIgnoreAttribute>() is { Condition: JsonIgnoreCondition.Always })
+                continue;
+            keys.Add(property.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name ?? property.Name);
+        }
+
+        return keys;
+    }
+
+    private static bool HoldsObfySettings(string path)
+    {
+        try
+        {
+            if (new FileInfo(path).Length > MaxConfigurationBytes)
+                return false;
+
+            using var stream = File.OpenRead(path);
+            using var document = JsonDocument.Parse(stream);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.EnumerateObject().Any(p => SettingsKeys.Contains(p.Name));
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            // Not told apart from a configuration here: the loader fails on it, says why, and adopts nothing.
+            return true;
         }
     }
 

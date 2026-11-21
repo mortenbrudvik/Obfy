@@ -23,7 +23,9 @@ public class SaveConfigRequestHandler(ProtectionSession session, IFileDialogs di
 
         if (!string.IsNullOrEmpty(path))
         {
-            await ConfigFile.SaveAsync(session.ToObfySettings(), path, cancellationToken).ConfigureAwait(false);
+            // Over the file the settings came from (or were last saved to), what the typed settings do not hold is kept.
+            var preserve = string.Equals(path, session.ConfigPath, StringComparison.OrdinalIgnoreCase);
+            await ConfigFile.SaveAsync(session.ToObfySettings(), path, cancellationToken, preserve).ConfigureAwait(false);
             session.MarkSaved(path);
         }
 

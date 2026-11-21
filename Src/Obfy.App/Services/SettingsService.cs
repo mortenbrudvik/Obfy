@@ -96,13 +96,10 @@ public class SettingsService : ISettingsService
                 File.Move(tempPath, _preferencesPath, overwrite: true);
             }
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning(ex, "Failed to save UI preferences to {Path}", _preferencesPath);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            _logger.LogWarning(ex, "Failed to save UI preferences to {Path}", _preferencesPath);
+            // Not the exception, not the path: the preferences path holds the Windows profile name, and the log keeps Debug and above.
+            _logger.LogWarning("Failed to save UI preferences ({ExceptionType})", ex.GetType().Name);
         }
     }
 
@@ -123,13 +120,10 @@ public class SettingsService : ISettingsService
                 GenerateSymbolMap = preferences.GenerateSymbolMap;
             }
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning(ex, "Failed to load UI preferences from {Path}", _preferencesPath);
-        }
-        catch (IOException ex)
-        {
-            _logger.LogWarning(ex, "Failed to load UI preferences from {Path}", _preferencesPath);
+            // An unreadable file costs the saved preferences, not the start (the start-up files and -o folder come after).
+            _logger.LogWarning("Failed to load UI preferences ({ExceptionType})", ex.GetType().Name);
         }
     }
 

@@ -901,7 +901,7 @@ public sealed class RunCoordinatorTests : IDisposable
             other._input.SetOutputFolder(folder);
             other.AddFile("only.dll");
             await other.RunAsync();
-            other._engine.ObfuscateCalls.ShouldHaveSingleItem().Output.ShouldBe(Path.Combine(folder, "only.dll"));
+            other._engine.ObfuscateCalls.ShouldHaveSingleItem().Output.ShouldBe(Path.Combine(folder, "only.obfuscated.dll"));
         }
         finally
         {

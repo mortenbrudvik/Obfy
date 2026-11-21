@@ -52,6 +52,10 @@ public class RunPathGuardTests : IDisposable
             $"--report cannot be '{report.FullName}': it is a project file or build output that the solution or project lists, and the run would replace it with the report. Choose another path for --report.");
         Say(PathRole.Config).ShouldBe(
             $"--report cannot be '{report.FullName}': it is the configuration file given with -c and the run would replace it with the report. Choose another path for --report.");
+        Say(PathRole.SigningKey).ShouldBe(
+            $"--report cannot be '{report.FullName}': it is the signing key file named in the configuration and the run would replace it with the report. Choose another path for --report.");
+        Say(PathRole.Dependency).ShouldBe(
+            $"--report cannot be '{report.FullName}': it is the runtime configuration that packing may read beside an input, and the run would replace it with the report. Choose another path for --report.");
         Say(PathRole.Output).ShouldBe(
             $"--report cannot be '{report.FullName}': it is a file the run may write or remove, and the report would replace it. Choose another path for --report.");
     }
@@ -185,6 +189,37 @@ public class RunPathGuardTests : IDisposable
             RunPathGuard.Find(new FileInfo(input.ToUpperInvariant()), null, [new ProtectedPaths(PathRole.Input, [input])])
                 .ShouldHaveSingleItem();
         }
+    }
+
+    [Fact]
+    public void AStreamOfAFile_IsRefusedOnWindows_WhateverItsNameIs()
+    {
+        var stream = new FileInfo(P("out", "map.json") + ":hidden");
+
+        var found = RunPathGuard.Find(stream, null, []);
+
+        if (!OperatingSystem.IsWindows())
+        {
+            found.ShouldBeEmpty("elsewhere a colon is an ordinary character in a file name");
+            return;
+        }
+
+        found.ShouldHaveSingleItem().Message.ShouldBe(
+            $"--map cannot be '{stream.FullName}': it names an alternate data stream (a colon after the drive), which is never a place for the symbol map. Choose another path for --map.");
+        RunPathGuard.Find(null, new FileInfo(P("app.dll") + "::$DATA"), []).ShouldHaveSingleItem().Option.ShouldBe("--report");
+        RunPathGuard.Find(new FileInfo(P("out", "map.json")), null, []).ShouldBeEmpty("a plain path is not a stream");
+        RunPathGuard.Find(new FileInfo(@"\\?\" + P("out", "map.json")), null, []).ShouldBeEmpty("the long-path form has its colon after the drive too");
+    }
+
+    [Fact]
+    public void PackingReads_NamesTheRuntimeConfigBesideEachAssembly_OnlyWhenPackingIsOn()
+    {
+        var on = new ObfySettings { Packing = { Enabled = true } };
+        var off = new ObfySettings();
+
+        RunPathGuard.PackingReads([P("src", "A.dll"), P("src", "B.exe")], on)
+            .ShouldBe([P("src", "A.runtimeconfig.json"), P("src", "B.runtimeconfig.json")]);
+        RunPathGuard.PackingReads([P("src", "A.dll")], off).ShouldBeEmpty();
     }
 
     [Fact]

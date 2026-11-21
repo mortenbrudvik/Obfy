@@ -326,6 +326,94 @@ public class CliMapReportGuardTests : IDisposable
         File.ReadAllText(config).ShouldBe("{}");
     }
 
+    // ---- Files the configuration names, and the files a run reads beside its inputs -----------------------------------
+
+    private string WriteJson(string name, string json)
+    {
+        var path = Path.Combine(_root, name);
+        File.WriteAllText(path, json);
+        return path;
+    }
+
+    [Theory]
+    [InlineData(Mode.SingleFile, true, "--map")]
+    [InlineData(Mode.SingleFile, false, "--map")]
+    [InlineData(Mode.SingleFile, true, "--report")]
+    [InlineData(Mode.SeveralFilesClosedSet, true, "--map")]
+    [InlineData(Mode.Merge, true, "--report")]
+    [InlineData(Mode.Solution, true, "--map")]
+    [InlineData(Mode.TwoSourceFiles, false, "--map")]
+    public async Task OptionNamingTheSigningKeyOfTheConfig_IsRefused_AndTheKeyIsUntouched(Mode mode, bool signingEnabled, string option)
+    {
+        var scenario = Setup(mode);
+        var key = Path.Combine(Directory.CreateDirectory(Path.Combine(_root, "keys")).FullName, "release.snk");
+        byte[] keyBytes = [1, 2, 3, 4, 5];
+        File.WriteAllBytes(key, keyBytes);
+        var config = WriteJson(
+            "signing.json",
+            $$"""{ "signing": { "enabled": {{signingEnabled.ToString().ToLowerInvariant()}}, "keyFile": {{System.Text.Json.JsonSerializer.Serialize(key)}} } }""");
+        var before = Snapshot();
+
+        await AssertRefusedAsync($"{scenario.Args} -c \"{config}\" {option} \"{key}\"", option, key, before);
+
+        File.ReadAllBytes(key).ShouldBe(keyBytes);
+    }
+
+    [Theory]
+    [InlineData("--map", "::$DATA")]
+    [InlineData("--report", "::$DATA")]
+    [InlineData("--map", ":hidden")]
+    public async Task OptionNamingAStreamOfAFile_IsRefused_WhicheverFileItIs(string option, string suffix)
+    {
+        if (!OperatingSystem.IsWindows())
+            return; // Elsewhere a colon is an ordinary character in a file name.
+
+        var scenario = Setup(Mode.SingleFile);
+        var before = Snapshot();
+
+        // The input (App.dll::$DATA is App.dll), a file the run writes, and a file that does not exist at all.
+        foreach (var file in new[] { scenario.Inputs[0], scenario.Outputs[0], Path.Combine(_root, "maps", "new.json") })
+        {
+            var given = file + suffix;
+            await AssertRefusedAsync($"{scenario.Args} {option} \"{given}\"", option, given, before);
+        }
+
+        var (_, _, problems) = await RunAsync($"{scenario.Args} {option} \"{scenario.Inputs[0]}{suffix}\"");
+        problems.ShouldHaveSingleItem().Message.ShouldContain("alternate data stream");
+    }
+
+    [Theory]
+    [InlineData(Mode.SingleFile)]
+    [InlineData(Mode.SeveralFilesClosedSet)]
+    [InlineData(Mode.Solution)]
+    [InlineData(Mode.SolutionPlusExtraAssembly)]
+    public async Task OptionNamingTheRuntimeConfigBesideAnInput_IsRefused_WhenPackingReadsIt(Mode mode)
+    {
+        var scenario = Setup(mode);
+        var config = WriteJson("packing.json", """{ "packing": { "enabled": true } }""");
+        var before = Snapshot();
+
+        foreach (var assembly in scenario.Inputs.Where(static p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
+        {
+            var runtimeConfig = Path.ChangeExtension(assembly, ".runtimeconfig.json");
+            await AssertRefusedAsync($"{scenario.Args} -c \"{config}\" --map \"{runtimeConfig}\"", "--map", runtimeConfig, before);
+        }
+    }
+
+    [Fact]
+    public async Task OptionNamingTheRuntimeConfigBesideAnInput_IsAllowed_WhenPackingIsOff()
+    {
+        // Packing is what reads it; without packing nothing touches that file, so it is a place a map may go.
+        var scenario = Setup(Mode.SingleFile);
+        var runtimeConfig = Path.ChangeExtension(scenario.Inputs[0], ".runtimeconfig.json");
+
+        var (exit, text, problems) = await RunAsync($"{scenario.Args} --rename --map \"{runtimeConfig}\"");
+
+        exit.ShouldBe(0, text);
+        problems.ShouldBeEmpty();
+        File.Exists(runtimeConfig).ShouldBeTrue();
+    }
+
     // ---- The two options name the same file -------------------------------------------------------------------
 
     [Theory]

@@ -15,6 +15,12 @@ internal enum PathRole
     /// <summary>The <c>-c</c> configuration file.</summary>
     Config,
 
+    /// <summary>The key file named in the configuration (<c>signing.keyFile</c>), whether or not signing is on.</summary>
+    SigningKey,
+
+    /// <summary>A file packing may read beside an input: its <c>.runtimeconfig.json</c>.</summary>
+    Dependency,
+
     /// <summary>
     /// A file the run may write or remove: an output, the files packing adds beside it (not written for an assembly
     /// without an entry point), its incremental cache file (written with <c>--incremental</c>, removed without it).
@@ -92,8 +98,17 @@ internal static class RunPathGuard
                 .ToList(),
             resolve);
 
-        var mapKey = map is null ? null : resolve(map.FullName);
-        var reportKey = report is null ? null : resolve(report.FullName);
+        // A stream of a file (App.dll::$DATA is App.dll) is never a place for a map or a report, and no comparison of
+        // spellings can tell it from the file it belongs to, so it is refused outright.
+        var mapStream = HasAlternateStream(map);
+        var reportStream = HasAlternateStream(report);
+        if (mapStream)
+            found.Add(StreamCollision(MapOption, "symbol map", map!));
+        if (reportStream)
+            found.Add(StreamCollision(ReportOption, "report", report!));
+
+        var mapKey = map is null || mapStream ? null : resolve(map.FullName);
+        var reportKey = report is null || reportStream ? null : resolve(report.FullName);
 
         if (FindFor(MapOption, "symbol map", map, mapKey, candidates) is { } mapCollision)
             found.Add(mapCollision);
@@ -136,6 +151,33 @@ internal static class RunPathGuard
             yield return IncrementalCache.CachePath(assemblyOutput);
     }
 
+    /// <summary>
+    /// The runtime configuration packing may read beside each assembly (the target framework and the runtime options of the
+    /// packed output come from it), when packing is on; nothing otherwise. Names only.
+    /// </summary>
+    public static IEnumerable<string> PackingReads(IEnumerable<string> assemblyPaths, ObfySettings settings) =>
+        settings.Packing.Enabled ? assemblyPaths.Select(NativePacker.RuntimeConfigPathFor) : [];
+
+    /// <summary>
+    /// True when the path names a stream of a file on Windows: a colon after the drive or share. (Elsewhere a colon is an
+    /// ordinary character in a file name.)
+    /// </summary>
+    private static bool HasAlternateStream(FileInfo? file)
+    {
+        if (file is null || !OperatingSystem.IsWindows())
+            return false;
+
+        var full = file.FullName;
+        var root = Path.GetPathRoot(full) ?? string.Empty;
+        return full.AsSpan(root.Length).Contains(':');
+    }
+
+    private static PathCollision StreamCollision(string option, string noun, FileInfo file) => new(
+        option,
+        file.FullName,
+        $"{option} cannot be '{file.FullName}': it names an alternate data stream (a colon after the drive), which is never a place for the {noun}. "
+        + $"Choose another path for {option}.");
+
     private static PathCollision? FindFor(string option, string noun, FileInfo? file, string? fileKey, Candidates candidates)
     {
         if (file is null || fileKey is null)
@@ -170,6 +212,10 @@ internal static class RunPathGuard
             PathRole.SessionFile =>
                 $"it is a project file or build output that the solution or project lists, and the run would replace it with the {noun}",
             PathRole.Config => $"it is the configuration file given with -c and the run would replace it with the {noun}",
+            PathRole.SigningKey =>
+                $"it is the signing key file named in the configuration and the run would replace it with the {noun}",
+            PathRole.Dependency =>
+                $"it is the runtime configuration that packing may read beside an input, and the run would replace it with the {noun}",
             _ => $"it is a file the run may write or remove, and the {noun} would replace it"
         };
 

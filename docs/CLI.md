@@ -230,10 +230,12 @@ The map and the report are written after the run, so a path that names a file th
 
 - one of the inputs: every listed file (`.dll`, `.exe`, `.cs`, the solution or project file), and for a solution or project the project files and built outputs it lists, including the ones it skips;
 - a file the run may write or remove: each output, with `-o` or without (`{name}.obfuscated{ext}`, `{name}.merged{ext}`, `obfy-out/`, `obfy-src/`), the files packing may write beside an output (`{name}.runtimeconfig.json`, or `{name}.launcher.exe` and `{name}.launcher.runtimeconfig.json` with `packing.rid: portable`; an assembly without an entry point gets none), and, for a single assembly or a merge, the incremental cache file `{output}.obfycache` (written with `--incremental`, removed when it exists without it);
-- the file given with `-c`;
-- for `--report`, the same file as `--map`.
+- the file given with `-c`, and the signing key file named in it (`signing.keyFile`, whether or not signing is on);
+- with `packing.enabled`, the `{name}.runtimeconfig.json` beside an input assembly, which packing reads;
+- for `--report`, the same file as `--map`;
+- a path with an alternate data stream (a colon after the drive on Windows, such as `App.dll::$DATA`, the default stream of `App.dll` itself): such a path is never a sensible place for a map or a report, so it is refused whatever file it names.
 
-Paths are compared as files: a different letter case on Windows, a `..` segment, and a symbolic link or junction in the file's name or in a folder above it do not hide a match. `--dry-run` refuses the same way. A `--map` or `--report` path inside the output folder under another name (`-o out --map out/map.json`) is fine. An output folder that is the input's folder (`obfy $(TargetPath) -o $(TargetDir)`) is a separate, documented in-place run and is not refused. Not covered: hard links, and a drive letter that aliases another path (`subst`, a mapped drive).
+Paths are compared as files: a different letter case on Windows, a `..` segment, and a symbolic link or junction in the file's name or in a folder above it do not hide a match. `--dry-run` refuses the same way. A `--map` or `--report` path inside the output folder under another name (`-o out --map out/map.json`) is fine. An output folder that is the input's folder (`obfy $(TargetPath) -o $(TargetDir)`) is a separate, documented in-place run and is not refused. Not covered: hard links; a drive letter that aliases another path (`subst`, a mapped drive); and the sibling DLLs a run reads without being told, such as the dependencies that `dependencyEmbedding` packs or that renaming resolves next to an input: their names are only known after the input is loaded, so a `--map` or `--report` path naming one of them is not refused (a closed set or a solution's own assemblies are covered, because they are listed).
 
 ### Generate Reports
 

@@ -671,7 +671,17 @@ public class Program
         // reads. Refuse before any work: the listed inputs, the -c file, and each other.
         if (RefuseCollidingPaths(RunPathGuard.Find(
                 mapFile, reportFile,
-                [new ProtectedPaths(PathRole.Input, inputs.Select(static i => i.FullName)), new ProtectedPaths(PathRole.Config, [configFile?.FullName])],
+                () =>
+                [
+                    new ProtectedPaths(PathRole.Input, inputs.Select(static i => i.FullName)),
+                    new ProtectedPaths(PathRole.Config, [configFile?.FullName]),
+                    new ProtectedPaths(PathRole.SigningKey, [settings.Signing.KeyFile]),
+
+                    // Packing reads the runtime configuration beside each assembly it packs (a merge packs a temporary file).
+                    new ProtectedPaths(
+                        PathRole.Dependency,
+                        merge ? [] : RunPathGuard.PackingReads(inputs.Select(static i => i.FullName).Where(IsAssemblyFile), settings))
+                ],
                 compareMapWithReport: true)))
         {
             return 1;
@@ -878,6 +888,9 @@ public class Program
                 () =>
                 [
                     new ProtectedPaths(PathRole.SessionFile, session.Entries.SelectMany(static e => new[] { e.ProjectPath, e.OutputPath })),
+                    new ProtectedPaths(
+                        PathRole.Dependency,
+                        useMerge ? [] : RunPathGuard.PackingReads(closedSetInputs.Select(static i => i.AssemblyPath), settings)),
                     new ProtectedPaths(
                         PathRole.Output,
                         PlanClosedSetOutputs([.. closedSetInputs.Select(static i => i.AssemblyPath)], sessionFolder, useMerge, settings))

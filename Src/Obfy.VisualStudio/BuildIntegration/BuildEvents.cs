@@ -87,7 +87,7 @@ public static class BuildEvents
             // Show output window if configured
             if (options?.ShowOutputWindow ?? true)
             {
-                await output?.ActivateAsync()!;
+                await output.ActivateIfAvailableAsync();
             }
 
             output?.Info($"Post-build obfuscation starting for {project.Name}...");

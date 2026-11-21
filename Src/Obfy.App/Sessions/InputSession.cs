@@ -661,7 +661,7 @@ public sealed class InputSession
 
         // Outside the lock: telling two paths apart may ask the file system about links.
         var listed = captured.Included.Select(static f => f.Path).Concat(captured.Skipped.Select(static r => r.Path));
-        return captured with { Collision = OutputCollisions.Find(listed, captured.Plan, defaultPlan) };
+        return captured with { Collision = OutputCollisions.Find(listed, captured.Plan, defaultPlan, captured.SymbolMapPath) };
     }
 
     /// <summary>The symbol map's file: the typed path (a relative one against the output folder), or the default name there.</summary>

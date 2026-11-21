@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The JetBrains Rider plugin (`Src/Obfy.Rider`) was removed, with its Gradle build, JVM tests, and the `rider-tests` CI job. It was never published to a marketplace or attached to a release
 
 ### Fixed
+- A run is refused when the symbol map's location is one of the listed files (included or skipped) or a file the run itself writes. Before, typing the path of a listed assembly as the symbol-map location replaced that assembly with JSON after a successful renaming run. The run bar says which file would be replaced and to choose another location for the map
 - Obfuscated output no longer carries the original names and plaintext string or constant literals in its raw bytes. The assembly was written with the original string, user-string and blob heaps preserved, so renaming and string encryption left what they replaced readable to `strings`
 - A failure while writing, post-processing or signing an obfuscated assembly no longer truncates or deletes the existing output, including when the output is the input itself (the documented MSBuild post-build step)
 - Symbol renaming no longer breaks `ToString`, `Equals` and `GetHashCode` overrides in structs and sealed classes, delegate types, and finalizers, which dispatched to the base implementation or failed to load

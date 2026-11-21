@@ -1047,6 +1047,134 @@ public sealed class RunCoordinatorTests : IDisposable
             $"The output folder is the folder of App.dll; {ReplaceYourOriginal} Pick another folder, or clear it to write App.obfuscated.dll beside it.");
     }
 
+    // ---- A symbol map aimed at a listed file blocks the run (B-44: the map replaced the user's assembly with JSON) ----
+
+    private static string MapWouldReplaceInput(string name) =>
+        $"The symbol map would replace {name}, one of your inputs. Choose another location for the symbol map.";
+
+    private void MapTo(string path)
+    {
+        _input.SetWriteSymbolMap(true);
+        _input.SetSymbolMapPath(path);
+    }
+
+    [Fact]
+    public async Task SymbolMap_OnAnIncludedInput_IsBlocked_TheFileIsNeverWritten_UntilAnotherPlaceIsChosen()
+    {
+        var input = AddFile("App.dll");
+        File.WriteAllText(input, "original bytes");
+        _engine.Obfuscate = (_, _, _, _) => Task.FromResult(Ok(map: new Dictionary<string, string> { ["Foo"] = "a" }));
+        MapTo(input);
+
+        var snapshot = _run.GetSnapshot();
+        snapshot.CanStart.ShouldBeFalse();
+        snapshot.BlockedReason.ShouldBe(MapWouldReplaceInput("App.dll"));
+        var error = Should.Throw<ObfyApiException>(() => _run.Start());
+        error.Code.ShouldBe("run.blocked");
+        error.Message.ShouldBe(MapWouldReplaceInput("App.dll"));
+        _run.IsRunning.ShouldBeFalse();
+        _engine.ObfuscateCalls.ShouldBeEmpty();
+        _engine.WrittenMaps.ShouldBeEmpty();
+        File.ReadAllText(input).ShouldBe("original bytes");
+        Row("App.dll").Status.ShouldBe(FileStatus.Pending);
+
+        // The way out the message names: the map goes somewhere else.
+        var elsewhere = Path.Combine(_tempDirectory, "maps", "app.map.json");
+        _input.SetSymbolMapPath(elsewhere);
+        _run.GetSnapshot().BlockedReason.ShouldBeNull();
+        await RunAsync();
+        _engine.WrittenMaps.ShouldHaveSingleItem().Path.ShouldBe(elsewhere);
+        File.ReadAllText(input).ShouldBe("original bytes");
+    }
+
+    [Fact]
+    public void SymbolMap_OnASkippedRow_IsBlocked()
+    {
+        AddFile("App.dll");
+        AddSkippedFile("App.Tests.dll", "Test project");
+        MapTo(Path.Combine(_tempDirectory, "App.Tests.dll"));
+
+        var snapshot = _run.GetSnapshot();
+        snapshot.CanStart.ShouldBeFalse();
+        snapshot.BlockedReason.ShouldBe(MapWouldReplaceInput("App.Tests.dll"));
+        Should.Throw<ObfyApiException>(() => _run.Start()).Code.ShouldBe("run.blocked");
+        _engine.ObfuscateCalls.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("upper")]
+    [InlineData("dotDot")]
+    public void SymbolMap_ADifferentSpellingOfAnInput_IsBlockedToo(string spelling)
+    {
+        var input = AddFile("App.dll");
+        Directory.CreateDirectory(Path.Combine(_tempDirectory, "sub"));
+        MapTo(spelling == "upper" ? input.ToUpperInvariant() : Path.Combine(_tempDirectory, "sub", "..", "App.dll"));
+
+        _run.GetSnapshot().BlockedReason.ShouldBe(MapWouldReplaceInput("App.dll"));
+        Should.Throw<ObfyApiException>(() => _run.Start()).Message.ShouldBe(MapWouldReplaceInput("App.dll"));
+        _engine.ObfuscateCalls.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void SymbolMap_ARelativePathThatResolvesIntoTheOutputFolderOntoAListedFile_IsBlocked()
+    {
+        AddFile("App.dll");
+        Directory.CreateDirectory(Path.Combine(_tempDirectory, "out"));
+        File.WriteAllBytes(Path.Combine(_tempDirectory, "out", "Lib.dll"), []);
+        _input.AddPaths([Path.Combine(_tempDirectory, "out", "Lib.dll")]);
+        _input.SetIncluded(Row("Lib.dll").Id, included: false);
+        _input.SetOutputFolder(Path.Combine(_tempDirectory, "out"));
+        MapTo("Lib.dll");
+
+        _input.ResolveSymbolMapPath().ShouldBe(Path.Combine(_tempDirectory, "out", "Lib.dll"));
+        _run.GetSnapshot().BlockedReason.ShouldBe(MapWouldReplaceInput("Lib.dll"));
+        Should.Throw<ObfyApiException>(() => _run.Start()).Message.ShouldBe(MapWouldReplaceInput("Lib.dll"));
+    }
+
+    [Fact]
+    public void SymbolMap_OnAFileTheRunWrites_IsBlocked()
+    {
+        AddFile("App.dll");
+        var output = Path.Combine(_tempDirectory, "out", "App.dll");
+        _input.SetOutputFolder(Path.Combine(_tempDirectory, "out"));
+        MapTo(output);
+
+        var reason = "The symbol map would replace App.dll, which the run itself writes. Choose another location for the symbol map.";
+        _run.GetSnapshot().BlockedReason.ShouldBe(reason);
+        Should.Throw<ObfyApiException>(() => _run.Start()).Message.ShouldBe(reason);
+        _engine.ObfuscateCalls.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SymbolMap_OptionOff_APathOnAListedFileIsNotABlocker()
+    {
+        var input = AddFile("App.dll");
+        MapTo(input);
+        _run.GetSnapshot().CanStart.ShouldBeFalse();
+
+        _input.SetWriteSymbolMap(false);
+
+        _run.GetSnapshot().BlockedReason.ShouldBeNull();
+        await RunAsync();
+        _engine.ObfuscateCalls.ShouldHaveSingleItem();
+        _engine.WrittenMaps.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void SymbolMap_TheReasonIsPushedToThePageWhenThePathIsTyped()
+    {
+        var input = AddFile("App.dll");
+        _input.SetWriteSymbolMap(true);
+        var before = _events.Published.Count(e => e.Name == AppEvents.RunChanged);
+
+        _input.SetSymbolMapPath(input);
+
+        var runChanges = _events.Published.Where(e => e.Name == AppEvents.RunChanged).Select(e => (RunSnapshot)e.Data!).ToList();
+        runChanges.Count.ShouldBeGreaterThan(before);
+        runChanges.Last().CanStart.ShouldBeFalse();
+        runChanges.Last().BlockedReason.ShouldBe(MapWouldReplaceInput("App.dll"));
+    }
+
     // ---- Closed set ----
 
     [Fact]

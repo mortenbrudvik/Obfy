@@ -23,8 +23,8 @@ namespace Obfy.App.Sessions;
 /// </para>
 /// <para>
 /// <b>Explicit blockers.</b> <see cref="RunSnapshot.CanStart"/> and <see cref="RunSnapshot.BlockedReason"/> are state, not a
-/// command's <c>CanExecute</c>: a run is blocked while one is running, with nothing included, when an output would replace
-/// a listed file, or while the protection settings are invalid, and each says why in plain words (UI-052). The settings' reason is the first of
+/// command's <c>CanExecute</c>: a run is blocked while one is running, with nothing included, when an output or the symbol
+/// map would replace a listed file, or while the protection settings are invalid, and each says why in plain words (UI-052). The settings' reason is the first of
 /// <see cref="ProtectionSession.ValidationErrors"/>; no rule is repeated here.
 /// </para>
 /// <para>
@@ -243,7 +243,7 @@ public sealed class RunCoordinator : IDisposable
     /// Starts a run on the thread pool and returns its task at once; the task never faults. The page does not wait for
     /// it: it follows <c>run.changed</c> and <c>run.completed</c>. Tests await it.
     /// </summary>
-    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, nothing is included, an output would replace a listed file, or the settings are invalid; the message says which.</exception>
+    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, nothing is included, an output or the symbol map would replace a listed file, or the settings are invalid; the message says which.</exception>
     public Task Start()
     {
         // Validating the settings probes the signing key file, so it runs before the gate is taken: nothing that touches

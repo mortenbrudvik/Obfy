@@ -1,4 +1,4 @@
-import { useEffect, useRef, type DragEvent, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type DragEvent, type ReactNode } from "react";
 import Notice from "../../components/Notice";
 import { flushPendingEdits } from "../../hooks/pendingEdits";
 import { useAppAction } from "../../hooks/useAppAction";
@@ -76,8 +76,9 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
   };
 
   // A run is blocked until a typed value (a watermark id) reaches the host, so the block is judged after it was sent.
+  // In a layout effect, like the shortcut handlers: a Ctrl+Enter right after the run state arrives must judge that state.
   const latestRun = useRef(run);
-  useEffect(() => {
+  useLayoutEffect(() => {
     latestRun.current = run;
   });
   const startAfterPendingEdits = async () => {

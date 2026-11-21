@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 /** What each shortcut does. A shortcut with no handler is left to the browser. */
 export interface ShortcutHandlers {
@@ -48,8 +48,11 @@ function handlerFor(event: KeyboardEvent, handlers: ShortcutHandlers): (() => vo
 
 /** The window-wide keyboard shortcuts. A handled key does not repeat and is kept from the browser. Esc is left alone when a box or menu took it. */
 export function useShortcuts(handlers: ShortcutHandlers) {
+  // Published in a layout effect, not a passive one: it runs inside the commit, so a key pressed the moment the screen
+  // shows a state (Esc once the run reads Running) already finds that state's handler. A passive effect runs later,
+  // and on a busy machine later than the next key, which was then dropped with nothing to retry it.
   const latest = useRef(handlers);
-  useEffect(() => {
+  useLayoutEffect(() => {
     latest.current = handlers;
   });
 

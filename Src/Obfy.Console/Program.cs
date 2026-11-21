@@ -1023,11 +1023,12 @@ public class Program
 
     /// <summary>
     /// What this invocation reads from a result that the incremental cache cannot supply. The symbol map holds the
-    /// original names, so the cache never stores it: <c>--map</c> needs it, and so does <c>--report</c>, whose
-    /// symbol summary is counted from it. With either, a run that could have been skipped is done again.
+    /// original names, so the cache never stores it: <c>--map</c> needs it. <c>--report</c> lists the symbols, the
+    /// skipped items and the warning texts, none of which the cache keeps. With either, a run that could have been
+    /// skipped is done again when the cached run had any of what is needed.
     /// </summary>
     private static ObfuscationRunOptions RunOptionsFor(FileInfo? mapFile, FileInfo? reportFile) =>
-        new() { NeedsSymbolMap = mapFile is not null || reportFile is not null };
+        new() { NeedsSymbolMap = mapFile is not null, NeedsReport = reportFile is not null };
 
     private static async Task WriteMapAndReportAsync(
         FileInfo? mapFile,

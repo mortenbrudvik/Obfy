@@ -453,10 +453,10 @@ public class CoreServicesIncrementalCacheTests : IDisposable
             ContainsBytes(bytes, Encoding.Unicode.GetBytes(name)).ShouldBeFalse($"'{name}' (UTF-16) is in the cache file");
         }
 
-        // And the shape itself: the key, the statistics (numbers) and three counts, nothing else.
+        // And the shape itself: the key, the statistics (numbers), three counts and the fingerprints, nothing else.
         using var document = JsonDocument.Parse(bytes);
         document.RootElement.EnumerateObject().Select(p => p.Name).ShouldBe(
-            ["format", "key", "statistics", "symbolMapEntries", "skippedItems", "warnings"]);
+            ["format", "key", "statistics", "symbolMapEntries", "skippedItems", "warnings", "output", "companions"]);
         document.RootElement.GetProperty("key").GetString()!.Length.ShouldBe(64);
         document.RootElement.GetProperty("statistics").EnumerateObject()
             .ShouldAllBe(p => p.Value.ValueKind == JsonValueKind.Number);
@@ -484,23 +484,31 @@ public class CoreServicesIncrementalCacheTests : IDisposable
         rerun.Statistics.TotalTransformations.ShouldBeGreaterThan(0);
         (await service.ObfuscateAsync(input, output, settings)).FromCache.ShouldBeTrue("the rerun rewrote the cache");
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(IncrementalCache.CachePath(output)));
-        document.RootElement.GetProperty("format").GetInt32().ShouldBe(2);
+        document.RootElement.GetProperty("format").GetInt32().ShouldBe(3);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("{ this is not json")]
-    [InlineData("{\"format\":2,\"key\":\"ABC")]
+    [InlineData("{\"format\":3,\"key\":\"ABC")]
     [InlineData("null")]
     [InlineData("[]")]
     [InlineData("42")]
-    [InlineData("{\"format\":2}")]
+    [InlineData("{\"format\":3}")]
     [InlineData("{\"format\":1,\"key\":\"KEY\",\"statistics\":{}}")]
-    [InlineData("{\"format\":2,\"key\":\"KEY\",\"statistics\":null,\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0}")]
-    [InlineData("{\"format\":2,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":-1,\"skippedItems\":0,\"warnings\":0}")]
-    [InlineData("{\"format\":2,\"key\":\"KEY\",\"statistics\":{\"stringsEncrypted\":\"many\"},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0}")]
-    [InlineData("{\"format\":2,\"key\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0}")]
+    [InlineData("{\"format\":2,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":null,\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"output\":FP,\"companions\":[]}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":-1,\"skippedItems\":0,\"warnings\":0,\"output\":FP,\"companions\":[]}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":{\"stringsEncrypted\":\"many\"},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"output\":FP,\"companions\":[]}")]
+    [InlineData("{\"format\":3,\"key\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"output\":FP,\"companions\":[]}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"companions\":[]}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"output\":null,\"companions\":[]}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"output\":{\"length\":1,\"sha256\":\"abc\"},\"companions\":[]}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"output\":{\"length\":-1,\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"companions\":[]}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"output\":FP}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"output\":FP,\"companions\":[FP]}")]
+    [InlineData("{\"format\":3,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0,\"output\":FP,\"companions\":[null]}")]
     public async Task CorruptOrForeignCacheFile_IsAMiss_NeverAnException(string content)
     {
         using var container = CoreServicesTestSupport.BuildContainer();
@@ -510,7 +518,10 @@ public class CoreServicesIncrementalCacheTests : IDisposable
         var settings = RenamingIncremental();
         await service.ObfuscateAsync(input, output, settings);
         var key = IncrementalCache.ComputeKey(input, settings);
-        await File.WriteAllTextAsync(IncrementalCache.CachePath(output), content.Replace("KEY", key));
+        // FP stands for the real fingerprint of the output, so only the part under test is wrong in each case.
+        var fingerprint =
+            $"{{\"length\":{new FileInfo(output).Length},\"sha256\":\"{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(output)))}\"}}";
+        await File.WriteAllTextAsync(IncrementalCache.CachePath(output), content.Replace("KEY", key).Replace("FP", fingerprint));
 
         IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
         var rerun = await service.ObfuscateAsync(input, output, settings);

@@ -64,9 +64,9 @@ public class IncrementalCacheTests : IDisposable
     {
         var (input, output, settings) = Seed();
         settings.Packing.Enabled = true;
-        IncrementalCache.Write(input, output, settings);
         File.WriteAllText(NativePacker.RuntimeConfigPathFor(output), "{}");
-        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse("the output is not a packed host");
     }
 
     [Fact]
@@ -74,13 +74,14 @@ public class IncrementalCacheTests : IDisposable
     {
         var (input, output, settings) = Seed();
         settings.Packing.Enabled = true;
-        IncrementalCache.Write(input, output, settings);
         var packed = new byte[8];
         packed[0] = (byte)'M';
         packed[1] = (byte)'Z';
         "OBP1"u8.CopyTo(packed.AsSpan(4));
         File.WriteAllBytes(output, packed);
         File.WriteAllText(NativePacker.RuntimeConfigPathFor(output), "{}");
+        // The entry fingerprints the files as they are when it is written, so they come first.
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
         IncrementalCache.TryHit(input, output, settings).ShouldBeTrue();
     }
 
@@ -251,7 +252,7 @@ public class IncrementalCacheTests : IDisposable
             new ObfuscationStatistics { StringsEncrypted = 7, TypesRenamed = 3, MethodsRenamed = 5, AssembliesEmbedded = 1 },
             SymbolMapEntries: 11, SkippedItems: 2, Warnings: 4);
 
-        IncrementalCache.TryWrite(output, key, run).ShouldBeTrue();
+        IncrementalCache.TryWrite(output, key, run, settings.Packing).ShouldBeTrue();
         var read = IncrementalCache.TryReadHit(output, settings, key);
 
         read.ShouldNotBeNull();
@@ -278,11 +279,43 @@ public class IncrementalCacheTests : IDisposable
     }
 
     [Fact]
+    public void TryHit_OutputChangedAfterTheCacheWasWritten_IsFalse()
+    {
+        var (input, output, settings) = Seed();
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeTrue();
+        IncrementalCache.TryHit(input, output, settings).ShouldBeTrue();
+
+        File.WriteAllBytes(output, [5, 6, 7, 9]);
+
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse("same length, one byte different");
+    }
+
+    [Fact]
+    public void TryWrite_OutputMissing_WritesNothing()
+    {
+        var (input, output, settings) = Seed();
+        File.Delete(output);
+
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeFalse("there is no file to vouch for");
+        File.Exists(IncrementalCache.CachePath(output)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryWrite_PackingOnButTheSidecarIsMissing_WritesNothing()
+    {
+        var (input, output, settings) = Seed();
+        settings.Packing.Enabled = true;
+
+        IncrementalCache.TryWrite(input, output, settings).ShouldBeFalse();
+        File.Exists(IncrementalCache.CachePath(output)).ShouldBeFalse();
+    }
+
+    [Fact]
     public void TryReadHit_KeyDiffersInCase_StillMatches()
     {
         var (input, output, settings) = Seed();
         var key = IncrementalCache.ComputeKey(input, settings);
-        IncrementalCache.TryWrite(output, key.ToLowerInvariant(), CachedRun.Empty).ShouldBeTrue();
+        IncrementalCache.TryWrite(output, key.ToLowerInvariant(), CachedRun.Empty, settings.Packing).ShouldBeTrue();
 
         IncrementalCache.TryReadHit(output, settings, key).ShouldNotBeNull();
     }

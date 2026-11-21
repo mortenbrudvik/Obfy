@@ -14,15 +14,19 @@ namespace Obfy.Core.Utilities;
 /// The caller computes the key once, before the run, from the settings the pipeline will use, and
 /// removes the cache file before it overwrites the output (<see cref="Invalidate"/>).
 /// A locked or corrupt <c>{output}.obfycache</c> is a miss, not a failed run.
-/// The file is a small JSON document: the key and what a hit needs to say about the run that wrote the
-/// output (<see cref="CachedRun"/>): the statistics and three counts. It holds numbers only. The symbol map,
-/// the skipped items and the warnings name the original types, members, resources and paths, and people ship
-/// their output folder, so none of them is ever written here. A file in any other layout (including the bare
-/// hex key earlier builds wrote) is a miss: it has no numbers to return, and the key already contains the
-/// Obfy.Core build identity, so it could only have come from a build that no longer exists.
+/// The file is a small JSON document: the key, what a hit needs to say about the run that wrote the
+/// output (<see cref="CachedRun"/>: the statistics and three counts) and a fingerprint (length and SHA-256) of
+/// the output as it was when the cache was written, and of the sibling files a packed output needs. It holds
+/// numbers and hashes only. The symbol map, the skipped items and the warnings name the original types,
+/// members, resources and paths, and people ship their output folder, so none of them is ever written here.
+/// A hit needs the files on disk to still match their fingerprint: the key proves the input, not that the
+/// file at the output path is the one the cached run wrote (a build can copy the unprotected original over
+/// it). A file in any other layout (including the bare hex key earlier builds wrote) is a miss: it has no
+/// numbers to return, and the key already contains the Obfy.Core build identity, so it could only have come
+/// from a build that no longer exists.
 /// A packing hit also requires the native sibling <c>{name}.runtimeconfig.json</c> (win-x64)
-/// or the portable launcher files. The hex stored here is only the cache identity. It is not
-/// the native overlay AES key.
+/// or the portable launcher files, each matching its fingerprint. The hex stored here is only the cache
+/// identity. It is not the native overlay AES key.
 /// </summary>
 public static class IncrementalCache
 {
@@ -33,7 +37,7 @@ public static class IncrementalCache
     };
 
     /// <summary>Version of the entry layout. Any other value is a miss.</summary>
-    private const int EntryFormat = 2;
+    private const int EntryFormat = 3;
 
     private static readonly JsonSerializerOptions EntryJsonOptions = new()
     {
@@ -222,9 +226,20 @@ public static class IncrementalCache
             }
 
             var entry = ParseEntry(File.ReadAllText(CachePath(outputPath)));
-            return entry is not null && string.Equals(expectedKey, entry.Key, StringComparison.OrdinalIgnoreCase)
-                ? entry.Run
-                : null;
+            if (entry is null || !string.Equals(expectedKey, entry.Key, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            // The key says the input is the one the cached run read. These say the files are the ones it wrote.
+            var sidecars = PackingApplicator.SidecarPaths(outputPath, settings.Packing).ToList();
+            if (sidecars.Count != entry.Companions.Count || !entry.Output.Matches(outputPath))
+                return null;
+            for (var i = 0; i < sidecars.Count; i++)
+            {
+                if (!entry.Companions[i].Matches(sidecars[i]))
+                    return null;
+            }
+
+            return entry.Run;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -232,9 +247,9 @@ public static class IncrementalCache
         }
     }
 
-    private sealed record Entry(string Key, CachedRun Run);
+    private sealed record Entry(string Key, CachedRun Run, FileFingerprint Output, List<FileFingerprint> Companions);
 
-    /// <summary>The wire shape of the file. Numbers and the key, nothing else.</summary>
+    /// <summary>The wire shape of the file. Numbers, hashes and the key, nothing else.</summary>
     private sealed class EntryFile
     {
         public int Format { get; set; }
@@ -243,6 +258,8 @@ public static class IncrementalCache
         public int SymbolMapEntries { get; set; }
         public int SkippedItems { get; set; }
         public int Warnings { get; set; }
+        public FileFingerprint? Output { get; set; }
+        public List<FileFingerprint>? Companions { get; set; }
     }
 
     private static Entry? ParseEntry(string text)
@@ -256,12 +273,19 @@ public static class IncrementalCache
                 file.Statistics is null ||
                 file.SymbolMapEntries < 0 ||
                 file.SkippedItems < 0 ||
-                file.Warnings < 0)
+                file.Warnings < 0 ||
+                file.Output is not { IsWellFormed: true } ||
+                file.Companions is null ||
+                file.Companions.Exists(static c => c is not { IsWellFormed: true }))
             {
                 return null;
             }
 
-            return new Entry(file.Key.Trim(), new CachedRun(file.Statistics, file.SymbolMapEntries, file.SkippedItems, file.Warnings));
+            return new Entry(
+                file.Key.Trim(),
+                new CachedRun(file.Statistics, file.SymbolMapEntries, file.SkippedItems, file.Warnings),
+                file.Output,
+                file.Companions);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
         {
@@ -270,15 +294,16 @@ public static class IncrementalCache
     }
 
     /// <summary>
-    /// Writes an entry for an output the caller produced elsewhere. It carries no run record (zero statistics and
-    /// counts), so a hit on it says nothing about the run. The obfuscation service writes through
-    /// <see cref="TryWrite(string, string, CachedRun)"/> instead.
+    /// Writes an entry for an output the caller produced elsewhere, fingerprinting the file as it is now. It carries
+    /// no run record (zero statistics and counts), so a hit on it says nothing about the run. Returns false when the
+    /// output, or a file a packed output needs, is not there to fingerprint. The obfuscation service writes through
+    /// <see cref="TryWrite(string, string, CachedRun, PackingSettings)"/> instead.
     /// </summary>
     public static bool TryWrite(string inputPath, string outputPath, ObfySettings settings)
     {
         try
         {
-            return TryWrite(outputPath, ComputeKey(inputPath, settings), CachedRun.Empty);
+            return TryWrite(outputPath, ComputeKey(inputPath, settings), CachedRun.Empty, settings.Packing);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -286,7 +311,12 @@ public static class IncrementalCache
         }
     }
 
-    internal static bool TryWrite(string outputPath, string key, CachedRun run)
+    /// <summary>
+    /// Writes the entry for an output that is final: after signing, the post-save patches and packing, because the
+    /// fingerprint is of the files as they are on disk now. Returns false when the cache could not be written, or when
+    /// a file it would vouch for is not there.
+    /// </summary>
+    internal static bool TryWrite(string outputPath, string key, CachedRun run, PackingSettings packing)
     {
         try
         {
@@ -297,7 +327,9 @@ public static class IncrementalCache
                 Statistics = run.Statistics,
                 SymbolMapEntries = run.SymbolMapEntries,
                 SkippedItems = run.SkippedItems,
-                Warnings = run.Warnings
+                Warnings = run.Warnings,
+                Output = FileFingerprint.Of(outputPath),
+                Companions = PackingApplicator.SidecarPaths(outputPath, packing).Select(FileFingerprint.Of).ToList()
             };
             File.WriteAllText(CachePath(outputPath), JsonSerializer.Serialize(file, EntryJsonOptions));
             return true;
@@ -349,9 +381,50 @@ public static class IncrementalCache
 /// <param name="Statistics">The statistics of that run.</param>
 /// <param name="SymbolMapEntries">How many entries its symbol map had. Zero means the map of a hit (empty) is exact.</param>
 /// <param name="SkippedItems">How many items it skipped and left unobfuscated.</param>
-/// <param name="Warnings">How many warnings it raised that a hit does not derive again (runtime-profile and packing lines are).</param>
+/// <param name="Warnings">How many warnings it raised that a hit does not derive again. Runtime-profile gating and the
+/// lines <see cref="PackingApplicator"/> adds for a packed output (the packed path, and the .dll advisory) are derived
+/// from the settings and the output name, so a hit repeats them and they are not counted.</param>
 internal sealed record CachedRun(ObfuscationStatistics Statistics, int SymbolMapEntries, int SkippedItems, int Warnings)
 {
     /// <summary>A record with no information: zero statistics and counts.</summary>
     public static CachedRun Empty => new(new ObfuscationStatistics(), 0, 0, 0);
+}
+
+/// <summary>
+/// Length and SHA-256 of a file. A hash names nothing, so it may be stored beside the output. Not secret: it only has
+/// to tell the file the cached run wrote from any other file at the same path.
+/// </summary>
+internal sealed class FileFingerprint
+{
+    public long Length { get; set; }
+    public string? Sha256 { get; set; }
+
+    /// <summary>A stored value that can be compared: a length and a 64-digit hex hash.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsWellFormed =>
+        Length >= 0 && Sha256 is { Length: 64 } hash && hash.All(static c => char.IsAsciiHexDigit(c));
+
+    /// <summary>The fingerprint of the file as it is now. Throws IOException when it cannot be read.</summary>
+    public static FileFingerprint Of(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return new FileFingerprint { Length = stream.Length, Sha256 = Convert.ToHexString(SHA256.HashData(stream)) };
+    }
+
+    /// <summary>True when the file at <paramref name="path"/> has this length and hash. A file that cannot be read does not match.</summary>
+    public bool Matches(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists || info.Length != Length)
+                return false;
+
+            return string.Equals(Of(path).Sha256, Sha256, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 }

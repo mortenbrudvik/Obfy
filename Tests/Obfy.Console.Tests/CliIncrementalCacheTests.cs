@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Obfy.App.Tests.Common;
 using Shouldly;
 
 namespace Obfy.Console.Tests;
@@ -141,6 +142,77 @@ public class CliIncrementalCacheTests : IDisposable
         second.ShouldNotContain(Reused);
         File.Exists(map2).ShouldBeTrue();
         ReadMap(map2).Keys.ShouldBe(ReadMap(map1).Keys, ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task OutputReplacedByTheUnprotectedOriginal_IsProtectedAgain_NotReportedAsReused()
+    {
+        var input = NewInput();
+        var original = File.ReadAllBytes(input);
+        var args = $"\"{input}\" -o \"{Out}\" -l minimal --rename --incremental --no-logo";
+        var (_, first) = await RunAsync(args);
+        var output = Path.Combine(Out, "App.dll");
+
+        // A build copies the unprotected original over the protected output.
+        File.WriteAllBytes(output, original);
+        var (exit, second) = await RunAsync(args);
+
+        exit.ShouldBe(0, second);
+        second.ShouldNotContain(Reused);
+        TotalTransformations(second).ShouldBe(TotalTransformations(first));
+        File.ReadAllBytes(output).ShouldNotBe(original, "the second run protected the file again");
+    }
+
+    [JunctionFact]
+    public async Task OutputFolderThatIsAJunctionToTheInputsFolder_IsInPlace_NotAStaleHit()
+    {
+        var input = NewInput();
+        var original = File.ReadAllBytes(input);
+        var real = Path.Combine(_root, "real");
+        Directory.CreateDirectory(real);
+        var link = Path.Combine(_root, "link");
+        Junctions.TryCreate(link, real, out var error).ShouldBeTrue(error);
+        var common = "-l minimal --rename --incremental --no-logo";
+        var (firstExit, firstOutput) = await RunAsync($"\"{input}\" -o \"{real}\" {common}");
+        firstExit.ShouldBe(0, firstOutput);
+        var target = Path.Combine(real, "App.dll");
+        File.WriteAllBytes(target, original); // the build restores the original
+
+        // obfy real\App.dll -o link: the output folder is the input's folder under another name
+        var (exit, output) = await RunAsync($"\"{target}\" -o \"{link}\" {common}");
+
+        exit.ShouldBe(0, output);
+        output.ShouldNotContain(Reused);
+        output.ShouldContain("Incremental cache not used: the output replaces the input file.");
+        File.ReadAllBytes(target).ShouldNotBe(original, "the in-place run protected the file");
+    }
+
+    [Fact]
+    public async Task Report_SecondRun_RunsAgain_WhenTheCachedRunRaisedWarnings_AndReusesWithoutAReport()
+    {
+        // Virtualization on a method it cannot encode raises a warning and leaves the symbol map empty, so only the
+        // report (which lists warnings) must make the second run do the work again.
+        var input = NewInput();
+        var report = Path.Combine(_root, "report.json");
+        var common = $"\"{input}\" -o \"{Out}\" -l minimal --no-symbol-renaming --encrypt-methods --incremental --no-logo";
+        var (firstExit, first) = await RunAsync(common);
+        firstExit.ShouldBe(0, first);
+        using (var entry = JsonDocument.Parse(File.ReadAllText(Path.Combine(Out, "App.dll.obfycache"))))
+        {
+            entry.RootElement.GetProperty("symbolMapEntries").GetInt32().ShouldBe(0);
+            entry.RootElement.GetProperty("warnings").GetInt32().ShouldBeGreaterThan(0, "the sample must raise a warning:\n" + first);
+        }
+
+        var (withReportExit, withReport) = await RunAsync($"{common} --report \"{report}\"");
+        var (plainExit, plain) = await RunAsync(common);
+
+        withReportExit.ShouldBe(0, withReport);
+        withReport.ShouldNotContain(Reused);
+        withReport.ShouldContain("Incremental cache not used for this run: the report is needed");
+        File.Exists(report).ShouldBeTrue();
+        plainExit.ShouldBe(0, plain);
+        plain.ShouldContain(Reused);
+        plain.ShouldContain("The run that produced this output raised");
     }
 
     [Fact]

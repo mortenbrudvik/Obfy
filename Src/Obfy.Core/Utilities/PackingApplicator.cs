@@ -16,18 +16,36 @@ internal static class PackingApplicator
         string inputPath,
         ICollection<string> warnings)
     {
-        if (settings.Packing.IsPortable)
+        var packed = settings.Packing.IsPortable
+            ? ManagedLauncherPacker.Pack(assemblyPath, inputPath)
+            : NativePacker.Pack(assemblyPath, settings, inputPath);
+        AddPackedWarnings(assemblyPath, settings.Packing, packed, warnings);
+        return packed;
+    }
+
+    /// <summary>
+    /// What a run that is already packed on disk (an incremental-cache hit) reports for it: the packed path, and adds
+    /// to <paramref name="warnings"/> exactly the lines <see cref="Pack"/> adds for it. Packs nothing.
+    /// </summary>
+    internal static string DescribePacked(string assemblyPath, PackingSettings packing, ICollection<string> warnings)
+    {
+        var packed = packing.IsPortable ? ManagedLauncherPacker.LauncherPathFor(assemblyPath) : assemblyPath;
+        AddPackedWarnings(assemblyPath, packing, packed, warnings);
+        return packed;
+    }
+
+    private static void AddPackedWarnings(
+        string assemblyPath, PackingSettings packing, string packed, ICollection<string> warnings)
+    {
+        if (packing.IsPortable)
         {
-            var packed = ManagedLauncherPacker.Pack(assemblyPath, inputPath);
             warnings.Add("Packed launcher: " + packed);
-            return packed;
+            return;
         }
 
-        var native = NativePacker.Pack(assemblyPath, settings, inputPath);
-        warnings.Add("Packed native host: " + native);
+        warnings.Add("Packed native host: " + packed);
         if (string.Equals(Path.GetExtension(assemblyPath), ".dll", StringComparison.OrdinalIgnoreCase))
             warnings.Add(DllExtensionWarning);
-        return native;
     }
 
     internal static IEnumerable<string> SidecarPaths(string assemblyPath, PackingSettings packing)

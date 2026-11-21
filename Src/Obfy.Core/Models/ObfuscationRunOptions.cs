@@ -17,4 +17,13 @@ public sealed record ObfuscationRunOptions
     /// nothing (an empty map is what a hit supplies, and is right); otherwise the run is done again.
     /// </summary>
     public bool NeedsSymbolMap { get; init; }
+
+    /// <summary>
+    /// The caller builds a report from the result. A report lists what only a real run has: the symbol summary, the
+    /// skipped items and the warning texts. The cache stores none of them (they name original types, members and
+    /// resources), so a cache hit is taken only when the run that wrote the cached output renamed nothing, skipped
+    /// nothing and raised no warning that a hit cannot repeat; otherwise the run is done again, so a report is never
+    /// thinner than the run it describes. Implies <see cref="NeedsSymbolMap"/>.
+    /// </summary>
+    public bool NeedsReport { get; init; }
 }

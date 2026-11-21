@@ -2,10 +2,11 @@ using System.Diagnostics;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Logging.Core.Configuration;
 using Mediator;
 using Microsoft.Extensions.Logging;
 using Obfy.App.Features.App;
-using Obfy.App.Features.Files;
+using Obfy.App.Sessions;
 using Obfy.Interop;
 using Obfy.UI.Services;
 using Obfy.WebView;
@@ -24,6 +25,8 @@ public partial class ShellViewModel : ObservableObject
     private readonly ILogger<ShellViewModel> _logger;
     private readonly AppReadyCoordinator _ready;
     private readonly ApiEventAggregator _events;
+    private readonly ShutdownCoordinator _shutdown;
+    private readonly LogFileStatus _logStatus;
 
     /// <summary>WebView2 could not start, or failed for good: the window shows the native failure panel instead.</summary>
     [ObservableProperty]
@@ -31,9 +34,12 @@ public partial class ShellViewModel : ObservableObject
 
     public ShellViewModel(
         WebViewControl webView, ApiBridge bridge, ThemeController theme, AppReadyCoordinator ready,
-        ApiEventAggregator events, IMediator mediator, ILogger<ShellViewModel> logger)
+        ApiEventAggregator events, ShutdownCoordinator shutdown, IMediator mediator, InputSession input,
+        LogFileStatus logStatus, ILogger<ShellViewModel> logger)
     {
         WebView = webView;
+        _shutdown = shutdown;
+        _logStatus = logStatus;
         _ready = ready;
         _events = events;
         _logger = logger;
@@ -66,32 +72,13 @@ public partial class ShellViewModel : ObservableObject
             // BaseDirectory, not CurrentDirectory: the working directory differs for "dotnet run" and a shortcut.
             HostWebRootFolder = Path.Combine(AppContext.BaseDirectory, "Assets"),
 #endif
-            // Off the UI thread: dropping a solution makes the host read and analyse it, which must not freeze the window.
-            // Nothing waits for the answer; the page follows files.changed. An exception must not escape a
-            // fire-and-forget task, where it would only surface as an unobserved one. The run lock, solution expansion
-            // and .json handling are all in DropPathsRequest.
-            FilesDropped = paths => _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await mediator.Send(new DropPathsRequest(paths));
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Could not handle the dropped files");
-                }
-            }),
-            // Both arrive on the UI thread.
-            InitializeFailed = ex =>
-            {
-                _logger.LogError(ex, "WebView2 could not start");
-                WebViewFailed = true;
-            },
-            Unrecoverable = () =>
-            {
-                _logger.LogError("WebView2 failed for good");
-                WebViewFailed = true;
-            },
+            // Off the UI thread, and a failure is told to the user (see DroppedFilesHandler).
+            FilesDropped = new DroppedFilesHandler(mediator, input, logger).Handle,
+            // All arrive on the UI thread.
+            InitializeFailed = OnInitializeFailed,
+            Unrecoverable = OnUnrecoverable,
+            LoadFailed = OnLoadFailed,
+            PageLoaded = OnPageLoaded,
         };
     }
 
@@ -111,36 +98,95 @@ public partial class ShellViewModel : ObservableObject
     public string LogsDirectory { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Obfy", "Logs");
 
+    /// <summary>Whether there is a log file to read: false when the log folder could not be created at start-up.</summary>
+    public bool LogsAvailable => _logStatus.FileLoggingAvailable;
+
+    /// <summary>
+    /// Where the details are, for the failure panel. When the log folder could not be created there are none, and saying
+    /// "the log has the details" would send the user to a folder that is not there.
+    /// </summary>
+    public string LogsNote => LogsAvailable
+        ? $"The log is in {LogsDirectory}."
+        : "Obfy could not create its log folder, so there is no log to read.";
+
+    /// <summary>What to try if restarting does not help; mentions the log only when there is one.</summary>
+    public string FailureAdvice => LogsAvailable
+        ? "If it doesn't, the log explains what went wrong, and the Microsoft Edge WebView2 Runtime may need repairing."
+        : "If it doesn't, the Microsoft Edge WebView2 Runtime may need repairing.";
+
     /// <summary>The web UI, which the window shows unless <see cref="WebViewFailed"/>.</summary>
     public WebViewControl WebView { get; }
+
+    /// <summary>Whether the page has finished loading (a successful top-level navigation to the app's own origin).</summary>
+    public bool PageLoaded { get; private set; }
+
+    // The panel is up for one of two kinds of reason. Some are for good: WebView2 did not start, or its browser process
+    // is gone, and only a restart brings the page back. The others are only "the page is not there (yet)": a navigation
+    // that failed, or a start that is slower than the reveal timeout. A page that loads after all takes those back.
+    private bool _failedForGood;
+    private bool _pageNotLoaded;
+
+    private void ShowFailurePanelIfNeeded() => WebViewFailed = _failedForGood || _pageNotLoaded;
+
+    /// <summary>The page loaded: the panel goes away unless the failure was for good.</summary>
+    internal void OnPageLoaded()
+    {
+        PageLoaded = true;
+        _pageNotLoaded = false;
+        ShowFailurePanelIfNeeded();
+    }
+
+    /// <summary>A navigation to the app's own page ended without the page: a failure, or an HTTP error such as a missing file.</summary>
+    internal void OnLoadFailed()
+    {
+        _logger.LogError("The page did not load");
+        _pageNotLoaded = true;
+        ShowFailurePanelIfNeeded();
+    }
+
+    /// <summary>
+    /// The window waited <see cref="Views.ShellWindow.RevealTimeout"/> for the page. Only a page that never loaded is a
+    /// failure here: one that has loaded and is merely late to say <c>app.ready</c> is shown as it is, and one that did say
+    /// it is ready has loaded, whatever NavigationCompleted has reported yet.
+    /// </summary>
+    internal void OnRevealTimeout()
+    {
+        if (PageLoaded || _ready.IsReady)
+            return;
+
+        _logger.LogError("The page had not loaded {Seconds} s after the window was created", Views.ShellWindow.RevealTimeout.TotalSeconds);
+        _pageNotLoaded = true;
+        ShowFailurePanelIfNeeded();
+    }
+
+    /// <summary>WebView2 could not be started. Logs the exception's type only: its message may name the profile folder.</summary>
+    internal void OnInitializeFailed(Exception ex)
+    {
+        _logger.LogError("WebView2 could not start ({ExceptionType})", ex.GetType().Name);
+        _failedForGood = true;
+        ShowFailurePanelIfNeeded();
+    }
+
+    internal void OnUnrecoverable()
+    {
+        _logger.LogError("WebView2 failed for good");
+        _failedForGood = true;
+        ShowFailurePanelIfNeeded();
+    }
 
     /// <summary>Tells the page the window is now shown (<c>app.revealed</c>). Safe from any thread.</summary>
     public void NotifyRevealed() => _events.Publish(IpcNames.Events.AppRevealed, new { ready = _ready.IsReady });
 
-    /// <summary>The failure panel's Restart: starts a new process and closes this one.</summary>
+    /// <summary>The failure panel's Restart: starts a new process and closes this one (after asking, when a run is going).</summary>
     [RelayCommand]
-    private void Restart()
-    {
-        try
-        {
-            var path = Environment.ProcessPath;
-            if (path is not null)
-                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not restart");
-            return;
-        }
+    private Task RestartAsync() => _shutdown.RestartAsync();
 
-        System.Windows.Application.Current.Shutdown();
-    }
-
+    /// <summary>The failure panel's Quit (after asking, when a run is going).</summary>
     [RelayCommand]
-    private static void Quit() => System.Windows.Application.Current.Shutdown();
+    private Task QuitAsync() => _shutdown.QuitAsync();
 
     /// <summary>The failure panel's Open log folder. A command must not throw: a folder that will not open is logged.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(LogsAvailable))]
     private void OpenLogFolder()
     {
         try
@@ -150,7 +196,7 @@ public partial class ShellViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not open the log folder {Path}", LogsDirectory);
+            _logger.LogWarning("Could not open the log folder ({ExceptionType})", ex.GetType().Name);
         }
     }
 }

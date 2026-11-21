@@ -37,6 +37,7 @@ public static class LoggingConfiguration
     public static ILoggerFactory CreateLoggerFactory(string logDirectory, string? appName, bool enableConsoleOutput)
     {
         var canWriteFiles = true;
+        string? failureType = null;
         try
         {
             Directory.CreateDirectory(logDirectory);
@@ -44,8 +45,15 @@ public static class LoggingConfiguration
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             canWriteFiles = false;
-            Console.Error.WriteLine($"Cannot write logs to {logDirectory}: {ex.Message}");
+            failureType = ex.GetType().Name;
+            // Console.Error only reaches someone in a console app; a windowed one reads Status. Debug output has the type
+            // alone (the folder is the user's, and its name has no business in a log line).
+            if (enableConsoleOutput)
+                Console.Error.WriteLine($"Cannot write logs to {logDirectory}: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Cannot create the log folder ({failureType})");
         }
+
+        Status = new LogFileStatus(canWriteFiles, failureType);
 
         // Configure NLog programmatically
         var config = new NLog.Config.LoggingConfiguration();
@@ -110,9 +118,34 @@ public static class LoggingConfiguration
 
     public static void Flush() => LogManager.Flush();
 
+    /// <summary>
+    /// Writes what the asynchronous file target still holds, waiting at most <paramref name="timeout"/>. For a crash handler:
+    /// the process is going down and the log line that says why must be on disk first. Never throws.
+    /// </summary>
+    public static void Flush(TimeSpan timeout)
+    {
+        try
+        {
+            LogManager.Flush(timeout);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Could not flush the log ({ex.GetType().Name})");
+        }
+    }
+
+    /// <summary>
+    /// Whether the log file can be written, as of the last <c>CreateLoggerFactory</c>. A WPF app has no console to report a
+    /// log folder it cannot create on, so the shell reads this to say so where the user can see it.
+    /// </summary>
+    public static LogFileStatus Status { get; private set; } = new(true, null);
+
     public static void Shutdown()
     {
         LogManager.Flush();
         LogManager.Shutdown();
     }
 }
+
+/// <summary>Whether the log file can be written, and if not, the type of the exception that said so (never its message).</summary>
+public sealed record LogFileStatus(bool FileLoggingAvailable, string? FailureType);

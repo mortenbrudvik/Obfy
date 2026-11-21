@@ -35,6 +35,10 @@ public class LoggingModule : Module
             .As<ILoggerFactory>()
             .SingleInstance();
 
+        // Whether there is a log file at all, for a shell that has to tell the user where the details are.
+        builder.RegisterInstance(LoggingConfiguration.Status)
+            .AsSelf();
+
         builder.RegisterGeneric(typeof(Logger<>))
             .As(typeof(ILogger<>))
             .SingleInstance();

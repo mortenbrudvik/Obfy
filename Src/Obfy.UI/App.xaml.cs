@@ -2,10 +2,12 @@ using System.Windows;
 using System.Windows.Threading;
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
+using Logging.Core.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Web.WebView2.Core;
+using Obfy.App.Models;
 using Obfy.App.Services;
 using Obfy.App.Sessions;
 using Obfy.Interop;
@@ -29,63 +31,73 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-        if (!WebView2RuntimeIsInstalled())
+        // The runtime probe is inside the guarded start: it throws DllNotFoundException or COMException when the WebView2
+        // loader is broken, and an exception that escapes this async void method is marked handled by
+        // OnDispatcherUnhandledException, which would leave an invisible process with no window and no Shutdown.
+        var result = await StartupState.StartAsync(
+            WebView2RuntimeIsInstalled,
+            () => StartHostAsync(e.Args),
+            ex =>
+            {
+                TryLog(ex, "Obfy could not start");
+                MessageBox.Show($"Failed to start Obfy: {ex.Message}", "Obfy", MessageBoxButton.OK, MessageBoxImage.Error);
+            });
+
+        if (result == StartupState.StartResult.RuntimeMissing)
         {
             MessageBox.Show(
                 "Obfy needs the Microsoft Edge WebView2 Runtime to draw its window, and it is not installed." + Environment.NewLine + Environment.NewLine +
                 $"Download it from {WebView2DownloadUrl}, install it, and start Obfy again.",
                 "Obfy", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        if (result != StartupState.StartResult.Started)
             Shutdown(1);
-            return;
-        }
+    }
 
-        try
-        {
-            // Mediator's generated registrations go into the host's services; the Autofac factory populates the container
-            // from them, so handlers are built by Autofac with everything the modules register.
-            _host = Host.CreateDefaultBuilder()
-                .UseServiceProviderFactory(new AutofacServiceProviderFactory())
-                .ConfigureContainer<ContainerBuilder>(HybridBootstrap.RegisterModules)
-                .ConfigureServices(services =>
-                {
-                    HybridBootstrap.AddMediatorServices(services);
-                    services.AddHostedService<ApplicationHostService>();
-                })
-                .Build();
+    private async Task StartHostAsync(string[] args)
+    {
+        // Mediator's generated registrations go into the host's services; the Autofac factory populates the container
+        // from them, so handlers are built by Autofac with everything the modules register.
+        _host = Host.CreateDefaultBuilder()
+            .UseServiceProviderFactory(new AutofacServiceProviderFactory())
+            .ConfigureContainer<ContainerBuilder>(HybridBootstrap.RegisterModules)
+            .ConfigureServices(services =>
+            {
+                HybridBootstrap.AddMediatorServices(services);
+                services.AddHostedService<ApplicationHostService>();
+            })
+            .Build();
 
-            // Before the host starts the shell: the page may call as soon as it loads.
-            ApiRegistrations.RegisterAll(_host.Services.GetRequiredService<ApiRegistry>());
+        // Before the host starts the shell: the page may call as soon as it loads.
+        ApiRegistrations.RegisterAll(_host.Services.GetRequiredService<ApiRegistry>());
 
-            await ApplyStartupStateAsync(e.Args);
+        await ApplyStartupStateAsync(args);
 
-            await _host.StartAsync();
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Failed to start Obfy: {ex.Message}", "Obfy", MessageBoxButton.OK, MessageBoxImage.Error);
-            Shutdown(1);
-        }
+        await _host.StartAsync();
     }
 
     /// <summary>
     /// The last session's preferences, then the files and <c>-o</c> folder the process was started with. Runs on the UI
     /// thread (the awaits resume here) before the shell exists: the file list changes without publishing, and a
     /// configuration among the arguments publishes <c>settings.changed</c> from this thread, so the web view is first
-    /// built on the UI thread, as the shell would build it. A failure here costs the starting state, not the start.
+    /// built on the UI thread, as the shell would build it. A failure in either step costs that step's state, not the
+    /// start or the other step, and says so as a notice on the file list (see <see cref="StartupState.ApplyAsync"/>).
     /// </summary>
     private async Task ApplyStartupStateAsync(string[] args)
     {
-        try
-        {
-            // Built now so it follows the settings and file sessions from the start (it subscribes to their changes).
-            _ = _host!.Services.GetRequiredService<RunCoordinator>();
-            await _host.Services.GetRequiredService<InputSession>().InitializeAsync();
-            await _host.Services.GetRequiredService<InputIntake>().ApplyStartupAsync(args);
-        }
-        catch (Exception ex)
-        {
-            TryLog(ex, "Could not apply the saved preferences or the start-up arguments");
-        }
+        var services = _host!.Services;
+
+        // Built now so it follows the settings and file sessions from the start (it subscribes to their changes).
+        _ = services.GetRequiredService<RunCoordinator>();
+        var input = services.GetRequiredService<InputSession>();
+        var intake = services.GetRequiredService<InputIntake>();
+
+        await StartupState.ApplyAsync(
+            input.InitializeAsync,
+            () => intake.ApplyStartupAsync(args),
+            (title, message) => input.Notify(NoticeLevel.Warning, title, message),
+            services.GetRequiredService<ILogger<App>>());
     }
 
     /// <summary>Where a user without the WebView2 Runtime gets it.</summary>
@@ -111,10 +123,16 @@ public partial class App : Application
         MessageBox.Show(e.Exception.Message, "Obfy", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
+    /// <summary>How long a crash waits for the log to be written before the process goes down.</summary>
+    private static readonly TimeSpan CrashFlushTimeout = TimeSpan.FromSeconds(3);
+
     private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         if (e.ExceptionObject is Exception ex)
             TryLog(ex, "Unhandled domain exception");
+
+        // The file target is asynchronous: without this the line that says why the process died is usually still in the queue.
+        LoggingConfiguration.Flush(CrashFlushTimeout);
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
@@ -123,15 +141,33 @@ public partial class App : Application
         e.SetObserved();
     }
 
+    private ILoggerFactory? _fallbackLogs;
+
+    /// <summary>
+    /// Logs what went wrong without throwing, by exception type and stack, not message (see <see cref="CrashLog"/>). The host's
+    /// logger is used when there is one; before the host exists (it failed to build), a logger of its own is made.
+    /// </summary>
     private void TryLog(Exception ex, string message)
     {
+        ILogger? logger = null;
         try
         {
-            _host?.Services.GetService<ILogger<App>>()?.LogError(ex, message);
+            logger = _host?.Services.GetService<ILogger<App>>();
+        }
+        catch (Exception)
+        {
+            // A container that cannot give out a logger: the fallback below.
+        }
+
+        try
+        {
+            logger ??= (_fallbackLogs ??= LoggingConfiguration.CreateLoggerFactory("Obfy.UI", enableConsoleOutput: false))
+                .CreateLogger<App>();
+            CrashLog.Error(logger, ex, message);
         }
         catch (Exception logEx)
         {
-            System.Diagnostics.Debug.WriteLine($"{message}: {ex} (logger failed: {logEx.Message})");
+            System.Diagnostics.Debug.WriteLine($"{message}: {ex.GetType().Name} (logger failed: {logEx.GetType().Name})");
         }
     }
 

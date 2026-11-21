@@ -55,11 +55,13 @@
                  AutomationProperties.HeadingLevel="Level1" />
       <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                 Text="The web view that draws Obfy's interface did not start or stopped working. Restarting Obfy usually brings it back. If it doesn't, the log explains what went wrong, and the Microsoft Edge WebView2 Runtime may need repairing." />
+                 Text="The web view that draws Obfy's interface did not start or stopped working. Restarting Obfy usually brings it back." />
       <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
-                 Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-        <Run Text="The log is in " /><Run Text="{Binding LogsDirectory, Mode=OneWay}" /><Run Text="." />
-      </TextBlock>
+                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                 Text="{Binding FailureAdvice, Mode=OneWay}" />
+      <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
+                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                 Text="{Binding LogsNote, Mode=OneWay}" />
 
       <WrapPanel Margin="0,20,0,0">
         <ui:Button Content="Restart Obfy" Appearance="Primary" Command="{Binding RestartCommand}" Margin="0,0,8,8" />

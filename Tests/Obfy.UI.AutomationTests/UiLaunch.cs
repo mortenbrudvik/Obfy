@@ -5,7 +5,8 @@ using FlaUI.Core;
 namespace Obfy.UI.AutomationTests;
 
 /// <summary>
-/// Launches Obfy with a private preferences file so tests do not touch %APPDATA%\Obfy.
+/// Launches Obfy with a private preferences file and a private WebView2 profile, so tests touch neither %APPDATA%\Obfy nor
+/// the real WebView2 profile of an Obfy the developer may have open. Both are set on the launched process only.
 /// </summary>
 internal static class UiLaunch
 {
@@ -18,19 +19,27 @@ internal static class UiLaunch
     /// <summary>WebView2 reads this itself when it starts its browser; no host code passes it on.</summary>
     public const string BrowserArgumentsVariable = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
 
-    private static readonly object Gate = new();
-
-    /// <summary>Starts the app under FlaUI. The window-level smoke test uses this; the page is not driven.</summary>
+    /// <summary>
+    /// Starts the app under FlaUI. The window-level smoke test uses this; the page is not driven. The preferences and the
+    /// WebView2 profile are private to this launch (a fresh folder under the temp folder), set on the child's start info:
+    /// nothing is written to this process's environment, so other tests and launches are unaffected.
+    /// </summary>
     public static Application Launch(string path, string? arguments = null)
     {
-        lock (Gate)
+        var work = Path.Combine(Path.GetTempPath(), "obfy-ui-smoke-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        var info = new ProcessStartInfo(path)
         {
-            var prefs = Path.Combine(Path.GetTempPath(), "obfy-ui-prefs-" + Guid.NewGuid().ToString("N") + ".json");
-            Environment.SetEnvironmentVariable(PreferencesVariable, prefs);
-            return string.IsNullOrEmpty(arguments)
-                ? Application.Launch(path)
-                : Application.Launch(path, arguments);
-        }
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(path)!,
+        };
+        if (!string.IsNullOrEmpty(arguments))
+            info.Arguments = arguments;
+
+        info.Environment[PreferencesVariable] = Path.Combine(work, "ui-preferences.json");
+        info.Environment[WebViewProfileVariable] = Path.Combine(work, "webview2");
+
+        return Application.Launch(info);
     }
 
     /// <summary>

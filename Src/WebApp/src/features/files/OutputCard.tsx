@@ -20,19 +20,19 @@ interface OutputCardProps {
 
 /** Where the output goes, and whether to write the symbol map. */
 export default function OutputCard({ input, locked, onSetOutput, onPickFolder, onPickSymbolMap, onSetSymbolMap }: OutputCardProps) {
-  const [folder, setFolder] = useDraft(input.outputFolder);
-  const [mapPath, setMapPath] = useDraft(input.symbolMapPath);
+  const [folder, setFolder, sendFolder] = useDraft(input.outputFolder);
+  const [mapPath, setMapPath, sendMapPath] = useDraft(input.symbolMapPath);
 
   // A box is committed when it is left or on Enter. A shortcut that acts first (run, save) flushes it through here,
   // so the run never starts with the folder that was there before the typing. While a run goes the boxes are locked
   // and there is nothing to send, and a symbol-map path left in a box that is no longer shown is not sent.
   const commitFolder = async (): Promise<FlushResult> => {
     if (locked || folder === input.outputFolder) return "idle";
-    return (await onSetOutput(folder)) === false ? "failed" : "sent";
+    return (await sendFolder(folder, onSetOutput)) === false ? "failed" : "sent";
   };
   const commitMapPath = async (): Promise<FlushResult> => {
     if (locked || !input.writeSymbolMap || mapPath === input.symbolMapPath) return "idle";
-    return (await onSetSymbolMap({ path: mapPath })) === false ? "failed" : "sent";
+    return (await sendMapPath(mapPath, (path) => onSetSymbolMap({ path }))) === false ? "failed" : "sent";
   };
   usePendingEdit(commitFolder);
   usePendingEdit(commitMapPath);

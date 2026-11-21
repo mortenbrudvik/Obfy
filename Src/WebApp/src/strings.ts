@@ -10,6 +10,12 @@ export const strings = {
     body: "Obfy could not draw this page. Reload to try again. Your files and settings are kept by the app. If it keeps happening, restart Obfy.",
     reload: "Reload",
   },
+  /** One screen that threw while the rest of the shell kept working. */
+  screenCrash: {
+    title: (screenName: string) => `The ${screenName} screen could not be shown`,
+    body: "Obfy could not draw this screen. Try again, or open another screen. Your files and settings are kept by the app, and a run in progress keeps going: you can still cancel it from the bar below. If it keeps happening, restart Obfy.",
+    retry: "Try again",
+  },
   shell: {
     connecting: "Connecting…",
     unreachable: "Could not reach the app.",

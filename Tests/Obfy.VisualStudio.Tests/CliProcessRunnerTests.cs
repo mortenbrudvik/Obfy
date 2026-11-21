@@ -213,7 +213,8 @@ public class CliProcessRunnerTests : IDisposable
     public async Task NormalRun_LeavesAHelperTheCliStartedRunning()
     {
         // A CLI may leave a helper behind on purpose (a build server). The job object must not kill it when the
-        // run ends normally; before the job existed, nothing did.
+        // run ends normally; before the job existed, nothing did. The helper inherits the CLI's pipes whatever it
+        // redirects, so the run ends when the bounded wait for end of stream (5 s) elapses, not when the helper does.
         var result = await Run(
             $"start \"\" /b \"{SleeperPath}\" -n 60 127.0.0.1 > nul & echo started",
             TimeSpan.FromMinutes(1),

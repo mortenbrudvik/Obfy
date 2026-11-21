@@ -32,7 +32,7 @@ public class ProtectionLevelStep : WizardStep
                 .Title("Select your protection level:")
                 .HighlightStyle(Style.Parse("cyan"))
                 .AddChoices([
-                    "Minimal    - Symbol renaming only (fastest builds)",
+                    "Minimal    - Symbols + debug info removed (fastest builds)",
                     "Standard   - Strings + symbols (recommended for most apps)",
                     "Aggressive - Maximum protection (all features enabled)"
                 ]));

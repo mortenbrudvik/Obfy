@@ -609,14 +609,34 @@ public sealed class InputSession
             return new OutputPlan(OutputMode.ClosedSet, directory, null, $"Writes the protected assemblies to {directory}.");
         }
 
-        var hint = inputs.Count == 1
-            ? folder is null
+        return new OutputPlan(OutputMode.Each, folder, null, EachHint(inputs, folder));
+    }
+
+    /// <summary>
+    /// What a run of separate files writes, as <c>RunCoordinator.EachAsync</c> does it: with no folder a file goes next to
+    /// its input as <c>name.obfuscated.ext</c> and two or more C# files are compiled together into <c>obfy-src</c> next to
+    /// the first of them; with a folder every file goes there under its own name.
+    /// </summary>
+    private static string EachHint(List<Entry> inputs, string? folder)
+    {
+        if (inputs.Count == 1)
+        {
+            return folder is null
                 ? $"Writes {ObfuscatedName(inputs[0])} next to the input."
-                : $"Writes {ObfuscatedName(inputs[0])} to {folder}."
-            : folder is null
-                ? "Writes each file next to its input as name.obfuscated.ext."
-                : $"Writes each file to {folder}.";
-        return new OutputPlan(OutputMode.Each, folder, null, hint);
+                : $"Writes {inputs[0].Name} to {folder}.";
+        }
+
+        if (folder is not null)
+            return $"Writes each file to {folder}.";
+
+        var sources = inputs.Where(e => e.Kind == FileKind.Source).ToList();
+        if (sources.Count < 2)
+            return "Writes each file next to its input as name.obfuscated.ext.";
+
+        var sourceFolder = Path.Combine(DirectoryOf(sources[0]), "obfy-src");
+        return sources.Count == inputs.Count
+            ? $"Compiles the C# files together and writes them to {sourceFolder}."
+            : $"Compiles the C# files together and writes them to {sourceFolder}; the other file goes next to its input as name.obfuscated.ext.";
     }
 
     /// <summary>

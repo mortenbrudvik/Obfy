@@ -479,7 +479,7 @@ public class ProtectionSessionTests
     public void FromObfySettings_LoadsLevel()
     {
         var session = new ProtectionSession();
-        session.FromObfySettings(new ObfySettings { Level = ObfuscationLevel.Aggressive });
+        session.FromObfySettings(ObfySettings.ForLevel(ObfuscationLevel.Aggressive));
         session.Level.ShouldBe(ObfuscationLevel.Aggressive);
     }
 
@@ -967,9 +967,146 @@ public class ProtectionSessionTests
     {
         var session = new ProtectionSession();
 
-        session.FromObfySettings(new ObfySettings { Level = ObfuscationLevel.Aggressive });
+        session.FromObfySettings(ObfySettings.ForLevel(ObfuscationLevel.Aggressive));
 
         session.Level.ShouldBe(ObfuscationLevel.Aggressive);
+    }
+
+    [Theory]
+    [InlineData(ObfuscationLevel.Minimal)]
+    [InlineData(ObfuscationLevel.Standard)]
+    [InlineData(ObfuscationLevel.Aggressive)]
+    public void FromObfySettings_PresetConfigExactlyThePreset_KeepsItsLevel_AndItsOwnIndependentOptions(ObfuscationLevel level)
+    {
+        // Options no preset governs (watermark, name lists, merge, ...) do not count as a difference.
+        var settings = ObfySettings.ForLevel(level);
+        settings.Watermark.Enabled = true;
+        settings.Watermark.Id = "build-9";
+        settings.Exclusions.Types.Add("Keep.Me");
+        settings.AssemblyMerge.Enabled = true;
+        var session = new ProtectionSession();
+
+        session.FromObfySettings(settings, @"C:\cfg\obfy.json");
+
+        session.Level.ShouldBe(level);
+        session.ToObfySettings().Level.ShouldBe(level);
+        session.GetSnapshot().Techniques.ShouldAllBe(t => !t.DiffersFromLevel);
+    }
+
+    [Theory]
+    [InlineData(ObfuscationLevel.Minimal, "controlFlow.enabled")]
+    [InlineData(ObfuscationLevel.Standard, "stringEncryption.enabled")]
+    [InlineData(ObfuscationLevel.Aggressive, "antiTamper.enabled")]
+    [InlineData(ObfuscationLevel.Aggressive, "controlFlow.intensity")]
+    [InlineData(ObfuscationLevel.Standard, "metadataRemoval.removeAttributes")]
+    [InlineData(ObfuscationLevel.Standard, "constantEncryption.algorithm")]
+    public void FromObfySettings_PresetConfigWithSwitchesThatDifferFromThePreset_BecomesCustom_SoTheRunUsesWhatTheScreenShows(
+        ObfuscationLevel level, string key)
+    {
+        // The engine re-applies any non-Custom level on every run, so a file that keeps its level but not its preset's
+        // switches would run as the preset. The app loads it as Custom; the command line treats the file the same way.
+        var settings = ObfySettings.ForLevel(level);
+        Differ(settings, key);
+        var session = new ProtectionSession();
+
+        session.FromObfySettings(settings, @"C:\cfg\obfy.json");
+
+        session.Level.ShouldBe(ObfuscationLevel.Custom);
+        var run = session.ToObfySettings();
+        run.Level.ShouldBe(ObfuscationLevel.Custom); // the engine will not re-apply a preset over it
+        session.GetSnapshot().Level.ShouldBe("Custom");
+        session.GetSnapshot().Dirty.ShouldBeFalse(); // loading does not make the configuration unsaved
+        session.ConfigPath.ShouldBe(@"C:\cfg\obfy.json");
+
+        // What ObfuscationService does with the settings the run hands it: a non-Custom level is re-applied. The result must
+        // be the file's switches, not the preset's.
+        var engine = session.ToObfySettings();
+        if (engine.Level != ObfuscationLevel.Custom)
+            engine.ApplyLevel();
+        engine.Level = ObfuscationLevel.Custom;
+        var presetRun = settings.Clone();
+        presetRun.Level = level;
+        presetRun.ApplyLevel(); // what the run would have used had the level stayed
+        presetRun.Level = ObfuscationLevel.Custom;
+        settings.Level = ObfuscationLevel.Custom;
+        JsonUtils.Serialize(engine).ShouldBe(JsonUtils.Serialize(settings));
+        JsonUtils.Serialize(engine).ShouldNotBe(JsonUtils.Serialize(presetRun));
+    }
+
+    [Fact]
+    public void FromObfySettings_PresetConfigThatDiffers_LoadedAsCustom_SnapshotAndChangedBadgesFollowTheFilesPreset()
+    {
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Standard);
+        settings.ControlFlow.Enabled = true;
+        var session = new ProtectionSession();
+
+        session.FromObfySettings(settings);
+
+        var snapshot = session.GetSnapshot();
+        snapshot.Level.ShouldBe("Custom");
+        snapshot.Techniques.Single(t => t.Id == "controlFlow").Enabled.ShouldBeTrue();
+        snapshot.Techniques.Single(t => t.Id == "controlFlow").DiffersFromLevel.ShouldBeTrue(); // measured against Standard
+        snapshot.Techniques.Single(t => t.Id == "stringEncryption").DiffersFromLevel.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void FromObfySettings_PresetConfigThatDiffers_CustomSnapshotIsTheFilesSwitches()
+    {
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Standard);
+        settings.ControlFlow.Enabled = true;
+        settings.ControlFlow.Intensity = 33;
+        var session = new ProtectionSession();
+        session.FromObfySettings(settings);
+
+        // Leave Custom for a preset, then come back: the file's switches are what Custom restores.
+        session.ApplyLevel(ObfuscationLevel.Minimal);
+        Settings(session).ControlFlow.Enabled.ShouldBeFalse();
+        session.ApplyLevel(ObfuscationLevel.Custom);
+
+        var restored = Settings(session);
+        restored.Level.ShouldBe(ObfuscationLevel.Custom);
+        restored.ControlFlow.Enabled.ShouldBeTrue();
+        restored.ControlFlow.Intensity.ShouldBe(33);
+    }
+
+    [Fact]
+    public void FromObfySettings_PresetConfigThatDiffers_DoesNotChangeTheFileOrTheObjectItWasGiven()
+    {
+        var settings = ObfySettings.ForLevel(ObfuscationLevel.Standard);
+        settings.ControlFlow.Enabled = true;
+        var session = new ProtectionSession();
+
+        session.FromObfySettings(settings);
+
+        settings.Level.ShouldBe(ObfuscationLevel.Standard); // the caller's object, which holds what the file said
+        session.GetSnapshot().Dirty.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void FromObfySettings_CustomConfig_StaysCustom_AndAPresetConfigThatMatchesAfterCustomStaysAPreset()
+    {
+        var session = new ProtectionSession();
+        session.FromObfySettings(new ObfySettings { Level = ObfuscationLevel.Custom });
+        session.Level.ShouldBe(ObfuscationLevel.Custom);
+
+        session.FromObfySettings(ObfySettings.ForLevel(ObfuscationLevel.Minimal));
+        session.Level.ShouldBe(ObfuscationLevel.Minimal);
+        session.GetSnapshot().Techniques.ShouldAllBe(t => !t.DiffersFromLevel);
+    }
+
+    /// <summary>Changes one preset-governed option away from what every preset in the theory gives it.</summary>
+    private static void Differ(ObfySettings settings, string key)
+    {
+        switch (key)
+        {
+            case "controlFlow.enabled": settings.ControlFlow.Enabled = !settings.ControlFlow.Enabled; break;
+            case "controlFlow.intensity": settings.ControlFlow.Intensity = 33; break;
+            case "stringEncryption.enabled": settings.StringEncryption.Enabled = !settings.StringEncryption.Enabled; break;
+            case "antiTamper.enabled": settings.Protection.AntiTamper.Enabled = !settings.Protection.AntiTamper.Enabled; break;
+            case "metadataRemoval.removeAttributes": settings.Metadata.RemoveAttributes = !settings.Metadata.RemoveAttributes; break;
+            case "constantEncryption.algorithm": settings.ConstantEncryption.Algorithm = EncryptionAlgorithm.Aes256; break;
+            default: throw new ArgumentOutOfRangeException(nameof(key), key, null);
+        }
     }
 
     [Fact]
@@ -1110,6 +1247,58 @@ public class ProtectionSessionTests
 
         session.UpdateSetting("runtimeProfile", "Default");
         session.GetSnapshot().Techniques.Single(t => t.Id == "antiDump").Available.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("NativeAot", "NativeAOT")]
+    [InlineData("UnityIl2Cpp", "Unity IL2CPP")]
+    [InlineData("BlazorWasm", "Blazor WebAssembly")]
+    public void Snapshot_ProfileGatesNativePacking_ButKeepsItsStoredValue(string profile, string label)
+    {
+        // RuntimeProfileGating.Apply turns packing off for these runtimes at run time, with a warning: the screen says so first.
+        var session = new ProtectionSession();
+        session.UpdateSetting("packing.enabled", true);
+        session.UpdateSetting("packing.rid", "portable");
+
+        session.UpdateSetting("runtimeProfile", profile);
+
+        var packing = session.GetSnapshot().Techniques.Single(t => t.Id == "packing");
+        packing.Available.ShouldBeFalse();
+        packing.UnavailableReason.ShouldBe($"Not available for {label}");
+        packing.Enabled.ShouldBeTrue(); // the stored value is kept for when the profile changes back
+        packing.Options["rid"].ShouldBe("portable");
+        Settings(session).Packing.Enabled.ShouldBeTrue();
+
+        session.UpdateSetting("runtimeProfile", "Default");
+        var again = session.GetSnapshot().Techniques.Single(t => t.Id == "packing");
+        again.Available.ShouldBeTrue();
+        again.UnavailableReason.ShouldBeNull();
+        again.Enabled.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Snapshot_ProfileGates_ExactlyTheTechniquesTheEngineSwitchesOff()
+    {
+        // The techniques the page greys out for a runtime are the ones RuntimeProfileGating.Apply disables there.
+        var session = new ProtectionSession();
+        session.UpdateSetting("runtimeProfile", "NativeAot");
+
+        session.GetSnapshot().Techniques.Where(t => !t.Available).Select(t => t.Id).ShouldBe(
+            new[] { "dependencyEmbedding", "antiDump", "virtualization", "methodEncryption", "packing" }, ignoreOrder: true);
+    }
+
+    [Fact]
+    public void LevelSummary_Minimal_MentionsDebugInformationAsWellAsRenaming()
+    {
+        // Minimal also removes debug information (ObfySettings.ApplyLevel): it is not "symbol renaming only".
+        var session = new ProtectionSession();
+        session.ApplyLevel(ObfuscationLevel.Minimal);
+
+        var summary = session.GetSnapshot().LevelSummary;
+
+        summary.ShouldContain("debug information");
+        summary.ToLowerInvariant().ShouldNotContain("only");
+        Settings(session).Metadata.RemoveDebugInfo.ShouldBeTrue();
     }
 
     [Fact]

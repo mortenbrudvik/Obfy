@@ -777,6 +777,65 @@ public sealed class RunCoordinatorTests : IDisposable
         calls.Where(c => c.Key != expectedCall && !(expectedCall == "sources" && c.Key == "obfuscate")).ShouldAllBe(c => c.Value == 0);
     }
 
+    // ---- The hint says what the run writes (regression: with a folder it named a .obfuscated file the run never wrote) ----
+
+    [Fact]
+    public async Task Hint_OneFileWithAFolder_NamesThePathTheRunWrites()
+    {
+        AddFile("MyApp.dll");
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        _input.SetOutputFolder(folder);
+        var hint = _run.GetSnapshot().OutputHint;
+
+        await RunAsync();
+
+        var call = _engine.ObfuscateCalls.ShouldHaveSingleItem();
+        call.Output.ShouldBe(Path.Combine(folder, "MyApp.dll"));
+        hint.ShouldBe($"Writes MyApp.dll to {folder}.");
+    }
+
+    [Fact]
+    public async Task Hint_ClosedSetAndMergeWithAFolder_NameThePathsTheRunWrites()
+    {
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        AddFile("a.dll");
+        AddFile("b.dll");
+        _input.SetOutputFolder(folder);
+        var closedHint = _run.GetSnapshot().OutputHint;
+        await RunAsync();
+        _engine.ClosedSetCalls.ShouldHaveSingleItem().Output.ShouldBe(folder);
+        closedHint.ShouldContain(folder);
+
+        _protection.UpdateSetting("assemblyMerge.enabled", true);
+        var mergeHint = _run.GetSnapshot().OutputHint;
+        await RunAsync();
+        var merge = _engine.MergeCalls.ShouldHaveSingleItem();
+        merge.Output.ShouldBe(Path.Combine(folder, "a.obfuscated.dll"));
+        mergeHint.ShouldContain(merge.Output);
+    }
+
+    [Fact]
+    public async Task Hint_TwoSourceFiles_MatchesHowTheRunPassesThemToTheEngine()
+    {
+        AddFile("a.cs");
+        AddFile("b.cs");
+
+        // No folder: the run hands the engine no folder, and the engine writes obfy-src beside the first file.
+        var noFolderHint = _run.GetSnapshot().OutputHint;
+        await RunAsync();
+        _engine.SourcesCalls.ShouldHaveSingleItem().Output.ShouldBeNull();
+        noFolderHint.ShouldContain(Path.Combine(_tempDirectory, "obfy-src"));
+        noFolderHint.ShouldNotContain("next to its input");
+
+        // A folder: the engine gets it, and the hint says every file goes there.
+        var folder = Path.Combine(_tempDirectory, "chosen");
+        _input.SetOutputFolder(folder);
+        var folderHint = _run.GetSnapshot().OutputHint;
+        await RunAsync();
+        _engine.SourcesCalls.Last().Output.ShouldBe(folder);
+        folderHint.ShouldBe($"Writes each file to {folder}.");
+    }
+
     // ---- Closed set ----
 
     [Fact]

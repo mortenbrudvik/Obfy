@@ -115,6 +115,19 @@ internal sealed class FakeShell : IShellLauncher
     public void OpenFolder(string path) => Opened.Add(path);
 
     public void RevealFile(string path) => Revealed.Add(path);
+
+    /// <summary>Every address <see cref="OpenUrl"/> was asked to open, in order.</summary>
+    public List<Uri> OpenedUrls { get; } = [];
+
+    /// <summary>Thrown by <see cref="OpenUrl"/> instead of recording the address, as a browser that cannot start would.</summary>
+    public Exception? OpenUrlFailure { get; set; }
+
+    public void OpenUrl(Uri url)
+    {
+        if (OpenUrlFailure is not null)
+            throw OpenUrlFailure;
+        OpenedUrls.Add(url);
+    }
 }
 
 /// <summary>Answers <see cref="Analyze"/> from a function, so a test chooses which rows a drop expands to.</summary>

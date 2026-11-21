@@ -2,6 +2,7 @@ import { useState } from "react";
 import Notice from "../../components/Notice";
 import Select from "../../components/Select";
 import { content, SCOPE_ID } from "../../content/content";
+import { useOnlineGuide } from "../../hooks/useOnlineGuide";
 import { strings } from "../../strings";
 import type { SettingsPatch } from "../../types/domain";
 import LevelCards from "./LevelCards";
@@ -14,16 +15,12 @@ import { useProtection } from "./useProtection";
 import "../../components/components.css";
 import "./ProtectionPage.css";
 
-interface ProtectionPageProps {
-  /** Opens the Guide at a topic; the Guide itself is another screen. */
-  onOpenGuide?: (topic: string) => void;
-}
-
 const baseName = (path: string) => path.split(/[\\/]/).pop() || path;
 
 /** The Protection screen: the level, the target runtime, and every technique with its own explanation and options. */
-export default function ProtectionPage({ onOpenGuide }: ProtectionPageProps) {
+export default function ProtectionPage() {
   const { settings, failed, error, applyLevel, update, setRuntimeProfile, openConfig, saveConfig, pickSigningKey } = useProtection();
+  const [openGuide, guideError] = useOnlineGuide();
   const [selected, setSelected] = useState("symbolRenaming");
   const [query, setQuery] = useState("");
 
@@ -37,7 +34,8 @@ export default function ProtectionPage({ onOpenGuide }: ProtectionPageProps) {
   }
 
   const send = (patch: SettingsPatch) => update(patch);
-  const guide = (topic: string) => onOpenGuide?.(topic);
+  // "Read more" opens the online guide at a section in the browser.
+  const guide = (topic: string) => void openGuide(topic);
 
   const technique = settings.techniques.find((t) => t.id === selected) ?? (selected === SCOPE_ID ? undefined : settings.techniques[0]);
 
@@ -62,6 +60,7 @@ export default function ProtectionPage({ onOpenGuide }: ProtectionPageProps) {
       </div>
 
       {error && <Notice tone="error">{error}</Notice>}
+      {guideError && <Notice tone="error">{guideError}</Notice>}
 
       <div className="sec">
         <span className="label" id="protection-level-label">

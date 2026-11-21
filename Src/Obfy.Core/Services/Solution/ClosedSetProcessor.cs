@@ -479,18 +479,28 @@ public class ClosedSetProcessor : IClosedSetProcessor
     }
 
     private static IReadOnlyList<string> AssignRelativeOutputPaths(List<LoadedModule> loaded)
+        => PlanRelativeOutputPaths([.. loaded.Select(static m => m.Input.AssemblyPath)]);
+
+    /// <summary>
+    /// Where each assembly of a closed set lands under the output folder, relative to it, in input order: its file name,
+    /// or <c>{tfm or parent folder}\{file name}</c> when two assemblies share a name. The one rule the run writes by, so a
+    /// caller can plan the outputs without running anything.
+    /// </summary>
+    public static IReadOnlyList<string> PlanRelativeOutputPaths(IReadOnlyList<string> assemblyPaths)
     {
+        ArgumentNullException.ThrowIfNull(assemblyPaths);
+
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in loaded)
+        foreach (var assemblyPath in assemblyPaths)
         {
-            var fileName = Path.GetFileName(item.Input.AssemblyPath);
+            var fileName = Path.GetFileName(assemblyPath);
             counts[fileName] = counts.GetValueOrDefault(fileName) + 1;
         }
 
-        var relative = new string[loaded.Count];
-        for (var i = 0; i < loaded.Count; i++)
+        var relative = new string[assemblyPaths.Count];
+        for (var i = 0; i < assemblyPaths.Count; i++)
         {
-            var path = loaded[i].Input.AssemblyPath;
+            var path = assemblyPaths[i];
             var fileName = Path.GetFileName(path);
             if (counts[fileName] == 1)
             {

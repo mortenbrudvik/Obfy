@@ -51,7 +51,9 @@ internal sealed class ObfyApp : IAsyncDisposable
             playwright = await Playwright.CreateAsync();
             browser = await ConnectAsync(playwright, process, port);
             var page = await FindPageAsync(browser, process);
-            await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+            // Not WaitForLoadStateAsync: attached over CDP after the page has loaded, Playwright can miss the lifecycle event
+            // and wait out its whole timeout (seen about one run in fifteen). The document's own state is always there to read.
+            await page.WaitForFunctionAsync("() => document.readyState !== 'loading'");
             return new ObfyApp(process, playwright, browser, page, work);
         }
         catch

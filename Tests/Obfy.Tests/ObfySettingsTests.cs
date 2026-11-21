@@ -21,6 +21,19 @@ public class ObfySettingsTests
     }
 
     [Fact]
+    public void ForLevel_Minimal_AlsoRemovesDebugInfo_SoItsDescriptionMustNotSayRenamingOnly()
+    {
+        ObfySettings.ForLevel(ObfuscationLevel.Minimal).Metadata.RemoveDebugInfo.ShouldBeTrue();
+
+        var description = typeof(ObfuscationLevel).GetField(nameof(ObfuscationLevel.Minimal))!
+            .GetCustomAttributes(typeof(System.ComponentModel.DescriptionAttribute), false)
+            .Cast<System.ComponentModel.DescriptionAttribute>()
+            .Single().Description;
+        description.ShouldContain("debug information");
+        description.ToLowerInvariant().ShouldNotContain("only");
+    }
+
+    [Fact]
     public void ForLevel_Standard_EnablesStringEncryptionAndRenaming()
     {
         // Act

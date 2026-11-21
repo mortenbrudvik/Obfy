@@ -105,7 +105,9 @@ public sealed class SettingsHandlersTests : IDisposable
     public async Task OpenConfig_LoadsThePickedFile_AndRemembersItsPath()
     {
         var path = Path.Combine(_dir, "in.json");
-        var source = new ObfySettings { Level = ObfuscationLevel.Aggressive, Watermark = { Enabled = true, Id = "w" } };
+        var source = ObfySettings.ForLevel(ObfuscationLevel.Aggressive);
+        source.Watermark.Enabled = true;
+        source.Watermark.Id = "w";
         await ConfigFile.SaveAsync(source, path);
         _dialogs.Files = [path];
 
@@ -115,6 +117,43 @@ public sealed class SettingsHandlersTests : IDisposable
         snapshot.ConfigPath.ShouldBe(path);
         snapshot.Dirty.ShouldBeFalse();
         _session.ToObfySettings().Watermark.Id.ShouldBe("w");
+    }
+
+    [Fact]
+    public async Task OpenConfig_PresetLevelWithSwitchesThatDiffer_LoadsAsCustom_AndLeavesTheFileAlone()
+    {
+        // The run would re-apply the file's preset over its switches, so the app shows and runs them as Custom. The file
+        // on disk keeps saying what it said, and loading does not make the configuration "unsaved".
+        var path = Path.Combine(_dir, "differs.json");
+        var source = ObfySettings.ForLevel(ObfuscationLevel.Standard);
+        source.ControlFlow.Enabled = true;
+        await ConfigFile.SaveAsync(source, path);
+        var before = await File.ReadAllTextAsync(path);
+        _dialogs.Files = [path];
+
+        var snapshot = await new OpenConfigRequestHandler(_session, _dialogs, IdleRun.For(_input, _session)).Handle(new OpenConfigRequest(), default);
+
+        snapshot.Level.ShouldBe("Custom");
+        snapshot.Techniques.Single(t => t.Id == "controlFlow").Enabled.ShouldBeTrue();
+        snapshot.ConfigPath.ShouldBe(path);
+        snapshot.Dirty.ShouldBeFalse();
+        _session.ToObfySettings().Level.ShouldBe(ObfuscationLevel.Custom);
+        (await File.ReadAllTextAsync(path)).ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task LoadConfig_PresetLevelWithSwitchesThatDiffer_LoadsAsCustom_ButExactPresetKeepsItsLevel()
+    {
+        var differs = Path.Combine(_dir, "differs.json");
+        var exact = Path.Combine(_dir, "exact.json");
+        var changed = ObfySettings.ForLevel(ObfuscationLevel.Aggressive);
+        changed.Protection.AntiDump = false;
+        await ConfigFile.SaveAsync(changed, differs);
+        await ConfigFile.SaveAsync(ObfySettings.ForLevel(ObfuscationLevel.Aggressive), exact);
+        var handler = new LoadConfigRequestHandler(_session, IdleRun.For(_input, _session));
+
+        (await handler.Handle(new LoadConfigRequest(differs), default)).Level.ShouldBe("Custom");
+        (await handler.Handle(new LoadConfigRequest(exact), default)).Level.ShouldBe("Aggressive");
     }
 
     [Fact]
@@ -132,9 +171,15 @@ public sealed class SettingsHandlersTests : IDisposable
     public async Task LoadConfig_ReadsEnumsWrittenAsNamesOrNumbers()
     {
         var named = Path.Combine(_dir, "named.json");
-        await File.WriteAllTextAsync(named, """{ "level": "Minimal", "runtimeProfile": "BlazorWasm" }""");
+        // Complete presets (a preset level over other switches would load as Custom); only the spelling of the enums varies.
+        var namedJson = System.Text.Json.Nodes.JsonNode.Parse(JsonUtils.Serialize(ObfySettings.ForLevel(ObfuscationLevel.Minimal)))!.AsObject();
+        namedJson["level"] = "Minimal";
+        namedJson["runtimeProfile"] = "BlazorWasm";
+        await File.WriteAllTextAsync(named, namedJson.ToJsonString());
         var numbered = Path.Combine(_dir, "numbered.json");
-        await File.WriteAllTextAsync(numbered, """{ "level": 2 }""");
+        var numberedJson = System.Text.Json.Nodes.JsonNode.Parse(JsonUtils.Serialize(ObfySettings.ForLevel(ObfuscationLevel.Aggressive)))!.AsObject();
+        numberedJson["level"] = (int)ObfuscationLevel.Aggressive; // a number, not a name
+        await File.WriteAllTextAsync(numbered, numberedJson.ToJsonString());
         var handler = new LoadConfigRequestHandler(_session, IdleRun.For(_input, _session));
 
         (await handler.Handle(new LoadConfigRequest(named), default)).RuntimeProfile.ShouldBe("BlazorWasm");

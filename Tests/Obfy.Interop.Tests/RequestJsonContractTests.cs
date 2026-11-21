@@ -77,6 +77,17 @@ public class RequestJsonContractTests
     }
 
     [Fact]
+    public void OpenGuide_ReadsTheTopic_AndLeavesItNullWhenMissing()
+    {
+        var type = typeof(Obfy.App.Features.App.OpenGuideRequest);
+
+        ((Obfy.App.Features.App.OpenGuideRequest)JsonUtils.Deserialize("""{"topic":"techniques"}""", type)!).Topic.ShouldBe("techniques");
+        ((Obfy.App.Features.App.OpenGuideRequest)JsonUtils.Deserialize("""{"topic":null}""", type)!).Topic.ShouldBeNull();
+        ((Obfy.App.Features.App.OpenGuideRequest)JsonUtils.Deserialize("{}", type)!).Topic.ShouldBeNull();
+        ShouldHaveKeys(Json(new Obfy.App.Features.App.OpenGuideRequest("techniques")), "topic");
+    }
+
+    [Fact]
     public void ApplyLevel_ReadsLevelAsAString() =>
         ((ApplyLevelRequest)JsonUtils.Deserialize("""{"level":"Aggressive"}""", typeof(ApplyLevelRequest))!).Level.ShouldBe("Aggressive");
 

@@ -11,7 +11,6 @@ Thank you for your interest in contributing to Obfy! This document provides guid
 - [Node.js](https://nodejs.org/) 24 (builds the web UI that `Src/Obfy.UI` hosts; CI uses 24) and [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (for `scripts/dev.ps1`)
 - The [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (Windows; to run the desktop UI)
 - A code editor (VS Code, Visual Studio, Rider, etc.)
-- [Java 21](https://adoptium.net/) (required for Rider plugin development only)
 
 ### Development Setup
 
@@ -54,15 +53,6 @@ Thank you for your interest in contributing to Obfy! This document provides guid
 
    The script starts the Vite dev server on `http://localhost:5250` (hot reload), then runs `Src/Obfy.UI` with `-p:SkipFrontendBuild=true`; the Debug app loads the dev server and has DevTools. It stops Vite when the app closes and refuses to start if port 5250 is taken. Without the script, `dotnet run --project Src/Obfy.UI -c Release` builds the page and serves it from `Assets\` beside the exe.
 
-6. **Build the Rider plugin** (optional, requires Java 21)
-
-   ```bash
-   cd Src/Obfy.Rider
-   ./gradlew.bat build   # Unix: ./gradlew build
-   ```
-
-   The plugin ZIP is `Src/Obfy.Rider/build/distributions/Obfy.Rider-1.0.1.zip` (`pluginVersion` in `gradle.properties` is independent of product `version.json`).
-
 ## Project Structure
 
 ```
@@ -77,7 +67,6 @@ Obfy/
 │   ├── Obfy.UI/            # WPF shell (ShellWindow) hosting WebView2
 │   ├── WebApp/             # React + Vite + TypeScript page (tests: npm run test:run)
 │   ├── Obfy.VisualStudio/  # Visual Studio 2022 extension (C#)
-│   ├── Obfy.Rider/         # JetBrains Rider plugin (Kotlin)
 │   ├── Obfy.VSCode/        # VS Code stub (schema + problem matcher)
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
@@ -196,10 +185,10 @@ The page talks to the host through the `apibridge` host object (`JS -> ApiBridge
 
 1. **Request and handler** in `Src/Obfy.App/Features/<Area>/`: a Mediator request record and its handler. Put the rule in a session (`Src/Obfy.App/Sessions`), not the handler. Throw `ObfyApiException` for failures the user can act on.
 2. **Register it** in `Src/Obfy.Interop/ApiRegistrations.cs`, with the service and method names added to `IpcNames`. If the host pushes something new, add the event name to `IpcNames.Events` and publish it through `IEventPublisher`. DTOs are camelCase through `JsonUtils`.
-3. **Call it from the page**: add a typed wrapper to `Src/WebApp/src/interop/api.ts` (and the types and mock bridge it needs), then use it from a hook or component.
+3. **Call it from the page**: add a typed wrapper to `Src/WebApp/src/interop/api.ts` (and the types and mock bridge it needs), then use it from a hook or component. The page never supplies a path or a URL; `app.openGuide` is the pattern for opening a web address: the page sends a section id and the host builds an `https` URL from the `GuideLinks` allowlist (`Src/Obfy.App/Features/App/GuideLinks.cs`).
 4. **Tests**: handler and session behaviour in `Tests/Obfy.App.Tests`; registration and JSON shape in `Tests/Obfy.Interop.Tests` (`ApiRegistrationsTests`, `RequestJsonContractTests`); the page side in Vitest.
 
-User-facing copy for techniques and the guide lives in `Src/WebApp/src/content/*.json`. `TechniqueContentContractTests` fails when a technique id or option key in the host has no matching entry, so a new technique needs its entry in `techniques.json`.
+User-facing copy for techniques lives in `Src/WebApp/src/content/techniques.json`, and the in-app Guide (`guide.json`) is a short quick-start: Getting started and Shortcuts. The full guide is online at https://brudvik.com/obfy/guide. `TechniqueContentContractTests` fails when a technique id or option key in the host has no matching entry, so a new technique needs its entry in `techniques.json`, and when a `guideTopic` there is not a section id in `GuideLinks.Topics`. A section added to the online guide is linked by adding its id to `GuideLinks.Topics`, the one place that list lives.
 
 ## Pull Request Process
 

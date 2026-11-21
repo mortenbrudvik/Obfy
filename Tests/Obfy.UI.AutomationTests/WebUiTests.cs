@@ -44,23 +44,39 @@ public class WebUiTests
     }
 
     [Fact]
-    public async Task F1_OpensTheGuide()
+    public async Task F1_OpensTheInAppQuickStart()
     {
         await using var app = await ObfyApp.StartAsync();
         await Expect(app.Page.GetByTestId("nav-files")).ToBeVisibleAsync(Visible);
 
-        await app.Page.Keyboard.PressAsync("F1");
-        await Expect(app.Page.GetByTestId("guide-page")).ToBeVisibleAsync(Visible);
+        // A key pressed through Playwright reaches a WebView2 page only while Windows has made the app's window the
+        // active one, and neither CI nor a desktop in use guarantees that: the real key press failed about one run in five.
+        // So the keydown is dispatched inside the page, which still runs the built page's own shortcut handling. It is sent
+        // again until the Guide opens, because the listener attaches just after the first paint.
+        var guide = app.Page.GetByTestId("guide-page");
+        for (var attempt = 0; attempt < 20 && !await guide.IsVisibleAsync(); attempt++)
+        {
+            await app.Page.EvaluateAsync("() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true, cancelable: true }))");
+            await Task.Delay(250);
+        }
+
+        await Expect(guide).ToBeVisibleAsync(Visible);
         await Expect(app.Page.GetByTestId("nav-guide")).ToHaveAttributeAsync("aria-current", "page");
+        await Expect(app.Page.GetByRole(AriaRole.Heading, new() { Level = 2, Name = "Getting started" })).ToBeVisibleAsync(Visible);
     }
 
     [Fact]
-    public async Task GuideNav_OpensTheGuide()
+    public async Task GuideNav_OpensTheQuickStart_WithALinkToTheFullGuideOnline()
     {
         await using var app = await ObfyApp.StartAsync();
 
         await app.Page.GetByTestId("nav-guide").ClickAsync();
         await Expect(app.Page.GetByTestId("guide-page")).ToBeVisibleAsync(Visible);
+
+        // The quick-start has two topics. The button is only looked at, never clicked: it would start the machine's browser.
+        var topics = app.Page.GetByRole(AriaRole.Navigation, new() { Name = "Guide topics" }).GetByRole(AriaRole.Button);
+        await Expect(topics).ToHaveCountAsync(2);
+        await Expect(app.Page.GetByRole(AriaRole.Button, new() { Name = "Open the full guide online" })).ToBeVisibleAsync(Visible);
     }
 
     [Fact]

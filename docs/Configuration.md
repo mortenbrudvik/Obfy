@@ -31,7 +31,9 @@ Complete JSON configuration schema for Obfy.
 
 Generated configs include `"$schema"` pointing at [`schemas/obfy.schema.json`](../schemas/obfy.schema.json) so editors can validate and autocomplete. Extra properties such as `$schema` are ignored when loading. `obfy config generate` writes PascalCase enum names (`"level": "Standard"`, `"algorithm": "Aes256"`) and omits null signing paths.
 
-A `-c` file is authoritative: `level` in the file is not re-applied as a preset. Copy the Minimal/Standard/Aggressive snippets only if you also include the flags you care about (or generate with `obfy config generate -l …`).
+In the CLI a `-c` file is authoritative: `level` in the file is not re-applied as a preset. Copy the Minimal/Standard/Aggressive snippets only if you also include the flags you care about (or generate with `obfy config generate -l …`).
+
+The desktop app handles a loaded file the same way in effect. When you open a configuration (Ctrl+L, or drop the `.json` file on the window) and the file's level-controlled settings are exactly what its `level` preset sets, the level card stays selected. When they are not (for example `"level": "standard"` with `controlFlow` also on), the app shows and runs the configuration as Custom, so a run uses the switches in the file and not the preset. The file on disk is not rewritten. The level-controlled settings are the protection switches, control flow mode and intensity, the constant encryption algorithm, the options that remove debug information and attributes, external call proxying, and virtualization, packing and the incremental cache (a preset turns those three off). Choosing the level card again applies the preset.
 
 ## Complete Schema
 
@@ -186,7 +188,7 @@ The following block is a grammar of keys and enum values, not a valid `obfy.json
 
 ### Minimal
 
-Symbol renaming only - fastest with least protection.
+Symbol renaming and removal of debug information - fastest with least protection.
 
 ```json
 {
@@ -201,7 +203,7 @@ Symbol renaming only - fastest with least protection.
 
 ### Standard (Default)
 
-Balanced protection with string encryption and symbol renaming.
+Balanced protection with string encryption, symbol renaming, debug information removal, and removal of the named compiler and debugger attributes.
 
 ```json
 {
@@ -210,7 +212,7 @@ Balanced protection with string encryption and symbol renaming.
   "controlFlow": { "enabled": false },
   "symbolRenaming": { "enabled": true },
   "protection": { "antiDebug": false },
-  "metadata": { "removeDebugInfo": true }
+  "metadata": { "removeDebugInfo": true, "removeAttributes": true }
 }
 ```
 
@@ -352,7 +354,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | `renameEvents` | bool | `true` | Rename events and add_/remove_ accessors |
 | `renameNamespaces` | bool | `true` | Rename namespaces (public namespaces kept when `preservePublicApi`) |
 | `preservePublicApi` | bool | `false` | Keep public members unchanged |
-| `preserveXaml` | bool | `false` | Keep public instance properties on `*ViewModel`/`*View`/INPC/`DependencyProperty` types. Desktop wizard and Settings panel can turn this on. |
+| `preserveXaml` | bool | `false` | Keep public instance properties on `*ViewModel`/`*View`/INPC/`DependencyProperty` types. The Protection screen of the desktop app can turn this on, and a solution or project run turns it on for WPF, WinForms and MAUI projects. |
 
 **Naming Modes:**
 
@@ -397,7 +399,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `removeDebugInfo` | bool | `true` | Remove PDB references and debug symbols |
-| `removeAttributes` | bool | `true` | Remove custom attributes |
+| `removeAttributes` | bool | `true` | Remove nine named compiler and debugger attributes: `CompilerGenerated`, `Nullable`, `NullableContext`, `DebuggerNonUserCode`, `DebuggerStepThrough`, `DebuggerHidden`, `DebuggerDisplay`, `DebuggerBrowsable`, and `SuppressMessage`. Your own attributes are not touched |
 | `stripDocumentation` | bool | `true` | Strip XML documentation |
 
 ### assemblyMerge
@@ -470,7 +472,7 @@ Empty lists mean no allow-list. When any list is non-empty, only matching namesp
 | `enabled` | bool | `false` | Embed a customer/build identifier. Requires a non-whitespace `id`. |
 | `id` | string | `""` | Plaintext identifier stored as the `WatermarkAttribute` constructor argument and `Id` field. Trimmed on validate. Do not put secrets in `id`. The type `Obfy.Runtime.WatermarkAttribute` is pinned against renaming. |
 
-Opt-in; not flipped by level presets. CLI: `--watermark-id`. Settings panel has a Watermark expander.
+Opt-in; not flipped by level presets. CLI: `--watermark-id`. The desktop app has a Watermark entry on the Protection screen.
 
 ### runtimeProfile
 
@@ -479,7 +481,9 @@ Opt-in; not flipped by level presets. CLI: `--watermark-id`. Settings panel has 
 | `Default` | All protections as configured |
 | `NativeAot` | Disables method encryption, anti-dump, dependency embedding, native packing, and virtualization; anti-debug omits kernel32 P/Invoke. Emits report warnings. |
 | `UnityIl2Cpp` | Same gating; Unity wizard also excludes `UnityEngine`, `UnityEngine.*`, `Unity`, and `Unity.*` |
-| `BlazorWasm` | Same gating for Blazor WebAssembly (no `AppDomain.AssemblyResolve` / `VirtualProtect`); anti-debug omits kernel32 P/Invoke; virtualization off (`MethodBase.Invoke`). |
+| `BlazorWasm` | Same gating for Blazor WebAssembly (no `AppDomain.AssemblyResolve` / `VirtualProtect`); anti-debug omits kernel32 P/Invoke; virtualization off (`MethodBase.Invoke`); native packing off. |
+
+The desktop Protection screen greys out method encryption, anti-dump, dependency embedding, virtualization and native packing for the three profiles other than `Default`, and keeps their stored values. The engine turns the same five off at run time and logs a warning for each.
 
 ### signing
 
@@ -622,7 +626,7 @@ JSON/XML property attributes are excluded from renaming by default. A provided `
 
 ## Virtualization (IL interpreter)
 
-`virtualization.enabled` is **off** in every preset. Enable with `--virtualize`, the UI **Virtualize methods** toggle, or the config flag. When true, Obfy replaces selected eligible **instance and static** methods with a bytecode interpreter stub.
+`virtualization.enabled` is **off** in every preset. Enable with `--virtualize`, the **Virtualization** switch on the desktop Protection screen, or the config flag. When true, Obfy replaces selected eligible **instance and static** methods with a bytecode interpreter stub.
 
 Supported: objects, non-generic calls, fields, `newobj`, `ldstr`; i4/i8/r4/r8 arith; locals, arguments, signed and unsigned compares, branches.
 

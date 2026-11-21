@@ -35,6 +35,7 @@ public class ApiRegistrationsTests
     {
         { "app", "info", typeof(AppInfoRequest) },
         { "app", "ready", typeof(ReadyRequest) },
+        { "app", "openGuide", typeof(OpenGuideRequest) },
 
         { "settings", "get", typeof(GetSettingsRequest) },
         { "settings", "update", typeof(UpdateSettingsRequest) },

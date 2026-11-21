@@ -8,9 +8,9 @@ namespace Obfy.Core.Models;
 public enum ObfuscationLevel
 {
     /// <summary>
-    /// Minimal obfuscation: symbol renaming only.
+    /// Minimal obfuscation: symbol renaming and debug-information removal.
     /// </summary>
-    [Description("Minimal — symbol renaming only")]
+    [Description("Minimal — rename symbols, strip debug information")]
     Minimal,
 
     /// <summary>

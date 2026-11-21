@@ -7,7 +7,7 @@ import ResultsPage from "./features/results/ResultsPage";
 import Shell from "./features/shell/Shell";
 import type { Screen } from "./features/shell/Sidebar";
 
-/** The shell hosting the current screen. The Guide opens at its first topic from the sidebar and F1, and at a given topic from a "Read more" link. */
+/** The shell hosting the current screen. The in-app Guide (a quick-start) opens at its first topic from the sidebar and F1. */
 export default function App() {
   const [screen, setScreen] = useState<Screen>("files");
   const [guideTopic, setGuideTopic] = useState(FIRST_GUIDE_TOPIC);
@@ -17,17 +17,13 @@ export default function App() {
     if (next === "guide" && screen !== "guide") setGuideTopic(FIRST_GUIDE_TOPIC);
     setScreen(next);
   };
-  const openGuide = (topic: string) => {
-    setGuideTopic(topic);
-    setScreen("guide");
-  };
 
   return (
     <Shell screen={screen} onNavigate={navigate}>
       {screen === "files" ? (
         <FilesPage />
       ) : screen === "protection" ? (
-        <ProtectionPage onOpenGuide={openGuide} />
+        <ProtectionPage />
       ) : screen === "results" ? (
         <ResultsPage />
       ) : (

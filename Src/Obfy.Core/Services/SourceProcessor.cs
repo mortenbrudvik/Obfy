@@ -180,6 +180,21 @@ public class SourceProcessor : ISourceProcessor
         _logger.LogDebug("Source code saved successfully");
     }
 
+    /// <summary>
+    /// The files <see cref="SaveAsync"/> writes under <paramref name="outputDirectory"/> for source files loaded together
+    /// with <see cref="LoadFilesAsync"/> (two or more), in input order: each keeps its path relative to the folder the
+    /// files share, or its file name when they share none. Pure but for one folder-exists check; nothing is created.
+    /// </summary>
+    public static IReadOnlyList<string> PlanMultiFileOutputPaths(IReadOnlyList<string> inputPaths, string outputDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(inputPaths);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+
+        var common = CommonDirectory(inputPaths);
+        var inputRoot = common is not null && Directory.Exists(common) ? common : null;
+        return [.. inputPaths.Select(path => Path.Combine(outputDirectory, RelativeSourcePath(Path.GetFullPath(path), inputRoot)))];
+    }
+
     private static string RelativeSourcePath(string? treePath, string? inputRoot)
     {
         if (string.IsNullOrEmpty(treePath))

@@ -98,6 +98,9 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
     openConfig: () => void openConfig(),
   });
 
+  // Trying a broken screen again removes the button that had focus: focus goes to the content area, where the screen is.
+  const contentRef = useRef<HTMLElement>(null);
+
   const fileCount = files?.files.length ?? 0;
   const includedCount = files?.files.filter((file) => file.included).length ?? 0;
   const level = settings?.level ?? null;
@@ -121,11 +124,22 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
         version={info?.version ?? null}
       />
       <div className="main">
-        <main className="content">
+        <main className="content" ref={contentRef} tabIndex={-1}>
           {shortcutError && <Notice tone="error">{shortcutError}</Notice>}
           {/* A screen that throws is replaced by its own message here, so the sidebar, the run bar and the shortcuts stay.
               Keyed on the screen: moving to another one starts it afresh. */}
-          <ErrorBoundary key={screen} fallback={(retry) => <ScreenCrash screen={screen} onRetry={retry} />}>
+          <ErrorBoundary
+            key={screen}
+            fallback={(retry) => (
+              <ScreenCrash
+                screen={screen}
+                onRetry={() => {
+                  retry();
+                  contentRef.current?.focus();
+                }}
+              />
+            )}
+          >
             {children}
           </ErrorBoundary>
         </main>

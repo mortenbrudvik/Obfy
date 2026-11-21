@@ -233,6 +233,23 @@ describe("a screen that cannot draw what the host sent", () => {
     expect(screen.queryByText("The Protection screen could not be shown")).toBeNull();
   });
 
+  it("movesFocusToTheContentArea_whenTryAgainDrawsTheScreen_insteadOfLettingItFallToTheDocument", async () => {
+    const host = { settings: undrawable as unknown };
+    hostWithSettings(host);
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /^Protection/ }));
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    retry.focus();
+    expect(document.activeElement).toBe(retry);
+
+    host.settings = standardSettings;
+    fireEvent.click(retry);
+    await screen.findByRole("heading", { name: "Protection" });
+
+    // The button that had focus is gone; a keyboard or screen reader user lands on the screen, not at the top of the page.
+    expect(document.activeElement).toBe(screen.getByRole("main"));
+  });
+
   it("showsTheErrorAgain_whenTheUserTriesAgainAndTheDataIsStillBad", async () => {
     hostWithSettings({ settings: undrawable });
     render(<App />);

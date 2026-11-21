@@ -276,6 +276,7 @@ obfy MyApp.dll -v -o output/
 - A named extra that does not exist fails the run (exit 1), including `--dry-run`.
 - `--merge` on a session with fewer than two included assemblies warns and continues as a closed set.
 - A load failure stops the whole set: the CLI prints the path and cause of each assembly that failed, writes no modules (`No modules were written`), and exits 1.
+- A closed-set failure that names no file (an assembly that is already protected, an output path collision, a signing key that cannot be loaded, invalid settings), "No built outputs found", two solution files, and `--merge` with fewer than two assemblies each print one problem-matcher line (`path(1,1): error: message`) besides the red text, filed against the solution or project file, or against the first input when there is none. A failure that has a line of its own per file (a load failure, a missing file) does not get a second one.
 
 `obfy App.dll Lib.dll` without a solution/project is still a closed set (same rename consistency as a solution drop). `--merge` still merges. Without `-o`, the CLI writes `obfy-out/` next to the first assembly. For a solution or project it is `obfy-out/` next to the solution or project file. (The desktop app puts a closed set's `obfy-out` next to the first included assembly, which for a solution is usually inside its `bin` folder.)
 

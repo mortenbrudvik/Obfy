@@ -658,10 +658,12 @@ public class Program
         bool preservePublic = false,
         CancellationToken cancellationToken = default)
     {
-        var solutionCount = inputs.Count(static i => IsSolutionFile(i.FullName));
-        if (solutionCount > 1)
+        var solutionFiles = inputs.Where(static i => IsSolutionFile(i.FullName)).ToList();
+        if (solutionFiles.Count > 1)
         {
-            AnsiConsole.MarkupLine("[red]Only one solution file can be obfuscated per run.[/]");
+            const string onlyOne = "Only one solution file can be obfuscated per run.";
+            AnsiConsole.MarkupLine($"[red]{onlyOne}[/]");
+            WriteProblem(solutionFiles[0].FullName, "error", onlyOne);
             return 1;
         }
 
@@ -698,7 +700,9 @@ public class Program
 
         if (merge && inputs.Length < 2)
         {
-            AnsiConsole.MarkupLine("[red]Merge requires at least two input assemblies.[/]");
+            const string needTwo = "Merge requires at least two input assemblies.";
+            AnsiConsole.MarkupLine($"[red]{needTwo}[/]");
+            WriteProblem(inputs.FirstOrDefault()?.FullName ?? "", "error", needTwo);
             return 1;
         }
 
@@ -856,7 +860,9 @@ public class Program
 
         if (closedSetInputs.Count == 0)
         {
-            AnsiConsole.MarkupLine("[red]No built outputs found. Build the ship set (Release) and retry.[/]");
+            const string noOutputs = "No built outputs found. Build the ship set (Release) and retry.";
+            AnsiConsole.MarkupLine($"[red]{noOutputs}[/]");
+            WriteProblem(session.SourcePath, "error", noOutputs);
             return 2;
         }
 
@@ -926,10 +932,10 @@ public class Program
             .ConfigureAwait(false);
 
         return await WriteClosedSetOutcomeAsync(
-            result, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
+            result, session.SourcePath, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
     }
 
-    private static async Task<int> RunLooseClosedSetAsync(
+    internal static async Task<int> RunLooseClosedSetAsync(
         FileInfo[] inputs,
         DirectoryInfo? output,
         ObfySettings settings,
@@ -969,7 +975,12 @@ public class Program
 
         if (present.Count == 0)
         {
-            AnsiConsole.MarkupLine("[red]No assemblies found.[/]");
+            const string noAssemblies = "No assemblies found.";
+            AnsiConsole.MarkupLine($"[red]{noAssemblies}[/]");
+
+            // A missing assembly already has its own line; this is for a list with no assembly in it.
+            if (missing.Count == 0)
+                WriteProblem(inputs.FirstOrDefault()?.FullName ?? "", "error", noAssemblies);
             return 2;
         }
 
@@ -1021,11 +1032,13 @@ public class Program
             .ConfigureAwait(false);
 
         return await WriteClosedSetOutcomeAsync(
-            result, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
+            result, present[0].FullName, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
     }
 
+    /// <param name="problemFile">What a failure that names no file is filed against: the solution or project file, or the first input of a loose set.</param>
     private static async Task<int> WriteClosedSetOutcomeAsync(
         ClosedSetResult result,
+        string problemFile,
         FileInfo? mapFile,
         FileInfo? reportFile,
         ObfySettings settings,
@@ -1041,10 +1054,17 @@ public class Program
 
         if (!result.Success)
         {
-            AnsiConsole.MarkupLine(
-                $"[red]{Markup.Escape(result.ErrorMessage ?? "Closed-set obfuscation failed.")}[/]");
-            foreach (var module in result.ModuleResults.Where(static m => !m.Success))
+            var failure = result.ErrorMessage ?? "Closed-set obfuscation failed.";
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(failure)}[/]");
+            var failedModules = result.ModuleResults.Where(static m => !m.Success).ToList();
+            foreach (var module in failedModules)
                 DisplayError(Path.GetFileName(module.InputPath) ?? "module", module);
+
+            // A load failure or a failed module has its own line against its file. A failure that names none (an input
+            // that is already protected, an output collision, the signing key, the settings) would otherwise leave the
+            // Problems panel empty.
+            if (result.LoadFailures.Count == 0 && failedModules.Count == 0)
+                WriteProblem(problemFile, "error", failure);
             return 1;
         }
 

@@ -1,5 +1,6 @@
 using dnlib.DotNet;
 using Obfy.Console;
+using Obfy.Core.Models;
 using Shouldly;
 
 namespace Obfy.Console.Tests;
@@ -463,6 +464,262 @@ public class SolutionInputTests : IDisposable
         exitCode.ShouldBe(0);
         File.Exists(Path.Combine(outputDir, "Lib.dll")).ShouldBeTrue();
         File.Exists(Path.Combine(outputDir, "Extra.dll")).ShouldBeFalse();
+    }
+
+    // ---- Failures that name no file still reach the Problems panel: one error line, against the solution or the first input ----
+
+    private static (int Exit, string Text, IReadOnlyList<ProblemLine> Problems) RunCapturing(string args)
+    {
+        using var console = new AnsiConsoleCapture();
+        using var capture = new ProblemLineCapture();
+        var exit = CommandLineTestHelpers.Invoke(Program.CreateRootCommand(), args, out _);
+        return (exit, console.Text, capture.Problems);
+    }
+
+    private static void ShouldBeOneErrorLine(
+        IReadOnlyList<ProblemLine> problems, string file, string messageStart, string text)
+    {
+        var problem = problems.ShouldHaveSingleItem(text);
+        problem.File.ShouldBe(file, StringCompareShould.IgnoreCase);
+        problem.Severity.ShouldBe("error");
+        problem.Message.ShouldStartWith(messageStart);
+        text.ShouldContain(messageStart, Case.Sensitive, "the red text stays");
+    }
+
+    [Fact]
+    public void Invoke_SolutionWithNoBuiltOutputs_EmitsOneProblemLineAgainstTheSolution()
+    {
+        var sln = WriteTestsOnlySolution();
+
+        var (exitCode, text, problems) = RunCapturing($"\"{sln}\" --no-logo");
+
+        exitCode.ShouldBe(2);
+        ShouldBeOneErrorLine(problems, sln, "No built outputs found. Build the ship set (Release) and retry.", text);
+    }
+
+    [Fact]
+    public void Invoke_ProjectWithNoBuiltOutputs_EmitsOneProblemLineAgainstTheProject()
+    {
+        WriteTestsOnlySolution();
+        var project = Path.Combine(_tempDirectory, "Foo.Tests", "Foo.Tests.csproj");
+
+        var (exitCode, text, problems) = RunCapturing($"\"{project}\" --no-logo");
+
+        exitCode.ShouldBe(2);
+        ShouldBeOneErrorLine(problems, project, "No built outputs found. Build the ship set (Release) and retry.", text);
+    }
+
+    [Fact]
+    public void Invoke_TwoSolutionFiles_EmitsOneProblemLineAgainstTheFirstSolution()
+    {
+        var sln1 = Path.Combine(_tempDirectory, "A.sln");
+        var sln2 = Path.Combine(_tempDirectory, "B.sln");
+        File.WriteAllText(sln1, "Microsoft Visual Studio Solution File, Format Version 12.00");
+        File.WriteAllText(sln2, "Microsoft Visual Studio Solution File, Format Version 12.00");
+
+        var (exitCode, text, problems) = RunCapturing($"\"{sln1}\" \"{sln2}\" --no-logo");
+
+        exitCode.ShouldBe(1);
+        ShouldBeOneErrorLine(problems, sln1, "Only one solution file can be obfuscated per run.", text);
+    }
+
+    [Fact]
+    public void Invoke_MergeWithOneAssembly_EmitsOneProblemLineAgainstTheInput()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+
+        var (exitCode, text, problems) = RunCapturing($"\"{a}\" --merge --no-logo");
+
+        exitCode.ShouldBe(1);
+        ShouldBeOneErrorLine(problems, a, "Merge requires at least two input assemblies.", text);
+    }
+
+    [Fact]
+    public async Task NoAssembliesFound_EmitsOneProblemLineAgainstTheFirstInput_WhenNoAssemblyWasListed()
+    {
+        // Unreachable from the command line (a loose closed set needs two existing assemblies), so the method is called
+        // directly: nothing it lists is an assembly, and nothing has printed a line for that yet.
+        var x = Path.Combine(_tempDirectory, "X.cs");
+        var y = Path.Combine(_tempDirectory, "Y.cs");
+        File.WriteAllText(x, "class X {}");
+        File.WriteAllText(y, "class Y {}");
+        using var console = new AnsiConsoleCapture();
+        using var capture = new ProblemLineCapture();
+
+        var exitCode = await Program.RunLooseClosedSetAsync(
+            [new FileInfo(x), new FileInfo(y)], null, new ObfySettings(), null, null, dryRun: false, preservePublic: false,
+            null!, null!, CancellationToken.None);
+
+        exitCode.ShouldBe(2);
+        ShouldBeOneErrorLine(capture.Problems, x, "No assemblies found.", console.Text);
+    }
+
+    [Fact]
+    public async Task NoAssembliesFound_AddsNoLine_WhenEveryListedAssemblyIsMissing()
+    {
+        var missingA = Path.Combine(_tempDirectory, "NoSuchA.dll");
+        var missingB = Path.Combine(_tempDirectory, "NoSuchB.dll");
+        using var console = new AnsiConsoleCapture();
+        using var capture = new ProblemLineCapture();
+
+        var exitCode = await Program.RunLooseClosedSetAsync(
+            [new FileInfo(missingA), new FileInfo(missingB)], null, new ObfySettings(), null, null, dryRun: false, preservePublic: false,
+            null!, null!, CancellationToken.None);
+
+        exitCode.ShouldBe(2);
+        capture.Problems.Select(static p => (p.File, p.Message)).ShouldBe(
+            [(missingA, "File not found"), (missingB, "File not found")], "the per-file lines are enough");
+        console.Text.ShouldContain("No assemblies found.");
+    }
+
+    [Fact]
+    public void Invoke_TwoDllsPlusMissing_KeepsTheRedSentence_AndAddsNoLineBesideTheMissingFile()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll");
+        var missing = Path.Combine(_tempDirectory, "NoSuch.dll");
+
+        var (exitCode, text, problems) = RunCapturing($"\"{a}\" \"{b}\" \"{missing}\" --no-logo");
+
+        exitCode.ShouldBe(1);
+        text.ShouldContain("Closed-set obfuscation requires every listed assembly to exist.");
+        problems.Select(static p => (p.File, p.Message)).ShouldBe([(missing, "File not found")]);
+    }
+
+    [Fact]
+    public void Invoke_TwoDllsPlusCorrupt_EmitsOnlyThePerFileLine_NotASecondForTheStoppedRun()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll", "Alpha");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll", "Beta");
+        var corrupt = Path.Combine(_tempDirectory, "Corrupt.dll");
+        File.WriteAllText(corrupt, "not an assembly");
+
+        var (exitCode, text, problems) = RunCapturing(
+            $"\"{a}\" \"{b}\" \"{corrupt}\" -o \"{Path.Combine(_tempDirectory, "o")}\" -l minimal --no-logo");
+
+        exitCode.ShouldBe(1);
+        text.ShouldContain("Closed-set obfuscation stopped because 1 assembly(ies) failed to load.");
+        var problem = problems.ShouldHaveSingleItem(text);
+        problem.File.ShouldBe(corrupt);
+        problem.Message.ShouldStartWith("Failed to load assembly:");
+    }
+
+    [Fact]
+    public void Invoke_TwoAlreadyProtectedAssemblies_EmitsOneProblemLineAgainstTheFirstInput()
+    {
+        var (a, b) = ProtectedPair();
+
+        var (exitCode, text, problems) = RunCapturing(
+            $"\"{a}\" \"{b}\" -o \"{Path.Combine(_tempDirectory, "again-out")}\" -l minimal --no-logo");
+
+        exitCode.ShouldBe(1);
+        ShouldBeOneErrorLine(problems, a, "Closed-set obfuscation stopped: ", text);
+        problems[0].Message.ShouldContain("already protected");
+    }
+
+    [Fact]
+    public void Invoke_SolutionWhoseBuiltOutputIsAlreadyProtected_EmitsOneProblemLineAgainstTheSolution()
+    {
+        var (protectedLib, _) = ProtectedPair();
+        var sln = WriteLibrarySolutionWithBuiltOutput();
+        File.Copy(protectedLib, Path.Combine(_tempDirectory, "Lib", "bin", "Release", "net8.0", "Lib.dll"), overwrite: true);
+
+        var (exitCode, text, problems) = RunCapturing(
+            $"\"{sln}\" -o \"{Path.Combine(_tempDirectory, "again-out")}\" -l minimal --no-logo");
+
+        exitCode.ShouldBe(1);
+        ShouldBeOneErrorLine(problems, sln, "Closed-set obfuscation stopped: ", text);
+        problems[0].Message.ShouldContain("already protected");
+    }
+
+    [Fact]
+    public void Invoke_TwoAssembliesWithTheSameOutputPath_EmitsOneProblemLineAgainstTheFirstInput()
+    {
+        var one = Path.Combine(_tempDirectory, "one", "sub");
+        var two = Path.Combine(_tempDirectory, "two", "sub");
+        Directory.CreateDirectory(one);
+        Directory.CreateDirectory(two);
+        var a = ConsoleTestAssembly.Create(one, "A.dll");
+        var b = ConsoleTestAssembly.Create(two, "A.dll");
+
+        var (exitCode, text, problems) = RunCapturing(
+            $"\"{a}\" \"{b}\" -o \"{Path.Combine(_tempDirectory, "collide-out")}\" -l minimal --no-logo");
+
+        exitCode.ShouldBe(1);
+        ShouldBeOneErrorLine(problems, a, "Output path collision", text);
+    }
+
+    [Fact]
+    public void Invoke_ClosedSetWithAMissingSigningKey_EmitsOneProblemLineAgainstTheFirstInput()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll", "Alpha");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll", "Beta");
+        var config = WriteConfig("""{ "signing": { "enabled": true, "keyFile": "no-such-key.snk" } }""");
+
+        var (exitCode, text, problems) = RunCapturing(
+            $"\"{a}\" \"{b}\" -c \"{config}\" -o \"{Path.Combine(_tempDirectory, "sign-out")}\" --no-logo");
+
+        exitCode.ShouldBe(1);
+        ShouldBeOneErrorLine(problems, a, "Failed to load the signing key:", text);
+    }
+
+    [Fact]
+    public void Invoke_SolutionWithAMissingSigningKey_EmitsOneProblemLineAgainstTheSolution()
+    {
+        var sln = WriteLibrarySolutionWithBuiltOutput();
+        var config = WriteConfig("""{ "signing": { "enabled": true, "keyFile": "no-such-key.snk" } }""");
+
+        var (exitCode, text, problems) = RunCapturing(
+            $"\"{sln}\" -c \"{config}\" -o \"{Path.Combine(_tempDirectory, "sign-out")}\" --no-logo");
+
+        exitCode.ShouldBe(1);
+        ShouldBeOneErrorLine(problems, sln, "Failed to load the signing key:", text);
+    }
+
+    [Fact]
+    public void Invoke_ClosedSetWithInvalidSettings_EmitsOneProblemLineAgainstTheFirstInput()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll", "Alpha");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll", "Beta");
+        var config = WriteConfig("""{ "stringEncryption": { "enabled": true, "minStringLength": 0 } }""");
+
+        var (exitCode, text, problems) = RunCapturing(
+            $"\"{a}\" \"{b}\" -c \"{config}\" -o \"{Path.Combine(_tempDirectory, "invalid-out")}\" --no-logo");
+
+        exitCode.ShouldBe(1);
+        ShouldBeOneErrorLine(problems, a, "Invalid settings:", text);
+    }
+
+    [Fact]
+    public void Invoke_SolutionWithInvalidSettings_EmitsOneProblemLineAgainstTheSolution()
+    {
+        var sln = WriteLibrarySolutionWithBuiltOutput();
+        var config = WriteConfig("""{ "stringEncryption": { "enabled": true, "minStringLength": 0 } }""");
+
+        var (exitCode, text, problems) = RunCapturing(
+            $"\"{sln}\" -c \"{config}\" -o \"{Path.Combine(_tempDirectory, "invalid-out")}\" --no-logo");
+
+        exitCode.ShouldBe(1);
+        ShouldBeOneErrorLine(problems, sln, "Invalid settings:", text);
+    }
+
+    private string WriteConfig(string json)
+    {
+        var path = Path.Combine(_tempDirectory, "obfy.json");
+        File.WriteAllText(path, json);
+        return path;
+    }
+
+    /// <summary>Two assemblies run through Obfy with string encryption, so each carries the runtime helper types a second run refuses.</summary>
+    private (string A, string B) ProtectedPair()
+    {
+        var a = ConsoleTestAssembly.Create(_tempDirectory, "A.dll", "Alpha");
+        var b = ConsoleTestAssembly.Create(_tempDirectory, "B.dll", "Beta");
+        var folder = Path.Combine(_tempDirectory, "protected");
+        CommandLineTestHelpers.Invoke(
+            Program.CreateRootCommand(), $"\"{a}\" \"{b}\" -o \"{folder}\" -l minimal --string-encrypt --no-logo", out _)
+            .ShouldBe(0);
+        return (Path.Combine(folder, "A.dll"), Path.Combine(folder, "B.dll"));
     }
 
     private string WriteTestsOnlySolution()

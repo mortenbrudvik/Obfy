@@ -24,6 +24,8 @@
 .runbar .sum.blocked { color: var(--text); }
 .runbar .sum.blocked::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: var(--warn); vertical-align: 1px; }
 .runbar .kbd { font-size: 12px; color: var(--dim); }
+/* The live region of the blocked reason while there is none: in the page for a screen reader, out of the layout. */
+.runbar .live-region { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .prog { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; font-size: 13px; }
 .prog > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar { flex: none; width: 180px; height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; }

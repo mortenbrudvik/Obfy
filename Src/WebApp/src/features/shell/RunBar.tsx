@@ -69,15 +69,14 @@ export default function RunBar({ run, unreachable, fileCount, includedCount, lev
   const blocked = !run.canStart ? (run.blockedReason ?? run.message) : run.status === "Faulted" ? run.message : null;
   const summary = `${includedCount} of ${fileCount} files · ${level ?? "…"} · Output: ${run.outputHint}`;
 
+  // The reason is read out politely, and its region is always there (empty while there is no reason): a screen reader
+  // announces text put into a region it already knows, which a region that arrives together with its text may not be.
+  // A failed start has its own alert, and the summary is no live region: it changes with every file and level.
+  const reason = error ? null : blocked;
   return (
     <div className="runbar">
-      {error ? (
-        <div className="sum blocked" role="alert">{error}</div>
-      ) : blocked ? (
-        <div className="sum blocked">{blocked}</div>
-      ) : (
-        <div className="sum">{summary}</div>
-      )}
+      <div role="status" className={reason ? "sum blocked" : "live-region"}>{reason}</div>
+      {error ? <div className="sum blocked" role="alert">{error}</div> : !blocked && <div className="sum">{summary}</div>}
       <span className="kbd">Ctrl+Enter</span>
       <button type="button" className="btn primary" data-testid="run-button" disabled={!run.canStart} onClick={onStart}>
         {strings.run.obfuscate}

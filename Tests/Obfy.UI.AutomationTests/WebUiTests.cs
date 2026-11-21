@@ -49,8 +49,18 @@ public class WebUiTests
         await using var app = await ObfyApp.StartAsync();
         await Expect(app.Page.GetByTestId("nav-files")).ToBeVisibleAsync(Visible);
 
-        await app.Page.Keyboard.PressAsync("F1");
-        await Expect(app.Page.GetByTestId("guide-page")).ToBeVisibleAsync(Visible);
+        // A key pressed through Playwright reaches a WebView2 page only while Windows has made the app's window the
+        // active one, and neither CI nor a desktop in use guarantees that: the real key press failed about one run in five.
+        // So the keydown is dispatched inside the page, which still runs the built page's own shortcut handling. It is sent
+        // again until the Guide opens, because the listener attaches just after the first paint.
+        var guide = app.Page.GetByTestId("guide-page");
+        for (var attempt = 0; attempt < 20 && !await guide.IsVisibleAsync(); attempt++)
+        {
+            await app.Page.EvaluateAsync("() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true, cancelable: true }))");
+            await Task.Delay(250);
+        }
+
+        await Expect(guide).ToBeVisibleAsync(Visible);
         await Expect(app.Page.GetByTestId("nav-guide")).ToHaveAttributeAsync("aria-current", "page");
         await Expect(app.Page.GetByRole(AriaRole.Heading, new() { Level = 2, Name = "Getting started" })).ToBeVisibleAsync(Visible);
     }

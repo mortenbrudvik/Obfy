@@ -40,20 +40,13 @@ public static class PackedBootstrap
                 return 1;
             }
 
+            // Do NOT set the entry assembly here. Assembly.GetEntryAssembly() stays null for a packed payload on
+            // purpose: the anti-tamper check treats "no entry assembly and an empty Location" as a packed app and
+            // skips; with an entry assembly set it would hash the native stub's process path instead and fail
+            // every packed app that has AntiTamper enabled at startup.
             var all = Environment.GetCommandLineArgs();
             var args = all.Length <= 1 ? Array.Empty<string>() : all[1..];
-            object?[]? invokeArgs = entry.GetParameters().Length == 0 ? null : new object[] { args };
-            var result = entry.Invoke(null, invokeArgs);
-
-            if (result is Task<int> ti)
-                return ti.GetAwaiter().GetResult();
-            if (result is Task t)
-            {
-                t.GetAwaiter().GetResult();
-                return 0;
-            }
-
-            return result is int code ? code : 0;
+            return InvokeEntryPoint(entry, args);
         }
         catch (TargetInvocationException ex)
         {
@@ -65,6 +58,28 @@ public static class PackedBootstrap
             Console.Error.WriteLine("Packed host failed: " + ex);
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Runs the payload's entry point and maps its result to the process exit code the way the
+    /// runtime's own app host does: an <c>int</c> / <c>Task&lt;int&gt;</c> is the code, and a
+    /// <c>void</c> / <c>Task</c> Main exits with <see cref="Environment.ExitCode"/> (0 unless the
+    /// payload set it).
+    /// </summary>
+    internal static int InvokeEntryPoint(MethodBase entry, string[] args)
+    {
+        object?[]? invokeArgs = entry.GetParameters().Length == 0 ? null : new object[] { args };
+        var result = entry.Invoke(null, invokeArgs);
+
+        if (result is Task<int> ti)
+            return ti.GetAwaiter().GetResult();
+        if (result is Task t)
+        {
+            t.GetAwaiter().GetResult();
+            return Environment.ExitCode;
+        }
+
+        return result is int code ? code : Environment.ExitCode;
     }
 
     private static Assembly? ResolveSibling(AssemblyLoadContext context, AssemblyName name)

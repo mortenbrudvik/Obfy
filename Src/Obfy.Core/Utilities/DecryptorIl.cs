@@ -91,14 +91,10 @@ internal static class DecryptorIl
         var body = new CilBody { InitLocals = true };
         method.Body = body;
 
-        // Crypto types are not in the corlib facade on modern .NET; Aes lives in System.Core on
-        // .NET Framework and System.Security.Cryptography on modern runtimes.
-        var cryptoAsm = FrameworkReferences.Cryptography(module);
-        var aesAsm = FrameworkReferences.Aes(module);
-        var aesType = new TypeRefUser(module, "System.Security.Cryptography", "Aes", aesAsm);
-        var bufferType = new TypeRefUser(module, "System", "Buffer", module.CorLibTypes.AssemblyRef);
-        var disposableType = new TypeRefUser(module, "System", "IDisposable", module.CorLibTypes.AssemblyRef);
-        var transformType = new TypeRefUser(module, "System.Security.Cryptography", "ICryptoTransform", cryptoAsm);
+        var aesType = FrameworkReferences.Type(module, "System.Security.Cryptography", "Aes");
+        var bufferType = FrameworkReferences.Type(module, "System", "Buffer");
+        var disposableType = FrameworkReferences.Type(module, "System", "IDisposable");
+        var transformType = FrameworkReferences.Type(module, "System.Security.Cryptography", "ICryptoTransform");
 
         var aesCreate = new MemberRefUser(module, "Create",
             MethodSig.CreateStatic(new ClassSig(aesType)), aesType);
@@ -115,7 +111,7 @@ internal static class DecryptorIl
                 module.CorLibTypes.Int32,
                 module.CorLibTypes.Int32),
             transformType);
-        var arrayType = new TypeRefUser(module, "System", "Array", module.CorLibTypes.AssemblyRef);
+        var arrayType = FrameworkReferences.Type(module, "System", "Array");
         var blockCopy = new MemberRefUser(module, "BlockCopy",
             MethodSig.CreateStatic(
                 module.CorLibTypes.Void,
@@ -417,27 +413,26 @@ internal static class DecryptorIl
         body.Variables.Add(lengthLocal);
         body.Variables.Add(itemLocal);
 
-        var runtimeHelpers = new TypeRefUser(
-            module, "System.Runtime.CompilerServices", "RuntimeHelpers", module.CorLibTypes.AssemblyRef);
+        var runtimeHelpers = FrameworkReferences.Type(module, "System.Runtime.CompilerServices", "RuntimeHelpers");
         var initArray = new MemberRefUser(
             module,
             "InitializeArray",
             MethodSig.CreateStatic(
                 module.CorLibTypes.Void,
-                new ClassSig(new TypeRefUser(module, "System", "Array", module.CorLibTypes.AssemblyRef)),
-                new ValueTypeSig(new TypeRefUser(module, "System", "RuntimeFieldHandle", module.CorLibTypes.AssemblyRef))),
+                new ClassSig(FrameworkReferences.Type(module, "System", "Array")),
+                new ValueTypeSig(FrameworkReferences.Type(module, "System", "RuntimeFieldHandle"))),
             runtimeHelpers);
         var blockCopy = new MemberRefUser(
             module,
             "BlockCopy",
             MethodSig.CreateStatic(
                 module.CorLibTypes.Void,
-                new ClassSig(new TypeRefUser(module, "System", "Array", module.CorLibTypes.AssemblyRef)),
+                new ClassSig(FrameworkReferences.Type(module, "System", "Array")),
                 module.CorLibTypes.Int32,
-                new ClassSig(new TypeRefUser(module, "System", "Array", module.CorLibTypes.AssemblyRef)),
+                new ClassSig(FrameworkReferences.Type(module, "System", "Array")),
                 module.CorLibTypes.Int32,
                 module.CorLibTypes.Int32),
-            new TypeRefUser(module, "System", "Buffer", module.CorLibTypes.AssemblyRef));
+            FrameworkReferences.Type(module, "System", "Buffer"));
 
         body.Instructions.Add(Instruction.CreateLdcI4(packed.Length));
         body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
@@ -528,7 +523,7 @@ internal static class DecryptorIl
         var blobType = new TypeDefUser(
             owner.Namespace,
             "<Blob>" + owner.NestedTypes.Count,
-            new TypeRefUser(module, "System", "ValueType", module.CorLibTypes.AssemblyRef))
+            FrameworkReferences.Type(module, "System", "ValueType"))
         {
             Attributes = TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout |
                          TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit,

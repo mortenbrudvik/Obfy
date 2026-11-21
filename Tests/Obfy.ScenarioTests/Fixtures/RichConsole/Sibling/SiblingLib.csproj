@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <FixtureTfm Condition="'$(FixtureTfm)' == ''">net10.0</FixtureTfm>
+    <TargetFramework>$(FixtureTfm)</TargetFramework>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A plain SDK console app with what the injected code touches: an embedded resource, a .resx read through
+       ResourceManager, constants, a switch, and a sibling assembly (a project reference). Built for the framework
+       the test picks with -p:FixtureTfm=... (a separate property, so restore and build both see it). -->
+  <PropertyGroup>
+    <FixtureTfm Condition="'$(FixtureTfm)' == ''">net10.0</FixtureTfm>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(FixtureTfm)</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>RichConsole</RootNamespace>
+    <AssemblyName>RichConsole</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="Sibling\SiblingLib.csproj" />
+    <EmbeddedResource Include="data.txt" LogicalName="RichConsole.data.txt" />
+  </ItemGroup>
+
+</Project>

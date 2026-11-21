@@ -357,7 +357,7 @@ public class ControlFlowObfuscator : IObfuscator
         var target = instructions[position];
         var module = method.Module;
 
-        var env = module.CorLibTypes.GetTypeRef("System", "Environment");
+        var env = FrameworkReferences.Type(module, "System", "Environment");
         var getTickCount = new MemberRefUser(
             module,
             "get_TickCount",
@@ -384,7 +384,7 @@ public class ControlFlowObfuscator : IObfuscator
                 env);
         }
 
-        var gcType = new TypeRefUser(module, "System", "GC", module.CorLibTypes.AssemblyRef);
+        var gcType = FrameworkReferences.Type(module, "System", "GC");
         var getMaxGeneration = new MemberRefUser(
             module,
             "get_MaxGeneration",

@@ -116,7 +116,7 @@ public class AntiTamperObfuscator : IObfuscator
         typeDef.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed | TypeAttributes.Abstract;
 
         var blobType = new TypeDefUser("Obfy.Runtime", "<AntiTamperBlob>",
-            new TypeRefUser(module, "System", "ValueType", module.CorLibTypes.AssemblyRef));
+            FrameworkReferences.Type(module, "System", "ValueType"));
         blobType.Attributes = TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit;
         blobType.ClassLayout = new ClassLayoutUser(1, (uint)AssemblyHashComputer.BlobSize);
         typeDef.NestedTypes.Add(blobType);
@@ -267,12 +267,11 @@ public class AntiTamperObfuscator : IObfuscator
         body.Variables.Add(snOffLocal);
         body.Variables.Add(snSizeLocal);
 
-        var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
-        var environmentType = module.CorLibTypes.GetTypeRef("System", "Environment");
-        var fileType = new TypeRefUser(module, "System.IO", "File", module.CorLibTypes.AssemblyRef);
-        // SHA256 lives in the cryptography assembly, not the corlib facade, on modern .NET.
-        var sha256Type = new TypeRefUser(module, "System.Security.Cryptography", "SHA256", FrameworkReferences.Cryptography(module));
-        var bufferType = new TypeRefUser(module, "System", "Buffer", module.CorLibTypes.AssemblyRef);
+        var assemblyType = FrameworkReferences.Type(module, "System.Reflection", "Assembly");
+        var environmentType = FrameworkReferences.Type(module, "System", "Environment");
+        var fileType = FrameworkReferences.Type(module, "System.IO", "File");
+        var sha256Type = FrameworkReferences.Type(module, "System.Security.Cryptography", "SHA256");
+        var bufferType = FrameworkReferences.Type(module, "System", "Buffer");
 
         var getExecutingAssembly = new MemberRefUser(module, "GetExecutingAssembly",
             MethodSig.CreateStatic(new ClassSig(assemblyType)), assemblyType);
@@ -284,7 +283,7 @@ public class AntiTamperObfuscator : IObfuscator
             MethodSig.CreateStatic(module.CorLibTypes.String), environmentType);
         var isNullOrEmpty = new MemberRefUser(module, "IsNullOrEmpty",
             MethodSig.CreateStatic(module.CorLibTypes.Boolean, module.CorLibTypes.String),
-            new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef));
+            FrameworkReferences.Type(module, "System", "String"));
         var failFast = new MemberRefUser(module, "FailFast",
             MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String), environmentType);
         var readAllBytes = new MemberRefUser(module, "ReadAllBytes",
@@ -294,7 +293,7 @@ public class AntiTamperObfuscator : IObfuscator
         var computeHash = new MemberRefUser(module, "ComputeHash",
             MethodSig.CreateInstance(new SZArraySig(module.CorLibTypes.Byte), new SZArraySig(module.CorLibTypes.Byte)),
             sha256Type);
-        var arrayType = new TypeRefUser(module, "System", "Array", module.CorLibTypes.AssemblyRef);
+        var arrayType = FrameworkReferences.Type(module, "System", "Array");
         var blockCopy = new MemberRefUser(module, "BlockCopy",
             MethodSig.CreateStatic(
                 module.CorLibTypes.Void,
@@ -304,7 +303,7 @@ public class AntiTamperObfuscator : IObfuscator
                 module.CorLibTypes.Int32,
                 module.CorLibTypes.Int32),
             bufferType);
-        var bitConverterType = module.CorLibTypes.GetTypeRef("System", "BitConverter");
+        var bitConverterType = FrameworkReferences.Type(module, "System", "BitConverter");
         var toInt32 = new MemberRefUser(module, "ToInt32",
             MethodSig.CreateStatic(module.CorLibTypes.Int32, new SZArraySig(module.CorLibTypes.Byte), module.CorLibTypes.Int32),
             bitConverterType);
@@ -326,26 +325,36 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
         body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, havePath));
 
-        // Location empty: only fall back to ProcessPath when this assembly is the process
-        // entry (single-file). ALC / LoadFromStream loads are a different assembly than
-        // the host and must skip — hashing the launcher would false-fail.
-        var skipPop = Instruction.Create(OpCodes.Pop);
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, getEntryAssembly));
-        body.Instructions.Add(Instruction.Create(OpCodes.Dup));
-        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, skipPop));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, getExecutingAssembly));
-        var processPath = Instruction.Create(OpCodes.Call, getProcessPath);
-        body.Instructions.Add(Instruction.Create(OpCodes.Beq, processPath));
-        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+        // Environment.ProcessPath exists from .NET 6 on; the single-file fallback needs it.
+        if (FrameworkReferences.SupportsProcessPath(module))
+        {
+            // Location empty: only fall back to ProcessPath when this assembly is the process
+            // entry (single-file). ALC / LoadFromStream loads are a different assembly than
+            // the host and must skip — hashing the launcher would false-fail.
+            var skipPop = Instruction.Create(OpCodes.Pop);
+            body.Instructions.Add(Instruction.Create(OpCodes.Call, getEntryAssembly));
+            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
+            body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, skipPop));
+            body.Instructions.Add(Instruction.Create(OpCodes.Call, getExecutingAssembly));
+            var processPath = Instruction.Create(OpCodes.Call, getProcessPath);
+            body.Instructions.Add(Instruction.Create(OpCodes.Beq, processPath));
+            body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
 
-        body.Instructions.Add(processPath);
-        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
-        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, havePath));
-        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
-        body.Instructions.Add(skipPop);
-        body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+            body.Instructions.Add(processPath);
+            body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
+            body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
+            body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, havePath));
+            body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+            body.Instructions.Add(skipPop);
+            body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+        }
+        else
+        {
+            // No ProcessPath on this target (.NET Framework, netstandard, before .NET 6): an empty Location
+            // is a single-file or in-memory load, which is documented as skipped.
+            body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+        }
 
         body.Instructions.Add(havePath);
         body.Instructions.Add(Instruction.Create(OpCodes.Call, readAllBytes));

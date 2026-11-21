@@ -3,9 +3,10 @@ using Obfy.Core.Models;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// Shared post-save packing for <c>ObfuscationService</c> and closed-set commits.
+/// Shared post-save packing for <c>ObfuscationService</c> and closed-set commits. Only <see cref="SidecarPaths"/> is public,
+/// so a caller can name the files packing writes beside an output (the CLI's <c>--map</c> and <c>--report</c> guard does).
 /// </summary>
-internal static class PackingApplicator
+public static class PackingApplicator
 {
     internal const string DllExtensionWarning =
         "Packing a .dll writes a native PE with a .dll extension; leftover apphost EXEs will not load it. Prefer packing the entry-point .exe, or rename the packed file to .exe.";
@@ -48,7 +49,11 @@ internal static class PackingApplicator
             warnings.Add(DllExtensionWarning);
     }
 
-    internal static IEnumerable<string> SidecarPaths(string assemblyPath, PackingSettings packing)
+    /// <summary>
+    /// The files packing writes beside <paramref name="assemblyPath"/>: the runtime configuration of the native host, or the
+    /// managed launcher and its runtime configuration. Nothing when packing is off. Computes names only; touches no file.
+    /// </summary>
+    public static IEnumerable<string> SidecarPaths(string assemblyPath, PackingSettings packing)
     {
         if (!packing.Enabled)
             yield break;

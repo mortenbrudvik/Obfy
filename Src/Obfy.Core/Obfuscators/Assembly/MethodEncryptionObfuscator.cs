@@ -168,7 +168,7 @@ public class MethodEncryptionObfuscator : IObfuscator
         };
 
         var blobType = new TypeDefUser("Obfy.Runtime", "<MethodCryptBlob>",
-            new TypeRefUser(module, "System", "ValueType", module.CorLibTypes.AssemblyRef))
+            FrameworkReferences.Type(module, "System", "ValueType"))
         {
             Attributes = TypeAttributes.NestedPrivate | TypeAttributes.ExplicitLayout |
                          TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit
@@ -232,10 +232,10 @@ public class MethodEncryptionObfuscator : IObfuscator
         method.Body = body;
 
         var marshalType = FrameworkReferences.Type(module, "System.Runtime.InteropServices", "Marshal");
-        var moduleType = new TypeRefUser(module, "System.Reflection", "Module", module.CorLibTypes.AssemblyRef);
-        var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
-        var runtimeTypeHandle = new TypeRefUser(module, "System", "RuntimeTypeHandle", module.CorLibTypes.AssemblyRef);
-        var intPtrType = new TypeRefUser(module, "System", "IntPtr", module.CorLibTypes.AssemblyRef);
+        var moduleType = FrameworkReferences.Type(module, "System.Reflection", "Module");
+        var typeType = FrameworkReferences.Type(module, "System", "Type");
+        var runtimeTypeHandle = FrameworkReferences.Type(module, "System", "RuntimeTypeHandle");
+        var intPtrType = FrameworkReferences.Type(module, "System", "IntPtr");
 
         var getTypeFromHandle = new MemberRefUser(module, "GetTypeFromHandle",
             MethodSig.CreateStatic(new ClassSig(typeType), new ValueTypeSig(runtimeTypeHandle)), typeType);
@@ -251,11 +251,11 @@ public class MethodEncryptionObfuscator : IObfuscator
             MethodSig.CreateStatic(module.CorLibTypes.Byte, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32), marshalType);
         var writeByte = new MemberRefUser(module, "WriteByte",
             MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.IntPtr, module.CorLibTypes.Int32, module.CorLibTypes.Byte), marshalType);
-        var env = module.CorLibTypes.GetTypeRef("System", "Environment");
+        var env = FrameworkReferences.Type(module, "System", "Environment");
         var failFast = new MemberRefUser(module, "FailFast",
             MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String), env);
         var dllNotFound = FrameworkReferences.Type(module, "System", "DllNotFoundException");
-        var entryNotFound = module.CorLibTypes.GetTypeRef("System", "EntryPointNotFoundException");
+        var entryNotFound = FrameworkReferences.Type(module, "System", "EntryPointNotFoundException");
 
         var addr = new Local(module.CorLibTypes.IntPtr);
         var blob = new Local(module.CorLibTypes.IntPtr);

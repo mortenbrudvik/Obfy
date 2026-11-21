@@ -15,6 +15,7 @@ public class NativeHostSourceStampLineEndingTests
         "Src/Obfy.NativeHost/host.c",
         "Src/Obfy.NativeHost/build.ps1",
         "Src/Obfy.PackedBootstrap/PackedBootstrap.cs",
+        "Src/Obfy.PackedBootstrap/MethodImageDecryptor.cs",
         "Src/Obfy.PackedBootstrap/Obfy.PackedBootstrap.csproj"
     ];
 

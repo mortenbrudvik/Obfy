@@ -44,7 +44,7 @@ obfy <input>... [options]
 | `--anti-dump` | | Enable anti-dump (PE wipe + in-process MiniDump hook, Windows) | Off |
 | `--watermark-id <id>` | | Enable watermarking and set `watermark.id` (trimmed; whitespace-only is an error) | Off |
 | `--virtualize` | | Enable IL virtualization of eligible methods (no EH/generics/byref/custom structs/ctors; gated off NativeAOT / IL2CPP / Blazor WASM) | Off |
-| `--incremental` | | Skip re-obfuscation when input and settings are unchanged and the output is still the file the last run wrote. The cache file next to the output holds counts and hashes, never names. Single assembly or merge only; not used when the output replaces the input. `--map` rebuilds when the earlier run renamed symbols, `--report` also when it skipped items or raised warnings. Changing the output after the run (Authenticode-signing it, or a post-build step that touches it) makes the next run build it again (`docs/Configuration.md`) | Off |
+| `--incremental` | | Skip re-obfuscation when input and settings are unchanged and the output is still the file the last run wrote. The cache file next to the output holds counts and hashes, never names. Single assembly or merge only: a closed set (several assemblies, a solution or project) or C# source is built in full and the run says so once in a warning; also not used when the output replaces the input. `--map` rebuilds when the earlier run renamed symbols, `--report` also when it skipped items or raised warnings. Changing the output after the run (Authenticode-signing it, or a post-build step that touches it) makes the next run build it again (`docs/Configuration.md`) | Off |
 | `--reference-proxy` | | Enable reference proxy | Off |
 | `--proxy-external` | | Also proxy selected out-of-module calls (enables `--reference-proxy`; skips compiler/interop/pointer/value-type/generic/vararg/ctor signatures) | Off |
 | `--encrypt-methods` | | Encrypt method IL in the PE image (Windows) | Off |
@@ -57,8 +57,8 @@ obfy <input>... [options]
 | `--preserve-public` | | Preserve public API names (also forces library-mode on a closed set) | Off |
 | `--merge` | | Merge all input assemblies into one before obfuscating. A config with `assemblyMerge.enabled: true` does the same without the flag (with a single loose input it is ignored with a warning; `--merge` with a single input is an error) | Off |
 | `--internalize` | | When merging: make merged types internal. `--internalize false` keeps them public. Only applied when typed: without it, `assemblyMerge.internalize` from the `-c` file is used, and `true` when there is no file | On (when merging) |
-| `--map <file>` | | Output symbol mapping to file | None |
-| `--report <file>` | | Generate an obfuscation report (HTML or JSON based on extension). A multi-file run includes every successful file | None |
+| `--map <file>` | | Output symbol mapping to file. The path must not be a file the run reads or writes (see [Map and report paths](#map-and-report-paths)) | None |
+| `--report <file>` | | Generate an obfuscation report (HTML or JSON based on extension). A multi-file run includes every successful file. The same rule as `--map` applies to the path | None |
 | `--dry-run` | | Analyze only, don't write output | Off |
 | `--verbose` | `-v` | Enable verbose output | Off |
 | `--no-logo` | | Suppress the banner | Off |
@@ -224,6 +224,19 @@ obfy MyApp.dll -o output/ --map symbols.json
 # The map file contains original -> obfuscated name mappings
 ```
 
+#### Map and report paths
+
+The map and the report are written after the run, so a path that names a file the run needs would replace it. The CLI refuses such a command line before it obfuscates or writes any output: it prints which option and which file, adds one problem-matcher line (an error against that file), and exits with code 1. The checks that need only the command line (the listed inputs, the `-c` file, `--map` against `--report`) run first; for a solution or project the CLI has to read the solution and project files to know what it lists, so that check comes after this analysis, still before anything is written. As a last check, before the map and the report are written, the paths of the outputs the run really wrote are compared once more, which can refuse after the outputs exist (the map and the report are then not written). The `--map` or `--report` path may not be:
+
+- one of the inputs: every listed file (`.dll`, `.exe`, `.cs`, the solution or project file), and for a solution or project the project files and built outputs it lists, including the ones it skips;
+- a file the run may write or remove: each output, with `-o` or without (`{name}.obfuscated{ext}`, `{name}.merged{ext}`, `obfy-out/`, `obfy-src/`), the files packing may write beside an output (`{name}.runtimeconfig.json`, or `{name}.launcher.exe` and `{name}.launcher.runtimeconfig.json` with `packing.rid: portable`; an assembly without an entry point gets none), and, for a single assembly or a merge, the incremental cache file `{output}.obfycache` (written with `--incremental`, removed when it exists without it);
+- the file given with `-c`, and the signing key file named in it (`signing.keyFile`, whether or not signing is on);
+- with `packing.enabled`, the `{name}.runtimeconfig.json` beside an input assembly, which packing reads;
+- for `--report`, the same file as `--map`;
+- a path with an alternate data stream (a colon after the drive on Windows, such as `App.dll::$DATA`, the default stream of `App.dll` itself): such a path is never a sensible place for a map or a report, so it is refused whatever file it names.
+
+Paths are compared as files: a different letter case on Windows, a `..` segment, and a symbolic link or junction in the file's name or in a folder above it do not hide a match. `--dry-run` refuses the same way. A `--map` or `--report` path inside the output folder under another name (`-o out --map out/map.json`) is fine. An output folder that is the input's folder (`obfy $(TargetPath) -o $(TargetDir)`) is a separate, documented in-place run and is not refused. Not covered: hard links; a drive letter that aliases another path (`subst`, a mapped drive); and the sibling DLLs a run reads without being told, such as the dependencies that `dependencyEmbedding` packs or that renaming resolves next to an input: their names are only known after the input is loaded, so a `--map` or `--report` path naming one of them is not refused (a closed set or a solution's own assemblies are covered, because they are listed).
+
 ### Generate Reports
 
 ```bash
@@ -265,6 +278,7 @@ obfy MyApp.dll -v -o output/
 - A named extra that does not exist fails the run (exit 1), including `--dry-run`.
 - `--merge` on a session with fewer than two included assemblies warns and continues as a closed set.
 - A load failure stops the whole set: the CLI prints the path and cause of each assembly that failed, writes no modules (`No modules were written`), and exits 1.
+- A closed-set failure that names no file (an assembly that is already protected, an output path collision, a signing key that cannot be loaded, invalid settings), "No built outputs found", two solution files, and `--merge` with fewer than two assemblies each print one problem-matcher line (`path(1,1): error: message`) besides the red text, filed against the solution or project file, or against the first input when there is none. A failure that has a line of its own per file (a load failure, a missing file) does not get a second one.
 
 `obfy App.dll Lib.dll` without a solution/project is still a closed set (same rename consistency as a solution drop). `--merge` still merges. Without `-o`, the CLI writes `obfy-out/` next to the first assembly. For a solution or project it is `obfy-out/` next to the solution or project file. (The desktop app puts a closed set's `obfy-out` next to the first included assembly, which for a solution is usually inside its `bin` folder.)
 
@@ -273,7 +287,7 @@ obfy MyApp.dll -v -o output/
 | Code | Description |
 |------|-------------|
 | 0 | Success (including dry-run when there is at least one included assembly and no missing extras) |
-| 1 | Error (file not found, obfuscation failed, two solution files, load failures, invalid XML, etc.) |
+| 1 | Error (file not found, obfuscation failed, two solution files, load failures, invalid XML, a `--map` or `--report` path that would replace an input or an output, etc.) |
 | 2 | Solution/project session had no included assemblies (all skipped) |
 
 ## Environment

@@ -105,6 +105,12 @@ public class ObfuscationService : IObfuscationService
                 _logger.LogWarning("Incremental cache key could not be computed ({ExceptionType})", ex.GetType().Name);
             }
         }
+        else if (settings.Incremental.Enabled)
+        {
+            // A source file or a folder of them: the cache keys and fingerprints assemblies, so say it is not used.
+            cacheNote = ObfuscationWarnings.SourceCacheNote;
+            _logger.LogInformation("Incremental cache not used: the input is C# source");
+        }
 
         if (cacheKey is not null)
         {
@@ -569,6 +575,12 @@ public class ObfuscationService : IObfuscationService
                 .ConfigureAwait(false);
             context.OutputPath = output;
             context.Warnings.AddRange(gatingWarnings);
+            if (settings.Incremental.Enabled)
+            {
+                // The cache covers a single assembly or a merge only: say so once, not nothing.
+                context.Warnings.Add(ObfuscationWarnings.SourceCacheNote);
+                _logger.LogInformation("Incremental cache not used: the input is C# source");
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -785,7 +797,11 @@ public class ObfuscationService : IObfuscationService
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static string GenerateOutputPath(string inputPath)
+    /// <summary>
+    /// Where a single file is written when the caller gives no output path: <c>{name}.obfuscated{ext}</c> beside it. The
+    /// one rule the run writes by, so a caller can plan the output without running anything.
+    /// </summary>
+    public static string GenerateOutputPath(string inputPath)
     {
         var directory = Path.GetDirectoryName(inputPath) ?? ".";
         var name = Path.GetFileNameWithoutExtension(inputPath);

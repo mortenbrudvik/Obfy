@@ -200,8 +200,8 @@ public class DependencyEmbeddingObfuscator : IObfuscator
 
         var cctor = ObfuscatorHelpers.FindOrCreateModuleInitializer(module, requireBody: true);
 
-        var domain = new TypeRefUser(module, "System", "AppDomain", module.CorLibTypes.AssemblyRef);
-        var handler = new TypeRefUser(module, "System", "ResolveEventHandler", module.CorLibTypes.AssemblyRef);
+        var domain = FrameworkReferences.Type(module, "System", "AppDomain");
+        var handler = FrameworkReferences.Type(module, "System", "ResolveEventHandler");
         var getDomain = new MemberRefUser(module, "get_CurrentDomain",
             MethodSig.CreateStatic(new ClassSig(domain)), domain);
         var handlerCtor = new MemberRefUser(module, ".ctor",
@@ -222,10 +222,10 @@ public class DependencyEmbeddingObfuscator : IObfuscator
 
     private static MethodDef CreateResolveMethod(ModuleDef module)
     {
-        var assemblyType = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
-        var assemblyNameType = new TypeRefUser(module, "System.Reflection", "AssemblyName", module.CorLibTypes.AssemblyRef);
-        var streamType = new TypeRefUser(module, "System.IO", "Stream", module.CorLibTypes.AssemblyRef);
-        var argsType = new TypeRefUser(module, "System", "ResolveEventArgs", module.CorLibTypes.AssemblyRef);
+        var assemblyType = FrameworkReferences.Type(module, "System.Reflection", "Assembly");
+        var assemblyNameType = FrameworkReferences.Type(module, "System.Reflection", "AssemblyName");
+        var streamType = FrameworkReferences.Type(module, "System.IO", "Stream");
+        var argsType = FrameworkReferences.Type(module, "System", "ResolveEventArgs");
 
         var method = new MethodDefUser(
             "Resolve",

@@ -51,9 +51,14 @@ public class PackedBootstrapTests
         var alc = new AssemblyLoadContext($"bootstrap-test-{Guid.NewGuid():N}", isCollectible: true);
         try
         {
-            var bootstrapSource = File.ReadAllText(
-                Path.Combine(RepoRoot(), "Src", "Obfy.PackedBootstrap", "PackedBootstrap.cs"));
-            var bootstrap = CompileAndLoad(alc, "BootstrapUnderTest", OutputKind.DynamicallyLinkedLibrary, GlobalUsings, bootstrapSource);
+            // PackedBootstrap.cs calls the internal MethodImageDecryptor, which the real assembly compiles in
+            // from its sibling file. Obfy.Tests links that file too, so it must be a source here: otherwise
+            // the name resolves to the (inaccessible) internal type in the referenced Obfy.Tests.dll.
+            var bootstrapDir = Path.Combine(RepoRoot(), "Src", "Obfy.PackedBootstrap");
+            var bootstrapSource = File.ReadAllText(Path.Combine(bootstrapDir, "PackedBootstrap.cs"));
+            var decryptorSource = File.ReadAllText(Path.Combine(bootstrapDir, "MethodImageDecryptor.cs"));
+            var bootstrap = CompileAndLoad(
+                alc, "BootstrapUnderTest", OutputKind.DynamicallyLinkedLibrary, GlobalUsings, bootstrapSource, decryptorSource);
             var payload = CompileAndLoad(alc, $"Payload{Guid.NewGuid():N}", OutputKind.ConsoleApplication, payloadSource);
 
             var invoke = bootstrap.GetType("Obfy.Runtime.PackedBootstrap")!

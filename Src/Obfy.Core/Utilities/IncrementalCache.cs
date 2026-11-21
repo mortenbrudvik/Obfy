@@ -14,6 +14,10 @@ namespace Obfy.Core.Utilities;
 /// The caller computes the key once, before the run, from the settings the pipeline will use, and
 /// removes the cache file before it overwrites the output (<see cref="Invalidate"/>).
 /// A locked or corrupt <c>{output}.obfycache</c> is a miss, not a failed run.
+/// The entry is written to a temporary file in the same folder and moved over the cache file, the way
+/// <c>AssemblyProcessor.SaveAsync</c> writes outputs, so a crash in the middle of the write, or a second run on the
+/// same output, never leaves a truncated entry, and an entry that was valid stays valid when the next write fails. A
+/// failure to write is a <c>false</c> for the caller to report as a warning, never an exception.
 /// The file is a small JSON document: the key, what a hit needs to say about the run that wrote the
 /// output (<see cref="CachedRun"/>: the statistics and three counts) and a fingerprint (length and SHA-256) of
 /// the output as it was when the cache was written, and of the sibling files a packed output needs. It holds
@@ -314,9 +318,11 @@ public static class IncrementalCache
     /// <summary>
     /// Writes the entry for an output that is final: after signing, the post-save patches and packing, because the
     /// fingerprint is of the files as they are on disk now. Returns false when the cache could not be written, or when
-    /// a file it would vouch for is not there.
+    /// a file it would vouch for is not there. <paramref name="writeText"/> is how the text reaches a file (it is handed
+    /// the temporary file's path, never the cache file's); tests replace it to make the write fail halfway.
     /// </summary>
-    internal static bool TryWrite(string outputPath, string key, CachedRun run, PackingSettings packing)
+    internal static bool TryWrite(
+        string outputPath, string key, CachedRun run, PackingSettings packing, Action<string, string>? writeText = null)
     {
         try
         {
@@ -331,12 +337,53 @@ public static class IncrementalCache
                 Output = FileFingerprint.Of(outputPath),
                 Companions = PackingApplicator.SidecarPaths(outputPath, packing).Select(FileFingerprint.Of).ToList()
             };
-            File.WriteAllText(CachePath(outputPath), JsonSerializer.Serialize(file, EntryJsonOptions));
+            WriteBesideThenReplace(
+                CachePath(outputPath), JsonSerializer.Serialize(file, EntryJsonOptions), writeText ?? WriteText);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Writes <paramref name="text"/> to a temporary file beside <paramref name="cachePath"/> and moves it over the cache
+    /// file in one step. The temporary file is removed on every path out, so a failure leaves the cache file as it was.
+    /// </summary>
+    private static void WriteBesideThenReplace(string cachePath, string text, Action<string, string> writeText)
+    {
+        var fullPath = Path.GetFullPath(cachePath);
+        var tempPath = Path.Combine(
+            Path.GetDirectoryName(fullPath) ?? string.Empty,
+            $"{Path.GetFileName(fullPath)}.obfy-{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            writeText(tempPath, text);
+            if (OperatingSystem.IsWindows() && File.Exists(fullPath))
+                File.Replace(tempPath, fullPath, destinationBackupFileName: null);
+            else
+                File.Move(tempPath, fullPath, overwrite: true);
+        }
+        finally
+        {
+            DeleteQuietly(tempPath);
+        }
+    }
+
+    private static void WriteText(string path, string text) => File.WriteAllText(path, text);
+
+    private static void DeleteQuietly(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A leftover temporary file is only clutter; the caller has its own result to report.
         }
     }
 

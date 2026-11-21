@@ -61,6 +61,44 @@ public class InstallerPackagingTests
     }
 
     [Fact]
+    public void InstallerScript_ProtectsEachPublishDirectoryAsOneClosedSet()
+    {
+        var script = File.ReadAllText(InstallerScriptPath);
+        var step = script[script.IndexOf("Obfuscating assemblies...", StringComparison.Ordinal)..];
+        step = step[..step.IndexOf("# Step 6", StringComparison.Ordinal)];
+
+        // One invocation, with every present product assembly. A foreach that obfuscates and copies
+        // each DLL before the next one renames Obfy.Core and leaves obfy.dll on the old type names.
+        step.ShouldNotContain("foreach ($asmName in $OurAssemblies)");
+        var calls = step.Split("& $TempObfyExe").Length - 1;
+        calls.ShouldBe(1);
+        step.ShouldContain("& $TempObfyExe @inputs -o $OutputDir -c $SelfObfuscationConfig");
+        step.ShouldContain("self-obfuscation.json");
+        step.ShouldContain("Assert-ProcessedCli");
+        step.ShouldContain("Assert-ProcessedUi");
+        step.ShouldNotContain("-l standard --string-encrypt --control-flow --rename --strip-metadata");
+        script.ShouldContain("HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments");
+        var callAt = step.IndexOf("& $TempObfyExe @inputs", StringComparison.Ordinal);
+        var copyAt = step.IndexOf("Copy-Item -LiteralPath $obfuscated", StringComparison.Ordinal);
+        copyAt.ShouldBeGreaterThan(callAt);
+
+        foreach (var name in new[]
+        {
+            "obfy.dll", "ObfyUI.dll", "Obfy.App.dll", "Obfy.Core.dll",
+            "Obfy.Interop.dll", "Obfy.WebView.dll", "Obfy.Common.dll",
+            "Settings.Core.dll", "Logging.Core.dll"
+        })
+        {
+            step.ShouldContain("\"" + name + "\"");
+        }
+
+        step.ShouldNotContain("\"Obfy.UI.dll\"");
+
+        step.ShouldContain("Protect-ProductAssemblies $PublishDir $ObfuscatedCliDir");
+        step.ShouldContain("Protect-ProductAssemblies $PublishDirUI $ObfuscatedUiDir");
+    }
+
+    [Fact]
     public void InstallerScript_SkipPublish_KeepsTheExistingPublishDirectories()
     {
         var root = Path.Combine(Path.GetTempPath(), "obfy-installer-skip-" + Guid.NewGuid().ToString("N"));

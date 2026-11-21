@@ -32,6 +32,9 @@
     <EmbeddedResource Include="..\Obfy.NativeHost\dist\Obfy.NativeHost.exe">
       <LogicalName>Obfy.NativeHost.exe</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\Obfy.PackedBootstrap\MethodImageDecryptor.cs">
+      <LogicalName>Obfy.MethodImageDecryptor.cs</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

@@ -10,6 +10,7 @@ public class NativeHostSourceStampTests
         "Src/Obfy.NativeHost/host.c",
         "Src/Obfy.NativeHost/build.ps1",
         "Src/Obfy.PackedBootstrap/PackedBootstrap.cs",
+        "Src/Obfy.PackedBootstrap/MethodImageDecryptor.cs",
         "Src/Obfy.PackedBootstrap/Obfy.PackedBootstrap.csproj"
     ];
 
@@ -27,6 +28,7 @@ public class NativeHostSourceStampTests
     [InlineData("Src/Obfy.NativeHost/host.c")]
     [InlineData("Src/Obfy.NativeHost/build.ps1")]
     [InlineData("Src/Obfy.PackedBootstrap/PackedBootstrap.cs")]
+    [InlineData("Src/Obfy.PackedBootstrap/MethodImageDecryptor.cs")]
     [InlineData("Src/Obfy.PackedBootstrap/Obfy.PackedBootstrap.csproj")]
     public void Stamp_ChangesWhenAnInputChanges(string relative)
     {

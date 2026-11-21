@@ -1,8 +1,24 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../interop/WebViewApiClient", () => ({ apiClient: { call: vi.fn(), on: vi.fn(() => vi.fn()) } }));
 
+// The sidebar is the first thing the shell draws: a test can make the shell throw before it has mounted anything.
+const sidebar = vi.hoisted(() => ({ throws: false }));
+vi.mock("../Sidebar", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../Sidebar")>();
+  const Real = actual.default;
+  return {
+    ...actual,
+    default: (props: ComponentProps<typeof Real>) => {
+      if (sidebar.throws) throw new Error("sidebar failed");
+      return <Real {...props} />;
+    },
+  };
+});
+
+import App from "../../../App";
 import { apiClient } from "../../../interop/WebViewApiClient";
 import { mockBridge } from "../../../test/bridge";
 import { emptyFiles, notRunResults, readyRun, standardSettings } from "../../../test/snapshots";
@@ -77,5 +93,27 @@ describe("Shell tells the host the page is ready", () => {
     await pause(50);
 
     expect(screen.getByText(/of 0 files/)).toBeTruthy();
+  });
+});
+
+describe("the page crashes before the shell has drawn anything", () => {
+  afterEach(() => {
+    sidebar.throws = false;
+    vi.restoreAllMocks();
+  });
+
+  it("callsAppReadyOnce_soTheWindowIsNotKeptHiddenUntilTheHostsTimeout", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    sidebar.throws = true;
+    startHost();
+    vi.mocked(apiClient.call).mockClear();
+
+    render(<App />);
+
+    // The shell never mounted, so its own signal never comes: the crash view has to send it.
+    expect(screen.getByRole("alert").textContent).toContain("Something went wrong");
+    await waitFor(() => expect(readyCalls()).toHaveLength(1));
+    await pause(100);
+    expect(readyCalls()).toHaveLength(1);
   });
 });

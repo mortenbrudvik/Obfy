@@ -68,25 +68,34 @@ internal static class RunPathGuard
     /// a run with nothing to guard pays nothing for planning the files it writes.
     /// </summary>
     public static IReadOnlyList<PathCollision> Find(
-        FileInfo? map, FileInfo? report, Func<IReadOnlyList<ProtectedPaths>> groups, bool compareMapWithReport = false)
+        FileInfo? map, FileInfo? report, Func<IReadOnlyList<ProtectedPaths>> groups, bool compareMapWithReport = false,
+        Func<string, string>? resolve = null)
     {
+        resolve ??= PathIdentity.Resolve;
         var found = new List<PathCollision>(2);
         if (map is null && report is null)
             return found;
 
-        var candidates = groups()
-            .SelectMany(static group => group.Paths
-                .Where(static path => !string.IsNullOrWhiteSpace(path))
-                .Select(path => (Path: path!, group.Role)))
-            .ToList();
+        // Resolving a path walks the file system. Each candidate is resolved at most once (when first compared) and each
+        // option's path once, however many candidates there are: a solution lists hundreds of files.
+        var candidates = new Candidates(
+            groups()
+                .SelectMany(static group => group.Paths
+                    .Where(static path => !string.IsNullOrWhiteSpace(path))
+                    .Select(path => (Path: path!, group.Role)))
+                .ToList(),
+            resolve);
 
-        if (FindFor(MapOption, "symbol map", map, candidates) is { } mapCollision)
+        var mapKey = map is null ? null : resolve(map.FullName);
+        var reportKey = report is null ? null : resolve(report.FullName);
+
+        if (FindFor(MapOption, "symbol map", map, mapKey, candidates) is { } mapCollision)
             found.Add(mapCollision);
 
-        if (FindFor(ReportOption, "report", report, candidates) is { } reportCollision)
+        if (FindFor(ReportOption, "report", report, reportKey, candidates) is { } reportCollision)
             found.Add(reportCollision);
-        else if (compareMapWithReport && map is not null && report is not null
-                 && PathIdentity.SameFile(map.FullName, report.FullName))
+        else if (compareMapWithReport && report is not null && mapKey is not null && reportKey is not null
+                 && PathIdentity.SameResolved(mapKey, reportKey))
         {
             found.Add(new PathCollision(
                 ReportOption,
@@ -121,19 +130,30 @@ internal static class RunPathGuard
             yield return IncrementalCache.CachePath(assemblyOutput);
     }
 
-    private static PathCollision? FindFor(
-        string option, string noun, FileInfo? file, List<(string Path, PathRole Role)> candidates)
+    private static PathCollision? FindFor(string option, string noun, FileInfo? file, string? fileKey, Candidates candidates)
     {
-        if (file is null)
+        if (file is null || fileKey is null)
             return null;
 
-        foreach (var (path, role) in candidates)
+        for (var i = 0; i < candidates.Count; i++)
         {
-            if (PathIdentity.SameFile(file.FullName, path))
-                return new PathCollision(option, file.FullName, Describe(option, noun, file.FullName, role));
+            if (PathIdentity.SameResolved(fileKey, candidates.KeyOf(i)))
+                return new PathCollision(option, file.FullName, Describe(option, noun, file.FullName, candidates.RoleOf(i)));
         }
 
         return null;
+    }
+
+    /// <summary>The files a run needs, in the order they are compared, each resolved the first time it is asked for.</summary>
+    private sealed class Candidates(List<(string Path, PathRole Role)> items, Func<string, string> resolve)
+    {
+        private readonly string?[] _keys = new string?[items.Count];
+
+        public int Count => items.Count;
+
+        public PathRole RoleOf(int index) => items[index].Role;
+
+        public string KeyOf(int index) => _keys[index] ??= resolve(items[index].Path);
     }
 
     private static string Describe(string option, string noun, string path, PathRole role)

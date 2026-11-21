@@ -9,8 +9,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Obfy.Tests" />
-    <!-- The CLI (assembly name obfy) guards its map and report paths with PathIdentity and the output rules of the engine. -->
-    <InternalsVisibleTo Include="obfy" />
   </ItemGroup>
 
   <ItemGroup>

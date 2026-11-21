@@ -1,4 +1,5 @@
 using Obfy.Core.Models;
+using Obfy.Core.Utilities;
 using Shouldly;
 
 namespace Obfy.Console.Tests;
@@ -116,6 +117,48 @@ public class RunPathGuardTests : IDisposable
         var builtForNothing = false;
         RunPathGuard.Find(null, null, () => { builtForNothing = true; return []; });
         builtForNothing.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void EveryPath_IsResolvedOnce_NotOncePerComparison()
+    {
+        // A solution session lists hundreds of files and resolving a path walks the file system: the option's own path
+        // must not be resolved again for each of them.
+        var listed = Enumerable.Range(0, 40).Select(i => P("src", $"Project{i}", "bin", "Lib.dll")).ToList();
+        var resolved = new List<string>();
+        string Resolve(string path)
+        {
+            resolved.Add(path);
+            return PathIdentity.Resolve(path);
+        }
+
+        var found = RunPathGuard.Find(
+            new FileInfo(P("map.json")), new FileInfo(P("report.json")),
+            () => [new ProtectedPaths(PathRole.Input, listed), new ProtectedPaths(PathRole.Output, [P("out", "Lib.dll")])],
+            compareMapWithReport: true, resolve: Resolve);
+
+        found.ShouldBeEmpty();
+        resolved.GroupBy(static path => path).Where(static g => g.Count() > 1).Select(static g => g.Key).ShouldBeEmpty();
+        resolved.Count.ShouldBe(listed.Count + 1 + 2, "each listed file once, and the map and the report once");
+    }
+
+    [Fact]
+    public void TheOptionsPath_IsResolvedOnce_EvenWhenTheCollisionIsTheLastCandidate()
+    {
+        var listed = Enumerable.Range(0, 10).Select(i => P($"f{i}.dll")).ToList();
+        var resolved = new List<string>();
+        string Resolve(string path)
+        {
+            resolved.Add(path);
+            return PathIdentity.Resolve(path);
+        }
+
+        var found = RunPathGuard.Find(
+            new FileInfo(listed[^1]), null, () => [new ProtectedPaths(PathRole.Input, listed)], resolve: Resolve);
+
+        found.ShouldHaveSingleItem();
+        resolved.Count(path => path == Path.GetFullPath(listed[^1])).ShouldBe(2, "once as the option, once as the candidate it equals");
+        resolved.Count.ShouldBe(listed.Count + 1);
     }
 
     [Fact]

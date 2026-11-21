@@ -801,7 +801,7 @@ public class ObfuscationService : IObfuscationService
     /// Where a single file is written when the caller gives no output path: <c>{name}.obfuscated{ext}</c> beside it. The
     /// one rule the run writes by, so a caller can plan the output without running anything.
     /// </summary>
-    internal static string GenerateOutputPath(string inputPath)
+    public static string GenerateOutputPath(string inputPath)
     {
         var directory = Path.GetDirectoryName(inputPath) ?? ".";
         var name = Path.GetFileNameWithoutExtension(inputPath);

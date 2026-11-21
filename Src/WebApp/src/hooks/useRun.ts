@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import { api, events } from "../interop/api";
 import { strings } from "../strings";
 import type { RunSnapshot } from "../types/domain";
@@ -37,9 +37,27 @@ export function useRun({ onCompleted }: UseRunOptions = {}): UseRun {
   const [runStart, startError] = useAppAction(async () => {
     await api.run.start();
   }, strings.shell.startFailed, run?.revision);
+  // A failed cancel is about a run that is still going, and the host pushes a newer state with every progress report
+  // (the revision rises each time): going by the revision, the message would be gone before it could be read. It stays
+  // until the run's status changes (it ended) or the user tries again.
+  const status = run?.status;
+  const statusChanges = useRef(0);
+  const lastStatus = useRef(status);
+  useLayoutEffect(() => {
+    if (lastStatus.current === status) return;
+    lastStatus.current = status;
+    statusChanges.current++;
+  });
   const [runCancel, cancelError] = useAppAction(async () => {
-    await api.run.cancel();
-  }, strings.shell.cancelFailed, run?.revision);
+    const before = statusChanges.current;
+    try {
+      await api.run.cancel();
+    } catch (err) {
+      // The run ended (or another began) while the host was being asked, and the call only now failed: the message
+      // would be about a run that is over, and nothing would clear it, as the status has already moved on.
+      if (statusChanges.current === before) throw err;
+    }
+  }, strings.shell.cancelFailed, status);
 
   // A second start while the first is still being asked for would only be refused by the host.
   const starting = useRef(false);

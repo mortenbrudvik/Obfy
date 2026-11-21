@@ -181,6 +181,23 @@ public sealed class ProtectionSession
     }
 
     /// <summary>
+    /// Counts every change to the settings. Read without the lock (as <see cref="InputSession.Revision"/> is), so a caller
+    /// that holds a lock of its own may ask without waiting for this session's.
+    /// </summary>
+    public long Revision => Volatile.Read(ref _revision);
+
+    /// <summary>
+    /// <see cref="ToObfySettings"/> and the <see cref="Revision"/> those settings are at, read in one hold. A caller that
+    /// works on the copy outside the lock (<see cref="ValidationErrors"/> probes the disk) checks later that the revision is
+    /// still the same to know the copy was not overtaken.
+    /// </summary>
+    public (ObfySettings Settings, long Revision) CaptureSettings()
+    {
+        lock (_gate)
+            return (_settings.Clone(), _revision);
+    }
+
+    /// <summary>
     /// Loads a configuration. The whole object is kept (cloned), so values no option edits survive the next
     /// <see cref="ToObfySettings"/>. A Custom configuration becomes the Custom snapshot. A configuration whose level
     /// is a preset but whose preset-governed options are not exactly that preset's becomes Custom (see below); the file

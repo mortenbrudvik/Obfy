@@ -8,7 +8,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Images\app.ico</ApplicationIcon>
-    <Version>2.0.0</Version>
     <!-- Project-relative, so it also works for "dotnet run" and single-project builds, not only solution builds. -->
     <WebAppDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\WebApp'))</WebAppDir>
   </PropertyGroup>

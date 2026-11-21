@@ -87,6 +87,15 @@ if (-not $InnoSetupPath -or -not (Test-Path $InnoSetupPath)) {
 
 Write-Host "  Found: $InnoSetupPath" -ForegroundColor Green
 
+# The product version comes from version.json only (Get-ProductVersion.ps1 validates it). It is read before the
+# long publish so a bad file fails fast; the publish itself takes the same version from Directory.Build.props, and
+# ObfySetup.iss has no default and stops unless it is given /DMyAppVersion. -SkipBuild never runs the compiler.
+$InstallerVersion = $null
+if (-not $SkipBuild) {
+    $InstallerVersion = (& (Join-Path $BuildDir "Get-ProductVersion.ps1") | Out-String).Trim()
+    Write-Host "  Version: $InstallerVersion (version.json)" -ForegroundColor Green
+}
+
 # Step 2: Clean publish directories
 if (-not $SkipPublish) {
     Write-Host "[2/7] Cleaning publish directories..." -ForegroundColor Yellow
@@ -314,7 +323,7 @@ if (-not $SkipBuild) {
 
     Push-Location $BuildDir
     try {
-        & $InnoSetupPath $IssFile
+        & $InnoSetupPath "/DMyAppVersion=$InstallerVersion" $IssFile
 
         if ($LASTEXITCODE -ne 0) {
             Write-Host "ERROR: Inno Setup compilation failed!" -ForegroundColor Red

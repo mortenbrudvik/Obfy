@@ -77,14 +77,14 @@ describe("a shortcut pressed while the output boxes still hold text", () => {
     fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
 
     // The run would have used the old folder; the shortcut sends the typed one first and waits for the host.
-    await waitFor(() => expect(calls("output", "set")).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(calls("output", "set")).toHaveLength(1));
     expect(calls("output", "set")[0][2]).toEqual({ folder: "D:/protected" });
     await later();
     expect(order).toEqual(["output.set"]);
 
     release();
 
-    await waitFor(() => expect(order).toEqual(["output.set", "run.start"]), { timeout: 3000 });
+    await waitFor(() => expect(order).toEqual(["output.set", "run.start"]));
     expect(box.value).toBe("D:/protected");
   });
 
@@ -99,7 +99,7 @@ describe("a shortcut pressed while the output boxes still hold text", () => {
 
     fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
 
-    await waitFor(() => expect(order).toEqual(["output.setSymbolMap", "run.start"]), { timeout: 3000 });
+    await waitFor(() => expect(order).toEqual(["output.setSymbolMap", "run.start"]));
     expect(calls("output", "setSymbolMap")[0][2]).toEqual({ path: "D:/maps/a.map" });
   });
 
@@ -126,7 +126,7 @@ describe("a shortcut pressed while the output boxes still hold text", () => {
 
     fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
 
-    await waitFor(() => expect(order).toEqual(["run.start"]), { timeout: 3000 });
+    await waitFor(() => expect(order).toEqual(["run.start"]));
   });
 
   it("doesNotSendAHiddenSymbolMapDraft_afterTheOptionWasSwitchedOff", async () => {
@@ -138,11 +138,11 @@ describe("a shortcut pressed while the output boxes still hold text", () => {
     await renderFiles();
     fireEvent.change(screen.getByLabelText("Symbol map file"), { target: { value: "D:/maps/a.map" } });
     fireEvent.click(screen.getByLabelText("Write a symbol map"));
-    await waitFor(() => expect(screen.queryByLabelText("Symbol map file")).toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(screen.queryByLabelText("Symbol map file")).toBeNull());
     order.length = 0;
 
     fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
 
-    await waitFor(() => expect(order).toEqual(["run.start"]), { timeout: 3000 });
+    await waitFor(() => expect(order).toEqual(["run.start"]));
   });
 });

@@ -23,16 +23,19 @@ namespace Obfy.App.Sessions;
 /// </para>
 /// <para>
 /// <b>Explicit blockers.</b> <see cref="RunSnapshot.CanStart"/> and <see cref="RunSnapshot.BlockedReason"/> are state, not a
-/// command's <c>CanExecute</c>: a run is blocked while one is running, with nothing included, when an output would replace
-/// a listed file, or while the protection settings are invalid, and each says why in plain words (UI-052). The settings' reason is the first of
-/// <see cref="ProtectionSession.ValidationErrors"/>; no rule is repeated here.
+/// command's <c>CanExecute</c>: a run is blocked while one is running, with nothing included, when an output or the symbol
+/// map would replace a listed file, or while the protection settings are invalid, and each says why in plain words
+/// (UI-052). The settings' reason is the first of <see cref="ProtectionSession.ValidationErrors"/>; no rule is repeated
+/// here.
 /// </para>
 /// <para>
 /// <b>Threads.</b> <see cref="Start"/> returns at once; the run loop is on the thread pool and publishes
 /// <c>run.changed</c> from there, which is safe because a run starts only after the shell exists. Every change to this
-/// class's state runs under a lock and bumps the revision; events go out after it, outside the lock, and the lock is never
-/// held while another session is called. The loop never throws: cancel, a failure and an unexpected error each end the run
-/// with a status.
+/// class's state runs under a lock and bumps the revision; events go out after it, outside the lock. Nothing that touches
+/// the disk runs under that lock (<see cref="IsRunning"/> and <see cref="EnsureNotRunning"/> wait on it, and the window's
+/// close handler calls the first): <see cref="Start"/> reads and checks the settings and the files first and takes the lock
+/// only to confirm they are unchanged and to become Running. Under it the other sessions are asked a revision only, read
+/// without their locks. The loop never throws: cancel, a failure and an unexpected error each end the run with a status.
 /// </para>
 /// <para>
 /// <b>Push order.</b> A snapshot is taken and pushed under one lock (<c>_publishGate</c>), so pushes leave in revision
@@ -70,6 +73,7 @@ public sealed class RunCoordinator : IDisposable
     private CancellationTokenSource? _cts;
     private Task _runTask = Task.CompletedTask;
     private bool _disposed;
+    private bool _closing;
 
     /// <param name="events">Where <c>run.changed</c> and <c>run.completed</c> go; null for a coordinator nobody listens to.</param>
     /// <param name="logger">The file log. A failure is logged by its exception type only, never its message: that can hold a path the user chose.</param>
@@ -125,6 +129,52 @@ public sealed class RunCoordinator : IDisposable
             throw new ObfyApiException("run.blocked", InputBlockedMessage);
     }
 
+    /// <summary>
+    /// For the shutdown path: closes the door on new runs, but only if none is going. Atomic with the check, under the lock
+    /// <see cref="Start"/> takes to become Running: either a run is Running before this (it answers false, nothing
+    /// changes, and the shell asks the user), or it can no longer begin (<see cref="Start"/> is refused with
+    /// <c>run.blocked</c>). Without this a <see cref="Start"/> that is still checking its files, where
+    /// <see cref="IsRunning"/> is false, would become a run while the process exits.
+    /// </summary>
+    /// <returns>True when new runs are now refused; false when a run goes.</returns>
+    public bool TryRefuseNewRuns()
+    {
+        lock (_gate)
+        {
+            if (_status == RunStatus.Running)
+                return false;
+            SetClosing(true);
+            return true;
+        }
+    }
+
+    /// <summary>Closes the door on new runs whether or not one is going: the user has agreed to cancel it and close.</summary>
+    public void RefuseNewRuns()
+    {
+        lock (_gate)
+            SetClosing(true);
+    }
+
+    /// <summary>Opens the door again, for a shutdown that was given up (a restart that could not start the new process).</summary>
+    public void AllowNewRuns()
+    {
+        lock (_gate)
+            SetClosing(false);
+    }
+
+    /// <summary>
+    /// Caller holds the gate. A change bumps the revision, so a snapshot read afterwards (<see cref="GetSnapshot"/> says why
+    /// a closing shell cannot start) is not mistaken for the one before. Nothing is pushed: this is called from the
+    /// shell's close handler on the UI thread, and a push would take a snapshot, which checks the files on the disk.
+    /// </summary>
+    private void SetClosing(bool closing)
+    {
+        if (_closing == closing)
+            return;
+        _closing = closing;
+        _revision++;
+    }
+
     /// <summary>Finishes when the run now going ends (or already has). Never faults.</summary>
     public Task Completion
     {
@@ -147,8 +197,10 @@ public sealed class RunCoordinator : IDisposable
         int completed, total, failed;
         long revision;
         RunPlan? active;
+        bool closing;
         lock (_gate)
         {
+            closing = _closing;
             status = _status;
             message = _message;
             progress = _progress;
@@ -171,7 +223,9 @@ public sealed class RunCoordinator : IDisposable
 
         var capture = _input.CaptureRun(_protection.ToObfySettings().AssemblyMerge.Enabled);
         var plan = Plan(capture);
-        var blocked = BlockedReasonFor(capture.Included.Count, capture.Collision);
+
+        // Start refuses a closing shell before anything else, so the run bar says so first: one rule.
+        var blocked = closing ? ClosingReason : BlockedReasonFor(capture.Included.Count, capture.Collision);
         return new RunSnapshot(
             revision, blocked is null, blocked, plan.Mode, Explain(plan.Mode), plan.Output.Hint,
             progress, indeterminate, current, completed, total, failed, status, message);
@@ -198,8 +252,9 @@ public sealed class RunCoordinator : IDisposable
 
     /// <summary>
     /// <see cref="BlockedReasonFor(int, OutputCollision?)"/> with the settings' reason already worked out. Validating the
-    /// settings probes the signing key file, so <see cref="Start"/> does that before it takes the gate and passes the
-    /// result here: nothing that touches the disk may hold the lock that IsRunning and EnsureNotRunning wait on.
+    /// settings probes the signing key file, and the collision comes from a check that asks the file system about every
+    /// listed path, so <see cref="Start"/> does both before it takes the gate and passes the results here: nothing that
+    /// touches the disk may hold the lock that IsRunning and EnsureNotRunning wait on.
     /// </summary>
     private static string? BlockedReasonFor(int includedCount, OutputCollision? collision, string? settingsError)
     {
@@ -243,52 +298,70 @@ public sealed class RunCoordinator : IDisposable
     /// Starts a run on the thread pool and returns its task at once; the task never faults. The page does not wait for
     /// it: it follows <c>run.changed</c> and <c>run.completed</c>. Tests await it.
     /// </summary>
-    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, nothing is included, an output would replace a listed file, or the settings are invalid; the message says which.</exception>
+    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, the shell is closing, nothing is included, an output or the symbol map would replace a listed file, or the settings are invalid; the message says which.</exception>
     public Task Start()
     {
-        // Validating the settings probes the signing key file, so it runs before the gate is taken: nothing that touches
-        // the disk may hold the lock that IsRunning and EnsureNotRunning wait on.
-        var settingsError = _protection.ValidationErrors() is { Count: > 0 } errors ? errors[0].Message : null;
+        // A second Start while one goes is refused before anything is read: there is nothing to check a list for.
+        ThrowIfCannotBegin();
 
-        var cts = new CancellationTokenSource();
+        CancellationTokenSource cts;
         ObfySettings settings;
         RunInput input;
         IReadOnlyList<InputFile> included;
         RunContext context;
-        lock (_gate)
+        for (var attempt = 1; ; attempt++)
         {
-            if (_status == RunStatus.Running || _disposed)
+            // Everything that touches the disk happens here, outside the gate: the settings' validation probes the signing
+            // key file, and the collision check asks the file system about every listed path, which on an unreachable share
+            // can take a long time. The revisions say what the reads below belong to.
+            var (candidateSettings, settingsRevision) = _protection.CaptureSettings();
+            var settingsError = _protection.ValidationErrors() is { Count: > 0 } errors ? errors[0].Message : null;
+            var candidate = _input.CaptureRun(candidateSettings.AssemblyMerge.Enabled);
+
+            lock (_gate)
             {
-                cts.Dispose();
-                throw new ObfyApiException("run.blocked", RunningReason);
+                ThrowIfCannotBegin();
+
+                // The reads are only worth anything if nothing changed since: the run protects exactly the settings and
+                // files that are there when it becomes Running, and the collision verdict is about exactly those files.
+                // Any change since means the reads are of an older list (a stale "nothing collides" would let a run replace
+                // a file listed meanwhile, a stale "collides" would refuse a list that is fine now), so read again. Only
+                // revisions are asked here, read without the sessions' locks: no disk, and no wait on a lock that is held
+                // across a disk question. The user rarely edits in this window; if they keep doing so, give up.
+                if (_protection.Revision != settingsRevision || _input.Revision != candidate.Revision)
+                {
+                    if (attempt >= MaxStartAttempts)
+                        throw new ObfyApiException("run.blocked", ChangedWhileStartingReason);
+                    continue;
+                }
+
+                // A concurrent remove from here on either passed its own run check before this hold (B-37: nothing makes that
+                // check and the remove one step, so it can still land after this point and the run keeps the list it read) or
+                // is refused, because IsRunning waits for this lock and then answers true.
+                settings = candidateSettings;
+                input = candidate;
+                included = input.Included;
+                var blocked = BlockedReasonFor(included.Count, input.Collision, settingsError);
+                if (blocked is not null)
+                    throw new ObfyApiException("run.blocked", blocked);
+
+                var plan = Plan(input);
+                context = new RunContext(included, input.Skipped, settings, plan, input.OutputFolderChosen, input.SymbolMapPath);
+
+                cts = new CancellationTokenSource();
+                _cts = cts;
+                _active = plan;
+                _status = RunStatus.Running;
+                _message = "Starting...";
+                _progress = 0;
+                _indeterminate = plan.Mode is RunMode.Merge or RunMode.ClosedSet || included.Count <= 1;
+                _currentFile = null;
+                _completed = 0;
+                _total = included.Count;
+                _failed = 0;
+                _revision++;
+                break;
             }
-
-            // The files and the settings are read here, in the same hold that makes the run Running, so a run protects the
-            // files listed when it began: a concurrent remove either lands before this read or is refused afterwards.
-            settings = _protection.ToObfySettings();
-            input = _input.CaptureRun(settings.AssemblyMerge.Enabled);
-            included = input.Included;
-            var blocked = BlockedReasonFor(included.Count, input.Collision, settingsError);
-            if (blocked is not null)
-            {
-                cts.Dispose();
-                throw new ObfyApiException("run.blocked", blocked);
-            }
-
-            var plan = Plan(input);
-            context = new RunContext(included, input.Skipped, settings, plan, input.OutputFolderChosen, input.SymbolMapPath);
-
-            _cts = cts;
-            _active = plan;
-            _status = RunStatus.Running;
-            _message = "Starting...";
-            _progress = 0;
-            _indeterminate = plan.Mode is RunMode.Merge or RunMode.ClosedSet || included.Count <= 1;
-            _currentFile = null;
-            _completed = 0;
-            _total = included.Count;
-            _failed = 0;
-            _revision++;
         }
 
         // From here the coordinator is Running with a token source and no run task. Whatever fails before the task
@@ -317,6 +390,33 @@ public sealed class RunCoordinator : IDisposable
         {
             AbandonStart(cts, ex);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// How often <see cref="Start"/> reads the files and settings again when they change while it is checking them. A
+    /// change in that window is rare (it takes an edit that passed its own run check just before, or one made while the
+    /// check waits on a slow disk), so a few tries are plenty; after that the run is refused rather than started on a list
+    /// that was not checked.
+    /// </summary>
+    private const int MaxStartAttempts = 3;
+
+    private const string ChangedWhileStartingReason = "The files or settings changed while the run was starting. Try again.";
+    private const string ClosingReason = "Obfy is closing.";
+
+    /// <summary>
+    /// Refuses a start while a run goes, the coordinator is disposed or the shell is closing. Takes the gate itself (it is
+    /// re-entrant), so <see cref="Start"/> may call it inside its own hold.
+    /// </summary>
+    /// <exception cref="ObfyApiException"><c>run.blocked</c>.</exception>
+    private void ThrowIfCannotBegin()
+    {
+        lock (_gate)
+        {
+            if (_status == RunStatus.Running || _disposed)
+                throw new ObfyApiException("run.blocked", RunningReason);
+            if (_closing)
+                throw new ObfyApiException("run.blocked", ClosingReason);
         }
     }
 

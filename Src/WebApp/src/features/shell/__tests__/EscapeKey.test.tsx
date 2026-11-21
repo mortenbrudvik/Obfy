@@ -55,7 +55,7 @@ describe("Esc while a run goes", () => {
     expect(cancelCalls()).toHaveLength(0);
 
     fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => expect(cancelCalls()).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(cancelCalls()).toHaveLength(1));
   });
 
   it("doesNotCancelTheRun_whenEscIsPressedInASearchBox", async () => {
@@ -101,6 +101,6 @@ describe("Esc while a run goes", () => {
 
     fireEvent.keyDown(screen.getByRole("button", { name: "Somewhere" }), { key: "Escape" });
 
-    await waitFor(() => expect(cancelCalls()).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(cancelCalls()).toHaveLength(1));
   });
 });

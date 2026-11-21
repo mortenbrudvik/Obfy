@@ -117,7 +117,7 @@ The window has a sidebar with four screens: **Files** (drop or add inputs, choos
 **Features:**
 - Drag and drop assemblies, source files, a solution or project, or a `.json` configuration onto the window. A solution or project expands into included outputs and skipped rows
 - Closed-set protection when two or more *included* assemblies are listed, or when files came from a solution/project session (the Merge toggle still wins)
-- An empty Output Directory writes one file next to the input as `*.obfuscated.*`, a closed set to an `obfy-out` folder next to the first input, and a merge next to the first input as `*.obfuscated.*`
+- An empty Output Directory writes one file next to the input as `*.obfuscated.*`, a closed set to an `obfy-out` folder next to the first input, and a merge next to the first input as `*.obfuscated.*`. A chosen output folder receives `name.obfuscated.ext` as well, never the input's own name, so it cannot overwrite the input.
 - Level presets (Minimal, Standard, Aggressive, Custom). Choosing Custom again restores the switches from before the preset
 - Runtime profiles disable protections that profile cannot use and keep the stored values
 - An in-app Guide (F1) and a description and options for every technique on the Protection screen

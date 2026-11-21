@@ -166,7 +166,7 @@ Location: `Tests/Obfy.Interop.Tests/`
 
 ### Obfy.UI.Tests (shell)
 
-`HybridWiringTests` (the container resolves the shell, bridge and sessions), `ApplicationHostServiceTests` and `StartupCommandLineTests` (files and `-o` from the command line). No window is created.
+`HybridWiringTests` (the container resolves the shell, bridge and sessions), `ApplicationHostServiceTests` and `StartupArgumentsTests` in Obfy.App.Tests (files and `-o` from the command line). No window is created.
 
 Location: `Tests/Obfy.UI.Tests/`
 

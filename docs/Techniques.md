@@ -769,7 +769,7 @@ Obfy can also obfuscate C# source code files using Roslyn.
 
 ### Source String Encryption
 
-Encrypts string literals (and interpolations without alignment/format clauses) with the same XOR or AES-256 setting as assembly mode. Emits a helper `Obfy.Runtime.__ObfyStringDecryptor.Decrypt(string)` (key is a Base64 field in that type — not confidentiality). Attribute arguments are left alone. `[Obfuscation(Exclude = true, Feature = "strings")]` is honored.
+Encrypts string literals (including the text parts of interpolated strings; interpolation holes keep their format and alignment clauses as written) with the same XOR or AES-256 setting as assembly mode. Emits a helper `Obfy.Runtime.__ObfyStringDecryptor.Decrypt(string)` (key is a Base64 field in that type — not confidentiality). Attribute arguments are left alone, and so are interpolated strings that convert to `FormattableString` or an interpolated-string handler and raw interpolated strings. A single `.cs` input stays one output file (the helper is appended to it); a multi-file input gets a separate `__ObfyStringDecryptor.cs`. `[Obfuscation(Exclude = true, Feature = "strings")]` is honored.
 
 **Before:**
 ```csharp
@@ -788,7 +788,7 @@ Renames identifiers using Roslyn semantic symbols (`ISymbol`), including attribu
 - Preserves compilation correctness
 - Handles overloads and generics
 - Maintains references across files
-- Honors `[Obfuscation]` for `renaming`
+- Honors `[Obfuscation]` for `renaming`, plus the `inclusions`, `exclusions` (including the default exclusion attributes such as `[Serializable]`) and `preserveXaml` settings
 
 ### Source Control Flow
 

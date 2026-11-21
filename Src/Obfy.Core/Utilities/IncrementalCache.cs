@@ -7,9 +7,12 @@ using Obfy.Core.Models;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// File-backed cache so CI can skip obfuscation when Obfy version, input bytes, and settings
-/// are unchanged. The key also covers the signing key file and every dependency DLL that
-/// embedding would pack, so a rotated key or a rebuilt sibling is a miss.
+/// File-backed cache so CI can skip obfuscation when the Obfy build, input bytes, and settings
+/// are unchanged. The key covers the Obfy.Core build identity (version plus the module MVID, so a
+/// hotfix that keeps the pinned version still misses), the signing key file and every dependency
+/// DLL that embedding would pack, so a rotated key or a rebuilt sibling is a miss.
+/// The caller computes the key once, before the run, from the settings the pipeline will use, and
+/// removes the cache file before it overwrites the output (<see cref="Invalidate"/>).
 /// A locked or corrupt <c>{output}.obfycache</c> is a miss, not a failed run.
 /// A packing hit also requires the native sibling <c>{name}.runtimeconfig.json</c> (win-x64)
 /// or the portable launcher files. The hex stored here is only the cache identity. It is not
@@ -25,12 +28,22 @@ public static class IncrementalCache
 
     public static string CachePath(string outputPath) => outputPath + ".obfycache";
 
-    public static string ComputeKey(string inputPath, ObfySettings settings)
+    /// <summary>
+    /// Identifies the Obfy.Core build. The assembly version is pinned, so it alone would let a hotfix reuse
+    /// the previous build's outputs. The MVID changes with every compiled change.
+    /// </summary>
+    internal static string BuildIdentity { get; } =
+        (typeof(IncrementalCache).Assembly.GetName().Version?.ToString() ?? "0")
+        + "+" + typeof(IncrementalCache).Module.ModuleVersionId.ToString("N");
+
+    public static string ComputeKey(string inputPath, ObfySettings settings) =>
+        ComputeKey(inputPath, settings, BuildIdentity);
+
+    internal static string ComputeKey(string inputPath, ObfySettings settings, string buildIdentity)
     {
         var input = File.ReadAllBytes(inputPath);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
-        var version = typeof(IncrementalCache).Assembly.GetName().Version?.ToString() ?? "0";
-        var stamp = Encoding.UTF8.GetBytes("obfy-cache|" + version + "|");
+        var stamp = Encoding.UTF8.GetBytes("obfy-cache|" + buildIdentity + "|");
         var jsonBytes = Encoding.UTF8.GetBytes(json);
         using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hasher.AppendData(stamp);
@@ -88,13 +101,39 @@ public static class IncrementalCache
             if (!IsEmbeddedDependency(fileName, settings.DependencyEmbedding))
                 continue;
 
-            var path = Path.Combine(inputDir, fileName);
-            if (!File.Exists(path))
+            // The reference name comes from the input assembly, which is untrusted.
+            var path = ResolveSibling(inputDir, fileName);
+            if (path is null || !File.Exists(path))
                 continue;
 
             hasher.AppendData(Encoding.UTF8.GetBytes("|dep|" + fileName + "|"));
             hasher.AppendData(File.ReadAllBytes(path));
         }
+    }
+
+    /// <summary>
+    /// Returns the path of <paramref name="fileName"/> inside <paramref name="directory"/>, or null when the
+    /// name is not a plain file name (separators, rooted or absolute paths, invalid characters).
+    /// </summary>
+    internal static string? ResolveSibling(string directory, string fileName)
+    {
+        if (string.IsNullOrEmpty(fileName) ||
+            !string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal) ||
+            fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            return null;
+        }
+
+        var full = Path.GetFullPath(Path.Combine(directory, fileName));
+        var parent = Path.GetDirectoryName(full);
+        var expected = Path.GetFullPath(directory);
+        return parent is not null &&
+               string.Equals(
+                   Path.TrimEndingDirectorySeparator(parent),
+                   Path.TrimEndingDirectorySeparator(expected),
+                   StringComparison.OrdinalIgnoreCase)
+            ? full
+            : null;
     }
 
     private static List<string> ReadAssemblyRefNames(byte[] input)
@@ -128,6 +167,21 @@ public static class IncrementalCache
     {
         try
         {
+            return TryHit(outputPath, settings, ComputeKey(inputPath, settings));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Hit check against a key the caller already computed, so a run uses one key from start to finish.
+    /// </summary>
+    internal static bool TryHit(string outputPath, ObfySettings settings, string expectedKey)
+    {
+        try
+        {
             if (!File.Exists(outputPath) || !File.Exists(CachePath(outputPath)))
                 return false;
             if (settings.Packing.Enabled)
@@ -142,9 +196,9 @@ public static class IncrementalCache
                          !NativePacker.LooksLikePackedHost(outputPath))
                     return false;
             }
-            var expected = ComputeKey(inputPath, settings);
+
             var actual = File.ReadAllText(CachePath(outputPath)).Trim();
-            return string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(expectedKey, actual, StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -156,12 +210,53 @@ public static class IncrementalCache
     {
         try
         {
-            File.WriteAllText(CachePath(outputPath), ComputeKey(inputPath, settings));
+            return TryWrite(outputPath, ComputeKey(inputPath, settings));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    internal static bool TryWrite(string outputPath, string key)
+    {
+        try
+        {
+            File.WriteAllText(CachePath(outputPath), key);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes the cache file of an output that is about to be overwritten, so a failed or partial run can
+    /// never leave a key that blesses the bad output. When the file cannot be deleted it is emptied (an empty
+    /// file is a miss). Returns false only when the stale key may survive.
+    /// </summary>
+    internal static bool Invalidate(string outputPath)
+    {
+        var path = CachePath(outputPath);
+        try
+        {
+            if (!File.Exists(path))
+                return true;
+            File.Delete(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            try
+            {
+                File.WriteAllText(path, string.Empty);
+                return true;
+            }
+            catch (Exception inner) when (inner is IOException or UnauthorizedAccessException)
+            {
+                return false;
+            }
         }
     }
 

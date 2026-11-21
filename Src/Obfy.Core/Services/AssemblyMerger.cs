@@ -62,7 +62,7 @@ public class AssemblyMerger : IAssemblyMerger
             });
         }
 
-        _logger.LogInformation("Merging {Count} assemblies into {Output}", assembliesToMerge.Count, outputPath);
+        _logger.LogInformation("Merging {Count} assemblies", assembliesToMerge.Count);
 
         try
         {
@@ -143,7 +143,7 @@ public class AssemblyMerger : IAssemblyMerger
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             stopwatch.Stop();
-            _logger.LogError(ex, "Failed to merge assemblies");
+            _logger.LogError("Failed to merge assemblies ({ExceptionType})", ex.GetType().Name);
 
             return Task.FromResult(new AssemblyMergeResult
             {
@@ -167,7 +167,9 @@ public class AssemblyMerger : IAssemblyMerger
     }
 
     /// <summary>
-    /// Logger adapter for ILRepack.
+    /// Logger adapter for ILRepack. ILRepack's messages name the assemblies and paths being merged, so none of
+    /// them reaches the log file: only the number of messages per level is logged. The first error is kept for
+    /// the user-facing result.
     /// </summary>
     private class RepackLogger : ILRepacking.ILogger
     {
@@ -192,37 +194,37 @@ public class AssemblyMerger : IAssemblyMerger
 
         public void DuplicateIgnored(string ignoredType, object ignoredObject)
         {
-            _logger.LogDebug("Duplicate ignored: {Type}", ignoredType);
+            _logger.LogDebug("ILRepack ignored a duplicate type");
         }
 
         public void Error(string msg)
         {
             HadError = true;
             FirstError ??= msg;
-            _logger.LogError("{Message}", msg);
+            _logger.LogError("ILRepack reported an error");
         }
 
         public void Info(string msg)
         {
-            _logger.LogInformation("{Message}", msg);
+            _logger.LogDebug("ILRepack info message");
         }
 
         public void Log(object str)
         {
-            _logger.LogDebug("{Message}", str);
+            _logger.LogDebug("ILRepack log message");
         }
 
         public void Verbose(string msg)
         {
             if (ShouldLogVerbose)
             {
-                _logger.LogDebug("{Message}", msg);
+                _logger.LogDebug("ILRepack verbose message");
             }
         }
 
         public void Warn(string msg)
         {
-            _logger.LogWarning("{Message}", msg);
+            _logger.LogWarning("ILRepack reported a warning");
         }
     }
 }

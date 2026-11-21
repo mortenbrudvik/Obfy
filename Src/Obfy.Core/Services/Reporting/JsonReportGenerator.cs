@@ -42,7 +42,7 @@ public class JsonReportGenerator : IReportGenerator
         }
 
         await File.WriteAllTextAsync(outputPath, json, cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("JSON report written to {OutputPath}", outputPath);
+        _logger.LogInformation("JSON report written");
     }
 
     /// <inheritdoc/>

@@ -750,6 +750,8 @@ public class ClosedSetProcessorTests
 
     private static ObfySettings ClosedSetRenameSettings(bool preservePublicApi) => new()
     {
+        // Explicit flags, like the CLI and UI hand over: the closed-set run applies a non-Custom level.
+        Level = ObfuscationLevel.Custom,
         SymbolRenaming =
         {
             Enabled = true,

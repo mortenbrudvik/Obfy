@@ -8,12 +8,13 @@ namespace Obfy.Core.Utilities;
 /// Windows, so that spelling is covered too. Not covered: hard links, and a drive or share that aliases another path
 /// (<c>subst</c>, a mapped drive, an admin share such as <c>\\localhost\c$</c>); none of them can be told apart without
 /// native calls.
-/// The incremental cache uses this to spot a run whose output replaces its input. It is not the guard that keeps a
-/// stale cache from vouching for an unprotected file: the fingerprint of the output is (<see cref="FileFingerprint"/>).
+/// The incremental cache uses this to spot a run whose output replaces its input, and the CLI to refuse a <c>--map</c> or
+/// <c>--report</c> path that would replace a file the run needs. It is not the guard that keeps a stale cache from vouching
+/// for an unprotected file: the fingerprint of the output is (<see cref="FileFingerprint"/>).
 /// Never throws, and never recurses with the length of a path: whatever the file system refuses is left as the text
 /// said, and a path of more than <see cref="MaxComponents"/> components is compared as text.
 /// </summary>
-internal static class PathIdentity
+public static class PathIdentity
 {
     private const int MaxLinkDepth = 16;
 
@@ -24,14 +25,19 @@ internal static class PathIdentity
     internal const int MaxComponents = 1024;
 
     /// <summary>True when <paramref name="a"/> and <paramref name="b"/> lead to the same file.</summary>
-    public static bool SameFile(string a, string b)
-    {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return string.Equals(Resolve(a), Resolve(b), comparison);
-    }
+    public static bool SameFile(string a, string b) => SameResolved(Resolve(a), Resolve(b));
 
-    /// <summary>One spelling of the file a path names: absolute, no trailing separator, links followed.</summary>
-    internal static string Resolve(string path)
+    /// <summary>
+    /// True when two results of <see cref="Resolve"/> are the same file: compared as text, ignoring case on Windows. A caller
+    /// that compares one path with many resolves each path once and compares the results with this, instead of paying for
+    /// <see cref="SameFile"/>'s two file-system walks per comparison.
+    /// </summary>
+    public static bool SameResolved(string resolvedA, string resolvedB) =>
+        string.Equals(
+            resolvedA, resolvedB, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    /// <summary>One spelling of the file a path names: absolute, no trailing separator, links followed. Never throws.</summary>
+    public static string Resolve(string path)
     {
         var depth = 0;
         return ResolveFull(Normalize(path), ref depth);

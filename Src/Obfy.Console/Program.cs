@@ -506,7 +506,7 @@ public class Program
             }
 
             return await RunObfuscationAsync(
-                input ?? [], output, settings, map, report, dryRun, verbose, merge, preservePublic, cancellationToken)
+                input ?? [], output, settings, map, report, config, dryRun, verbose, merge, preservePublic, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is FileNotFoundException or ArgumentException or InvalidOperationException or JsonException or XmlException or IOException or UnauthorizedAccessException)
@@ -651,16 +651,39 @@ public class Program
         ObfySettings settings,
         FileInfo? mapFile,
         FileInfo? reportFile,
+        FileInfo? configFile,
         bool dryRun,
         bool verbose,
         bool merge = false,
         bool preservePublic = false,
         CancellationToken cancellationToken = default)
     {
-        var solutionCount = inputs.Count(static i => IsSolutionFile(i.FullName));
-        if (solutionCount > 1)
+        var solutionFiles = inputs.Where(static i => IsSolutionFile(i.FullName)).ToList();
+        if (solutionFiles.Count > 1)
         {
-            AnsiConsole.MarkupLine("[red]Only one solution file can be obfuscated per run.[/]");
+            const string onlyOne = "Only one solution file can be obfuscated per run.";
+            AnsiConsole.MarkupLine($"[red]{onlyOne}[/]");
+            WriteProblem(solutionFiles[0].FullName, "error", onlyOne);
+            return 1;
+        }
+
+        // The map and the report are written after the run, so nothing else would compare them with the files the run
+        // reads. Refuse before any work: the listed inputs, the -c file, and each other.
+        if (RefuseCollidingPaths(RunPathGuard.Find(
+                mapFile, reportFile,
+                () =>
+                [
+                    new ProtectedPaths(PathRole.Input, inputs.Select(static i => i.FullName)),
+                    new ProtectedPaths(PathRole.Config, [configFile?.FullName]),
+                    new ProtectedPaths(PathRole.SigningKey, [settings.Signing.KeyFile]),
+
+                    // Packing reads the runtime configuration beside each assembly it packs (a merge packs a temporary file).
+                    new ProtectedPaths(
+                        PathRole.Dependency,
+                        merge ? [] : RunPathGuard.PackingReads(inputs.Select(static i => i.FullName).Where(IsAssemblyFile), settings))
+                ],
+                compareMapWithReport: true)))
+        {
             return 1;
         }
 
@@ -687,8 +710,23 @@ public class Program
 
         if (merge && inputs.Length < 2)
         {
-            AnsiConsole.MarkupLine("[red]Merge requires at least two input assemblies.[/]");
+            const string needTwo = "Merge requires at least two input assemblies.";
+            AnsiConsole.MarkupLine($"[red]{needTwo}[/]");
+            WriteProblem(inputs.FirstOrDefault()?.FullName ?? "", "error", needTwo);
             return 1;
+        }
+
+        // Every output of these modes is known now; the closed-set modes check theirs where they plan them.
+        if (merge || !ShouldUseLooseClosedSet(inputs))
+        {
+            if (RefuseCollidingPaths(RunPathGuard.Find(
+                    mapFile, reportFile,
+                    () => [new ProtectedPaths(
+                        PathRole.Output,
+                        merge ? PlanMergeOutputs(inputs, output, settings) : PlanStandardOutputs(inputs, output, settings))])))
+            {
+                return 1;
+            }
         }
 
         if (merge)
@@ -705,6 +743,10 @@ public class Program
         {
             anyFailed = await RunStandardObfuscationAsync(inputs, output, settings, runOptions, allSymbols, successfulResults, service, dryRun, cancellationToken).ConfigureAwait(false);
         }
+
+        // The plan above is what the run was going to write. This is what it wrote.
+        if (RefuseCollidingPaths(RunPathGuard.FindForResults(mapFile, reportFile, successfulResults.Select(static pair => pair.Result))))
+            return 1;
 
         // Write symbol map if requested
         if (mapFile != null && allSymbols.Count > 0)
@@ -831,11 +873,32 @@ public class Program
 
         if (closedSetInputs.Count == 0)
         {
-            AnsiConsole.MarkupLine("[red]No built outputs found. Build the ship set (Release) and retry.[/]");
+            const string noOutputs = "No built outputs found. Build the ship set (Release) and retry.";
+            AnsiConsole.MarkupLine($"[red]{noOutputs}[/]");
+            WriteProblem(session.SourcePath, "error", noOutputs);
             return 2;
         }
 
         var useMerge = merge && closedSetInputs.Count >= 2;
+
+        // The session reads the project files and the built outputs it lists, and writes under the output folder.
+        var sessionFolder = output?.FullName ?? DefaultClosedSetFolder(session.SourcePath);
+        if (RefuseCollidingPaths(RunPathGuard.Find(
+                mapFile, reportFile,
+                () =>
+                [
+                    new ProtectedPaths(PathRole.SessionFile, session.Entries.SelectMany(static e => new[] { e.ProjectPath, e.OutputPath })),
+                    new ProtectedPaths(
+                        PathRole.Dependency,
+                        useMerge ? [] : RunPathGuard.PackingReads(closedSetInputs.Select(static i => i.AssemblyPath), settings)),
+                    new ProtectedPaths(
+                        PathRole.Output,
+                        PlanClosedSetOutputs([.. closedSetInputs.Select(static i => i.AssemblyPath)], sessionFolder, useMerge, settings))
+                ])))
+        {
+            return 1;
+        }
+
         if (merge && !useMerge)
         {
             AnsiConsole.MarkupLine(
@@ -851,9 +914,7 @@ public class Program
         var outputDir = output?.FullName;
         if (string.IsNullOrEmpty(outputDir))
         {
-            var solutionDir = Path.GetDirectoryName(Path.GetFullPath(session.SourcePath))
-                ?? Directory.GetCurrentDirectory();
-            outputDir = Path.Combine(solutionDir, "obfy-out");
+            outputDir = DefaultClosedSetFolder(session.SourcePath);
             AnsiConsole.MarkupLine($"[cyan]Output directory:[/] {Markup.Escape(outputDir)}");
         }
 
@@ -874,6 +935,8 @@ public class Program
             }
 
             DisplaySuccess($"Merged ({closedSetInputs.Count} assemblies)", mergeResult);
+            if (RefuseCollidingPaths(RunPathGuard.FindForResults(mapFile, reportFile, [mergeResult])))
+                return 1;
             await WriteMapAndReportAsync(mapFile, reportFile, mergeResult.SymbolMap, [mergeResult], settings, service, reportService)
                 .ConfigureAwait(false);
             AnsiConsole.WriteLine();
@@ -886,7 +949,7 @@ public class Program
             .ConfigureAwait(false);
 
         return await WriteClosedSetOutcomeAsync(
-            result, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
+            result, session.SourcePath, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
     }
 
     private static async Task<int> RunLooseClosedSetAsync(
@@ -927,9 +990,17 @@ public class Program
             AnsiConsole.MarkupLine(
                 $"[yellow]Ignoring non-assembly input: {Markup.Escape(file.FullName)}[/]");
 
+        // Not reachable from the command line: this runs only when ShouldUseLooseClosedSet found two assemblies on disk. It stays
+        // because that check and this one are two File.Exists passes, and a file that vanishes in between must end the run with
+        // a message instead of an IndexOutOfRangeException at present[0] below. There is no test: nothing but that race gets here.
         if (present.Count == 0)
         {
-            AnsiConsole.MarkupLine("[red]No assemblies found.[/]");
+            const string noAssemblies = "No assemblies found.";
+            AnsiConsole.MarkupLine($"[red]{noAssemblies}[/]");
+
+            // A missing assembly already has its own line; this is for a list with no assembly in it.
+            if (missing.Count == 0)
+                WriteProblem(inputs.FirstOrDefault()?.FullName ?? "", "error", noAssemblies);
             return 2;
         }
 
@@ -956,15 +1027,26 @@ public class Program
 
         var closedSetInputs = session.Included.Select(ClosedSetInput.FromIncluded).ToList();
 
+        if (RefuseCollidingPaths(RunPathGuard.Find(
+                mapFile, reportFile,
+                () => [new ProtectedPaths(
+                    PathRole.Output,
+                    PlanClosedSetOutputs(
+                        [.. present.Select(static f => f.FullName)],
+                        output?.FullName ?? DefaultClosedSetFolder(present[0].FullName),
+                        merged: false,
+                        settings))])))
+        {
+            return 1;
+        }
+
         if (dryRun)
             return 0;
 
         var outputDir = output?.FullName;
         if (string.IsNullOrEmpty(outputDir))
         {
-            var firstDir = Path.GetDirectoryName(Path.GetFullPath(present[0].FullName))
-                ?? Directory.GetCurrentDirectory();
-            outputDir = Path.Combine(firstDir, "obfy-out");
+            outputDir = DefaultClosedSetFolder(present[0].FullName);
             AnsiConsole.MarkupLine($"[cyan]Output directory:[/] {Markup.Escape(outputDir)}");
         }
 
@@ -973,11 +1055,13 @@ public class Program
             .ConfigureAwait(false);
 
         return await WriteClosedSetOutcomeAsync(
-            result, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
+            result, present[0].FullName, mapFile, reportFile, settings, service, reportService).ConfigureAwait(false);
     }
 
+    /// <param name="problemFile">What a failure that names no file is filed against: the solution or project file, or the first input of a loose set.</param>
     private static async Task<int> WriteClosedSetOutcomeAsync(
         ClosedSetResult result,
+        string problemFile,
         FileInfo? mapFile,
         FileInfo? reportFile,
         ObfySettings settings,
@@ -993,10 +1077,17 @@ public class Program
 
         if (!result.Success)
         {
-            AnsiConsole.MarkupLine(
-                $"[red]{Markup.Escape(result.ErrorMessage ?? "Closed-set obfuscation failed.")}[/]");
-            foreach (var module in result.ModuleResults.Where(static m => !m.Success))
+            var failure = result.ErrorMessage ?? "Closed-set obfuscation failed.";
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(failure)}[/]");
+            var failedModules = result.ModuleResults.Where(static m => !m.Success).ToList();
+            foreach (var module in failedModules)
                 DisplayError(Path.GetFileName(module.InputPath) ?? "module", module);
+
+            // A load failure or a failed module has its own line against its file. A failure that names none (an input
+            // that is already protected, an output collision, the signing key, the settings) would otherwise leave the
+            // Problems panel empty.
+            if (result.LoadFailures.Count == 0 && failedModules.Count == 0)
+                WriteProblem(problemFile, "error", failure);
             return 1;
         }
 
@@ -1005,6 +1096,9 @@ public class Program
             var name = Path.GetFileName(module.OutputPath ?? module.InputPath) ?? "module";
             DisplaySuccess(name, module);
         }
+
+        if (RefuseCollidingPaths(RunPathGuard.FindForResults(mapFile, reportFile, result.ModuleResults)))
+            return 1;
 
         await WriteMapAndReportAsync(
             mapFile, reportFile, result.SymbolMap, result.ModuleResults, settings, service, reportService)
@@ -1106,6 +1200,99 @@ public class Program
         AnsiConsole.Write(table);
     }
 
+    /// <summary>
+    /// Where a merge is written: the first input's name in the output folder, or <c>{name}.merged{ext}</c> beside the
+    /// first input when there is no folder.
+    /// </summary>
+    private static string MergeOutputPath(FileInfo[] inputs, DirectoryInfo? output)
+    {
+        var primaryInput = inputs[0];
+        return output != null
+            ? Path.Combine(output.FullName, primaryInput.Name)
+            : Path.Combine(
+                Path.GetDirectoryName(primaryInput.FullName) ?? ".",
+                Path.GetFileNameWithoutExtension(primaryInput.Name) + ".merged" + Path.GetExtension(primaryInput.Name));
+    }
+
+    /// <summary>
+    /// What a run of separate files writes, by the rules <see cref="RunStandardObfuscationAsync"/> and the engine use: two or
+    /// more existing C# files are one compilation (in the output folder or <c>obfy-src</c> beside the first), every other
+    /// file is written alone (under its own name in the output folder, or as <c>name.obfuscated.ext</c> beside it).
+    /// </summary>
+    internal static IReadOnlyList<string> PlanStandardOutputs(FileInfo[] inputs, DirectoryInfo? output, ObfySettings settings)
+    {
+        RunPathGuard.NotePlanned();
+        var planned = new List<string>();
+        var present = inputs.Where(static input => input.Exists).ToList();
+        var sources = present.Where(static input => IsSourceFile(input.FullName)).ToList();
+        var compiledTogether = sources.Count >= 2;
+        if (compiledTogether)
+        {
+            var folder = output?.FullName
+                ?? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(sources[0].FullName)) ?? ".", "obfy-src");
+            planned.AddRange(SourceProcessor.PlanMultiFileOutputPaths([.. sources.Select(static s => s.FullName)], folder));
+        }
+
+        foreach (var input in present)
+        {
+            if (compiledTogether && IsSourceFile(input.FullName))
+                continue;
+
+            var written = output != null
+                ? Path.Combine(output.FullName, input.Name)
+                : ObfuscationService.GenerateOutputPath(input.FullName);
+            planned.AddRange(IsAssemblyFile(written)
+                ? RunPathGuard.WithCompanions(written, settings, cacheFile: true)
+                : [written]);
+        }
+
+        return planned;
+    }
+
+    /// <summary>What a merge writes: the merged file, its packing files and its cache file.</summary>
+    internal static IReadOnlyList<string> PlanMergeOutputs(FileInfo[] inputs, DirectoryInfo? output, ObfySettings settings)
+    {
+        RunPathGuard.NotePlanned();
+        return [.. RunPathGuard.WithCompanions(MergeOutputPath(inputs, output), settings, cacheFile: true)];
+    }
+
+    /// <summary>
+    /// What a closed set writes under <paramref name="outputDirectory"/>: each assembly under the engine's own name for it
+    /// (a shared name goes into a folder of its own), or the single merged file when the set is merged.
+    /// </summary>
+    internal static IReadOnlyList<string> PlanClosedSetOutputs(
+        IReadOnlyList<string> assemblyPaths, string outputDirectory, bool merged, ObfySettings settings)
+    {
+        RunPathGuard.NotePlanned();
+        if (assemblyPaths.Count == 0)
+            return [];
+
+        if (merged)
+            return [.. RunPathGuard.WithCompanions(Path.Combine(outputDirectory, Path.GetFileName(assemblyPaths[0])), settings, cacheFile: true)];
+
+        var relative = ClosedSetProcessor.PlanRelativeOutputPaths(assemblyPaths);
+        return [.. relative.SelectMany(name => RunPathGuard.WithCompanions(Path.Combine(outputDirectory, name), settings, cacheFile: false))];
+    }
+
+    /// <summary>
+    /// The folder a closed set writes to when there is no <c>-o</c>: <c>obfy-out</c> beside the solution or project file,
+    /// or beside the first assembly of a loose set.
+    /// </summary>
+    private static string DefaultClosedSetFolder(string firstPath) =>
+        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(firstPath)) ?? Directory.GetCurrentDirectory(), "obfy-out");
+
+    /// <summary>Prints each collision (the red error and one problem-matcher line) and says whether there was one.</summary>
+    private static bool RefuseCollidingPaths(IReadOnlyList<PathCollision> collisions)
+    {
+        foreach (var collision in collisions)
+        {
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(collision.Message)}[/]");
+            WriteProblem(collision.File, "error", collision.Message);
+        }
+
+        return collisions.Count > 0;
+    }
+
     private static async Task<bool> RunMergeObfuscationAsync(
         FileInfo[] inputs,
         DirectoryInfo? output,
@@ -1117,12 +1304,7 @@ public class Program
         bool dryRun,
         CancellationToken cancellationToken)
     {
-        var primaryInput = inputs[0];
-        var outputPath = output != null
-            ? Path.Combine(output.FullName, primaryInput.Name)
-            : Path.Combine(
-                Path.GetDirectoryName(primaryInput.FullName) ?? ".",
-                Path.GetFileNameWithoutExtension(primaryInput.Name) + ".merged" + Path.GetExtension(primaryInput.Name));
+        var outputPath = MergeOutputPath(inputs, output);
 
         var inputNames = string.Join(", ", inputs.Select(i => i.Name));
         AnsiConsole.MarkupLine($"[cyan]Merging assemblies:[/] {Markup.Escape(inputNames)}");

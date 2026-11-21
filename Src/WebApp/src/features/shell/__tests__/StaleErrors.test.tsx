@@ -73,7 +73,7 @@ describe("an error that no longer applies", () => {
 
     host.push("run.changed", { ...readyRun, revision: 6, status: "Done" });
 
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
   it("keepsAFailedCancel_whenAProgressPushWithTheSameStatusArrives", async () => {

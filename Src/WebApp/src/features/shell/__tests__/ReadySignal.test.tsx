@@ -62,7 +62,7 @@ describe("Shell tells the host the page is ready", () => {
     release(readyRun);
     await screen.findByText(/of 0 files/);
 
-    await waitFor(() => expect(readyCalls()).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(readyCalls()).toHaveLength(1));
     // The data had been painted when it was sent.
     expect(screen.getByText(/of 0 files/)).toBeTruthy();
   });
@@ -71,7 +71,7 @@ describe("Shell tells the host the page is ready", () => {
     const { host, release } = startHost();
     render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
     release(readyRun);
-    await waitFor(() => expect(readyCalls()).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(readyCalls()).toHaveLength(1));
 
     host.push("run.changed", { ...readyRun, revision: 5, status: "Running", canStart: false, currentFile: "a.dll", total: 1 });
     host.push("files.changed", { ...emptyFiles, revision: 5 });
@@ -89,7 +89,7 @@ describe("Shell tells the host the page is ready", () => {
     render(<Shell screen="files" onNavigate={vi.fn()}>content</Shell>);
     release(readyRun);
 
-    await waitFor(() => expect(readyCalls()).toHaveLength(1), { timeout: 3000 });
+    await waitFor(() => expect(readyCalls()).toHaveLength(1));
     await pause(50);
 
     expect(screen.getByText(/of 0 files/)).toBeTruthy();

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../interop/WebViewApiClient", () => ({ apiClient: { call: vi.fn(), on: vi.fn(() => vi.fn()) } }));
 
+import { events } from "../../interop/api";
 import { mockBridge } from "../../test/bridge";
 import { idleRun, readyRun, standardSettings } from "../../test/snapshots";
 import type { RunSnapshot } from "../../types/domain";
@@ -45,7 +46,7 @@ describe("usePushedState", () => {
   it("appliesAPushWithTheSameRevision_asItIsTheSameSnapshot", async () => {
     const host = mockBridge({ "run.get": () => idleRun });
     const { result } = renderHook(() => usePushedState<RunSnapshot>("run", "get", "run.changed"));
-    await waitFor(() => expect(result.current.state).not.toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(result.current.state).not.toBeNull());
 
     host.push("run.changed", running(5));
     host.push("run.changed", { ...running(5), progress: 50 });
@@ -53,14 +54,15 @@ describe("usePushedState", () => {
     expect(result.current.state?.progress).toBe(50);
   });
 
-  it("appliesAnyPush_forAStateWithoutARevision", async () => {
-    const host = mockBridge({ "app.info": () => ({ version: "1.0.0" }) });
-    const { result } = renderHook(() => usePushedState<{ version: string }>("app", "info", "app.infoChanged"));
-    await waitFor(() => expect(result.current.state?.version).toBe("1.0.0"), { timeout: 3000 });
+  it("appliesAPushThatCarriesNoRevision_asItCannotBeShownToBeStale", async () => {
+    const host = mockBridge({ "run.get": () => idleRun });
+    const { result } = renderHook(() => usePushedState<RunSnapshot>("run", "get", events.runChanged));
+    await waitFor(() => expect(result.current.state).not.toBeNull());
 
-    host.push("app.infoChanged", { version: "2.0.0" });
+    // Every snapshot the host sends has a revision. The guard only drops what it can prove is older than the one held.
+    host.push(events.runChanged, { ...running(5), revision: undefined });
 
-    expect(result.current.state?.version).toBe("2.0.0");
+    expect(result.current.state?.status).toBe("Running");
   });
 
   it("neverSubscribes_whenTheHostPushesNothingForTheState", async () => {
@@ -69,7 +71,7 @@ describe("usePushedState", () => {
     mockBridge({ "app.info": () => ({ version: "1.0.0" }) });
 
     const { result } = renderHook(() => usePushedState<{ version: string }>("app", "info", null));
-    await waitFor(() => expect(result.current.state?.version).toBe("1.0.0"), { timeout: 3000 });
+    await waitFor(() => expect(result.current.state?.version).toBe("1.0.0"));
 
     expect(vi.mocked(apiClient.on)).not.toHaveBeenCalled();
   });
@@ -77,7 +79,7 @@ describe("usePushedState", () => {
   it("keepsTheSettingsSnapshotItHolds_whenAnOlderOneIsPushed", async () => {
     const host = mockBridge({ "settings.get": () => ({ ...standardSettings, revision: 3 }) });
     const { result } = renderHook(() => usePushedState<typeof standardSettings>("settings", "get", "settings.changed"));
-    await waitFor(() => expect(result.current.state?.revision).toBe(3), { timeout: 3000 });
+    await waitFor(() => expect(result.current.state?.revision).toBe(3));
 
     act(() => host.push("settings.changed", { ...standardSettings, revision: 9, level: "Aggressive" }));
     act(() => host.push("settings.changed", { ...standardSettings, revision: 4, level: "Minimal" }));

@@ -231,7 +231,7 @@ public class MethodEncryptionObfuscator : IObfuscator
         var body = new CilBody { InitLocals = true };
         method.Body = body;
 
-        var marshalType = new TypeRefUser(module, "System.Runtime.InteropServices", "Marshal", module.CorLibTypes.AssemblyRef);
+        var marshalType = FrameworkReferences.Type(module, "System.Runtime.InteropServices", "Marshal");
         var moduleType = new TypeRefUser(module, "System.Reflection", "Module", module.CorLibTypes.AssemblyRef);
         var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
         var runtimeTypeHandle = new TypeRefUser(module, "System", "RuntimeTypeHandle", module.CorLibTypes.AssemblyRef);
@@ -254,7 +254,7 @@ public class MethodEncryptionObfuscator : IObfuscator
         var env = module.CorLibTypes.GetTypeRef("System", "Environment");
         var failFast = new MemberRefUser(module, "FailFast",
             MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String), env);
-        var dllNotFound = module.CorLibTypes.GetTypeRef("System", "DllNotFoundException");
+        var dllNotFound = FrameworkReferences.Type(module, "System", "DllNotFoundException");
         var entryNotFound = module.CorLibTypes.GetTypeRef("System", "EntryPointNotFoundException");
 
         var addr = new Local(module.CorLibTypes.IntPtr);

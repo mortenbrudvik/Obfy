@@ -154,6 +154,22 @@ public class SymbolRenamingObfuscator : IObfuscator
 
             var runtimeNames = SnapshotRuntimeNames(module);
 
+            // A member of a generic instantiation of one of this module's own types (Box<int>.Item) is not
+            // referenced through its definition but through a MemberRef the CLR binds by name and signature,
+            // so every such reference has to follow the rename. Resolve them while the original names still
+            // match; the definitions are renamed next. The module is the whole set, so nothing is resolved
+            // through the assembly resolver.
+            var typeRefUpdates = new List<(TypeRef Ref, TypeDef Def)>();
+            var memberRefUpdates = new List<(MemberRef Ref, IMemberDef Def)>();
+            var exportedUpdates = new List<(ExportedType Ref, TypeDef Def)>();
+            if (typeRenames.Count + methodRenames.Count + fieldRenames.Count + propertyRenames.Count
+                + eventRenames.Count + namespaceRenames.Count > 0)
+            {
+                SnapshotReferences(
+                    module, new[] { module }, typeRefUpdates, memberRefUpdates, exportedUpdates,
+                    context.Warnings, resolveOutsideSet: false);
+            }
+
             // Apply renames
             foreach (var (type, newName) in typeRenames)
             {
@@ -209,6 +225,8 @@ public class SymbolRenamingObfuscator : IObfuscator
 
                 stats.NamespacesRenamed++;
             }
+
+            ApplyReferenceUpdates(typeRefUpdates, memberRefUpdates, exportedUpdates);
 
             RenameDerivedResources(module, runtimeNames);
 
@@ -270,7 +288,8 @@ public class SymbolRenamingObfuscator : IObfuscator
     /// renamed def names (and type namespaces) onto in-set <see cref="TypeRef"/>,
     /// <see cref="MemberRef"/>, and <see cref="ExportedType"/> rows that resolved to those defs.
     /// MemberRefs used from generic instantiations must be the instances CIL/MethodSpec hold;
-    /// see <see cref="EnumerateMemberRefs"/>.
+    /// see <see cref="EnumerateMemberRefs"/>. A single module gets the same treatment for the
+    /// references it holds to its own definitions (<see cref="ObfuscateAsync"/>).
     /// </summary>
     public void RenameClosedSet(
         IReadOnlyList<(ModuleDef Module, ObfySettings Settings)> modules,
@@ -304,8 +323,9 @@ public class SymbolRenamingObfuscator : IObfuscator
         var exportedUpdates = new List<(ExportedType Ref, TypeDef Def)>();
         var set = plans.ConvertAll(static p => p.Module);
         foreach (var (module, _, _) in plans)
-            SnapshotClosedSetReferences(
-                module, set, typeRefUpdates, memberRefUpdates, exportedUpdates, sharedContext.Warnings);
+            SnapshotReferences(
+                module, set, typeRefUpdates, memberRefUpdates, exportedUpdates, sharedContext.Warnings,
+                resolveOutsideSet: true);
 
         foreach (var (module, settings, plan) in plans)
         {
@@ -326,7 +346,7 @@ public class SymbolRenamingObfuscator : IObfuscator
             }
         }
 
-        ApplyClosedSetReferenceUpdates(typeRefUpdates, memberRefUpdates, exportedUpdates);
+        ApplyReferenceUpdates(typeRefUpdates, memberRefUpdates, exportedUpdates);
         sharedContext.Statistics.Merge(stats);
 
         _logger.LogInformation(
@@ -536,17 +556,24 @@ public class SymbolRenamingObfuscator : IObfuscator
         }
     }
 
-    private static void SnapshotClosedSetReferences(
+    /// <summary>
+    /// Pairs every reference of <paramref name="module"/> that points at a definition of <paramref name="set"/>
+    /// with that definition, by the names both still carry. Nothing is renamed here. With
+    /// <paramref name="resolveOutsideSet"/> a reference that names no assembly of the set is also resolved
+    /// through the assembly resolver (a type forwarded into the set); a single-module run has no reason to.
+    /// </summary>
+    private static void SnapshotReferences(
         ModuleDef module,
         IReadOnlyList<ModuleDef> set,
         List<(TypeRef Ref, TypeDef Def)> typeRefUpdates,
         List<(MemberRef Ref, IMemberDef Def)> memberRefUpdates,
         List<(ExportedType Ref, TypeDef Def)> exportedUpdates,
-        ICollection<string> warnings)
+        ICollection<string> warnings,
+        bool resolveOutsideSet)
     {
         foreach (var typeRef in module.GetTypeRefs())
         {
-            var def = FindTypeDefInSet(typeRef, module, set);
+            var def = FindTypeDefInSet(typeRef, module, set, resolveOutsideSet);
             if (def != null)
                 typeRefUpdates.Add((typeRef, def));
         }
@@ -558,7 +585,7 @@ public class SymbolRenamingObfuscator : IObfuscator
             if (!seenMemberRefs.Add(memberRef))
                 continue;
 
-            var def = FindMemberDefInSet(memberRef, module, set);
+            var def = FindMemberDefInSet(memberRef, module, set, resolveOutsideSet);
             if (def != null)
                 memberRefUpdates.Add((memberRef, def));
             else if (IsInSetMemberRef(memberRef, set))
@@ -573,25 +600,42 @@ public class SymbolRenamingObfuscator : IObfuscator
 
         foreach (var exported in module.ExportedTypes)
         {
-            var def = FindExportedTypeInSet(exported, module, set);
+            var def = FindExportedTypeInSet(exported, module, set, resolveOutsideSet);
             if (def != null)
                 exportedUpdates.Add((exported, def));
         }
     }
 
-    private static TypeDef? FindTypeDefInSet(TypeRef typeRef, ModuleDef referring, IReadOnlyList<ModuleDef> set)
+    private static TypeDef? FindTypeDefInSet(
+        TypeRef typeRef, ModuleDef referring, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet)
     {
         var chosen = ChooseInSetModule(typeRef.DefinitionAssembly, referring, set);
         if (chosen is null)
-            return typeRef.ResolveTypeDef();
+            return resolveOutsideSet ? typeRef.ResolveTypeDef() : null;
 
         return FindType(chosen, typeRef);
     }
 
+    /// <summary>
+    /// The type a member reference names as its parent: the definition or reference itself, or the generic
+    /// type of an instantiation (<c>Box&lt;int&gt;</c>, which is how C# refers to a member of a generic type).
+    /// Null for the parents that are not a type of the program: arrays, pointers and by-ref types carry the
+    /// runtime's own members (<c>Get</c>, <c>Set</c>, <c>Address</c>), never the element type's, so a reference
+    /// to one must not be matched to a definition of the element type.
+    /// </summary>
+    private static ITypeDefOrRef? DeclaringTypeOf(MemberRef memberRef) =>
+        memberRef.Class switch
+        {
+            TypeDef typeDef => typeDef,
+            TypeRef typeRef => typeRef,
+            TypeSpec { TypeSig: GenericInstSig { GenericType: { } generic } } => generic.TypeDefOrRef,
+            TypeSpec { TypeSig: ClassOrValueTypeSig plain } => plain.TypeDefOrRef,
+            _ => null
+        };
+
     private static bool IsInSetMemberRef(MemberRef memberRef, IReadOnlyList<ModuleDef> set)
     {
-        var declaring = memberRef.DeclaringType ?? memberRef.Class as ITypeDefOrRef;
-        var name = declaring?.DefinitionAssembly?.Name?.String;
+        var name = DeclaringTypeOf(memberRef)?.DefinitionAssembly?.Name?.String;
         if (string.IsNullOrEmpty(name))
             return false;
 
@@ -605,23 +649,26 @@ public class SymbolRenamingObfuscator : IObfuscator
         return false;
     }
 
-    private static IMemberDef? FindMemberDefInSet(MemberRef memberRef, ModuleDef referring, IReadOnlyList<ModuleDef> set)
+    private static IMemberDef? FindMemberDefInSet(
+        MemberRef memberRef, ModuleDef referring, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet)
     {
-        TypeDef? typeDef = memberRef.Class switch
+        // A vararg call site names its target through a MemberRef whose parent is the MethodDef itself.
+        if (memberRef.Class is MethodDef vararg)
+            return vararg;
+
+        var declaring = DeclaringTypeOf(memberRef);
+        if (declaring is null)
+            return null;
+
+        var typeDef = declaring switch
         {
-            TypeRef typeRef => FindTypeDefInSet(typeRef, referring, set),
+            TypeRef typeRef => FindTypeDefInSet(typeRef, referring, set, resolveOutsideSet),
             TypeDef declared => declared,
-            TypeSpec spec => spec.ScopeType switch
-            {
-                TypeRef typeRef => FindTypeDefInSet(typeRef, referring, set),
-                TypeDef declared => declared,
-                _ => spec.ResolveTypeDef()
-            },
             _ => null
         };
 
         if (typeDef is null)
-            return memberRef.Resolve() as IMemberDef;
+            return resolveOutsideSet ? memberRef.Resolve() as IMemberDef : null;
 
         if (memberRef.IsFieldRef)
             return typeDef.FindField(memberRef.Name, memberRef.FieldSig);
@@ -629,11 +676,12 @@ public class SymbolRenamingObfuscator : IObfuscator
         return typeDef.FindMethod(memberRef.Name, memberRef.MethodSig);
     }
 
-    private static TypeDef? FindExportedTypeInSet(ExportedType exported, ModuleDef referring, IReadOnlyList<ModuleDef> set)
+    private static TypeDef? FindExportedTypeInSet(
+        ExportedType exported, ModuleDef referring, IReadOnlyList<ModuleDef> set, bool resolveOutsideSet)
     {
         var chosen = ChooseInSetModule(exported.DefinitionAssembly, referring, set);
         if (chosen is null)
-            return exported.Resolve();
+            return resolveOutsideSet ? exported.Resolve() : null;
 
         return FindType(chosen, exported.TypeNamespace, exported.TypeName);
     }
@@ -790,9 +838,10 @@ public class SymbolRenamingObfuscator : IObfuscator
     /// dnlib does not cache MemberRefs whose signatures contain generic parameters
     /// (<see cref="ModuleDef.GetMemberRefs"/> and <see cref="ModuleDefMD.ResolveMemberRef(uint)"/>
     /// both return a new copy). Mutating that copy leaves CIL / MethodSpec operands unchanged.
-    /// Walk table RIDs for cached non-generic rows, then CIL operands and MethodSpec.Method
-    /// for the live generic instances. Non-<see cref="ModuleDefMD"/> modules fall back to
-    /// <see cref="ModuleDef.GetMemberRefs"/> plus the same CIL walk.
+    /// Walk table RIDs for cached non-generic rows, then every place a MemberRef is held by an object
+    /// the writer reaches: CIL operands, <see cref="MethodSpec.Method"/>, custom attribute constructors
+    /// and method overrides. Non-<see cref="ModuleDefMD"/> modules fall back to
+    /// <see cref="ModuleDef.GetMemberRefs"/> plus the same walk.
     /// </summary>
     private static IEnumerable<MemberRef> EnumerateMemberRefs(ModuleDef module)
     {
@@ -820,10 +869,27 @@ public class SymbolRenamingObfuscator : IObfuscator
                 yield return memberRef;
         }
 
+        foreach (var owner in CustomAttributeOwners(module))
+        {
+            foreach (var attribute in owner.CustomAttributes)
+            {
+                if (attribute.Constructor is MemberRef constructor)
+                    yield return constructor;
+            }
+        }
+
         foreach (var type in module.GetTypes())
         {
             foreach (var method in type.Methods)
             {
+                foreach (var methodOverride in method.Overrides)
+                {
+                    if (methodOverride.MethodDeclaration is MemberRef declaration)
+                        yield return declaration;
+                    if (methodOverride.MethodBody is MemberRef body)
+                        yield return body;
+                }
+
                 if (method.Body is null)
                     continue;
 
@@ -843,6 +909,35 @@ public class SymbolRenamingObfuscator : IObfuscator
         }
     }
 
+    private static IEnumerable<IHasCustomAttribute> CustomAttributeOwners(ModuleDef module)
+    {
+        yield return module;
+        if (module.Assembly is { } assembly)
+            yield return assembly;
+
+        foreach (var type in module.GetTypes())
+        {
+            yield return type;
+            foreach (var genericParameter in type.GenericParameters)
+                yield return genericParameter;
+            foreach (var field in type.Fields)
+                yield return field;
+            foreach (var property in type.Properties)
+                yield return property;
+            foreach (var evt in type.Events)
+                yield return evt;
+
+            foreach (var method in type.Methods)
+            {
+                yield return method;
+                foreach (var genericParameter in method.GenericParameters)
+                    yield return genericParameter;
+                foreach (var parameter in method.ParamDefs)
+                    yield return parameter;
+            }
+        }
+    }
+
     /// <summary>
     /// Identity comparer: dnlib copies of generic MemberRefs are different objects;
     /// value equality would drop the instance the writer emits.
@@ -856,7 +951,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         public int GetHashCode(MemberRef? obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
 
-    private static void ApplyClosedSetReferenceUpdates(
+    private static void ApplyReferenceUpdates(
         List<(TypeRef Ref, TypeDef Def)> typeRefUpdates,
         List<(MemberRef Ref, IMemberDef Def)> memberRefUpdates,
         List<(ExportedType Ref, TypeDef Def)> exportedUpdates)

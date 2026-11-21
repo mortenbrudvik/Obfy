@@ -1,6 +1,8 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- A PackageVersion also overrides the version of a package that only arrives transitively. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Autofac" Version="9.3.2" />
@@ -15,6 +17,13 @@
     <PackageVersion Include="ILRepack.Lib" Version="2.0.48" />
     <PackageVersion Include="Mediator.Abstractions" Version="3.0.2" />
     <PackageVersion Include="Mediator.SourceGenerator" Version="3.0.2" />
+    <!--
+      Transitive: Microsoft.VisualStudio.SDK 17.14 (Obfy.VisualStudio) asks for MessagePack 2.5.192, which has twelve
+      advisories (GHSA-hv8m-jj95-wg3x, GHSA-vh6j-jc39-fggf, ...). 2.5.303 is the first 2.5.x that fixes all of them.
+      The VSSDK packaging leaves MessagePack.dll out of the VSIX (Visual Studio provides it), so this only changes
+      what the extension compiles against and what lands in its bin folder. Drop it once the 17.x SDK asks for 2.5.303+.
+    -->
+    <PackageVersion Include="MessagePack" Version="2.5.303" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />

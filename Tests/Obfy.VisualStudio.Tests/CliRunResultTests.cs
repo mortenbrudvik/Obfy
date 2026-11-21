@@ -88,6 +88,7 @@ public class CliRunResultTests
         var result = run.ToObfuscationResult(Input, Limit);
 
         result.StopReason.ShouldBe(ObfuscationStopReason.Cancelled);
+        result.ErrorMessage.ShouldNotBeNull();
         result.ErrorMessage.ShouldBe(ObfuscationResult.CancelledButStillRunningMessage);
         result.ErrorMessage.ShouldContain("may still be running");
     }

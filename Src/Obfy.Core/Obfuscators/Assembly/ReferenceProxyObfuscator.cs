@@ -87,7 +87,7 @@ public class ReferenceProxyObfuscator : IObfuscator
                             continue;
 
                         var owner = home == ProxyHome.Nested
-                            ? GetNestedProxyType(called.ResolveMethodDef()!.DeclaringType, module, nestedProxies)
+                            ? GetNestedProxyType(called.ResolveMethodDef()!.DeclaringType, module, nestedProxies, context)
                             : ModuleProxy();
 
                         var key = ProxyKey(called, instr.OpCode.Code);
@@ -136,7 +136,7 @@ public class ReferenceProxyObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Reference proxy injection failed");
+            _logger.LogError("Reference proxy injection failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Reference proxy injection failed: {ex.Message}", ex));
         }
     }
@@ -205,7 +205,8 @@ public class ReferenceProxyObfuscator : IObfuscator
         return false;
     }
 
-    private static TypeDef GetNestedProxyType(TypeDef declaring, ModuleDef module, Dictionary<TypeDef, TypeDef> cache)
+    private static TypeDef GetNestedProxyType(
+        TypeDef declaring, ModuleDef module, Dictionary<TypeDef, TypeDef> cache, PipelineContext context)
     {
         if (cache.TryGetValue(declaring, out var existing))
             return existing;
@@ -227,6 +228,7 @@ public class ReferenceProxyObfuscator : IObfuscator
             Attributes = TypeAttributes.NestedAssembly | TypeAttributes.Sealed | TypeAttributes.Abstract | TypeAttributes.BeforeFieldInit
         };
         declaring.NestedTypes.Add(created);
+        RuntimeInjection.Register(context, created);
         cache[declaring] = created;
         return created;
     }
@@ -264,6 +266,10 @@ public class ReferenceProxyObfuscator : IObfuscator
         if (called.MethodSig == null)
             return false;
         if (called.MethodSig.Params.Count > 16)
+            return false;
+        // The trampoline and its calli use the default managed convention; a vararg call site
+        // (sentinel + trailing args) cannot be forwarded that way, in or out of this module.
+        if (IsVarArg(called.MethodSig))
             return false;
         if (HasOpenGeneric(called))
             return false;
@@ -306,7 +312,7 @@ public class ReferenceProxyObfuscator : IObfuscator
             return true;
 
         var sig = called.MethodSig!;
-        if (sig.CallingConvention == CallingConvention.VarArg)
+        if (IsVarArg(sig))
             return true;
         if (IsPointerLike(sig.RetType))
             return true;
@@ -318,6 +324,13 @@ public class ReferenceProxyObfuscator : IObfuscator
 
         return false;
     }
+
+    /// <summary>
+    /// The convention byte also carries HasThis/Generic flags (an instance vararg method is
+    /// <c>VarArg | HasThis</c>), so compare the masked convention.
+    /// </summary>
+    private static bool IsVarArg(MethodBaseSig sig) =>
+        (sig.CallingConvention & CallingConvention.Mask) == CallingConvention.VarArg;
 
     private static bool IsPointerLike(TypeSig? sig) =>
         sig?.ElementType is ElementType.Ptr or ElementType.FnPtr or ElementType.ByRef;

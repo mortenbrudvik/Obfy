@@ -232,11 +232,11 @@ interface TextOptionProps {
 
 /** A text box that follows the host's value and sends what was typed when it is left, or on Enter. */
 function TextOption({ option, value, error, onCommit, onBrowse }: TextOptionProps) {
-  const [text, setText] = useDraft(value);
+  const [text, setText, send] = useDraft(value);
   // Committed on leaving the box or on Enter. A shortcut that acts first (run, save) flushes it through here.
   const commit = async (): Promise<FlushResult> => {
     if (text === value) return "idle";
-    return (await onCommit(text)) === false ? "failed" : "sent";
+    return (await send(text, onCommit)) === false ? "failed" : "sent";
   };
   usePendingEdit(commit);
   return (
@@ -279,10 +279,10 @@ interface ListOptionProps {
 /** A box of patterns, one per line; the host trims, drops blanks and duplicates. Sent when the box is left. */
 export function ListOption({ option, value, error, onCommit }: ListOptionProps) {
   const joined = value.join("\n");
-  const [text, setText] = useDraft(joined);
+  const [text, setText, send] = useDraft(joined);
   const commit = async (): Promise<FlushResult> => {
     if (text === joined) return "idle";
-    return (await onCommit(text.split(/\r?\n/))) === false ? "failed" : "sent";
+    return (await send(text, (typed) => onCommit(typed.split(/\r?\n/)))) === false ? "failed" : "sent";
   };
   usePendingEdit(commit);
   return (

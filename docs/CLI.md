@@ -57,8 +57,8 @@ obfy <input>... [options]
 | `--preserve-public` | | Preserve public API names (also forces library-mode on a closed set) | Off |
 | `--merge` | | Merge all input assemblies into one before obfuscating. A config with `assemblyMerge.enabled: true` does the same without the flag (with a single loose input it is ignored with a warning; `--merge` with a single input is an error) | Off |
 | `--internalize` | | When merging: make merged types internal. `--internalize false` keeps them public. Only applied when typed: without it, `assemblyMerge.internalize` from the `-c` file is used, and `true` when there is no file | On (when merging) |
-| `--map <file>` | | Output symbol mapping to file | None |
-| `--report <file>` | | Generate an obfuscation report (HTML or JSON based on extension). A multi-file run includes every successful file | None |
+| `--map <file>` | | Output symbol mapping to file. The path must not be a file the run reads or writes (see [Map and report paths](#map-and-report-paths)) | None |
+| `--report <file>` | | Generate an obfuscation report (HTML or JSON based on extension). A multi-file run includes every successful file. The same rule as `--map` applies to the path | None |
 | `--dry-run` | | Analyze only, don't write output | Off |
 | `--verbose` | `-v` | Enable verbose output | Off |
 | `--no-logo` | | Suppress the banner | Off |
@@ -224,6 +224,17 @@ obfy MyApp.dll -o output/ --map symbols.json
 # The map file contains original -> obfuscated name mappings
 ```
 
+#### Map and report paths
+
+The map and the report are written after the run, so a path that names a file the run needs would replace it. The CLI refuses such a command line before it reads or writes anything: it prints which option and which file, adds one problem-matcher line (an error against that file), and exits with code 1. The `--map` or `--report` path may not be:
+
+- one of the inputs: every listed file (`.dll`, `.exe`, `.cs`, the solution or project file), and for a solution or project the project files and built outputs it lists, including the ones it skips;
+- a file the run writes: each output, with `-o` or without (`{name}.obfuscated{ext}`, `{name}.merged{ext}`, `obfy-out/`, `obfy-src/`), the files packing writes beside an output (`{name}.runtimeconfig.json`, or `{name}.launcher.exe` and `{name}.launcher.runtimeconfig.json` with `packing.rid: portable`), and, for a single assembly or a merge, the incremental cache file `{output}.obfycache`;
+- the file given with `-c`;
+- for `--report`, the same file as `--map`.
+
+Paths are compared as files: a different letter case on Windows, a `..` segment, and a symbolic link or junction in the file's name or in a folder above it do not hide a match. `--dry-run` refuses the same way. A `--map` or `--report` path inside the output folder under another name (`-o out --map out/map.json`) is fine. An output folder that is the input's folder (`obfy $(TargetPath) -o $(TargetDir)`) is a separate, documented in-place run and is not refused. Not covered: hard links, and a drive letter that aliases another path (`subst`, a mapped drive).
+
 ### Generate Reports
 
 ```bash
@@ -273,7 +284,7 @@ obfy MyApp.dll -v -o output/
 | Code | Description |
 |------|-------------|
 | 0 | Success (including dry-run when there is at least one included assembly and no missing extras) |
-| 1 | Error (file not found, obfuscation failed, two solution files, load failures, invalid XML, etc.) |
+| 1 | Error (file not found, obfuscation failed, two solution files, load failures, invalid XML, a `--map` or `--report` path that would replace an input or an output, etc.) |
 | 2 | Solution/project session had no included assemblies (all skipped) |
 
 ## Environment

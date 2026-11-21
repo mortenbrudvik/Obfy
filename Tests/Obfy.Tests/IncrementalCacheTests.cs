@@ -110,7 +110,8 @@ public class IncrementalCacheTests : IDisposable
     {
         var (input, output, settings) = Seed();
         IncrementalCache.Write(input, output, settings);
-        File.ReadAllText(IncrementalCache.CachePath(output)).Trim().Length.ShouldBe(64);
+        using (var entry = JsonDocument.Parse(File.ReadAllText(IncrementalCache.CachePath(output))))
+            entry.RootElement.GetProperty("key").GetString()!.Length.ShouldBe(64);
         File.WriteAllText(IncrementalCache.CachePath(output), "deadbeef");
         IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
     }
@@ -239,6 +240,51 @@ public class IncrementalCacheTests : IDisposable
         var (input, output, settings) = Seed();
         File.WriteAllText(IncrementalCache.CachePath(output), "");
         IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryReadHit_ReturnsTheRunRecordThatWasWritten()
+    {
+        var (input, output, settings) = Seed();
+        var key = IncrementalCache.ComputeKey(input, settings);
+        var run = new CachedRun(
+            new ObfuscationStatistics { StringsEncrypted = 7, TypesRenamed = 3, MethodsRenamed = 5, AssembliesEmbedded = 1 },
+            SymbolMapEntries: 11, SkippedItems: 2, Warnings: 4);
+
+        IncrementalCache.TryWrite(output, key, run).ShouldBeTrue();
+        var read = IncrementalCache.TryReadHit(output, settings, key);
+
+        read.ShouldNotBeNull();
+        read.SymbolMapEntries.ShouldBe(11);
+        read.SkippedItems.ShouldBe(2);
+        read.Warnings.ShouldBe(4);
+        read.Statistics.StringsEncrypted.ShouldBe(7);
+        read.Statistics.TypesRenamed.ShouldBe(3);
+        read.Statistics.MethodsRenamed.ShouldBe(5);
+        read.Statistics.AssembliesEmbedded.ShouldBe(1);
+        read.Statistics.TotalTransformations.ShouldBe(16);
+    }
+
+    [Fact]
+    public void TryHit_BareKeyFromTheOldFormat_IsAMiss()
+    {
+        // Earlier builds stored only the hex key. It would still match, but there are no numbers to give back, and
+        // a hit with zero statistics is the defect this format replaced.
+        var (input, output, settings) = Seed();
+        File.WriteAllText(IncrementalCache.CachePath(output), IncrementalCache.ComputeKey(input, settings));
+
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+        IncrementalCache.TryReadHit(output, settings, IncrementalCache.ComputeKey(input, settings)).ShouldBeNull();
+    }
+
+    [Fact]
+    public void TryReadHit_KeyDiffersInCase_StillMatches()
+    {
+        var (input, output, settings) = Seed();
+        var key = IncrementalCache.ComputeKey(input, settings);
+        IncrementalCache.TryWrite(output, key.ToLowerInvariant(), CachedRun.Empty).ShouldBeTrue();
+
+        IncrementalCache.TryReadHit(output, settings, key).ShouldNotBeNull();
     }
 
     public void Dispose()

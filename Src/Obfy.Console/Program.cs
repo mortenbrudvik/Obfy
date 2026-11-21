@@ -676,6 +676,7 @@ public class Program
         var allSymbols = new Dictionary<string, string>();
         var successfulResults = new List<(ObfuscationResult Result, ObfySettings Settings)>();
         var anyFailed = false;
+        var runOptions = RunOptionsFor(mapFile, reportFile);
 
         if (inputs.Any(static i => IsSolutionOrProject(i.FullName)))
         {
@@ -692,7 +693,7 @@ public class Program
 
         if (merge)
         {
-            anyFailed = await RunMergeObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun, cancellationToken).ConfigureAwait(false);
+            anyFailed = await RunMergeObfuscationAsync(inputs, output, settings, runOptions, allSymbols, successfulResults, service, dryRun, cancellationToken).ConfigureAwait(false);
         }
         else if (ShouldUseLooseClosedSet(inputs))
         {
@@ -702,7 +703,7 @@ public class Program
         }
         else
         {
-            anyFailed = await RunStandardObfuscationAsync(inputs, output, settings, allSymbols, successfulResults, service, dryRun, cancellationToken).ConfigureAwait(false);
+            anyFailed = await RunStandardObfuscationAsync(inputs, output, settings, runOptions, allSymbols, successfulResults, service, dryRun, cancellationToken).ConfigureAwait(false);
         }
 
         // Write symbol map if requested
@@ -863,6 +864,7 @@ public class Program
                 closedSetInputs.Select(static i => i.AssemblyPath).ToArray(),
                 outputPath,
                 settings,
+                RunOptionsFor(mapFile, reportFile),
                 cancellationToken).ConfigureAwait(false);
 
             if (!mergeResult.Success)
@@ -1019,6 +1021,14 @@ public class Program
         return 0;
     }
 
+    /// <summary>
+    /// What this invocation reads from a result that the incremental cache cannot supply. The symbol map holds the
+    /// original names, so the cache never stores it: <c>--map</c> needs it, and so does <c>--report</c>, whose
+    /// symbol summary is counted from it. With either, a run that could have been skipped is done again.
+    /// </summary>
+    private static ObfuscationRunOptions RunOptionsFor(FileInfo? mapFile, FileInfo? reportFile) =>
+        new() { NeedsSymbolMap = mapFile is not null || reportFile is not null };
+
     private static async Task WriteMapAndReportAsync(
         FileInfo? mapFile,
         FileInfo? reportFile,
@@ -1099,6 +1109,7 @@ public class Program
         FileInfo[] inputs,
         DirectoryInfo? output,
         ObfySettings settings,
+        ObfuscationRunOptions runOptions,
         Dictionary<string, string> allSymbols,
         List<(ObfuscationResult Result, ObfySettings Settings)> successfulResults,
         IObfuscationService service,
@@ -1132,6 +1143,7 @@ public class Program
                     inputPaths,
                     outputPath,
                     settings,
+                    runOptions,
                     cancellationToken).ConfigureAwait(false);
 
                 if (result.Success)
@@ -1157,6 +1169,7 @@ public class Program
         FileInfo[] inputs,
         DirectoryInfo? output,
         ObfySettings settings,
+        ObfuscationRunOptions runOptions,
         Dictionary<string, string> allSymbols,
         List<(ObfuscationResult Result, ObfySettings Settings)> successfulResults,
         IObfuscationService service,
@@ -1237,6 +1250,7 @@ public class Program
                         input.FullName,
                         outputPath,
                         settings,
+                        runOptions,
                         cancellationToken).ConfigureAwait(false);
 
                     task.Increment(100);

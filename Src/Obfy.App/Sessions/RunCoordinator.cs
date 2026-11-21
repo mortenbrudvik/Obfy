@@ -45,6 +45,12 @@ public sealed class RunCoordinator : IDisposable
     private const string SourceNotInClosedSet = "Source files are not part of a closed-set session";
     private const string NotProcessed = "The closed set returned no result for this assembly.";
 
+    /// <summary>
+    /// The Results screen lists the symbols of every run, so it reads the symbol map. The incremental cache never
+    /// stores the map (it lists the original names): a run whose cached output renamed something is done again.
+    /// </summary>
+    private static readonly ObfuscationRunOptions ResultsNeedTheSymbolMap = new() { NeedsSymbolMap = true };
+
     private readonly object _gate = new();
     private readonly object _publishGate = new();
     private readonly IObfuscationService _obfuscation;
@@ -624,7 +630,8 @@ public sealed class RunCoordinator : IDisposable
             _log.Add(LogLevel.Info, $"Processing {name}...");
 
             var outputPath = outputDir is not null ? run.Plan.Output.OutputPathFor(file.Path) : null;
-            var result = await _obfuscation.ObfuscateAsync(file.Path, outputPath, run.Settings, cancellationToken).ConfigureAwait(false);
+            var result = await _obfuscation.ObfuscateAsync(
+                file.Path, outputPath, run.Settings, ResultsNeedTheSymbolMap, cancellationToken).ConfigureAwait(false);
 
             ApplyResult(file, name, result, outcome);
             completed++;
@@ -696,7 +703,8 @@ public sealed class RunCoordinator : IDisposable
         var outputPath = run.Plan.Output.MergePath
             ?? throw new InvalidOperationException("A merge run has no merge output path.");
         var result = await _obfuscation.MergeAndObfuscateAsync(
-            files.Select(static f => f.Path).ToList(), outputPath, run.Settings, cancellationToken).ConfigureAwait(false);
+            files.Select(static f => f.Path).ToList(), outputPath, run.Settings, ResultsNeedTheSymbolMap, cancellationToken)
+            .ConfigureAwait(false);
 
         Report("Merged", currentFile: null, completed: files.Count);
 

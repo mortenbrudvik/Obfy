@@ -23,6 +23,25 @@ public interface IObfuscationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Obfuscates a file and says what the caller will read from the result, so an incremental cache hit is taken
+    /// only when it can supply that (see <see cref="ObfuscationRunOptions"/>). An implementation that has no
+    /// incremental cache ignores <paramref name="options"/>.
+    /// </summary>
+    /// <param name="inputPath">Path to the input file.</param>
+    /// <param name="outputPath">Path to write the obfuscated output. If null, a default is generated.</param>
+    /// <param name="settings">Obfuscation settings to apply.</param>
+    /// <param name="options">What the caller reads from the result.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The result of the obfuscation operation.</returns>
+    Task<ObfuscationResult> ObfuscateAsync(
+        string inputPath,
+        string? outputPath,
+        ObfySettings settings,
+        ObfuscationRunOptions options,
+        CancellationToken cancellationToken = default) =>
+        ObfuscateAsync(inputPath, outputPath, settings, cancellationToken);
+
+    /// <summary>
     /// Obfuscates multiple files. Two or more assemblies share one closed set so a
     /// name used across them stays consistent. Two or more C# files share one compilation.
     /// A single file uses the per-file path.
@@ -67,6 +86,19 @@ public interface IObfuscationService
         string outputPath,
         ObfySettings settings,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Merges multiple assemblies into one and obfuscates the result, saying what the caller will read from the
+    /// result (see <see cref="ObfuscationRunOptions"/>). An implementation that has no incremental cache ignores
+    /// <paramref name="options"/>.
+    /// </summary>
+    Task<ObfuscationResult> MergeAndObfuscateAsync(
+        IEnumerable<string> inputPaths,
+        string outputPath,
+        ObfySettings settings,
+        ObfuscationRunOptions options,
+        CancellationToken cancellationToken = default) =>
+        MergeAndObfuscateAsync(inputPaths, outputPath, settings, cancellationToken);
 
     /// <summary>
     /// Protects <paramref name="inputs"/> as one closed application.

@@ -14,6 +14,12 @@ namespace Obfy.Core.Utilities;
 /// The caller computes the key once, before the run, from the settings the pipeline will use, and
 /// removes the cache file before it overwrites the output (<see cref="Invalidate"/>).
 /// A locked or corrupt <c>{output}.obfycache</c> is a miss, not a failed run.
+/// The file is a small JSON document: the key and what a hit needs to say about the run that wrote the
+/// output (<see cref="CachedRun"/>): the statistics and three counts. It holds numbers only. The symbol map,
+/// the skipped items and the warnings name the original types, members, resources and paths, and people ship
+/// their output folder, so none of them is ever written here. A file in any other layout (including the bare
+/// hex key earlier builds wrote) is a miss: it has no numbers to return, and the key already contains the
+/// Obfy.Core build identity, so it could only have come from a build that no longer exists.
 /// A packing hit also requires the native sibling <c>{name}.runtimeconfig.json</c> (win-x64)
 /// or the portable launcher files. The hex stored here is only the cache identity. It is not
 /// the native overlay AES key.
@@ -24,6 +30,16 @@ public static class IncrementalCache
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
+    };
+
+    /// <summary>Version of the entry layout. Any other value is a miss.</summary>
+    private const int EntryFormat = 2;
+
+    private static readonly JsonSerializerOptions EntryJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true
     };
 
     public static string CachePath(string outputPath) => outputPath + ".obfycache";
@@ -178,39 +194,91 @@ public static class IncrementalCache
     /// <summary>
     /// Hit check against a key the caller already computed, so a run uses one key from start to finish.
     /// </summary>
-    internal static bool TryHit(string outputPath, ObfySettings settings, string expectedKey)
+    internal static bool TryHit(string outputPath, ObfySettings settings, string expectedKey) =>
+        TryReadHit(outputPath, settings, expectedKey) is not null;
+
+    /// <summary>
+    /// The record of the run that wrote <paramref name="outputPath"/> when the cache is a hit for
+    /// <paramref name="expectedKey"/>, otherwise null. Never throws: a missing, locked, corrupt or old-format file
+    /// is a miss.
+    /// </summary>
+    internal static CachedRun? TryReadHit(string outputPath, ObfySettings settings, string expectedKey)
     {
         try
         {
             if (!File.Exists(outputPath) || !File.Exists(CachePath(outputPath)))
-                return false;
+                return null;
             if (settings.Packing.Enabled)
             {
                 if (settings.Packing.IsPortable)
                 {
                     if (!File.Exists(ManagedLauncherPacker.LauncherPathFor(outputPath)) ||
                         !File.Exists(ManagedLauncherPacker.RuntimeConfigPathFor(outputPath)))
-                        return false;
+                        return null;
                 }
                 else if (!File.Exists(NativePacker.RuntimeConfigPathFor(outputPath)) ||
                          !NativePacker.LooksLikePackedHost(outputPath))
-                    return false;
+                    return null;
             }
 
-            var actual = File.ReadAllText(CachePath(outputPath)).Trim();
-            return string.Equals(expectedKey, actual, StringComparison.OrdinalIgnoreCase);
+            var entry = ParseEntry(File.ReadAllText(CachePath(outputPath)));
+            return entry is not null && string.Equals(expectedKey, entry.Key, StringComparison.OrdinalIgnoreCase)
+                ? entry.Run
+                : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return false;
+            return null;
         }
     }
 
+    private sealed record Entry(string Key, CachedRun Run);
+
+    /// <summary>The wire shape of the file. Numbers and the key, nothing else.</summary>
+    private sealed class EntryFile
+    {
+        public int Format { get; set; }
+        public string? Key { get; set; }
+        public ObfuscationStatistics? Statistics { get; set; }
+        public int SymbolMapEntries { get; set; }
+        public int SkippedItems { get; set; }
+        public int Warnings { get; set; }
+    }
+
+    private static Entry? ParseEntry(string text)
+    {
+        try
+        {
+            var file = JsonSerializer.Deserialize<EntryFile>(text, EntryJsonOptions);
+            if (file is null ||
+                file.Format != EntryFormat ||
+                string.IsNullOrWhiteSpace(file.Key) ||
+                file.Statistics is null ||
+                file.SymbolMapEntries < 0 ||
+                file.SkippedItems < 0 ||
+                file.Warnings < 0)
+            {
+                return null;
+            }
+
+            return new Entry(file.Key.Trim(), new CachedRun(file.Statistics, file.SymbolMapEntries, file.SkippedItems, file.Warnings));
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Writes an entry for an output the caller produced elsewhere. It carries no run record (zero statistics and
+    /// counts), so a hit on it says nothing about the run. The obfuscation service writes through
+    /// <see cref="TryWrite(string, string, CachedRun)"/> instead.
+    /// </summary>
     public static bool TryWrite(string inputPath, string outputPath, ObfySettings settings)
     {
         try
         {
-            return TryWrite(outputPath, ComputeKey(inputPath, settings));
+            return TryWrite(outputPath, ComputeKey(inputPath, settings), CachedRun.Empty);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -218,11 +286,20 @@ public static class IncrementalCache
         }
     }
 
-    internal static bool TryWrite(string outputPath, string key)
+    internal static bool TryWrite(string outputPath, string key, CachedRun run)
     {
         try
         {
-            File.WriteAllText(CachePath(outputPath), key);
+            var file = new EntryFile
+            {
+                Format = EntryFormat,
+                Key = key,
+                Statistics = run.Statistics,
+                SymbolMapEntries = run.SymbolMapEntries,
+                SkippedItems = run.SkippedItems,
+                Warnings = run.Warnings
+            };
+            File.WriteAllText(CachePath(outputPath), JsonSerializer.Serialize(file, EntryJsonOptions));
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -262,4 +339,19 @@ public static class IncrementalCache
 
     public static void Write(string inputPath, string outputPath, ObfySettings settings) =>
         TryWrite(inputPath, outputPath, settings);
+}
+
+/// <summary>
+/// What the incremental cache keeps of the run that wrote an output: numbers only. The symbol map, the skipped
+/// items and the warnings are never stored (they name original types, members, resources and paths), so the cache
+/// keeps how many there were and a hit says so instead of inventing them.
+/// </summary>
+/// <param name="Statistics">The statistics of that run.</param>
+/// <param name="SymbolMapEntries">How many entries its symbol map had. Zero means the map of a hit (empty) is exact.</param>
+/// <param name="SkippedItems">How many items it skipped and left unobfuscated.</param>
+/// <param name="Warnings">How many warnings it raised that a hit does not derive again (runtime-profile and packing lines are).</param>
+internal sealed record CachedRun(ObfuscationStatistics Statistics, int SymbolMapEntries, int SkippedItems, int Warnings)
+{
+    /// <summary>A record with no information: zero statistics and counts.</summary>
+    public static CachedRun Empty => new(new ObfuscationStatistics(), 0, 0, 0);
 }

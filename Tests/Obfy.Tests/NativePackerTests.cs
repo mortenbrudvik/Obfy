@@ -213,7 +213,8 @@ public class NativePackerTests
             var cacheHex = IncrementalCache.ComputeKey(input, settings);
             Convert.ToHexString(key).ShouldNotBe(cacheHex);
             IncrementalCache.Write(input, output, settings);
-            File.ReadAllText(IncrementalCache.CachePath(output)).Trim().ShouldBe(cacheHex);
+            using (var entry = System.Text.Json.JsonDocument.Parse(File.ReadAllText(IncrementalCache.CachePath(output))))
+                entry.RootElement.GetProperty("key").GetString().ShouldBe(cacheHex);
 
             var iv = HMACSHA256.HashData(key, "obfy-pack-iv"u8)[..16];
             header.Slice(NativePacker.OverlayHeader.IvOffset, 16).SequenceEqual(iv).ShouldBeTrue();

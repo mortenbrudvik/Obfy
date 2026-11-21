@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Autofac;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
@@ -323,6 +325,264 @@ public class CoreServicesIncrementalCacheTests : IDisposable
         result.Warnings.ShouldNotContain(w => w.StartsWith(ReusedWarning, StringComparison.Ordinal));
         (await File.ReadAllBytesAsync(target)).ShouldNotBe(original, "the in-place run protected the file instead of reusing it");
     }
+
+    // ---- What a cache hit returns (B-49) ----------------------------------------------------------------------
+
+    // Names nobody would pick by accident, so a byte search of the cache file proves they are not in it.
+    private static readonly string[] OriginalNames =
+    [
+        "Zephyr", "Quill", "LedgerKeeper", "_quokkaBalance", "WombatGreeting", "FerretTotal",
+        "hello wombat greeting literal"
+    ];
+
+    private const string DistinctiveSource =
+        "namespace Zephyr.Quill { public class LedgerKeeper { private int _quokkaBalance; " +
+        "public string WombatGreeting() => \"hello wombat greeting literal\"; " +
+        "public int FerretTotal(int amount) { _quokkaBalance += amount; return _quokkaBalance + 1234567; } } }";
+
+    /// <summary>Strings and renaming on, with deterministic names so two runs can be compared.</summary>
+    private static ObfySettings RenamingIncremental()
+    {
+        var settings = Incremental();
+        settings.SymbolRenaming.Enabled = true;
+        settings.SymbolRenaming.Mode = NamingMode.Sequential;
+        return settings;
+    }
+
+    private string CompileDistinctive() =>
+        CoreServicesTestSupport.CompileLibrary(_dir, "Lib", DistinctiveSource);
+
+    private static ObfuscationRunOptions NeedsMap { get; } = new() { NeedsSymbolMap = true };
+
+    [Fact]
+    public async Task SecondRun_ReturnsTheStatisticsOfTheRunThatWroteTheOutput_AndIsMarkedAsCached()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileDistinctive();
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+        var settings = RenamingIncremental();
+
+        var first = await service.ObfuscateAsync(input, output, settings);
+        var second = await service.ObfuscateAsync(input, output, settings);
+
+        first.Success.ShouldBeTrue(first.ErrorMessage);
+        first.FromCache.ShouldBeFalse();
+        first.Statistics.TotalTransformations.ShouldBeGreaterThan(0, "the sample must give the run something to count");
+        second.Success.ShouldBeTrue(second.ErrorMessage);
+        second.Warnings.ShouldContain(w => w.StartsWith(ReusedWarning, StringComparison.Ordinal));
+        JsonSerializer.Serialize(second.Statistics).ShouldBe(JsonSerializer.Serialize(first.Statistics));
+        second.Statistics.TotalTransformations.ShouldBe(first.Statistics.TotalTransformations);
+        second.FromCache.ShouldBeTrue();
+        second.OutputPath.ShouldBe(output);
+    }
+
+    [Fact]
+    public async Task SecondRun_ThatNeedsTheSymbolMap_DoesTheWorkAgain_AndReturnsTheFirstRunsMap()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileDistinctive();
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+        var settings = RenamingIncremental();
+
+        var first = await service.ObfuscateAsync(input, output, settings, NeedsMap);
+        var second = await service.ObfuscateAsync(input, output, settings, NeedsMap);
+
+        first.SymbolMap.ShouldNotBeEmpty();
+        second.Success.ShouldBeTrue(second.ErrorMessage);
+        second.FromCache.ShouldBeFalse("a hit cannot supply the map, so the run is done again");
+        second.SymbolMap.ShouldBe(first.SymbolMap);
+        second.Warnings.ShouldNotContain(w => w.StartsWith(ReusedWarning, StringComparison.Ordinal));
+        second.Warnings.ShouldContain(w => w.StartsWith("Incremental cache not used for this run: the symbol map", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RunThatDoesNotNeedTheMap_StillHits_AfterARunThatDid()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileDistinctive();
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+        var settings = RenamingIncremental();
+
+        await service.ObfuscateAsync(input, output, settings, NeedsMap);
+        await service.ObfuscateAsync(input, output, settings, NeedsMap);
+        var plain = await service.ObfuscateAsync(input, output, settings);
+
+        plain.FromCache.ShouldBeTrue("the run that redid the work rewrote the cache for the next caller");
+        plain.Statistics.TotalTransformations.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task SecondRun_ThatNeedsTheSymbolMap_StillHits_WhenTheCachedRunRenamedNothing()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileDistinctive();
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+        var settings = Incremental(); // renaming is off: the map of this run is empty, and so is the map of a hit
+
+        var first = await service.ObfuscateAsync(input, output, settings, NeedsMap);
+        var second = await service.ObfuscateAsync(input, output, settings, NeedsMap);
+
+        first.SymbolMap.ShouldBeEmpty();
+        second.FromCache.ShouldBeTrue();
+        second.SymbolMap.ShouldBeEmpty();
+        second.Statistics.StringsEncrypted.ShouldBe(first.Statistics.StringsEncrypted);
+        second.Warnings.ShouldNotContain(w => w.Contains("not used", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task CacheFile_HoldsCountsOnly_AndNoneOfTheOriginalNames()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileDistinctive();
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+
+        var first = await service.ObfuscateAsync(input, output, RenamingIncremental(), NeedsMap);
+
+        first.SymbolMap.Keys.ShouldContain(k => k.Contains("LedgerKeeper", StringComparison.Ordinal),
+            "the run knows the original names; the point is that the cache must not");
+        var bytes = await File.ReadAllBytesAsync(IncrementalCache.CachePath(output));
+        bytes.Length.ShouldBeGreaterThan(0);
+        foreach (var name in OriginalNames)
+        {
+            ContainsBytes(bytes, Encoding.UTF8.GetBytes(name)).ShouldBeFalse($"'{name}' (UTF-8) is in the cache file");
+            ContainsBytes(bytes, Encoding.Unicode.GetBytes(name)).ShouldBeFalse($"'{name}' (UTF-16) is in the cache file");
+        }
+
+        // And the shape itself: the key, the statistics (numbers) and three counts, nothing else.
+        using var document = JsonDocument.Parse(bytes);
+        document.RootElement.EnumerateObject().Select(p => p.Name).ShouldBe(
+            ["format", "key", "statistics", "symbolMapEntries", "skippedItems", "warnings"]);
+        document.RootElement.GetProperty("key").GetString()!.Length.ShouldBe(64);
+        document.RootElement.GetProperty("statistics").EnumerateObject()
+            .ShouldAllBe(p => p.Value.ValueKind == JsonValueKind.Number);
+        document.RootElement.GetProperty("symbolMapEntries").GetInt32().ShouldBe(first.SymbolMap.Count);
+    }
+
+    [Fact]
+    public async Task CacheFileInTheOldFormat_IsAMiss_AndTheRerunWritesTheNewFormat()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileDistinctive();
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+        var settings = RenamingIncremental();
+        await service.ObfuscateAsync(input, output, settings);
+
+        // Exactly what earlier builds wrote: the bare hex key, valid for this input and these settings.
+        var key = IncrementalCache.ComputeKey(input, settings);
+        await File.WriteAllTextAsync(IncrementalCache.CachePath(output), key);
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse("a bare key has no numbers to return");
+        var rerun = await service.ObfuscateAsync(input, output, settings);
+
+        rerun.Success.ShouldBeTrue(rerun.ErrorMessage);
+        rerun.FromCache.ShouldBeFalse();
+        rerun.Statistics.TotalTransformations.ShouldBeGreaterThan(0);
+        (await service.ObfuscateAsync(input, output, settings)).FromCache.ShouldBeTrue("the rerun rewrote the cache");
+        using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(IncrementalCache.CachePath(output)));
+        document.RootElement.GetProperty("format").GetInt32().ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("{ this is not json")]
+    [InlineData("{\"format\":2,\"key\":\"ABC")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("42")]
+    [InlineData("{\"format\":2}")]
+    [InlineData("{\"format\":1,\"key\":\"KEY\",\"statistics\":{}}")]
+    [InlineData("{\"format\":2,\"key\":\"KEY\",\"statistics\":null,\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0}")]
+    [InlineData("{\"format\":2,\"key\":\"KEY\",\"statistics\":{},\"symbolMapEntries\":-1,\"skippedItems\":0,\"warnings\":0}")]
+    [InlineData("{\"format\":2,\"key\":\"KEY\",\"statistics\":{\"stringsEncrypted\":\"many\"},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0}")]
+    [InlineData("{\"format\":2,\"key\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"statistics\":{},\"symbolMapEntries\":0,\"skippedItems\":0,\"warnings\":0}")]
+    public async Task CorruptOrForeignCacheFile_IsAMiss_NeverAnException(string content)
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var input = CompileDistinctive();
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+        var settings = RenamingIncremental();
+        await service.ObfuscateAsync(input, output, settings);
+        var key = IncrementalCache.ComputeKey(input, settings);
+        await File.WriteAllTextAsync(IncrementalCache.CachePath(output), content.Replace("KEY", key));
+
+        IncrementalCache.TryHit(input, output, settings).ShouldBeFalse();
+        var rerun = await service.ObfuscateAsync(input, output, settings);
+
+        rerun.Success.ShouldBeTrue(rerun.ErrorMessage);
+        rerun.FromCache.ShouldBeFalse();
+        rerun.Statistics.TotalTransformations.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task Hit_SaysHowManyItemsWereSkippedAndWarningsRaised_WithoutNamingThem()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        // Virtualization skips a method that has an exception handler and names it in a skipped item and in the
+        // maxMethods warning. Those are exactly the texts that must not reach the cache file.
+        var input = CoreServicesTestSupport.CompileLibrary(_dir, "Lib",
+            "public class Gizmo { " +
+            "public int UnicornTryMethod(int x) { try { return x / (x - 1); } catch (System.DivideByZeroException) { return -1; } } " +
+            "public int PlainOne(int x) => x * 3 + 1; " +
+            "public int PlainTwo(int x) => x * 5 + 2; }");
+        var output = Path.Combine(_dir, "Lib.obfuscated.dll");
+        var settings = Incremental();
+        settings.Virtualization.Enabled = true;
+        settings.Virtualization.MaxMethods = 1;
+
+        var first = await service.ObfuscateAsync(input, output, settings);
+        var second = await service.ObfuscateAsync(input, output, settings);
+
+        first.Success.ShouldBeTrue(first.ErrorMessage);
+        first.SkippedItems.ShouldContain(i => i.ItemName.Contains("UnicornTryMethod", StringComparison.Ordinal),
+            "the sample must produce a skipped item that carries an original name");
+        first.Warnings.ShouldContain(w => w.StartsWith("Virtualization: maxMethods=", StringComparison.Ordinal));
+        second.FromCache.ShouldBeTrue();
+        second.SkippedItems.ShouldBeEmpty();
+        second.Warnings.ShouldContain(w =>
+            w.StartsWith($"The run that produced this output skipped {first.SkippedItems.Count} item(s)", StringComparison.Ordinal));
+        second.Warnings.ShouldContain(w =>
+            w.StartsWith("The run that produced this output raised 1 warning(s)", StringComparison.Ordinal));
+        second.Warnings.ShouldNotContain(w => w.Contains("UnicornTryMethod", StringComparison.Ordinal));
+        var bytes = await File.ReadAllBytesAsync(IncrementalCache.CachePath(output));
+        ContainsBytes(bytes, Encoding.UTF8.GetBytes("UnicornTryMethod")).ShouldBeFalse();
+        ContainsBytes(bytes, Encoding.UTF8.GetBytes("Gizmo")).ShouldBeFalse();
+        ContainsBytes(bytes, Encoding.UTF8.GetBytes("PlainOne")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task MergeRun_UsesTheSameRules_WhetherOrNotTheCallerNeedsTheSymbolMap()
+    {
+        using var container = CoreServicesTestSupport.BuildContainer();
+        var service = container.Resolve<IObfuscationService>();
+        var libA = CoreServicesTestSupport.CompileLibrary(_dir, "LibA", "public class AlphaWidget { public static int N() => 1; }");
+        var libB = CoreServicesTestSupport.CompileLibrary(_dir, "LibB", "public class BetaWidget { public static int N() => 2; }");
+        var output = Path.Combine(_dir, "Merged.dll");
+        var settings = RenamingIncremental();
+
+        var first = await service.MergeAndObfuscateAsync([libA, libB], output, settings);
+        var second = await service.MergeAndObfuscateAsync([libA, libB], output, settings, NeedsMap);
+        var third = await service.MergeAndObfuscateAsync([libA, libB], output, settings);
+
+        first.Success.ShouldBeTrue(first.ErrorMessage);
+        first.SymbolMap.ShouldNotBeEmpty();
+        second.Success.ShouldBeTrue(second.ErrorMessage);
+        second.FromCache.ShouldBeFalse("the caller needs the map and a hit has none");
+        second.SymbolMap.ShouldNotBeEmpty();
+        third.Success.ShouldBeTrue(third.ErrorMessage);
+        third.FromCache.ShouldBeTrue("the merge is deterministic, so the run that rewrote the cache can be reused");
+        third.Statistics.TotalTransformations.ShouldBe(second.Statistics.TotalTransformations);
+    }
+
+    private static bool ContainsBytes(byte[] haystack, byte[] needle) =>
+        haystack.AsSpan().IndexOf(needle) >= 0;
 
     [Theory]
     [InlineData("..\\outside\\Lib")]

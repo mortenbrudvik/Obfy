@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The overall progress bar is indeterminate for one included file, a merge, and a closed set
 
 ### Fixed
+- Control flow obfuscation with opaque predicates could intermittently produce a method the runtime refuses to load (`InvalidProgramException`). A predicate needs up to three evaluation-stack slots above the depth where it is inserted, but the method's declared maximum was only floored at 8, so one random predicate form at a six-deep site overflowed it. The declared maximum now covers the original depth plus the predicate headroom. This also removes the intermittent failure of the Virtualization full-pipeline tests, because the injected interpreter has such a site
 - The Results tree nests members under their type. Method keys include the signature, for example `Method:Ns.MyType.Foo(System.Void ())`. Zero counters are hidden. Copy copies the selected mapping, and search waits briefly before filtering
 - Files can be dropped on the window. A dropped `.json` file loads that configuration
 - A saved output folder that no longer exists is cleared, and the window says it was not found. A desktop `-o` path is used for that session and is not saved as the default. Editing the box saves the new path, including a folder that does not exist yet

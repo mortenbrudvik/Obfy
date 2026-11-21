@@ -12,6 +12,13 @@ namespace Obfy.Core.Obfuscators.Assembly;
 /// </summary>
 public class ControlFlowObfuscator : IObfuscator
 {
+    /// <summary>
+    /// How many values an opaque predicate holds on the evaluation stack above the depth where it is
+    /// inserted. The deepest form (<c>call; dup; ldc.i4.1; add; mul</c>) peaks at three. Raise this if a
+    /// deeper form is ever added.
+    /// </summary>
+    private const int OpaquePredicateStackHeadroom = 3;
+
     private readonly ILogger<ControlFlowObfuscator> _logger;
     private readonly Random _random = new();
 
@@ -310,8 +317,13 @@ public class ControlFlowObfuscator : IObfuscator
             insertCount++;
         }
 
+        // A predicate can be inserted where the stack is already as deep as the body's declared
+        // maximum, so the rewritten body needs that maximum plus the predicate's own headroom. A
+        // fixed floor of 8 is not enough: a site six deep plus the three-deep form needs nine, and
+        // the JIT rejects the method (InvalidProgramException).
+        var headroom = insertCount > 0 ? OpaquePredicateStackHeadroom : 0;
         body.KeepOldMaxStack = true;
-        body.MaxStack = (ushort)Math.Max(body.MaxStack, (ushort)8);
+        body.MaxStack = (ushort)Math.Max(body.MaxStack + headroom, 8);
         body.UpdateInstructionOffsets();
 
         return insertCount > 0;

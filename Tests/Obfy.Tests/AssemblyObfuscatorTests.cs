@@ -781,6 +781,40 @@ public class AssemblyObfuscatorTests
         type.Methods.Add(method);
     }
 
+    private static void AddDeepStackSumMethod(TypeDef type, string name, int blocks)
+    {
+        // public static int M() { int total = 0; <blocks> times: total += 1+2+3+4+5+6; return total; }
+        // Each block pushes six operands before its first add, so the evaluation stack is exactly six
+        // deep at one insertion point per block. maxstack is declared the way a C# compiler would:
+        // the real maximum, six.
+        var method = new MethodDefUser(
+            name,
+            MethodSig.CreateStatic(type.Module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static);
+
+        var body = new CilBody { InitLocals = true, MaxStack = 6 };
+        var total = new Local(type.Module.CorLibTypes.Int32);
+        body.Variables.Add(total);
+
+        for (var b = 0; b < blocks; b++)
+        {
+            for (var v = 1; v <= 6; v++)
+                body.Instructions.Add(Instruction.CreateLdcI4(v));
+            for (var a = 0; a < 5; a++)
+                body.Instructions.Add(Instruction.Create(OpCodes.Add));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, total));
+            body.Instructions.Add(Instruction.Create(OpCodes.Add));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stloc, total));
+        }
+
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, total));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        method.Body = body;
+        type.Methods.Add(method);
+    }
+
     [Fact]
     public async Task ControlFlow_SwitchMode_ProducesRunnableAssembly()
     {
@@ -1102,6 +1136,57 @@ public class AssemblyObfuscatorTests
             .ToList();
         names.ShouldNotContain("get_TickCount64");
         names.ShouldContain("get_TickCount");
+    }
+
+    [Fact]
+    public async Task ControlFlow_OpaquePredicate_AtDeepStackSites_StillLoadsAndRuns()
+    {
+        // Regression: a predicate pushes up to three values above the stack depth where it is
+        // inserted, but maxstack was only floored at 8. A random predicate form landing on a site
+        // already six deep needed nine, and the JIT rejected the whole method with
+        // InvalidProgramException - intermittently, because the form is rolled per site. This is
+        // what made the Virtualization full-pipeline tests flaky (the injected interpreter has one
+        // six-deep site). 100 six-deep sites make rolling the three-deep form somewhere a near
+        // certainty ((6/7)^100 chance of missing it), so the unfixed code fails reliably.
+        const int blocks = 100;
+        var module = CreateTestModule();
+        var type = CreateTestType(module, "Machine", isPublic: true);
+        AddDeepStackSumMethod(type, "Sum", blocks);
+
+        var obfuscator = new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            Level = ObfuscationLevel.Custom,
+            ControlFlow = { Enabled = true, Mode = ControlFlowMode.OpaquePredicate, Intensity = 100 }
+        });
+
+        var result = await obfuscator.ObfuscateAsync(context);
+        result.Success.ShouldBeTrue();
+        result.Statistics.MethodsControlFlowObfuscated.ShouldBe(1);
+
+        var dir = Path.Combine(Path.GetTempPath(), $"obfy-cf-deep-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "TestAssembly.dll");
+        try
+        {
+            module.Write(path);
+            var alc = new AssemblyLoadContext($"rt-{Guid.NewGuid():N}", isCollectible: true);
+            try
+            {
+                var machine = alc.LoadFromAssemblyPath(path).GetType("TestNamespace.Machine");
+                machine.ShouldNotBeNull();
+                // 1+2+3+4+5+6 = 21 per block, 100 blocks.
+                ((int)machine!.GetMethod("Sum")!.Invoke(null, null)!).ShouldBe(2100);
+            }
+            finally
+            {
+                alc.Unload();
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
     }
 
     [Fact]

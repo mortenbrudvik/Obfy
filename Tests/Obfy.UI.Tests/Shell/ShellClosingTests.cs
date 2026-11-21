@@ -93,6 +93,45 @@ public class ShellClosingTests
     }
 
     [Fact]
+    public void ClosingTheWindow_WithNoRun_RefusesNewRunsAtOnce()
+    {
+        ShellHarness.OnSta(() =>
+        {
+            ShellHarness.UseShellResources();
+            var fixture = new Fixture();
+            using var container = Build(fixture);
+            var window = container.Resolve<ShellWindow>();
+
+            window.Close();
+
+            // A run whose files are still being checked would otherwise start while the process exits.
+            fixture.DoorClosed.ShouldBeTrue();
+            return true;
+        });
+    }
+
+    [Fact]
+    public void ClosingTheWindow_DuringARun_Declined_LeavesRunsPossible()
+    {
+        ShellHarness.OnSta(() =>
+        {
+            ShellHarness.UseShellResources();
+            var fixture = new Fixture { Running = true, UserSaysYes = false };
+            using var container = Build(fixture);
+            var window = container.Resolve<ShellWindow>();
+            var closed = false;
+            window.Closed += (_, _) => closed = true;
+
+            window.Close();
+            ShellHarness.PumpUntil(() => fixture.Asked > 0 || closed, 300);
+
+            closed.ShouldBeFalse();
+            fixture.DoorClosed.ShouldBeFalse();
+            return true;
+        });
+    }
+
+    [Fact]
     public void QuitOnTheFailurePanel_DuringARun_AsksFirst_AndDoesNothingWhenDeclined()
     {
         ShellHarness.OnSta(() =>

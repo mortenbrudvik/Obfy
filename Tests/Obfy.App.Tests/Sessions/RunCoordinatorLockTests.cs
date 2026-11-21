@@ -1,4 +1,5 @@
 using Obfy.App;
+using Obfy.App.Models;
 using Obfy.App.Services;
 using Obfy.App.Tests.Common;
 using Obfy.Core.Models;
@@ -34,6 +35,18 @@ public sealed class RunCoordinatorLockTests
             return null;
         }
     }
+
+    /// <summary>
+    /// Runs on a thread of its own, not a pool thread: xUnit runs classes in parallel and some tests block pool threads on
+    /// purpose, so a probe that needs a free pool thread inside a short time limit could fail on a busy machine for a
+    /// reason that has nothing to do with the lock.
+    /// </summary>
+    private static Task<T> OnItsOwnThread<T>(Func<T> work) =>
+        Task.Factory.StartNew(work, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+    /// <summary><c>Start</c> on a thread of its own. The task it gives completes when the run ends, or faults with what <c>Start</c> threw.</summary>
+    private static Task StartOnItsOwnThread(ReviewHarness h) =>
+        Task.Factory.StartNew(() => h.Run.Start(), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
 
     /// <summary>Makes a file under the harness folder (and its subfolders) and returns its path, without listing it.</summary>
     private static string Make(ReviewHarness h, string relative)
@@ -283,5 +296,90 @@ public sealed class RunCoordinatorLockTests
         afterRevision.ShouldBe(h.Protection.Revision);
         after.Level.ShouldBe(ObfuscationLevel.Aggressive);
         settings.Level.ShouldBe(ObfuscationLevel.Standard); // a copy
+    }
+
+    // ---- A close that is approved while Start is still checking ----
+
+    [Fact]
+    public async Task Start_WhoseCheckIsStillPendingWhenTheCloseIsApproved_DoesNotBecomeARun()
+    {
+        var probe = new LinkProbe();
+        using var h = new ReviewHarness(pathProbe: probe);
+        h.AddFile("a.dll");
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        probe.OnLinkQuestion = Once(() =>
+        {
+            entered.Set();
+            release.Wait(Guard);
+        });
+
+        var start = StartOnItsOwnThread(h);
+        entered.Wait(Guard).ShouldBeTrue();
+        try
+        {
+            // While Start checks, IsRunning is false, so the shell approves the close without asking the user. From the
+            // moment it does, no run may start: the process is on its way out.
+            (await OnItsOwnThread(() => h.Run.IsRunning).WaitAsync(Prompt)).ShouldBeFalse();
+            (await OnItsOwnThread(h.Run.TryRefuseNewRuns).WaitAsync(Prompt)).ShouldBeTrue();
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        var error = await Should.ThrowAsync<ObfyApiException>(() => start.WaitAsync(Guard));
+
+        error.Code.ShouldBe("run.blocked");
+        error.Message.ShouldBe("Obfy is closing.");
+        h.Run.IsRunning.ShouldBeFalse();
+        h.Engine.ObfuscatedInputs.ShouldBeEmpty();
+        h.Input.GetSnapshot().Files.ShouldAllBe(f => f.Status == FileStatus.Pending);
+    }
+
+    [Fact]
+    public async Task TryRefuseNewRuns_WhileARunGoes_ChangesNothing_SoACloseTheUserDeclinesLeavesRunsPossible()
+    {
+        using var h = new ReviewHarness();
+        h.AddFile("a.dll");
+        var finish = new TaskCompletionSource<ObfuscationResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Engine.Obfuscate = (_, _, _, _) =>
+        {
+            started.TrySetResult();
+            return finish.Task;
+        };
+        var first = h.Run.Start();
+        await started.Task.WaitAsync(Guard);
+
+        // The shell asks the user instead; the user says no.
+        h.Run.TryRefuseNewRuns().ShouldBeFalse();
+
+        finish.SetResult(ObfuscationResult.Successful(new ObfuscationStatistics()));
+        await first.WaitAsync(Guard);
+        await h.Run.Start().WaitAsync(Guard);
+        h.Engine.ObfuscatedInputs.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task AfterRefusingNewRuns_StartIsRefusedAtOnce_AndAllowingThemAgainLetsTheNextStartRun()
+    {
+        var probe = new LinkProbe();
+        using var h = new ReviewHarness(pathProbe: probe);
+        h.AddFile("a.dll");
+        var questions = 0;
+        probe.OnLinkQuestion = () => Interlocked.Increment(ref questions);
+
+        h.Run.RefuseNewRuns();
+        var error = Should.Throw<ObfyApiException>(() => h.Run.Start());
+
+        error.Code.ShouldBe("run.blocked");
+        error.Message.ShouldBe("Obfy is closing.");
+        questions.ShouldBe(0);
+
+        // A restart that could not start a new process leaves Obfy open, and runs must work in it.
+        h.Run.AllowNewRuns();
+        await h.Run.Start().WaitAsync(Guard);
+        h.Engine.ObfuscatedInputs.Count.ShouldBe(1);
     }
 }

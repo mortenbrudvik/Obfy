@@ -72,6 +72,7 @@ public sealed class RunCoordinator : IDisposable
     private CancellationTokenSource? _cts;
     private Task _runTask = Task.CompletedTask;
     private bool _disposed;
+    private bool _closing;
 
     /// <param name="events">Where <c>run.changed</c> and <c>run.completed</c> go; null for a coordinator nobody listens to.</param>
     /// <param name="logger">The file log. A failure is logged by its exception type only, never its message: that can hold a path the user chose.</param>
@@ -125,6 +126,39 @@ public sealed class RunCoordinator : IDisposable
     {
         if (IsRunning)
             throw new ObfyApiException("run.blocked", InputBlockedMessage);
+    }
+
+    /// <summary>
+    /// For the shutdown path: closes the door on new runs, but only if none is going. Atomic with the check, under the lock
+    /// <see cref="Start"/> takes to become Running: either a run is Running before this (it answers false, nothing
+    /// changes, and the shell asks the user), or it can no longer begin (<see cref="Start"/> is refused with
+    /// <c>run.blocked</c>). Without this a <see cref="Start"/> that is still checking its files, where
+    /// <see cref="IsRunning"/> is false, would become a run while the process exits.
+    /// </summary>
+    /// <returns>True when new runs are now refused; false when a run goes.</returns>
+    public bool TryRefuseNewRuns()
+    {
+        lock (_gate)
+        {
+            if (_status == RunStatus.Running)
+                return false;
+            _closing = true;
+            return true;
+        }
+    }
+
+    /// <summary>Closes the door on new runs whether or not one is going: the user has agreed to cancel it and close.</summary>
+    public void RefuseNewRuns()
+    {
+        lock (_gate)
+            _closing = true;
+    }
+
+    /// <summary>Opens the door again, for a shutdown that was given up (a restart that could not start the new process).</summary>
+    public void AllowNewRuns()
+    {
+        lock (_gate)
+            _closing = false;
     }
 
     /// <summary>Finishes when the run now going ends (or already has). Never faults.</summary>
@@ -246,7 +280,7 @@ public sealed class RunCoordinator : IDisposable
     /// Starts a run on the thread pool and returns its task at once; the task never faults. The page does not wait for
     /// it: it follows <c>run.changed</c> and <c>run.completed</c>. Tests await it.
     /// </summary>
-    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, nothing is included, an output or the symbol map would replace a listed file, or the settings are invalid; the message says which.</exception>
+    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going, the shell is closing, nothing is included, an output or the symbol map would replace a listed file, or the settings are invalid; the message says which.</exception>
     public Task Start()
     {
         // A second Start while one goes is refused before anything is read: there is nothing to check a list for.
@@ -350,8 +384,9 @@ public sealed class RunCoordinator : IDisposable
     private const int MaxStartAttempts = 3;
 
     private const string ChangedWhileStartingReason = "The files or settings changed while the run was starting. Try again.";
+    private const string ClosingReason = "Obfy is closing.";
 
-    /// <summary>Refuses a start while a run goes or the coordinator is disposed. Takes the gate itself (it is re-entrant), so <see cref="Start"/> may call it inside its own hold.</summary>
+    /// <summary>Refuses a start while a run goes, the coordinator is disposed or the shell is closing. Takes the gate itself (it is re-entrant), so <see cref="Start"/> may call it inside its own hold.</summary>
     /// <exception cref="ObfyApiException"><c>run.blocked</c>.</exception>
     private void ThrowIfCannotBegin()
     {
@@ -359,6 +394,8 @@ public sealed class RunCoordinator : IDisposable
         {
             if (_status == RunStatus.Running || _disposed)
                 throw new ObfyApiException("run.blocked", RunningReason);
+            if (_closing)
+                throw new ObfyApiException("run.blocked", ClosingReason);
         }
     }
 

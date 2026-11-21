@@ -102,16 +102,12 @@ public sealed class InputSession
     /// Copies the values the settings service holds onto the session. Call after the service has loaded them from disk
     /// (the constructor read what it held then). Quiet. Leaves a <c>-o</c> folder from the command line alone.
     /// </summary>
-    public void ApplyPreferences()
-    {
-        ReadPreferences();
-        lock (_gate)
-            _revision++;
-    }
+    public void ApplyPreferences() => ReadPreferences();
 
     /// <summary>
     /// Takes the preferences from the settings service. The saved folder is probed first and outside the lock: on a dead
-    /// share the probe can stall, and a snapshot the page asks for meanwhile must not wait behind it.
+    /// share the probe can stall, and a snapshot the page asks for meanwhile must not wait behind it. The values are written
+    /// and the revision is bumped in one hold, as every other change does (<see cref="Revision"/>).
     /// </summary>
     private void ReadPreferences()
     {
@@ -127,6 +123,7 @@ public sealed class InputSession
 
         lock (_gate)
         {
+            _revision++;
             _writeSymbolMap = writeSymbolMap;
             if (overridden || _sessionOutputOverride)
                 return;

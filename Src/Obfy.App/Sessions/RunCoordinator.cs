@@ -24,8 +24,9 @@ namespace Obfy.App.Sessions;
 /// <para>
 /// <b>Explicit blockers.</b> <see cref="RunSnapshot.CanStart"/> and <see cref="RunSnapshot.BlockedReason"/> are state, not a
 /// command's <c>CanExecute</c>: a run is blocked while one is running, with nothing included, when an output or the symbol
-/// map would replace a listed file, or while the protection settings are invalid, and each says why in plain words (UI-052). The settings' reason is the first of
-/// <see cref="ProtectionSession.ValidationErrors"/>; no rule is repeated here.
+/// map would replace a listed file, or while the protection settings are invalid, and each says why in plain words
+/// (UI-052). The settings' reason is the first of <see cref="ProtectionSession.ValidationErrors"/>; no rule is repeated
+/// here.
 /// </para>
 /// <para>
 /// <b>Threads.</b> <see cref="Start"/> returns at once; the run loop is on the thread pool and publishes
@@ -386,7 +387,10 @@ public sealed class RunCoordinator : IDisposable
     private const string ChangedWhileStartingReason = "The files or settings changed while the run was starting. Try again.";
     private const string ClosingReason = "Obfy is closing.";
 
-    /// <summary>Refuses a start while a run goes, the coordinator is disposed or the shell is closing. Takes the gate itself (it is re-entrant), so <see cref="Start"/> may call it inside its own hold.</summary>
+    /// <summary>
+    /// Refuses a start while a run goes, the coordinator is disposed or the shell is closing. Takes the gate itself (it is
+    /// re-entrant), so <see cref="Start"/> may call it inside its own hold.
+    /// </summary>
     /// <exception cref="ObfyApiException"><c>run.blocked</c>.</exception>
     private void ThrowIfCannotBegin()
     {

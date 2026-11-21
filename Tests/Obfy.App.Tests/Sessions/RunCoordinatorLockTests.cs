@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Obfy.App;
 using Obfy.App.Models;
 using Obfy.App.Services;
+using Obfy.App.Sessions;
 using Obfy.App.Tests.Common;
 using Obfy.Core.Models;
 using Shouldly;
@@ -84,20 +86,24 @@ public sealed class RunCoordinatorLockTests
             release.Wait(Guard);
         });
 
-        var start = Task.Run(h.Run.Start);
+        var start = StartOnItsOwnThread(h);
         entered.Wait(Guard).ShouldBeTrue();
         try
         {
             // Stuck inside the check, Start must not be holding what these two wait on.
-            (await Task.Run(() => h.Run.IsRunning).WaitAsync(Prompt)).ShouldBeFalse();
-            await Task.Run(h.Run.EnsureNotRunning).WaitAsync(Prompt);
+            (await OnItsOwnThread(() => h.Run.IsRunning).WaitAsync(Prompt)).ShouldBeFalse();
+            await OnItsOwnThread(() =>
+            {
+                h.Run.EnsureNotRunning();
+                return true;
+            }).WaitAsync(Prompt);
         }
         finally
         {
             release.Set();
         }
 
-        // Task.Run unwraps Start's task, so this also waits for the run itself.
+        // The task from StartOnItsOwnThread is Start's own, so this also waits for the run itself.
         await start.WaitAsync(Guard);
         h.Engine.ObfuscatedInputs.Count.ShouldBe(1);
     }
@@ -117,7 +123,7 @@ public sealed class RunCoordinatorLockTests
 
         // b.dll is removed while Start is still checking. The list that is left writes b\a.dll, which replaces nothing.
         probe.OnLinkQuestion = Once(() => h.Input.Remove(h.Input.GetSnapshot().Files.Single(f => f.Path == b).Id));
-        await Task.Run(h.Run.Start).WaitAsync(Guard);
+        await StartOnItsOwnThread(h).WaitAsync(Guard);
 
         h.Engine.ObfuscatedInputs.ShouldBe([a]);
         h.Engine.ClosedSetInputs.ShouldBeEmpty();
@@ -136,7 +142,7 @@ public sealed class RunCoordinatorLockTests
         // Other.dll is listed while Start is checking. Two assemblies are a closed set into out\, which writes out\Other.dll
         // over the file just listed; the answer for the list of one ("nothing is replaced") is stale.
         probe.OnLinkQuestion = Once(() => h.Input.AddPaths([other]));
-        var error = await Should.ThrowAsync<ObfyApiException>(() => Task.Run(h.Run.Start).WaitAsync(Guard));
+        var error = await Should.ThrowAsync<ObfyApiException>(() => StartOnItsOwnThread(h).WaitAsync(Guard));
 
         error.Code.ShouldBe("run.blocked");
         error.Message.ShouldStartWith("The output folder is the folder of Other.dll;");
@@ -160,7 +166,7 @@ public sealed class RunCoordinatorLockTests
         };
 
         probe.OnLinkQuestion = Once(() => h.Protection.ApplyLevel(ObfuscationLevel.Aggressive));
-        await Task.Run(h.Run.Start).WaitAsync(Guard);
+        await StartOnItsOwnThread(h).WaitAsync(Guard);
 
         used.ShouldNotBeNull().Level.ShouldBe(ObfuscationLevel.Aggressive);
     }
@@ -191,7 +197,7 @@ public sealed class RunCoordinatorLockTests
             }
         };
 
-        var error = await Should.ThrowAsync<ObfyApiException>(() => Task.Run(h.Run.Start).WaitAsync(Guard));
+        var error = await Should.ThrowAsync<ObfyApiException>(() => StartOnItsOwnThread(h).WaitAsync(Guard));
 
         error.Code.ShouldBe("run.blocked");
         error.Message.ShouldBe("The files or settings changed while the run was starting. Try again.");
@@ -201,7 +207,7 @@ public sealed class RunCoordinatorLockTests
 
         // Nothing is stuck: once the list holds still, the same Start works.
         probe.OnLinkQuestion = null;
-        await Task.Run(h.Run.Start).WaitAsync(Guard);
+        await StartOnItsOwnThread(h).WaitAsync(Guard);
         h.Engine.ObfuscatedInputs.Count.ShouldBe(1);
     }
 
@@ -263,6 +269,63 @@ public sealed class RunCoordinatorLockTests
         Edited(() => h.Input.Remove(id));
         Edited(() => h.AddFile("b.dll"));
         Edited(h.Input.Clear);
+    }
+
+    [Fact]
+    public void InputRevision_CountsTheSessionReadingThePreferences_InTheConstructorAndInApplyPreferences()
+    {
+        var settings = new FakeSettings { GenerateSymbolMap = true };
+        var session = new InputSession(
+            settings, null, new FakeShell(), null, NullLogger<InputSession>.Instance, TimeSpan.Zero);
+
+        // Reading the preferences wrote the symbol-map switch, so the session is past its starting revision.
+        session.Revision.ShouldBeGreaterThan(0);
+        session.CaptureRun(merge: false).SymbolMapPath.ShouldNotBeNull();
+
+        var before = session.Revision;
+        settings.GenerateSymbolMap = false;
+        session.ApplyPreferences();
+
+        session.Revision.ShouldBeGreaterThan(before);
+        session.CaptureRun(merge: false).SymbolMapPath.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ApplyPreferences_ChangesTheStateAndTheRevisionInOneStep_SoNoRevisionHasTwoStates()
+    {
+        // What Start relies on: a capture at a given revision is always the same state. A capture that landed between
+        // the write of the preferences and the bump of the revision would be the old revision with the new state.
+        var settings = new FakeSettings();
+        var session = new InputSession(
+            settings, null, new FakeShell(), null, NullLogger<InputSession>.Instance, TimeSpan.Zero);
+        var stateAt = new System.Collections.Concurrent.ConcurrentDictionary<long, bool>();
+        var twoStates = 0;
+        var writing = true;
+
+        var reader = Task.Factory.StartNew(() =>
+        {
+            while (Volatile.Read(ref writing))
+            {
+                var capture = session.CaptureRun(merge: false);
+                var mapOn = capture.SymbolMapPath is not null;
+                if (stateAt.GetOrAdd(capture.Revision, mapOn) != mapOn)
+                    Interlocked.Exchange(ref twoStates, 1);
+            }
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+        await Task.Factory.StartNew(() =>
+        {
+            for (var i = 0; i < 50_000 && Volatile.Read(ref twoStates) == 0; i++)
+            {
+                settings.GenerateSymbolMap = i % 2 == 0;
+                session.ApplyPreferences();
+            }
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).WaitAsync(Guard);
+
+        Volatile.Write(ref writing, false);
+        await reader.WaitAsync(Guard);
+
+        twoStates.ShouldBe(0);
     }
 
     [Fact]

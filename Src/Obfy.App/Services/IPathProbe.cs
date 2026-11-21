@@ -44,9 +44,10 @@ internal static class FileLinks
 }
 
 /// <summary>
-/// The real file system, with a limit on how long one question may take: a path that does not answer (an unreachable
-/// share) is reported as not there instead of holding the caller. The question keeps running on a pool thread until the
-/// system gives up.
+/// The real file system, with a limit on how long <see cref="FileExists"/> and <see cref="DirectoryExists"/> may take: a
+/// path that does not answer (an unreachable share) is reported as not there instead of holding the caller. The question
+/// keeps running on a pool thread until the system gives up. <see cref="IPathProbe.ResolveLinkTarget"/> is not limited: it
+/// is the interface's default, which asks the real file system and waits for the answer.
 /// </summary>
 internal sealed class BoundedPathProbe(TimeSpan? timeout = null) : IPathProbe
 {

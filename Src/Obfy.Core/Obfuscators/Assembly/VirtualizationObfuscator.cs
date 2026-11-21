@@ -44,7 +44,6 @@ public class VirtualizationObfuscator : IObfuscator
             var candidates = CollectCandidates(module, context);
             var selected = VmEncoder.Select(candidates, max);
             var selectedSet = selected.ToHashSet();
-            var throwaway = new VmMemberTables();
             var eligible = 0;
             var overflowNames = new List<string>();
             foreach (var method in candidates)
@@ -56,7 +55,9 @@ public class VirtualizationObfuscator : IObfuscator
                     continue;
                 }
 
-                if (VmEncoder.TryEncode(method, EmptyIds, throwaway, out _, out var skipReason))
+                // A fresh table per probe: a shared one fills up across a large assembly's candidates
+                // and would then misreport perfectly encodable methods as out of range.
+                if (VmEncoder.TryEncode(method, EmptyIds, new VmMemberTables(), out _, out var skipReason))
                 {
                     eligible++;
                     if (overflowNames.Count < 10)
@@ -93,19 +94,19 @@ public class VirtualizationObfuscator : IObfuscator
                 return Task.FromResult(ObfuscationResult.Successful(stats));
             }
 
-            var ids = selected.Select((m, i) => (m, i)).ToDictionary(x => x.m, x => x.i);
-            var tables = new VmMemberTables();
-            var encoded = new List<(MethodDef Method, byte[] Code)>();
-            foreach (var method in selected)
+            var (encoded, tables) = EncodeFinal(selected, (method, reason) =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!VmEncoder.TryEncode(method, ids, tables, out var code, out var reason))
-                {
-                    return Task.FromResult(ObfuscationResult.Failed(
-                        $"Virtualization failed: '{method.FullName}' was selected then failed encode ({reason ?? "unknown"})."));
-                }
+                context.SkippedItems.Add(SkippedItem.UnsupportedMethod(
+                    method.FullName, reason ?? VmSkipReasons.UnsupportedOpcode));
+                _logger.LogDebug("Virtualization dropped a selected method at final encode: {Reason}", reason);
+            }, cancellationToken);
 
-                encoded.Add((method, code));
+            if (encoded.Count == 0)
+            {
+                const string none = "Virtualization was enabled but no eligible methods were encoded.";
+                context.Warnings.Add(none);
+                _logger.LogWarning("{Warning}", none);
+                return Task.FromResult(ObfuscationResult.Successful(stats));
             }
 
             var blob = Concat(encoded);
@@ -118,7 +119,12 @@ public class VirtualizationObfuscator : IObfuscator
             MethodDef run;
             try
             {
-                var returnTypes = encoded.Select(e => e.Method.MethodSig.RetType.ToTypeDefOrRef()).ToList();
+                // Strip modifiers like the parameters below: init-only setters return void modreq(IsExternalInit),
+                // and a custom modifier does not belong in the ldtoken type signature.
+                var returnTypes = encoded
+                    .Select(e => (e.Method.MethodSig.RetType.RemovePinnedAndModifiers() ?? e.Method.MethodSig.RetType)
+                        .ToTypeDefOrRef())
+                    .ToList();
                 var argumentCounts = new int[encoded.Count];
                 var argumentTypes = new List<ITypeDefOrRef>();
                 for (var i = 0; i < encoded.Count; i++)
@@ -153,7 +159,7 @@ public class VirtualizationObfuscator : IObfuscator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Virtualization failed");
+            _logger.LogError("Virtualization failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Virtualization failed: {ex.Message}", ex));
         }
     }
@@ -182,7 +188,45 @@ public class VirtualizationObfuscator : IObfuscator
     {
         var max = context.Settings.Virtualization.MaxMethods;
         var candidates = CollectCandidates(context.RequireModule(), context);
-        return VmEncoder.Select(candidates, max).ToHashSet();
+        var (encoded, _) = EncodeFinal(VmEncoder.Select(candidates, max), onDropped: null, CancellationToken.None);
+        return encoded.Select(e => e.Method).ToHashSet();
+    }
+
+    /// <summary>
+    /// Encodes the selected methods with their final ids. <see cref="VmEncoder.Select"/> probes
+    /// without ids (an intra-VM call is 3 bytes); the real encode uses CallVm (4 bytes), so a method
+    /// near a u16 limit can be admitted and then fail. Such a method is dropped and the rest
+    /// re-encoded, because their ids and the member tables depend on the final set.
+    /// </summary>
+    private static (List<(MethodDef Method, byte[] Code)> Encoded, VmMemberTables Tables) EncodeFinal(
+        IReadOnlyList<MethodDef> selected,
+        Action<MethodDef, string?>? onDropped,
+        CancellationToken cancellationToken)
+    {
+        var chosen = selected.ToList();
+        while (true)
+        {
+            var ids = chosen.Select((m, i) => (m, i)).ToDictionary(x => x.m, x => x.i);
+            var tables = new VmMemberTables();
+            var encoded = new List<(MethodDef Method, byte[] Code)>();
+            MethodDef? failed = null;
+            foreach (var method in chosen)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!VmEncoder.TryEncode(method, ids, tables, out var code, out var reason))
+                {
+                    onDropped?.Invoke(method, reason);
+                    failed = method;
+                    break;
+                }
+
+                encoded.Add((method, code));
+            }
+
+            if (failed is null)
+                return (encoded, tables);
+            chosen.Remove(failed);
+        }
     }
 
     private static byte[] Concat(List<(MethodDef Method, byte[] Code)> encoded)

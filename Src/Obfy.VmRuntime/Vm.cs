@@ -10,15 +10,24 @@ public static class Vm
     const int StackSlots = 64;
     const int InitialFrames = 4;
 
+    // VM frames live on the heap (about 7.7 KB each), so runaway recursion would exhaust memory long
+    // before the CLR would overflow its stack. Real programs stay far below this depth.
+    // Set in Init: the importer replaces this type's static constructor, so an initializer would be lost.
+    const int DefaultMaxCallDepth = 100000;
+    internal static int MaxCallDepth;
+
     static byte[] _code = Array.Empty<byte>();
     static int[] _starts = Array.Empty<int>();
     static byte[] _opMap = Array.Empty<byte>();
     static byte[] _xorKey = Array.Empty<byte>();
-    static MethodBase[] _methods = Array.Empty<MethodBase>();
-    static FieldInfo[] _fields = Array.Empty<FieldInfo>();
-    static Type[] _types = Array.Empty<Type>();
-    static Type[] _returnTypes = Array.Empty<Type>();
-    static Type[] _argumentTypes = Array.Empty<Type>();
+    // Member tables are filled on first use: slot i is resolved through ResolveX(i) the first time the
+    // bytecode names it, so a member that cannot be resolved (an optional dependency that is not
+    // installed) fails only the methods that use it instead of the whole VM.
+    static MethodBase?[] _methods = Array.Empty<MethodBase?>();
+    static FieldInfo?[] _fields = Array.Empty<FieldInfo?>();
+    static Type?[] _types = Array.Empty<Type?>();
+    static Type?[] _returnTypes = Array.Empty<Type?>();
+    static Type?[] _argumentTypes = Array.Empty<Type?>();
     static int[] _argumentCounts = Array.Empty<int>();
     static int[] _argumentOffsets = Array.Empty<int>();
 
@@ -153,25 +162,25 @@ public static class Vm
                     BinBranch(ref f, Less(PopPair(ref f, out var bltR), bltR, unsigned: false));
                     break;
                 case 45: // Ble
-                    BinBranch(ref f, !Greater(PopPair(ref f, out var bleR), bleR, unsigned: false));
+                    BinBranch(ref f, LessOrEqual(PopPair(ref f, out var bleR), bleR, unsigned: false));
                     break;
                 case 46: // Bgt
                     BinBranch(ref f, Greater(PopPair(ref f, out var bgtR), bgtR, unsigned: false));
                     break;
                 case 47: // Bge
-                    BinBranch(ref f, !Less(PopPair(ref f, out var bgeR), bgeR, unsigned: false));
+                    BinBranch(ref f, GreaterOrEqual(PopPair(ref f, out var bgeR), bgeR, unsigned: false));
                     break;
                 case 48: // BltUn
                     BinBranch(ref f, Less(PopPair(ref f, out var bltuR), bltuR, unsigned: true));
                     break;
                 case 49: // BleUn
-                    BinBranch(ref f, !Greater(PopPair(ref f, out var bleuR), bleuR, unsigned: true));
+                    BinBranch(ref f, LessOrEqual(PopPair(ref f, out var bleuR), bleuR, unsigned: true));
                     break;
                 case 50: // BgtUn
                     BinBranch(ref f, Greater(PopPair(ref f, out var bgtuR), bgtuR, unsigned: true));
                     break;
                 case 51: // BgeUn
-                    BinBranch(ref f, !Less(PopPair(ref f, out var bgeuR), bgeuR, unsigned: true));
+                    BinBranch(ref f, GreaterOrEqual(PopPair(ref f, out var bgeuR), bgeuR, unsigned: true));
                     break;
                 case 52: // Newobj
                     NewObj(ref f);
@@ -250,29 +259,22 @@ public static class Vm
         int[] starts,
         byte[] opMap,
         byte[] xorKey,
-        MethodBase[] methods,
-        FieldInfo[] fields,
-        Type[] types,
-        Type[] returnTypes,
-        Type[] argumentTypes,
+        int methodCount,
+        int fieldCount,
+        int typeCount,
         int[] argumentCounts)
     {
         if (code == null) throw new ArgumentNullException(nameof(code));
         if (starts == null) throw new ArgumentNullException(nameof(starts));
         if (opMap == null) throw new ArgumentNullException(nameof(opMap));
         if (xorKey == null) throw new ArgumentNullException(nameof(xorKey));
-        if (methods == null) throw new ArgumentNullException(nameof(methods));
-        if (fields == null) throw new ArgumentNullException(nameof(fields));
-        if (types == null) throw new ArgumentNullException(nameof(types));
-        if (returnTypes == null) throw new ArgumentNullException(nameof(returnTypes));
-        if (argumentTypes == null) throw new ArgumentNullException(nameof(argumentTypes));
         if (argumentCounts == null) throw new ArgumentNullException(nameof(argumentCounts));
         if (xorKey.Length != 8)
             throw new ArgumentException("xorKey must be 8 bytes.", nameof(xorKey));
         if (opMap.Length != 256)
             throw new ArgumentException("opMap must be 256 bytes.", nameof(opMap));
-        if (returnTypes.Length != starts.Length)
-            throw new ArgumentException("returnTypes length must match starts.", nameof(returnTypes));
+        if (methodCount < 0 || fieldCount < 0 || typeCount < 0)
+            throw new ArgumentException("member counts cannot be negative.");
         if (argumentCounts.Length != starts.Length)
             throw new ArgumentException("argumentCounts length must match starts.", nameof(argumentCounts));
         for (var i = 0; i < starts.Length; i++)
@@ -287,12 +289,12 @@ public static class Vm
         _starts = starts;
         _opMap = opMap;
         _xorKey = xorKey;
-        _methods = methods;
-        _fields = fields;
-        _types = types;
-        _returnTypes = returnTypes;
-        _argumentTypes = argumentTypes;
+        _methods = new MethodBase?[methodCount];
+        _fields = new FieldInfo?[fieldCount];
+        _types = new Type?[typeCount];
+        _returnTypes = new Type?[starts.Length];
         _argumentCounts = argumentCounts;
+        MaxCallDepth = DefaultMaxCallDepth;
         var offsets = new int[argumentCounts.Length];
         var total = 0;
         for (var i = 0; i < argumentCounts.Length; i++)
@@ -303,8 +305,7 @@ public static class Vm
             total += argumentCounts[i];
         }
 
-        if (argumentTypes.Length != total)
-            throw new ArgumentException("argumentTypes length must equal the sum of argumentCounts.", nameof(argumentTypes));
+        _argumentTypes = new Type?[total];
         _argumentOffsets = offsets;
     }
 
@@ -316,7 +317,7 @@ public static class Vm
         for (var i = 0; i < args.Length; i++)
         {
             vmArgs[i] = i < count
-                ? FromClr(args[i], _argumentTypes[offset + i])
+                ? FromClr(args[i], ArgumentTypeAt(offset + i))
                 : UnboxArg(args[i]);
         }
         return new Frame
@@ -435,7 +436,7 @@ public static class Vm
         var id = f.MethodId;
         if (id < 0 || id >= _returnTypes.Length)
             throw Fault("invalid method id");
-        var rt = _returnTypes[id];
+        var rt = ReturnTypeAt(id);
         var isVoid = rt == null || rt == typeof(void);
         VmValue value = default;
         if (!isVoid)
@@ -491,6 +492,8 @@ public static class Vm
             args[i] = Pop(ref f);
 
         var next = depth + 1;
+        if (next >= MaxCallDepth)
+            throw new InsufficientExecutionStackException("Obfy VM: call depth limit exceeded");
         if (next >= frames.Length)
         {
             var grown = new Frame[frames.Length * 2];
@@ -527,7 +530,7 @@ public static class Vm
         {
             if (v.Ref == null)
                 throw new NullReferenceException();
-            if (!type.IsInstanceOfType(v.Ref))
+            if (!type.IsInstanceOfType(v.Ref) && !SameUnderlyingType(v.Ref.GetType(), type))
                 throw new InvalidCastException();
             Push(ref f, FromClr(v.Ref, type));
             return;
@@ -535,6 +538,21 @@ public static class Vm
 
         Push(ref f, O(CastRef(v.Ref, type, throwOnFail: true)));
     }
+
+    /// <summary>
+    /// The CLR unboxes an enum as its underlying type and the reverse, and between enums of the
+    /// same underlying type (<c>(int)(object)color</c>, <c>(Color)(object)2</c>).
+    /// </summary>
+    static bool SameUnderlyingType(Type boxed, Type target)
+    {
+        if (!boxed.IsEnum && !target.IsEnum)
+            return false;
+        if (!(boxed.IsEnum || boxed.IsPrimitive) || !(target.IsEnum || target.IsPrimitive))
+            return false;
+        return UnderlyingOrSelf(boxed) == UnderlyingOrSelf(target);
+    }
+
+    static Type UnderlyingOrSelf(Type type) => type.IsEnum ? Enum.GetUnderlyingType(type) : type;
 
     static void CastObj(ref Frame f, bool throwOnFail)
     {
@@ -600,6 +618,8 @@ public static class Vm
     static void DoThrow(ref Frame f)
     {
         var v = Pop(ref f);
+        if (v.Type == VmType.O && v.Ref == null)
+            throw new NullReferenceException();
         var ex = v.Ref as Exception;
         if (v.Type != VmType.O || ex == null)
             throw Fault("type mismatch");
@@ -660,7 +680,13 @@ public static class Vm
             throw Fault("invalid method");
         var method = _methods[index];
         if (method == null)
-            throw Fault("invalid method");
+        {
+            method = ResolveMethod(index);
+            if (method == null)
+                throw Fault("invalid method");
+            _methods[index] = method;
+        }
+
         return method;
     }
 
@@ -671,7 +697,13 @@ public static class Vm
             throw Fault("invalid field");
         var field = _fields[index];
         if (field == null)
-            throw Fault("invalid field");
+        {
+            field = ResolveField(index);
+            if (field == null)
+                throw Fault("invalid field");
+            _fields[index] = field;
+        }
+
         return field;
     }
 
@@ -682,9 +714,54 @@ public static class Vm
             throw Fault("invalid type");
         var type = _types[index];
         if (type == null)
-            throw Fault("invalid type");
+        {
+            type = ResolveType(index);
+            if (type == null)
+                throw Fault("invalid type");
+            _types[index] = type;
+        }
+
         return type;
     }
+
+    static Type ReturnTypeAt(int id)
+    {
+        var type = _returnTypes[id];
+        if (type == null)
+        {
+            type = ResolveReturnType(id);
+            if (type == null)
+                throw Fault("invalid type");
+            _returnTypes[id] = type;
+        }
+
+        return type;
+    }
+
+    static Type ArgumentTypeAt(int index)
+    {
+        var type = _argumentTypes[index];
+        if (type == null)
+        {
+            type = ResolveArgumentType(index);
+            if (type == null)
+                throw Fault("invalid type");
+            _argumentTypes[index] = type;
+        }
+
+        return type;
+    }
+
+    // The five resolvers below are placeholders. The importer replaces each body with a switch over
+    // one tiny helper per member, and each helper holds the ldtoken for exactly that member. The CLR
+    // resolves a token when it compiles the method holding it, so keeping every ldtoken in its own
+    // method confines a missing dependency to the use of that member. A table with no entries keeps
+    // the placeholder, which resolves nothing.
+    static MethodBase? ResolveMethod(int index) => null;
+    static FieldInfo? ResolveField(int index) => null;
+    static Type? ResolveType(int index) => null;
+    static Type? ResolveReturnType(int index) => null;
+    static Type? ResolveArgumentType(int index) => null;
 
     static object Invoke(MethodBase method, object target, object[] args)
     {
@@ -954,6 +1031,44 @@ public static class Vm
                 return ToR8(l) < ToR8(r);
             default:
                 throw Fault("type mismatch");
+        }
+    }
+
+    /// <summary>
+    /// <c>ble</c> / <c>ble.un</c>. For integers and references this is "not greater". Floats differ
+    /// on NaN: the ordered <c>ble</c> is <c>l &lt;= r</c> (not taken when either is NaN), while
+    /// <c>ble.un</c> is "<c>l &lt;= r</c> or unordered", that is <c>!(l &gt; r)</c>.
+    /// </summary>
+    static bool LessOrEqual(VmValue l, VmValue r, bool unsigned)
+    {
+        if (l.Type != r.Type)
+            throw Fault("type mismatch");
+        switch (l.Type)
+        {
+            case VmType.R4:
+                return unsigned ? !(ToR4(l) > ToR4(r)) : ToR4(l) <= ToR4(r);
+            case VmType.R8:
+                return unsigned ? !(ToR8(l) > ToR8(r)) : ToR8(l) <= ToR8(r);
+            default:
+                return !Greater(l, r, unsigned);
+        }
+    }
+
+    /// <summary>
+    /// <c>bge</c> / <c>bge.un</c>; see <see cref="LessOrEqual"/> for the NaN rules.
+    /// </summary>
+    static bool GreaterOrEqual(VmValue l, VmValue r, bool unsigned)
+    {
+        if (l.Type != r.Type)
+            throw Fault("type mismatch");
+        switch (l.Type)
+        {
+            case VmType.R4:
+                return unsigned ? !(ToR4(l) < ToR4(r)) : ToR4(l) >= ToR4(r);
+            case VmType.R8:
+                return unsigned ? !(ToR8(l) < ToR8(r)) : ToR8(l) >= ToR8(r);
+            default:
+                return !Less(l, r, unsigned);
         }
     }
 

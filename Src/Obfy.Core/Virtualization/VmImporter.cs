@@ -119,6 +119,7 @@ public static class VmImporter
 
         var map = new Dictionary<IDnlibDef, IDnlibDef>();
         var cloned = CloneTypeSkeleton(origin, map);
+        EnsureUniqueName(dest, cloned);
         dest.Types.Add(cloned);
 
         var importer = new Importer(
@@ -129,6 +130,30 @@ public static class VmImporter
 
         CopyTypeContents(origin, cloned, importer, map);
         return cloned;
+    }
+
+    /// <summary>
+    /// Output that already carries an unrenamed VM would otherwise get a second TypeDef with the
+    /// identical full name, which ECMA-335 forbids. The copy moves to a free sub-namespace instead:
+    /// the type keeps its <c>Vm</c> name and stays inside <c>Obfy.Runtime.*</c>, which is how the
+    /// other passes recognize (and leave alone) the interpreter.
+    /// </summary>
+    private static void EnsureUniqueName(ModuleDef dest, TypeDef cloned)
+    {
+        var taken = new HashSet<string>(dest.Types.Select(t => t.FullName), StringComparer.Ordinal);
+        if (!taken.Contains(cloned.FullName))
+            return;
+
+        var ns = UTF8String.ToSystemStringOrEmpty(cloned.Namespace);
+        var name = UTF8String.ToSystemStringOrEmpty(cloned.Name);
+        for (var n = 2; ; n++)
+        {
+            var candidate = ns + ".Copy" + n;
+            if (taken.Contains(candidate + "." + name))
+                continue;
+            cloned.Namespace = candidate;
+            return;
+        }
     }
 
     private static TypeDefUser CloneTypeSkeleton(TypeDef origin, Dictionary<IDnlibDef, IDnlibDef> map)
@@ -468,33 +493,7 @@ public static class VmImporter
                 new ValueTypeSig(CorlibRef(dest, "System", "RuntimeFieldHandle"))),
             CorlibRef(dest, "System.Runtime.CompilerServices", "RuntimeHelpers"));
 
-        var methodBase = CorlibRef(dest, "System.Reflection", "MethodBase");
-        var fieldInfo = CorlibRef(dest, "System.Reflection", "FieldInfo");
-        var typeType = CorlibRef(dest, "System", "Type");
-        var runtimeTypeHandle = new ValueTypeSig(CorlibRef(dest, "System", "RuntimeTypeHandle"));
-        var getMethodFromHandle = new MemberRefUser(
-            dest,
-            "GetMethodFromHandle",
-            MethodSig.CreateStatic(
-                new ClassSig(methodBase),
-                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeMethodHandle")),
-                runtimeTypeHandle),
-            methodBase);
-        var getFieldFromHandle = new MemberRefUser(
-            dest,
-            "GetFieldFromHandle",
-            MethodSig.CreateStatic(
-                new ClassSig(fieldInfo),
-                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeFieldHandle")),
-                runtimeTypeHandle),
-            fieldInfo);
-        var getTypeFromHandle = new MemberRefUser(
-            dest,
-            "GetTypeFromHandle",
-            MethodSig.CreateStatic(
-                new ClassSig(typeType),
-                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeTypeHandle"))),
-            typeType);
+        BuildResolvers(vmType, dest, methods, fields, types, returnTypes, argumentTypes);
 
         var cctor = new MethodDefUser(
             ".cctor",
@@ -508,35 +507,9 @@ public static class VmImporter
         EmitIntArray(body, dest, vmType, starts, initArray, "rva_starts");
         EmitByteArray(body, dest, vmType, opMap, initArray, "rva_opMap");
         EmitByteArray(body, dest, vmType, xorKey, initArray, "rva_xorKey");
-        EmitTokenArray(body, methods.Count, methodBase, i =>
-        {
-            var method = methods[i];
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, method));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, DeclaringType(method)));
-            body.Instructions.Add(Instruction.Create(OpCodes.Call, getMethodFromHandle));
-        });
-        EmitTokenArray(body, fields.Count, fieldInfo, i =>
-        {
-            var field = fields[i];
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, field));
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, DeclaringType(field)));
-            body.Instructions.Add(Instruction.Create(OpCodes.Call, getFieldFromHandle));
-        });
-        EmitTokenArray(body, types.Count, typeType, i =>
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, types[i]));
-            body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
-        });
-        EmitTokenArray(body, returnTypes.Count, typeType, i =>
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, returnTypes[i]));
-            body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
-        });
-        EmitTokenArray(body, argumentTypes.Count, typeType, i =>
-        {
-            body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, argumentTypes[i]));
-            body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
-        });
+        body.Instructions.Add(Instruction.CreateLdcI4(methods.Count));
+        body.Instructions.Add(Instruction.CreateLdcI4(fields.Count));
+        body.Instructions.Add(Instruction.CreateLdcI4(types.Count));
         EmitIntArray(body, dest, vmType, argumentCounts as int[] ?? argumentCounts.ToArray(), initArray, "rva_argCounts");
         body.Instructions.Add(Instruction.Create(OpCodes.Call, init));
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
@@ -595,21 +568,133 @@ public static class VmImporter
         body.Instructions.Add(Instruction.Create(OpCodes.Call, initArray));
     }
 
-    private static void EmitTokenArray(
-        CilBody body,
-        int count,
-        ITypeDefOrRef elementType,
-        Action<int> emitElement)
+    /// <summary>
+    /// Gives every member the bytecode can name its own tiny helper (the ldtoken plus the
+    /// Get*FromHandle call) and rebuilds the VM's resolvers as switches over those helpers. Nothing
+    /// resolves until the VM first uses a member, and a member that cannot be resolved fails only
+    /// the code using it: the CLR resolves an ldtoken when it compiles the method holding it.
+    /// </summary>
+    private static void BuildResolvers(
+        TypeDef vmType,
+        ModuleDef dest,
+        IReadOnlyList<IMethod> methods,
+        IReadOnlyList<IField> fields,
+        IReadOnlyList<ITypeDefOrRef> types,
+        IReadOnlyList<ITypeDefOrRef> returnTypes,
+        IReadOnlyList<ITypeDefOrRef> argumentTypes)
     {
-        body.Instructions.Add(Instruction.CreateLdcI4(count));
-        body.Instructions.Add(Instruction.Create(OpCodes.Newarr, elementType));
-        for (var i = 0; i < count; i++)
+        var methodBase = CorlibRef(dest, "System.Reflection", "MethodBase");
+        var fieldInfo = CorlibRef(dest, "System.Reflection", "FieldInfo");
+        var typeType = CorlibRef(dest, "System", "Type");
+        var runtimeTypeHandle = new ValueTypeSig(CorlibRef(dest, "System", "RuntimeTypeHandle"));
+        var getMethodFromHandle = new MemberRefUser(
+            dest,
+            "GetMethodFromHandle",
+            MethodSig.CreateStatic(
+                new ClassSig(methodBase),
+                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeMethodHandle")),
+                runtimeTypeHandle),
+            methodBase);
+        var getFieldFromHandle = new MemberRefUser(
+            dest,
+            "GetFieldFromHandle",
+            MethodSig.CreateStatic(
+                new ClassSig(fieldInfo),
+                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeFieldHandle")),
+                runtimeTypeHandle),
+            fieldInfo);
+        var getTypeFromHandle = new MemberRefUser(
+            dest,
+            "GetTypeFromHandle",
+            MethodSig.CreateStatic(
+                new ClassSig(typeType),
+                new ValueTypeSig(CorlibRef(dest, "System", "RuntimeTypeHandle"))),
+            typeType);
+
+        MethodDef TypeHelper(ITypeDefOrRef type, string name) => AddHelper(
+            vmType, name, new ClassSig(typeType),
+            body =>
+            {
+                body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, type));
+                body.Instructions.Add(Instruction.Create(OpCodes.Call, getTypeFromHandle));
+            });
+
+        BuildResolver(vmType, "ResolveMethod", methods.Count, i => AddHelper(
+            vmType, "<m" + i + ">", new ClassSig(methodBase),
+            body =>
+            {
+                var method = methods[i];
+                body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, method));
+                body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, DeclaringType(method)));
+                body.Instructions.Add(Instruction.Create(OpCodes.Call, getMethodFromHandle));
+            }));
+        BuildResolver(vmType, "ResolveField", fields.Count, i => AddHelper(
+            vmType, "<f" + i + ">", new ClassSig(fieldInfo),
+            body =>
+            {
+                var field = fields[i];
+                body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, field));
+                body.Instructions.Add(Instruction.Create(OpCodes.Ldtoken, DeclaringType(field)));
+                body.Instructions.Add(Instruction.Create(OpCodes.Call, getFieldFromHandle));
+            }));
+        BuildResolver(vmType, "ResolveType", types.Count, i => TypeHelper(types[i], "<t" + i + ">"));
+
+        // The signature types of the virtualized methods repeat heavily (System.Int32, System.Void...):
+        // one helper per distinct type object.
+        var shared = new Dictionary<ITypeDefOrRef, MethodDef>(ReferenceEqualityComparer.Instance);
+        MethodDef Shared(ITypeDefOrRef type)
         {
-            body.Instructions.Add(Instruction.Create(OpCodes.Dup));
-            body.Instructions.Add(Instruction.CreateLdcI4(i));
-            emitElement(i);
-            body.Instructions.Add(Instruction.Create(OpCodes.Stelem_Ref));
+            if (!shared.TryGetValue(type, out var helper))
+                shared[type] = helper = TypeHelper(type, "<s" + shared.Count + ">");
+            return helper;
         }
+
+        BuildResolver(vmType, "ResolveReturnType", returnTypes.Count, i => Shared(returnTypes[i]));
+        BuildResolver(vmType, "ResolveArgumentType", argumentTypes.Count, i => Shared(argumentTypes[i]));
+    }
+
+    private static MethodDef AddHelper(TypeDef vmType, string name, TypeSig returns, Action<CilBody> emit)
+    {
+        // NoInlining keeps the JIT from compiling the helper's tokens into the resolver that calls it.
+        var helper = new MethodDefUser(
+            name,
+            MethodSig.CreateStatic(returns),
+            MethodImplAttributes.IL | MethodImplAttributes.NoInlining,
+            MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig);
+        var body = new CilBody { MaxStack = 2 };
+        emit(body);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        body.UpdateInstructionOffsets();
+        helper.Body = body;
+        vmType.Methods.Add(helper);
+        return helper;
+    }
+
+    private static void BuildResolver(TypeDef vmType, string name, int count, Func<int, MethodDef> helperFor)
+    {
+        if (count == 0)
+            return;
+
+        var resolver = vmType.FindMethod(name)
+            ?? throw new InvalidOperationException(
+                $"Virtualization failed: Obfy.Runtime.Vm.{name} was not found after import.");
+        var cases = new Instruction[count];
+        for (var i = 0; i < count; i++)
+            cases[i] = Instruction.Create(OpCodes.Call, helperFor(i));
+
+        var body = new CilBody { MaxStack = 2 };
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Switch, cases));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        foreach (var call in cases)
+        {
+            body.Instructions.Add(call);
+            body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        }
+
+        body.UpdateInstructionOffsets();
+        resolver.Body = body;
     }
 
     private static FieldDef CreateRvaField(TypeDef vmType, ModuleDef dest, string name, byte[] data)

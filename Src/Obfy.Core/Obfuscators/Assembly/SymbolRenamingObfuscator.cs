@@ -1202,8 +1202,7 @@ public class SymbolRenamingObfuscator : IObfuscator
     /// <summary>
     /// The member references, method specifications and type specifications the code and the type definitions hold,
     /// as the instances the writer emits (see <see cref="EnumerateMemberRefs"/>). They can carry attributes
-    /// like any other row. A leftover copy that only the original metadata knows is not among them: the
-    /// writer has no row for it unless it is told to preserve row ids.
+    /// like any other row.
     /// </summary>
     private static IEnumerable<IHasCustomAttribute> ReferenceCustomAttributeOwners(ModuleDef module)
     {

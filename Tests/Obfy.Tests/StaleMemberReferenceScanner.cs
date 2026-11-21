@@ -216,9 +216,9 @@ internal static class StaleMemberReferenceScanner
 
     /// <summary>
     /// Every MemberRef the module's code and metadata actually use: IL operands (directly or as the method of a
-    /// method specification), custom attribute constructors and method overrides. A loaded output file also holds
-    /// rows nothing refers to (the writer keeps the original MemberRef rows by RID next to the rewritten ones,
-    /// <c>MetadataFlags.PreserveRids</c>); those are inert, so they are not looked at.
+    /// method specification), custom attribute constructors and method overrides. A row nothing refers to is
+    /// inert, so it is not looked at (the output holds none that carries an original name:
+    /// <c>SymbolRenamingLeftoverNamesTests</c>).
     /// </summary>
     private static IEnumerable<MemberRef> EnumerateMemberRefs(ModuleDef module)
     {

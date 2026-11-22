@@ -122,12 +122,14 @@ Set `symbolRenaming.preserveXaml` (the Protection screen of the desktop app, or 
 
 These apply to **symbol renaming** (constructors are also skipped by control-flow flatten). String and constant encryption still visit constructors and `Main`.
 
-- **Runtime namespace**: `Obfy.Runtime.*`
+- **Pinned attribute types**: `Obfy.Runtime.WatermarkAttribute` and the global `ConfusedByAttribute` and `DotfuscatorAttribute` decoys keep their name, members and namespace
 - **Constructors**: `.ctor`, `.cctor`
 - **Module entry point** (not every method named `Main`)
 - **Virtual methods**: overrides, interface implementations, finalizers and delegate `Invoke`, in every type
 - **Interface implementations**
 - **Literal fields**: `const` fields
+
+The helper types Obfy injects (`Obfy.Runtime.*`: the decryptors, the anti-debug and anti-tamper checks, the virtualization interpreter) are renamed with the rest of the module, apart from the pinned attributes above. The other techniques leave them alone (string, constant and resource encryption, reference proxy, virtualization), and control flow handles them on its own terms (see [Techniques.md](Techniques.md)).
 
 ## Preserving Public API
 
@@ -421,7 +423,7 @@ By default, the extension only runs obfuscation for Release builds. Configure th
 
 **Cancelling and the time limit:**
 
-A run ends when the CLI exits, when you choose **Cancel Obfuscation**, or when the time limit passes. The limit is 30 minutes. Change it in Tools → Options → Obfy → General → **Run Timeout (minutes)**: a value below 1 restores 30, and a value above 1440 (one day) counts as 1440. A run is also cancelled when the solution closes, when the extension is unloaded, and when the same project is built again (a deploy of the project counts as a build). Cancelling or timing out ends the CLI and every process it started. A cancelled run is reported as a warning ("Obfuscation was cancelled."); a timeout is an error that names the limit and where to change it.
+A run ends when the CLI exits, when you choose **Cancel Obfuscation**, or when the time limit passes. The limit is 30 minutes. Change it in Tools → Options → Obfy → General → **Run Timeout (minutes)**: a value below 1 restores 30, and a value above 1440 (one day) counts as 1440. A run is also cancelled when the solution closes, when the extension is unloaded, and when the same project is built again (a deploy of the project counts as a build). Cancelling or timing out ends the CLI and every process it started. A cancelled run is a warning in the Output window, not an error dialog: "Obfuscation was cancelled." for a manual run, "Post-build obfuscation cancelled for <project>" for a post-build run. A timeout is an error that names the limit and where to change it; a manual run also shows it in a message box.
 
 ### MSBuild
 

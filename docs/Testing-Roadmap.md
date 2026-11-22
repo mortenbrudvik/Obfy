@@ -16,12 +16,12 @@ Six projects; counts live in [Testing.md](Testing.md). That volume is real. What
 | Compile → obfuscate → run | Good | `EndToEndObfuscationTests` (Roslyn snippets) plus `Obfy.ScenarioTests` SDK fixtures |
 | CLI parse / wizard defaults | Strong | Flags and use-case presets map to settings |
 | WPF product UI (ViewModels) | Strong | Commands and bindings of *Obfy itself*, not of customer apps |
-| FlaUI smoke | Local-only | Chrome plus `ObfuscateFlowTests` (command-line DLL, click Obfuscate, non-empty output file). `Category=UI`. |
+| Desktop UI end-to-end and FlaUI smoke | Windows CI job | `WebUiTests` drive the WebView2 page over a debug port (first launch, a Protection toggle, F1 and the Guide, an obfuscate run from startup arguments that shows Results); `FlaUiSmokeTests` checks the window and its title bar. Both are `Category=UI`, and `ci.yml` runs them with `--filter "Category=UI"`. |
 | SDK projects / solutions | Good | WPF, console+lib, WinForms, examples, satellites, MSBuild AfterBuild |
 | Platform recipes | Partial | Unity stub in default CI; Blazor WASM / NativeAOT / MAUI Windows are `Category=Platform` |
 | IDE extension | Partial | VS helpers tested without a hive; no VS hive tests |
 
-Phase 0 (`TR-01` / `TR-02`) filters FlaUI out of default `dotnet test` / CI and resolves `ObfyUI.exe` per configuration. `TR-03` is ✅ Done (coverage report + 80% warning on GitHub Actions). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran. Later: [CI run 72](https://github.com/mortenbrudvik/Obfy/actions/runs/34750086309) — tests and coverage succeeded, then the sticky PR comment 403 (`Resource not accessible by integration`) skipped the summary and 80% warning.
+Phase 0 (`TR-01` / `TR-02`) filters the `Category=UI` tests (FlaUI, later also the Playwright tests) out of default `dotnet test` and the CI coverage step, and resolves `ObfyUI.exe` per configuration. The Windows CI job runs them in a step of their own. `TR-03` is ✅ Done (coverage report + 80% warning on GitHub Actions). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran. Later: [CI run 72](https://github.com/mortenbrudvik/Obfy/actions/runs/34750086309) — tests and coverage succeeded, then the sticky PR comment 403 (`Resource not accessible by integration`) skipped the summary and 80% warning.
 
 `examples/` are user-facing demos; `BasicConsoleApp`, `LibraryWithPublicApi`, and MSBuild AfterBuild are also CI fixtures (`TR-12` / `TR-22`).
 
@@ -58,11 +58,11 @@ Phase 0 is done (`TR-01`–`TR-03`). Default CI is green on `main` with a covera
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
-| TR-01 | Trait-filter FlaUI out of default `dotnet test` / CI (`Category=UI` or equivalent). Document local-only run in [Testing.md](Testing.md). | S | High | ✅ Done (`Category=UI` + default `VSTestTestCaseFilter`) |
+| TR-01 | Trait-filter FlaUI out of default `dotnet test` / CI (`Category=UI` or equivalent). Document local-only run in [Testing.md](Testing.md). | S | High | ✅ Done (`Category=UI` + default `VSTestTestCaseFilter`; the Windows CI job runs `Category=UI` in its own step) |
 | TR-02 | Resolve `ObfyUI.exe` from the current build configuration and TFM, not a hardcoded Debug path. | S | High | ✅ Done (`UiExecutableLocator`) |
 | TR-03 | Confirm CI is green on `main` and the coverage artifact + 80% warning actually run. | S | High | ✅ Done ([CI run 79](https://github.com/mortenbrudvik/Obfy/actions/runs/34753072894); 80% is a warning, not a hard fail) |
 
-**Done when:** a Release `dotnet test` of the solution on GitHub Actions passes; coverage artifact uploads; job step summary and 80% warning run; sticky PR comment is optional (same-repo, best-effort); FlaUI still runs locally with one documented command (see [Testing.md](Testing.md)).
+**Done when:** a Release `dotnet test` of the solution on GitHub Actions passes; coverage artifact uploads; job step summary and 80% warning run; sticky PR comment is optional (same-repo, best-effort); the `Category=UI` tests still run locally with one documented command (see [Testing.md](Testing.md)) and on the Windows CI job.
 
 ---
 
@@ -122,7 +122,7 @@ Only after Phase 1 is green. Same harness, more fixtures.
 | TR-24 | Satellite / `*.resources.dll` skip: one fixture or a built satellite; confirm default exclude leaves it unobfuscated and the parent still loads. | S | Low | ✅ Done (`SatelliteTests`) |
 | TR-25 | Split CLI “integration” file: parse vs process. Rename tests that only parse so the file list stops over-claiming. | S | Low | ✅ Done (`IntegrationParseTests` / `IntegrationProcessTests`) |
 
-**Out of Phase 2 on purpose:** ASP.NET, worker services, mixed-mode, netframework TFMs. Add those when a bug or a claimed platform requires them. Target frameworks have since been added for that reason: injected references crashed protected apps on net48, net5, net6 and netcoreapp3.1, so `ProtectedConsoleStartupTests` now builds and runs an SDK app on each documented target (see [Testing.md](Testing.md)).
+**Out of Phase 2 on purpose:** ASP.NET, worker services, mixed-mode, netframework TFMs. Add those when a bug or a claimed platform requires them. Target frameworks have since been added for that reason: injected references crashed protected apps on net48, net5, net6 and netcoreapp3.1, so `ProtectedConsoleStartupTests` now builds and runs an SDK app on net10.0 to net5.0, netcoreapp3.1, net48 and net461, each where its runtime and reference assemblies are installed. netstandard2.0, which `FrameworkReferencesTests` also lists, is only checked by reference (see [Testing.md](Testing.md)).
 
 ---
 
@@ -147,7 +147,7 @@ These are the product `PS-*` items. Do not advertise first-class support until t
 |----|------|--------|-------|--------|
 | TR-40 | Visual Studio: unit-test `ObfuscationServiceWrapper` / settings JSON / `GetOutputAssemblyPathAsync` without a VS hive. Optional vsix integration later. | M | Medium | ✅ Done (`Obfy.VisualStudio.Tests`: JSON, CLI args, `OutputAssemblyLocator`, `ObfyCliLocator`; wrapper process still needs a hive/CLI) |
 | TR-41 | Rider: JVM unit tests for settings + `AssemblyLocator`. | M | Low | Removed (the Rider plugin and its tests were dropped) |
-| TR-42 | FlaUI: one path that adds a built fixture DLL and clicks Obfuscate (needs TR-02). Still local-or-trait-filtered. | M | Low | ✅ Done (`ObfuscateFlowTests`; command-line DLL + Obfuscate; `Category=UI`) |
+| TR-42 | FlaUI: one path that adds a built fixture DLL and clicks Obfuscate (needs TR-02). Still local-or-trait-filtered. | M | Low | ✅ Done for the old WPF UI (`ObfuscateFlowTests`, deleted with it). The hybrid UI's equivalent is `WebUiTests.Obfuscate_FromStartupArguments_WritesTheOutputAndShowsResults` (Playwright; `Category=UI`, run on the Windows CI job) |
 | TR-43 | Dedicated tests for `Settings.Core` validation if scenario work does not already hit it. | S | Low | ✅ Done (`SettingsValidatorTests`) |
 
 Do not start TR-42 until Phase 0 and TR-10 exist — driving the UI to obfuscate needs a real input assembly.

@@ -22,7 +22,7 @@ This page gives no test counts, because they change with almost every commit. Ea
 
 The default CI filter is `Category!=UI&Category!=Platform`, so the `Category=UI` and `Category=Platform` tests are not part of a plain `dotnet test`. Counts are xUnit cases (`[Theory]` expansions included), so a project's total is not its number of methods.
 
-Some cases need more than the .NET 10 SDK. `ProtectedConsoleStartupTests` builds an SDK app and runs it protected on each of net10.0, net9.0, net8.0, net7.0, net6.0, net5.0, netcoreapp3.1, net48 and net461 (Windows only: method encryption and anti-dump use `kernel32`). A target is skipped, with the reason in the test output, when this machine does not have its runtime (`dotnet --list-runtimes`; the .NET Framework 4.x runtime for net48 and net461) or, for net48 and net461, its reference assemblies (a targeting pack, or the `Microsoft.NETFramework.ReferenceAssemblies.<tfm>` package in the NuGet cache, which any restore of a project that targets it fills). The framework the tests themselves run on is never skipped. CI installs the .NET 10, 9 and 8.0.106 SDKs, so those targets always run there. `Obfy.Tests` checks the same targets without running an app (`FrameworkReferencesTests`: every injected type and member reference against that target's reference assemblies) and skips a target the same way. Tests that scan the repository for project files skip `.worktrees`, `bin`, `obj` and `node_modules` by folder name, so running the suite inside a worktree reads only that checkout.
+Some cases need more than the .NET 10 SDK. `ProtectedConsoleStartupTests` builds an SDK app and runs it protected on each of net10.0, net9.0, net8.0, net7.0, net6.0, net5.0, netcoreapp3.1, net48 and net461 (Windows only: method encryption and anti-dump use `kernel32`). A target is skipped, with the reason in the test output, when this machine does not have its runtime (`dotnet --list-runtimes`; the .NET Framework 4.x runtime for net48 and net461) or, for net48 and net461, its reference assemblies (a targeting pack, or the `Microsoft.NETFramework.ReferenceAssemblies.<tfm>` package in the NuGet cache, which any restore of a project that targets it fills). The framework the tests themselves run on is never skipped, and if `dotnet --list-runtimes` cannot be read at all, a modern .NET target is assumed present and its test runs (and fails on the broken `dotnet`) instead of being skipped. CI installs the .NET 10, 9 and 8.0.106 SDKs, so those targets always run there. `Obfy.Tests` also checks targets without running an app (`FrameworkReferencesTests`: the references in protected output against that target's own assemblies, for netcoreapp3.1, net5.0 to net10.0, net461 and net48, and for netstandard2.0 against the netcoreapp3.1, net6.0, net10.0 and net48 runtimes) and skips a target whose reference assemblies or runtime it cannot find. Tests that scan the repository for project files skip `.worktrees`, `bin`, `obj` and `node_modules` by folder name, so running the suite inside a worktree reads only that checkout.
 
 ## Test Stack
 
@@ -70,7 +70,9 @@ npm run lint
 
 CI runs `npm ci`, `npm run lint` and `npm run test:run` before the .NET build. `dotnet build` of `Src/Obfy.UI` does not run them; it only builds the page (`npm run build`).
 
-### End-to-end (`Category=UI`, local, interactive desktop)
+### End-to-end (`Category=UI`, interactive desktop)
+
+The Windows CI job runs these (`ci.yml`, step "UI tests", `--filter "Category=UI"`, so `WebUiTests` and `FlaUiSmokeTests` both). To run them yourself:
 
 These tests launch the real `ObfyUI.exe`, so build it for the same configuration you test. The page's WebView2 is driven by Playwright over the Chrome DevTools Protocol: the app is started with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=N`, and Playwright attaches with `ConnectOverCDPAsync`. No Playwright browser download is needed. Each launch gets its own WebView2 profile (`OBFY_WEBVIEW2_USER_DATA`) and preferences (`OBFY_UI_PREFERENCES`) under a temp folder.
 
@@ -110,7 +112,7 @@ Tests the core obfuscation engine:
 - **Symbol renaming**: each rewrite of a reference that binds by name is run, not just inspected. `SymbolRenamingGenericInstantiationTests` (members of generic instantiations of the module's own types), `SymbolRenamingAttributeArgumentTests` (named, `typeof` and enum arguments of custom attributes), `SymbolRenamingDerivedParentTests` (a member reference that names a derived type), `SymbolRenamingLeftoverNamesTests` and `SymbolRenamingRowIdTests` (original names left in the output bytes, and which row ids survive), for a single assembly, a closed set and a merge. `StaleMemberReferenceScanner` fails any reference that names a member its definition no longer has
 - **Virtualization with renaming**: `VmWithRenamingTests` protects an app with Virtualization and symbol renaming together and runs it; `VmImporterTests` pins the cause
 - **Reference proxy**: `ReferenceProxyRuntimeMatrixTests` runs one call shape at a time (argument counts, private nested types, value-type receivers, calls that must stay direct)
-- **Framework targets**: `FrameworkReferencesTests` and `FrameworkReferenceChokePointTests` (every injected reference goes through `FrameworkReferences`)
+- **Framework targets**: `FrameworkReferencesTests` (the references in protected output against each target's assemblies) and `FrameworkReferenceChokePointTests` (a text scan of the `.cs` files under `Src/Obfy.Core` that fails on a hand-built type reference: `new TypeRefUser(`, `CorLibTypes.AssemblyRef`, `CorLibTypes.GetTypeRef(`)
 - **Incremental cache**: `IncrementalCacheTests`, `IncrementalCacheAtomicWriteTests`, the `CoreServicesIncremental*Tests` (what a hit returns and when it is taken, in-place runs, the cases the cache does not cover) and `PathIdentityTests`
 - **Packing**: `MethodImageDecryptorTests`, `PackedBootstrapTests`, `NativePackerTests`
 - **Version and release**: `ReleaseVersionConsistencyTests`, `DirectoryBuildPropsVersionTests`, `ProductVersionScriptTests` and `ResolvePackageVersionTests` pin `version.json` as the one version source, the `package/AppxManifest.xml` snapshot and the tag check in `publish.yml`. `InstallerPackagingTests` pins what `build-installer.ps1` does (the start checks themselves run only when the installer is built, see `CLAUDE.md`)
@@ -180,7 +182,7 @@ Location: `Tests/Obfy.Interop.Tests/`
 
 ### Obfy.UI.Tests (shell)
 
-`HybridWiringTests` (the container resolves the shell, bridge and sessions, and an approved close refuses `Start`), `ShutdownCoordinatorTests` and `ShellClosingTests` (what a close, Quit and Restart ask and do, and that a close that does not happen reopens the door), `ApplicationHostServiceTests` and `StartupArgumentsTests` in Obfy.App.Tests (files and `-o` from the command line). No window is created.
+`HybridWiringTests` (the container resolves the shell, bridge and sessions, and an approved close refuses `Start`), `ShutdownCoordinatorTests` and `ShellClosingTests` (what a close, Quit and Restart ask and do, and that a close that does not happen reopens the door), `ApplicationHostServiceTests` (the host service writes the session's preferences when it stops). `StartupArgumentsTests` (files and `-o` from the command line) is in `Tests/Obfy.App.Tests/Services/`. No window is created.
 
 Location: `Tests/Obfy.UI.Tests/`
 
@@ -193,7 +195,7 @@ Launches `ObfyUI.exe` (`Category=UI`, run after the default suite in CI):
 
 Locator unit tests in the same project (no trait) resolve Debug vs Release `ObfyUI.exe` and run in the default suite.
 
-Run them as described under [End-to-end](#end-to-end-categoryui-local-interactive-desktop).
+Run them as described under [End-to-end](#end-to-end-categoryui-interactive-desktop).
 
 Location: `Tests/Obfy.UI.AutomationTests/`
 
@@ -212,7 +214,7 @@ Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBui
 | `ObfuscationRunTrackerTests` | Which events cancel which runs |
 | `CommandTableTests` | Every command class is registered under a command-set GUID and id that the `.vsct` defines as a button, and every button has a command class. Reads the `.vsct` and the sources, since the commands need the Visual Studio SDK |
 
-The event wiring in `BuildEvents`, the commands and the options page only run inside Visual Studio and are not covered.
+Command registration is covered (`CommandTableTests`). The commands' behaviour, the event wiring in `BuildEvents` and the options page only run inside Visual Studio and are not covered.
 
 Location: `Tests/Obfy.VisualStudio.Tests/`
 
@@ -233,7 +235,7 @@ Compile → obfuscate → run real SDK projects. Fixtures live under `Tests/Obfy
 | `ProtectedConsoleStartupTests` | An SDK console app (`HelloConsole`) protected with the Aggressive preset, and with each of AntiDebug, AntiDump (a probe checks the dump hook is patched), MethodEncryption, AntiTamper, AES strings and Virtualization alone, and Virtualization together with symbol renaming, starts and runs on each target framework (see above); so does `RichConsole` (an embedded resource, a resx and a sibling assembly) with every technique at once |
 | `GenericInstantiationScenarioTests` | An SDK app (`GenericConsole`) that uses generic types it defines runs like the original after symbol renaming, single assembly and merge |
 | `InstallerSelfProtectionScenarioTests` | `build/self-obfuscation.json` protects a library and an app as one closed set and the result runs; protecting them one at a time fails with `TypeLoadException` |
-| `SdkRuntimeSkipTests` | A target whose runtime or reference assemblies are missing is skipped with the reason, never failed or silently passed |
+| `SdkRuntimeSkipTests` | The framework the tests run on is never skipped; a net4x target without reference assemblies is skipped with the reason; the same target is not skipped when its `Microsoft.NETFramework.ReferenceAssemblies.<tfm>` package is in the NuGet cache. The missing-runtime skip (`dotnet --list-runtimes`, in `SdkRuntimeTheoryAttribute`) has no test of its own |
 | `UnitySampleTests` | `examples/unity/obfy.json` on a stub with `UnityEngine` types (default job) |
 | `BlazorWasmTests` | Publish WASM, obfuscate `_framework/*.dll`, ALC-invoke probe (`Category=Platform`) |
 | `NativeAotTests` | Obfuscate IL, `PublishAot`, run native exe (`Category=Platform`) |

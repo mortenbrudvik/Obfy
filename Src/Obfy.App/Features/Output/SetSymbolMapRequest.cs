@@ -15,12 +15,7 @@ public class SetSymbolMapRequestHandler(InputSession session, RunCoordinator run
 {
     public ValueTask<InputSnapshot> Handle(SetSymbolMapRequest request, CancellationToken cancellationToken)
     {
-        run.EnsureNotRunning();
-        if (request.Enabled is { } enabled)
-            session.SetWriteSymbolMap(enabled);
-        if (request.Path is not null)
-            session.SetSymbolMapPath(request.Path);
-
+        run.WhileIdle(() => session.SetSymbolMap(request.Enabled, request.Path));
         return new ValueTask<InputSnapshot>(session.GetSnapshot());
     }
 }

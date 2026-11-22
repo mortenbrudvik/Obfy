@@ -11,8 +11,7 @@ public class SetIncludedRequestHandler(InputSession session, RunCoordinator run)
 {
     public ValueTask<InputSnapshot> Handle(SetIncludedRequest request, CancellationToken cancellationToken)
     {
-        run.EnsureNotRunning();
-        session.SetIncluded(request.Id, request.Included);
+        run.WhileIdle(() => session.SetIncluded(request.Id, request.Included));
         return new ValueTask<InputSnapshot>(session.GetSnapshot());
     }
 }

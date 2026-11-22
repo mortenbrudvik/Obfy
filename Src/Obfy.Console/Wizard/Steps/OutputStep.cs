@@ -11,6 +11,9 @@ public class OutputStep : WizardStep
 
     public override async Task ExecuteAsync(WizardContext context)
     {
+        // Apply use-case defaults before showing the summary so what the user sees matches what gets written.
+        ConfigurationWizard.ApplyUseCaseDefaults(context);
+
         // Display summary
         ConfigurationWizard.DisplaySummary(context);
 

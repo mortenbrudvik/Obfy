@@ -32,15 +32,17 @@ namespace Obfy.App.Sessions;
 /// <b>Threads.</b> <see cref="Start"/> returns at once; the run loop is on the thread pool and publishes
 /// <c>run.changed</c> from there, which is safe because a run starts only after the shell exists. Every change to this
 /// class's state runs under a lock and bumps the revision; events go out after it, outside the lock. Nothing that touches
-/// the disk runs under that lock (<see cref="IsRunning"/> and <see cref="EnsureNotRunning"/> wait on it, and the window's
-/// close handler calls the first): <see cref="Start"/> reads and checks the settings and the files first and takes the lock
-/// only to confirm they are unchanged and to become Running. Under it the other sessions are asked a revision only, read
-/// without their locks. The loop never throws: cancel, a failure and an unexpected error each end the run with a status.
+/// the disk runs under that lock (<see cref="IsRunning"/>, <see cref="EnsureNotRunning"/> and <see cref="WhileIdle(Action)"/>
+/// wait on it, and the window's close handler calls the first): <see cref="Start"/> reads and checks the settings and the
+/// files first and takes the lock only to confirm they are unchanged and to become Running. Under it the other sessions are
+/// asked a revision only, read without their locks. The loop never throws: cancel, a failure and an unexpected error each
+/// end the run with a status.
 /// </para>
 /// <para>
-/// <b>Push order.</b> A snapshot is taken and pushed under one lock (<c>_publishGate</c>), so pushes leave in revision
-/// order: a late <c>run.changed</c> from one thread can never follow the final one from the run thread with older values.
-/// Pushing does not block (the web view queues it), so the lock is short.
+/// <b>Push order.</b> Snapshots are built outside <c>_publishGate</c> (so disk probes in <see cref="InputSession.CaptureRun"/>
+/// never block other publishers) and pushed under <c>_publishGate</c> only when their revision is at least
+/// <c>_lastPublishedRevision</c>, so pushes leave in revision order: a late <c>run.changed</c> from one thread can never
+/// follow the final one from the run thread with older values. Pushing does not block (the web view queues it), so the lock is short.
 /// </para>
 /// </summary>
 public sealed class RunCoordinator : IDisposable
@@ -81,6 +83,9 @@ public sealed class RunCoordinator : IDisposable
     private RunPlan? _active;
     private CancellationTokenSource? _cts;
     private Task _runTask = Task.CompletedTask;
+    private long _lastPublishedRevision = -1;
+    private int _whileIdleDepth;
+    private bool _deferredDependencyChange;
     private bool _disposed;
     private bool _closing;
 
@@ -134,8 +139,61 @@ public sealed class RunCoordinator : IDisposable
     /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going.</exception>
     public void EnsureNotRunning()
     {
-        if (IsRunning)
+        lock (_gate)
+            EnsureNotRunningLocked();
+    }
+
+    private void EnsureNotRunningLocked()
+    {
+        if (_status == RunStatus.Running)
             throw new ObfyApiException("run.blocked", InputBlockedMessage);
+    }
+
+    /// <summary>
+    /// Runs a quick in-memory mutation atomically with the check that no run is in progress, under the run gate, so
+    /// <see cref="Start"/> cannot interleave between checking and mutating. Dependency-change publishing is deferred
+    /// until the gate is released so disk I/O never runs under the lock.
+    /// </summary>
+    /// <exception cref="ObfyApiException"><c>run.blocked</c>: a run is going.</exception>
+    public void WhileIdle(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        WhileIdle<object?>(() =>
+        {
+            action();
+            return null;
+        });
+    }
+
+    /// <inheritdoc cref="WhileIdle(Action)"/>
+    public T WhileIdle<T>(Func<T> func)
+    {
+        ArgumentNullException.ThrowIfNull(func);
+        var publish = false;
+        try
+        {
+            lock (_gate)
+            {
+                EnsureNotRunningLocked();
+                _whileIdleDepth++;
+                try
+                {
+                    return func();
+                }
+                finally
+                {
+                    _whileIdleDepth--;
+                    publish = _whileIdleDepth == 0 && _deferredDependencyChange;
+                    if (publish)
+                        _deferredDependencyChange = false;
+                }
+            }
+        }
+        finally
+        {
+            if (publish)
+                PublishChanged();
+        }
     }
 
     /// <summary>
@@ -196,48 +254,52 @@ public sealed class RunCoordinator : IDisposable
 
     // ---- Snapshot ----------------------------------------------------------------------------------------------
 
-    public RunSnapshot GetSnapshot()
-    {
-        RunStatus status;
-        string message;
-        double progress;
-        bool indeterminate;
-        string? current;
-        int completed, total, failed;
-        long revision;
-        RunPlan? active;
-        bool closing;
-        lock (_gate)
-        {
-            closing = _closing;
-            status = _status;
-            message = _message;
-            progress = _progress;
-            indeterminate = _indeterminate;
-            current = _currentFile;
-            completed = _completed;
-            total = _total;
-            failed = _failed;
-            revision = _revision;
-            active = _active;
-        }
+    private readonly record struct SnapshotState(
+        bool Closing,
+        RunStatus Status,
+        string Message,
+        double Progress,
+        bool Indeterminate,
+        string? Current,
+        int Completed,
+        int Total,
+        int Failed,
+        long Revision,
+        RunPlan? Active);
 
+    private SnapshotState ReadSnapshotStateLocked() => new(
+        _closing, _status, _message, _progress, _indeterminate, _currentFile,
+        _completed, _total, _failed, _revision, _active);
+
+    private RunSnapshot BuildSnapshot(in SnapshotState state)
+    {
         // While a run goes, the plan it started with is the truth, and the other sessions are not asked.
-        if (status == RunStatus.Running && active is not null)
+        if (state.Status == RunStatus.Running && state.Active is not null)
         {
             return new RunSnapshot(
-                revision, false, RunningReason, active.Mode, Explain(active.Mode), active.Output.Hint,
-                progress, indeterminate, current, completed, total, failed, status, message);
+                state.Revision, false, RunningReason, state.Active.Mode, Explain(state.Active.Mode),
+                state.Active.Output.Hint, state.Progress, state.Indeterminate, state.Current,
+                state.Completed, state.Total, state.Failed, state.Status, state.Message);
         }
 
         var capture = _input.CaptureRun(_protection.ToObfySettings().AssemblyMerge.Enabled);
         var plan = Plan(capture);
 
         // Start refuses a closing shell before anything else, so the run bar says so first: one rule.
-        var blocked = closing ? ClosingReason : BlockedReasonFor(capture.Included.Count, capture.Collision);
+        var blocked = state.Closing ? ClosingReason : BlockedReasonFor(capture.Included.Count, capture.Collision);
         return new RunSnapshot(
-            revision, blocked is null, blocked, plan.Mode, Explain(plan.Mode), plan.Output.Hint,
-            progress, indeterminate, current, completed, total, failed, status, message);
+            state.Revision, blocked is null, blocked, plan.Mode, Explain(plan.Mode), plan.Output.Hint,
+            state.Progress, state.Indeterminate, state.Current, state.Completed, state.Total, state.Failed,
+            state.Status, state.Message);
+    }
+
+    public RunSnapshot GetSnapshot()
+    {
+        SnapshotState state;
+        lock (_gate)
+            state = ReadSnapshotStateLocked();
+
+        return BuildSnapshot(state);
     }
 
     private const string RunningReason = "A run is already in progress.";
@@ -318,6 +380,8 @@ public sealed class RunCoordinator : IDisposable
         RunInput input;
         IReadOnlyList<InputFile> included;
         RunContext context;
+        TaskCompletionSource<bool> startGate;
+        Task task;
         for (var attempt = 1; ; attempt++)
         {
             // Everything that touches the disk happens here, outside the gate: the settings' validation probes the signing
@@ -344,9 +408,6 @@ public sealed class RunCoordinator : IDisposable
                     continue;
                 }
 
-                // A concurrent remove from here on either passed its own run check before this hold (B-37: nothing makes that
-                // check and the remove one step, so it can still land after this point and the run keeps the list it read) or
-                // is refused, because IsRunning waits for this lock and then answers true.
                 settings = candidateSettings;
                 input = candidate;
                 included = input.Included;
@@ -358,6 +419,7 @@ public sealed class RunCoordinator : IDisposable
                 context = new RunContext(included, input.Skipped, settings, plan, input.OutputFolderChosen, input.SymbolMapPath);
 
                 cts = new CancellationTokenSource();
+                startGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 _cts = cts;
                 _active = plan;
                 _status = RunStatus.Running;
@@ -369,13 +431,20 @@ public sealed class RunCoordinator : IDisposable
                 _total = included.Count;
                 _failed = 0;
                 _revision++;
+                task = Task.Run(async () =>
+                {
+                    if (!await startGate.Task.ConfigureAwait(false))
+                        return;
+                    await RunAsync(context, cts.Token).ConfigureAwait(false);
+                });
+                _runTask = task;
                 break;
             }
         }
 
-        // From here the coordinator is Running with a token source and no run task. Whatever fails before the task
-        // exists (an event publisher, the log, the results store) must not leave it that way: CanStart would stay false
-        // and nothing could cancel a run that never began.
+        // From here the coordinator is Running with a live _runTask awaiting startGate. Whatever fails before
+        // startGate opens (an event publisher, the log, the results store) must not leave it that way: AbandonStart
+        // resets the state and completes startGate(false) so neither CanStart nor Completion hangs.
         try
         {
             _results.BeginRun();
@@ -390,14 +459,12 @@ public sealed class RunCoordinator : IDisposable
 
             PublishChanged();
 
-            var task = Task.Run(() => RunAsync(context, cts.Token));
-            lock (_gate)
-                _runTask = task;
+            startGate.TrySetResult(true);
             return task;
         }
         catch (Exception ex)
         {
-            AbandonStart(cts, ex);
+            AbandonStart(cts, startGate, ex);
             throw;
         }
     }
@@ -430,7 +497,7 @@ public sealed class RunCoordinator : IDisposable
     }
 
     /// <summary>Puts a run that never began back to a state the page can recover from: Faulted, token source disposed.</summary>
-    private void AbandonStart(CancellationTokenSource cts, Exception ex)
+    private void AbandonStart(CancellationTokenSource cts, TaskCompletionSource<bool> startGate, Exception ex)
     {
         lock (_gate)
         {
@@ -443,6 +510,7 @@ public sealed class RunCoordinator : IDisposable
             _revision++;
         }
 
+        startGate.TrySetResult(false);
         cts.Dispose();
         _logger?.LogError("A run could not start ({ExceptionType})", ex.GetType().Name);
 
@@ -486,6 +554,11 @@ public sealed class RunCoordinator : IDisposable
             if (_status == RunStatus.Running || _disposed)
                 return;
             _revision++;
+            if (_whileIdleDepth > 0)
+            {
+                _deferredDependencyChange = true;
+                return;
+            }
         }
 
         PublishChanged();
@@ -621,6 +694,7 @@ public sealed class RunCoordinator : IDisposable
     private void Finish(RunStatus status, string message)
     {
         CancellationTokenSource? cts;
+        SnapshotState terminalState;
         lock (_gate)
         {
             cts = _cts;
@@ -632,14 +706,23 @@ public sealed class RunCoordinator : IDisposable
                 _progress = 100;
             _indeterminate = false;
             _revision++;
+            terminalState = ReadSnapshotStateLocked();
         }
 
         cts?.Dispose();
 
+        // Build the snapshot outside _gate and _publishGate: CaptureRun probes the file system and must not hold
+        // either lock. Using terminalState captured under _gate ensures RunCompleted never reflects a later Start().
+        var snapshot = BuildSnapshot(terminalState);
+
         lock (_publishGate)
         {
-            var snapshot = GetSnapshot();
-            _events?.Publish(AppEvents.RunChanged, snapshot);
+            if (snapshot.Revision >= _lastPublishedRevision)
+            {
+                _lastPublishedRevision = snapshot.Revision;
+                _events?.Publish(AppEvents.RunChanged, snapshot);
+            }
+
             _events?.Publish(AppEvents.RunCompleted, snapshot);
         }
 
@@ -688,10 +771,16 @@ public sealed class RunCoordinator : IDisposable
 
     private void PublishChanged()
     {
-        // The snapshot is taken inside the lock that orders the pushes: taken outside it, a thread could be overtaken by the
-        // run thread's final push and then deliver a stale one after it.
+        // Build the snapshot outside _publishGate so slow disk I/O in CaptureRun never stalls pushes on other
+        // threads, while _lastPublishedRevision inside _publishGate guarantees pushes leave in revision order.
+        var snapshot = GetSnapshot();
         lock (_publishGate)
-            _events?.Publish(AppEvents.RunChanged, GetSnapshot());
+        {
+            if (snapshot.Revision < _lastPublishedRevision)
+                return;
+            _lastPublishedRevision = snapshot.Revision;
+            _events?.Publish(AppEvents.RunChanged, snapshot);
+        }
 
         Changed?.Invoke();
     }

@@ -9,12 +9,13 @@ import { ruleCount } from "./scope";
 
 interface ScopeDetailProps {
   snapshot: SettingsSnapshot;
+  disabled?: boolean;
   onUpdate: (patch: SettingsPatch) => Committed;
   onOpenGuide: (topic: string) => void;
 }
 
 /** The detail panel of the exclusion and inclusion rules, which the host keeps beside the techniques, not among them. */
-export default function ScopeDetail({ snapshot, onUpdate, onOpenGuide }: ScopeDetailProps) {
+export default function ScopeDetail({ snapshot, disabled, onUpdate, onOpenGuide }: ScopeDetailProps) {
   const words = content.scope;
   const count = ruleCount(snapshot);
 
@@ -42,6 +43,7 @@ export default function ScopeDetail({ snapshot, onUpdate, onOpenGuide }: ScopeDe
               option={{ key: list.key, type: "list", label: list.label, help: list.help, placeholder: list.placeholder }}
               value={snapshot[list.set][list.key]}
               error={null}
+              disabled={disabled}
               onCommit={(value) => onUpdate({ [`${list.set}.${list.key}`]: value })}
             />
           ))}

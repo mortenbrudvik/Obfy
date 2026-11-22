@@ -93,9 +93,9 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
     obfuscate: running ? undefined : () => void startAfterPendingEdits(),
     cancel: running ? () => void cancel() : undefined,
     guide: () => onNavigate("guide"),
-    addFiles: () => void addFiles(),
+    addFiles: running ? undefined : () => void addFiles(),
     saveConfig: () => void saveConfig(),
-    openConfig: () => void openConfig(),
+    openConfig: running ? undefined : () => void openConfig(),
   });
 
   // Trying a broken screen again removes the button that had focus: focus goes to the content area, where the screen is.

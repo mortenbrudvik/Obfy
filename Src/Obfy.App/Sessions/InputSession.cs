@@ -530,49 +530,66 @@ public sealed class InputSession
         RaiseChanged();
     }
 
-    public void SetWriteSymbolMap(bool enabled)
-    {
-        lock (_gate)
-        {
-            if (enabled == _writeSymbolMap)
-                return;
-
-            _writeSymbolMap = enabled;
-            _settings.GenerateSymbolMap = enabled;
-            _notices = [];
-            _revision++;
-        }
-
-        QueuePreferenceSave();
-        RaiseChanged();
-    }
+    public void SetWriteSymbolMap(bool enabled) => SetSymbolMap(enabled, null);
 
     /// <summary>
     /// Sets where the symbol map is written; empty goes back to the default (<c>symbolmap.json</c> in the output folder).
     /// A relative path resolves against the output folder. Only while the map is on.
     /// </summary>
     /// <exception cref="ObfyApiException">The map is off, or the text is not a path.</exception>
-    public void SetSymbolMapPath(string? path)
+    public void SetSymbolMapPath(string? path) => SetSymbolMap(null, path ?? string.Empty);
+
+    /// <summary>
+    /// Atomically updates whether the symbol map is written and/or its path, validating both before changing either.
+    /// </summary>
+    /// <exception cref="ObfyApiException">The map is off when setting a path, or the text is not a path.</exception>
+    public void SetSymbolMap(bool? enabled, string? path)
     {
-        var value = (path ?? string.Empty).Trim();
+        bool writeChanged;
         lock (_gate)
         {
-            if (!_writeSymbolMap)
-                throw new ObfyApiException("output.symbolMapOff", "Turn on the symbol map before choosing where it goes.");
-            if (value.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
-                throw new ObfyApiException("output.invalidPath", "The symbol map path contains characters a path cannot hold.");
-            // Empty is the default, not a path: Path.GetFullPath("") throws.
-            if (value.Length > 0 && (IsDevicePath(value) || !IsUsablePath(value)))
-                throw new ObfyApiException("output.invalidPath", "That is not a usable symbol map path.");
-            if (value == _symbolMapPath)
+            var nextEnabled = enabled ?? _writeSymbolMap;
+            var nextPath = _symbolMapPath;
+            var pathChanged = false;
+            if (path is not null)
+            {
+                nextPath = ValidateSymbolMapPath(path, nextEnabled);
+                pathChanged = nextPath != _symbolMapPath;
+            }
+
+            writeChanged = nextEnabled != _writeSymbolMap;
+            if (!writeChanged && !pathChanged)
                 return;
 
-            _symbolMapPath = value;
+            if (writeChanged)
+            {
+                _writeSymbolMap = nextEnabled;
+                _settings.GenerateSymbolMap = nextEnabled;
+            }
+
+            if (pathChanged)
+                _symbolMapPath = nextPath;
+
             _notices = [];
             _revision++;
         }
 
+        if (writeChanged)
+            QueuePreferenceSave();
         RaiseChanged();
+    }
+
+    private static string ValidateSymbolMapPath(string path, bool mapEnabled)
+    {
+        var value = path.Trim();
+        if (!mapEnabled)
+            throw new ObfyApiException("output.symbolMapOff", "Turn on the symbol map before choosing where it goes.");
+        if (value.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+            throw new ObfyApiException("output.invalidPath", "The symbol map path contains characters a path cannot hold.");
+        // Empty is the default, not a path: Path.GetFullPath("") throws.
+        if (value.Length > 0 && (IsDevicePath(value) || !IsUsablePath(value)))
+            throw new ObfyApiException("output.invalidPath", "That is not a usable symbol map path.");
+        return value;
     }
 
     private string NormalizeFolder(string? text)
@@ -622,10 +639,10 @@ public sealed class InputSession
     /// <summary>
     /// Counts every change to the rows, the output folder, the symbol-map choice and the notices; it is how
     /// <see cref="RunCoordinator"/> confirms that what <see cref="CaptureRun"/> read is still what the session holds.
-    /// Read without the lock, on purpose: the caller holds a lock of its own that <c>IsRunning</c> waits on, and this
-    /// session's lock is held while an output plan is worked out, which for two or more C# files asks the file system
-    /// one folder-exists question. Writes are under the lock, together with the change they count, so a read sees a
-    /// revision no later than the change it belongs to: at worst a change that is landing now is counted as landing after.
+    /// Read without the lock, on purpose: the caller holds a lock of its own that <c>IsRunning</c>, <c>EnsureNotRunning</c>
+    /// and <c>WhileIdle</c> wait on, so avoiding this session's lock keeps the check lock-free and avoids contention with
+    /// concurrent reads. Writes are under the lock, together with the change they count, so a read sees a revision no later
+    /// than the change it belongs to: at worst a change that is landing now is counted as landing after.
     /// </summary>
     public long Revision => Volatile.Read(ref _revision);
 
@@ -636,8 +653,15 @@ public sealed class InputSession
     /// </summary>
     public OutputPlan PlanOutput(bool merge)
     {
+        List<Entry> inputs;
+        string? folder;
         lock (_gate)
-            return PlanLocked(merge);
+        {
+            inputs = IncludedLocked();
+            folder = _outputFolder.Length == 0 ? null : _outputFolder;
+        }
+
+        return BuildPlan(inputs, merge, folder);
     }
 
     /// <summary>
@@ -645,36 +669,43 @@ public sealed class InputSession
     /// exactly those rows, the symbol-map location and the <see cref="Revision"/> they were read at. Use this, not
     /// <see cref="IncludedInputs"/> and <see cref="PlanOutput"/> one after the other, which a concurrent edit could split.
     /// <para>
-    /// The collision check runs after the lock is released, because it asks the file system about every listed path and a
-    /// path on an unreachable share can take a long time: the session must stay answerable meanwhile. The caller that
-    /// acts on <see cref="RunInput.Collision"/> compares <see cref="RunInput.Revision"/> with <see cref="Revision"/> first.
+    /// Output planning (which checks <c>Directory.Exists</c> for multi-file C# layouts) and collision detection run after the
+    /// lock is released so the session stays answerable on slow shares. The caller that acts on <see cref="RunInput.Collision"/>
+    /// compares <see cref="RunInput.Revision"/> with <see cref="Revision"/> first.
     /// </para>
     /// </summary>
     public RunInput CaptureRun(bool merge)
     {
-        RunInput captured;
-        OutputPlan? defaultPlan;
+        List<Entry> inputs;
+        string? folder;
+        List<InputFile> included;
+        List<FileRow> skipped;
+        string? symbolMapPath;
+        long revision;
         lock (_gate)
         {
-            var included = IncludedLocked()
+            inputs = IncludedLocked();
+            folder = _outputFolder.Length == 0 ? null : _outputFolder;
+            included = inputs
                 .Select(e => new InputFile(e.Id, e.Path, e.Kind, e.Origin == FileOrigin.Solution, e.Hints))
                 .ToList();
-            var skipped = _entries.Where(e => e.Status == FileStatus.Skipped).Select(ToRow).ToList();
-            captured = new RunInput(
-                included,
-                skipped,
-                PlanLocked(merge),
-                _outputFolder.Length > 0,
-                _writeSymbolMap ? ResolveSymbolMapLocked() : null,
-                Revision: _revision);
-
-            // What clearing the folder would write, so the message can say whether that way out is open.
-            defaultPlan = _outputFolder.Length > 0 ? PlanLocked(merge, folder: null) : null;
+            skipped = _entries.Where(e => e.Status == FileStatus.Skipped).Select(ToRow).ToList();
+            symbolMapPath = _writeSymbolMap ? ResolveSymbolMapLocked() : null;
+            revision = _revision;
         }
 
-        // Outside the lock: telling two paths apart may ask the file system about links.
-        var listed = captured.Included.Select(static f => f.Path).Concat(captured.Skipped.Select(static r => r.Path));
-        return captured with { Collision = OutputCollisions.Find(listed, captured.Plan, defaultPlan, captured.SymbolMapPath, _probe) };
+        // Outside the lock: planning multi-file C# outputs checks Directory.Exists, and collision detection asks about links.
+        var plan = BuildPlan(inputs, merge, folder);
+        var defaultPlan = folder is not null ? BuildPlan(inputs, merge, folder: null) : null;
+        var listed = included.Select(static f => f.Path).Concat(skipped.Select(static r => r.Path));
+        return new RunInput(
+            included,
+            skipped,
+            plan,
+            folder is not null,
+            symbolMapPath,
+            OutputCollisions.Find(listed, plan, defaultPlan, symbolMapPath, _probe),
+            revision);
     }
 
     /// <summary>The symbol map's file: the typed path (a relative one against the output folder), or the default name there.</summary>
@@ -700,16 +731,14 @@ public sealed class InputSession
     private List<Entry> IncludedLocked() =>
         _entries.Where(e => e.Status != FileStatus.Skipped && e.Kind != FileKind.Project).ToList();
 
-    private OutputPlan PlanLocked(bool merge) => PlanLocked(merge, _outputFolder.Length == 0 ? null : _outputFolder);
-
     /// <summary>
     /// The plan for the included rows with <paramref name="folder"/> as the output folder (null: the defaults). The one
     /// place that decides where each file is written: the hint, the run (<see cref="OutputPlan.OutputPathFor"/>) and the
-    /// check that no output replaces a listed file (<see cref="OutputCollisions"/>) all read it.
+    /// check that no output replaces a listed file (<see cref="OutputCollisions"/>) all read it. When
+    /// <paramref name="includeOutputs"/> is false, only the mode and hint are computed (no file-system checks).
     /// </summary>
-    private OutputPlan PlanLocked(bool merge, string? folder)
+    private static OutputPlan BuildPlan(List<Entry> inputs, bool merge, string? folder, bool includeOutputs = true)
     {
-        var inputs = IncludedLocked();
         if (inputs.Count == 0)
             return new OutputPlan(OutputMode.None, null, null, string.Empty, []);
 
@@ -720,18 +749,21 @@ public sealed class InputSession
             var primary = assemblies[0];
             var directory = folder ?? DirectoryOf(primary);
             var path = Path.Combine(directory, ObfuscatedName(primary));
+            List<PlannedOutput> outputs = includeOutputs ? [new PlannedOutput(primary.Path, path)] : [];
             return new OutputPlan(
-                OutputMode.Merge, directory, path, $"Merges {inputs.Count} assemblies into {path}.", [new PlannedOutput(primary.Path, path)]);
+                OutputMode.Merge, directory, path, $"Merges {inputs.Count} assemblies into {path}.", outputs);
         }
 
         if (assemblies.Count >= 2 || inputs.Any(e => e.Origin == FileOrigin.Solution))
         {
             var directory = folder ?? Path.Combine(DirectoryOf(assemblies.FirstOrDefault() ?? inputs[0]), "obfy-out");
+            var outputs = includeOutputs ? ClosedSetOutputs(inputs, assemblies, directory) : [];
             return new OutputPlan(
-                OutputMode.ClosedSet, directory, null, $"Writes the protected assemblies to {directory}.", ClosedSetOutputs(inputs, assemblies, directory));
+                OutputMode.ClosedSet, directory, null, $"Writes the protected assemblies to {directory}.", outputs);
         }
 
-        return new OutputPlan(OutputMode.Each, folder, null, EachHint(inputs, folder), EachOutputs(inputs, folder));
+        var eachOutputs = includeOutputs ? EachOutputs(inputs, folder) : [];
+        return new OutputPlan(OutputMode.Each, folder, null, EachHint(inputs, folder), eachOutputs);
     }
 
     /// <summary>
@@ -974,12 +1006,14 @@ public sealed class InputSession
     {
         lock (_gate)
         {
-            var plan = PlanLocked(merge: false);
-            var mergePlan = PlanLocked(merge: true);
+            var inputs = IncludedLocked();
+            var folder = _outputFolder.Length == 0 ? null : _outputFolder;
+            var plan = BuildPlan(inputs, merge: false, folder, includeOutputs: false);
+            var mergePlan = BuildPlan(inputs, merge: true, folder, includeOutputs: false);
             return new InputSnapshot(
                 _revision,
                 _entries.Select(ToRow).ToList(),
-                IncludedLocked().Count > 0,
+                inputs.Count > 0,
                 _outputFolder,
                 plan.Hint,
                 mergePlan.Hint,

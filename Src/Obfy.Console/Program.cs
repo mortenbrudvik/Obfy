@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Reflection;
 using System.Text.Json;
 using System.Xml;
 using System.Text.Json.Serialization;
@@ -287,8 +288,7 @@ public class Program
             }
             catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
             {
-                parseResult.InvocationConfiguration.Error.WriteLine(ex.Message);
-                AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
+                WriteCliError(parseResult.InvocationConfiguration.Error, ex.Message);
                 return 1;
             }
         });
@@ -314,9 +314,9 @@ public class Program
             var quick = parseResult.GetValue(quickModeOption);
             if (!IsWizardInteractive())
             {
-                parseResult.InvocationConfiguration.Error.WriteLine(
+                WriteCliError(
+                    parseResult.InvocationConfiguration.Error,
                     "config wizard needs an interactive terminal.");
-                AnsiConsole.MarkupLine("[red]config wizard needs an interactive terminal.[/]");
                 return 1;
             }
 
@@ -327,9 +327,9 @@ public class Program
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException)
             {
-                parseResult.InvocationConfiguration.Error.WriteLine(
+                WriteCliError(
+                    parseResult.InvocationConfiguration.Error,
                     "config wizard needs an interactive terminal.");
-                AnsiConsole.MarkupLine("[red]config wizard needs an interactive terminal.[/]");
                 return 1;
             }
         });
@@ -442,8 +442,10 @@ public class Program
         if (config != null && parseResult.GetResult(LevelOption) is { Implicit: false })
         {
             const string ignored = "--level is ignored because --config was given. The config file sets the options.";
-            parseResult.InvocationConfiguration.Output.WriteLine(ignored);
-            AnsiConsole.MarkupLine($"[yellow]{ignored}[/]");
+            if (!ReferenceEquals(parseResult.InvocationConfiguration.Output, System.Console.Out))
+                parseResult.InvocationConfiguration.Output.WriteLine(ignored);
+            else
+                AnsiConsole.MarkupLine($"[yellow]{ignored}[/]");
         }
         var stringEncrypt = parseResult.GetValue(StringEncryptOption);
         var controlFlow = parseResult.GetValue(ControlFlowOption);
@@ -559,6 +561,7 @@ public class Program
             var json = await File.ReadAllTextAsync(configFile.FullName).ConfigureAwait(false);
             settings = JsonSerializer.Deserialize<ObfySettings>(json, ConfigReadOptions)
                 ?? throw new InvalidOperationException("Config file deserialized to null.");
+            FillNullSections(settings);
 
             // Unknown keys are ignored by the reader (and allowed by the schema), so a typo would otherwise run
             // with the defaults and report success. Say so; the run itself is not stopped.
@@ -633,6 +636,49 @@ public class Program
         PropertyNameCaseInsensitive = true,
         Converters = { new JsonStringEnumConverter() }
     };
+
+    private static void WriteCliError(TextWriter errorWriter, string message)
+    {
+        errorWriter.WriteLine(message);
+    }
+
+    /// <summary>
+    /// Gives every nested section or list property set to <c>null</c> in JSON its default instance so
+    /// downstream code never hits a <see cref="NullReferenceException"/>.
+    /// </summary>
+    private static void FillNullSections(ObfySettings settings)
+    {
+        FillNullObjectSections(settings);
+        if (string.IsNullOrWhiteSpace(settings.Packing.Rid))
+            settings.Packing.Rid = "win-x64";
+    }
+
+    private static void FillNullObjectSections(object instance)
+    {
+        foreach (var property in instance.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            var type = property.PropertyType;
+            if (!property.CanRead || !property.CanWrite || property.GetIndexParameters().Length != 0)
+                continue;
+
+            var isList = type == typeof(List<string>);
+            var isSection = type.IsClass && type != typeof(string) && !isList
+                && !typeof(System.Collections.IEnumerable).IsAssignableFrom(type)
+                && type.GetConstructor(Type.EmptyTypes) is not null;
+            if (!isList && !isSection)
+                continue;
+
+            var value = property.GetValue(instance);
+            if (value is null)
+            {
+                value = Activator.CreateInstance(type);
+                property.SetValue(instance, value);
+            }
+
+            if (isSection)
+                FillNullObjectSections(value!);
+        }
+    }
 
     private static ObfuscationLevel ParseLevel(string level)
     {

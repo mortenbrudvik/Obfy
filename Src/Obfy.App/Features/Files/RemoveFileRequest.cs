@@ -11,8 +11,7 @@ public class RemoveFileRequestHandler(InputSession session, RunCoordinator run) 
 {
     public ValueTask<InputSnapshot> Handle(RemoveFileRequest request, CancellationToken cancellationToken)
     {
-        run.EnsureNotRunning();
-        session.Remove(request.Id);
+        run.WhileIdle(() => session.Remove(request.Id));
         return new ValueTask<InputSnapshot>(session.GetSnapshot());
     }
 }

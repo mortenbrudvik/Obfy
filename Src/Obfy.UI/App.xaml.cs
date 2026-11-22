@@ -141,6 +141,7 @@ public partial class App : Application
         e.SetObserved();
     }
 
+    private readonly object _fallbackLogsGate = new();
     private ILoggerFactory? _fallbackLogs;
 
     /// <summary>
@@ -161,8 +162,12 @@ public partial class App : Application
 
         try
         {
-            logger ??= (_fallbackLogs ??= LoggingConfiguration.CreateLoggerFactory("Obfy.UI", enableConsoleOutput: false))
-                .CreateLogger<App>();
+            if (logger is null)
+            {
+                lock (_fallbackLogsGate)
+                    _fallbackLogs ??= LoggingConfiguration.CreateLoggerFactory("Obfy.UI", enableConsoleOutput: false);
+                logger = _fallbackLogs.CreateLogger<App>();
+            }
             CrashLog.Error(logger, ex, message);
         }
         catch (Exception logEx)
@@ -210,6 +215,15 @@ public partial class App : Application
             }
 
             _host = null;
+        }
+
+        try
+        {
+            LoggingConfiguration.Flush(TimeSpan.FromSeconds(2));
+        }
+        catch (Exception)
+        {
+            // Best-effort log flush during shutdown.
         }
 
         base.OnExit(e);

@@ -177,7 +177,13 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 foreach (var warning in job.GatingWarnings)
                     context.Warnings.Add(warning);
                 foreach (var warning in sessionContext.Warnings)
+                {
+                    // The rename pass shares one list. This warning is about the set, so it is filed
+                    // once, on the first module, the same way as the incremental-cache note below.
+                    if (i != 0 && warning == SymbolRenamingObfuscator.ClosedSetNoXamlBindableTypes)
+                        continue;
                     context.Warnings.Add(warning);
+                }
                 foreach (var pair in sessionContext.SymbolMap)
                     context.SymbolMap[pair.Key] = pair.Value;
                 if (i == 0)

@@ -488,6 +488,116 @@ public class ClosedSetProcessorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_PreserveXaml_ViewModelBesidePlainAssembly_KeepsBindingNamesAndDoesNotWarn()
+    {
+        using var fixture = new ClosedSetEmit();
+        var libPath = fixture.CompileSource(ViewModelLibSource, "ClassLib", OutputKind.DynamicallyLinkedLibrary);
+        var appPath = fixture.CompileSource(ShellHostSource, "ShellHost", OutputKind.ConsoleApplication, libPath);
+        var outputDir = Path.Combine(fixture.Root, "xaml-names");
+        var settings = ClosedSetRenameSettings(preservePublicApi: false);
+        settings.SymbolRenaming.PreserveXaml = true;
+
+        var result = await CreateProcessor().ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            settings);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.ModuleResults.ShouldAllBe(module =>
+            !module.Warnings.Any(w => w.Contains("preserveXaml", StringComparison.Ordinal)));
+
+        using var lib = ModuleDefMD.Load(File.ReadAllBytes(Path.Combine(outputDir, "ClassLib.dll")));
+        lib.GetTypes().ShouldNotContain(t => t.Name == "MainViewModel");
+        lib.GetTypes().ShouldNotContain(t => t.Name == "DashboardModel");
+        var bindable = lib.GetTypes().Single(t => t.Properties.Any(p => p.Name == "RestartCommand"));
+        foreach (var name in new[]
+                 {
+                     "RestartCommand", "OpenLogFolderCommand", "QuitCommand",
+                     "WebViewFailed", "FailureAdvice", "LogsNote", "WebView"
+                 })
+        {
+            bindable.Properties.ShouldContain(p => p.Name == name);
+        }
+
+        bindable.Fields.ShouldNotContain(f => f.Name == "_scratch");
+        lib.GetTypes().SelectMany(t => t.Properties).ShouldNotContain(p => p.Name == "Title");
+
+        using var app = ModuleDefMD.Load(File.ReadAllBytes(Path.Combine(outputDir, "ShellHost.exe")));
+        app.GetTypes().ShouldNotContain(t => t.Name == "PlainWindow");
+        app.GetTypes().SelectMany(t => t.Properties).ShouldNotContain(p => p.Name == "Caption");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PreserveXaml_NoBindableType_WarnsOnceForTheClosedSet()
+    {
+        using var fixture = new ClosedSetEmit();
+        var (libPath, appPath) = fixture.CompileClosedSet();
+        var outputDir = Path.Combine(fixture.Root, "xaml-none");
+        var settings = ClosedSetRenameSettings(preservePublicApi: false);
+        settings.SymbolRenaming.PreserveXaml = true;
+
+        var result = await CreateProcessor().ExecuteAsync(
+            [
+                new ClosedSetInput { AssemblyPath = libPath, Hints = new ProjectSettingsHints() },
+                new ClosedSetInput { AssemblyPath = appPath, Hints = new ProjectSettingsHints() }
+            ],
+            outputDir,
+            settings);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+        result.ModuleResults.Count.ShouldBe(2);
+        SymbolRenamingObfuscator.ClosedSetNoXamlBindableTypes.ShouldBe(
+            "preserveXaml is enabled but no ViewModel/View/DependencyObject types were detected in this closed set. " +
+            "Public properties on XAML types may have been renamed. Name view-models *ViewModel / *View, " +
+            "or ensure WPF/WinUI assemblies are resolvable.");
+        result.ModuleResults[0].Warnings.ShouldContain(SymbolRenamingObfuscator.ClosedSetNoXamlBindableTypes);
+        result.ModuleResults[0].Warnings.ShouldNotContain(SymbolRenamingObfuscator.NoXamlBindableTypes);
+        result.ModuleResults[1].Warnings.ShouldNotContain(w => w.Contains("preserveXaml", StringComparison.Ordinal));
+        result.ModuleResults.Sum(module => module.Warnings.Count(w => w == SymbolRenamingObfuscator.ClosedSetNoXamlBindableTypes))
+            .ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The names a XAML binding reads off the data context. The type itself may be renamed;
+    /// <c>preserveXaml</c> keeps the public instance properties.
+    /// </summary>
+    private const string ViewModelLibSource = """
+        namespace Lib.Api;
+        public sealed class MainViewModel
+        {
+            public string RestartCommand { get; set; } = "";
+            public string OpenLogFolderCommand { get; set; } = "";
+            public string QuitCommand { get; set; } = "";
+            public bool WebViewFailed { get; set; }
+            public string FailureAdvice { get; set; } = "advice";
+            public string LogsNote { get; set; } = "logs";
+            public string WebView { get; set; } = "";
+            private int _scratch;
+            public int Scratch => _scratch;
+        }
+        public sealed class DashboardModel
+        {
+            public string Title { get; set; } = "t";
+        }
+        """;
+
+    private const string ShellHostSource = """
+        using Lib.Api;
+        public static class Program
+        {
+            public static void Main() { }
+            public static string Run() => new MainViewModel().FailureAdvice;
+        }
+        public sealed class PlainWindow
+        {
+            public string Caption { get; set; } = "x";
+        }
+        """;
+
+    [Fact]
     public async Task ExecuteAsync_DuplicateRelativeOutputs_FailsWithoutWriting()
     {
         using var fixture = new ClosedSetEmit();

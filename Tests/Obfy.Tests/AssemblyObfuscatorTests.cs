@@ -3261,6 +3261,28 @@ public class AssemblyObfuscatorTests
         (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
         bindable.Name.String.ShouldBe("Title");
         secret.Name.String.ShouldNotBe("_scratch");
+        context.Warnings.ShouldNotContain(w => w.Contains("preserveXaml", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SymbolRenaming_PreserveXaml_WarnsWhenTheAssemblyHasNoBindableType()
+    {
+        var module = CreateTestModule();
+        CreateTestType(module, "Customer");
+
+        var obfuscator = new SymbolRenamingObfuscator(new NameGenerator(), new Mock<ILogger<SymbolRenamingObfuscator>>().Object);
+        var context = PipelineContext.ForAssembly(module, new ObfySettings
+        {
+            SymbolRenaming = { Enabled = true, PreserveXaml = true, Mode = NamingMode.Sequential }
+        });
+
+        (await obfuscator.ObfuscateAsync(context)).Success.ShouldBeTrue();
+        SymbolRenamingObfuscator.NoXamlBindableTypes.ShouldBe(
+            "preserveXaml is enabled but no ViewModel/View/DependencyObject types were detected. " +
+            "Public properties on XAML types may have been renamed. Name view-models *ViewModel / *View, " +
+            "or ensure WPF/WinUI assemblies are resolvable.");
+        context.Warnings.ShouldContain(SymbolRenamingObfuscator.NoXamlBindableTypes);
+        context.Warnings.ShouldNotContain(SymbolRenamingObfuscator.ClosedSetNoXamlBindableTypes);
     }
 
     [Fact]

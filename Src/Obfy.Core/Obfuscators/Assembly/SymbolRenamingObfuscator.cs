@@ -11,6 +11,23 @@ namespace Obfy.Core.Obfuscators.Assembly;
 /// </summary>
 public class SymbolRenamingObfuscator : IObfuscator
 {
+    /// <summary>
+    /// A single assembly had <c>preserveXaml</c> on and no type that looks XAML-bindable.
+    /// </summary>
+    internal const string NoXamlBindableTypes =
+        "preserveXaml is enabled but no ViewModel/View/DependencyObject types were detected. " +
+        "Public properties on XAML types may have been renamed. Name view-models *ViewModel / *View, " +
+        "or ensure WPF/WinUI assemblies are resolvable.";
+
+    /// <summary>
+    /// A closed set had <c>preserveXaml</c> on and no module contained a type that looks XAML-bindable.
+    /// Raised once for the set. A library next to a view-model is not, by itself, a missed binding.
+    /// </summary>
+    internal const string ClosedSetNoXamlBindableTypes =
+        "preserveXaml is enabled but no ViewModel/View/DependencyObject types were detected in this closed set. " +
+        "Public properties on XAML types may have been renamed. Name view-models *ViewModel / *View, " +
+        "or ensure WPF/WinUI assemblies are resolvable.";
+
     private readonly INameGenerator _nameGenerator;
     private readonly ILogger<SymbolRenamingObfuscator> _logger;
 
@@ -260,12 +277,7 @@ public class SymbolRenamingObfuscator : IObfuscator
             }
 
             if (settings.PreserveXaml && xamlBindableSeen == 0)
-            {
-                context.Warnings.Add(
-                    "preserveXaml is enabled but no ViewModel/View/DependencyObject types were detected. " +
-                    "Public properties on XAML types may have been renamed. Name view-models *ViewModel / *View, " +
-                    "or ensure WPF/WinUI assemblies are resolvable.");
-            }
+                context.Warnings.Add(NoXamlBindableTypes);
 
             _logger.LogInformation(
                 "Renamed {Types} types, {Methods} methods, {Fields} fields, {Properties} properties, {Parameters} parameters, {Events} events, {Namespaces} namespaces",
@@ -330,15 +342,14 @@ public class SymbolRenamingObfuscator : IObfuscator
 
             if (settings.SymbolRenaming.RenameParameters)
                 RenameClosedSetParameters(module, settings, sharedContext, stats, cancellationToken);
-
-            if (settings.SymbolRenaming.PreserveXaml && plan.XamlBindableSeen == 0)
-            {
-                sharedContext.Warnings.Add(
-                    "preserveXaml is enabled but no ViewModel/View/DependencyObject types were detected. " +
-                    "Public properties on XAML types may have been renamed. Name view-models *ViewModel / *View, " +
-                    "or ensure WPF/WinUI assemblies are resolvable.");
-            }
         }
+
+        // One warning for the set, and only when none of the modules that asked for preserveXaml had a
+        // bindable type. Per module, the same text was copied onto every output, so an assembly that
+        // did have a view-model was warned about the libraries beside it.
+        var xamlPlans = plans.FindAll(static p => p.Settings.SymbolRenaming.PreserveXaml);
+        if (xamlPlans.Count > 0 && xamlPlans.TrueForAll(static p => p.Plan.XamlBindableSeen == 0))
+            sharedContext.Warnings.Add(ClosedSetNoXamlBindableTypes);
 
         ApplyReferenceUpdates(referenceUpdates);
         sharedContext.Statistics.Merge(stats);

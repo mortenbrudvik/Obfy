@@ -531,7 +531,9 @@ public class ProtectionSettings
     /// <summary>
     /// When reference proxy is on, also proxy selected out-of-module calls (BCL and third-party).
     /// Ignored unless <see cref="ReferenceProxy"/> is true. Off by default; in-module calls are still proxied.
-    /// Skips compiler/interop/pointer/value-type/generic/vararg/ctor signatures.
+    /// Skips compiler and interop types (including nested types), pointers, by-refs, generics, varargs and
+    /// constructors. A known value-type instance call is proxied by reference; an unknown receiver, and
+    /// <c>callvirt</c> on a value type, stays direct.
     /// </summary>
     public bool ProxyExternalCalls { get; set; } = false;
 

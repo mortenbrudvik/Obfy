@@ -123,7 +123,7 @@ public class Program
 
         ProxyExternalOption = new Option<bool>("--proxy-external")
         {
-            Description = "Also proxy selected out-of-module calls (enables --reference-proxy). Skips compiler/interop/pointer signatures."
+            Description = "Also proxy selected out-of-module calls (enables --reference-proxy). Skips compiler and interop types (including nested types), pointers, by-refs, generics, varargs and constructors. A known value-type instance call is proxied by reference; an unknown receiver or callvirt on a value type stays direct."
         };
 
         EncryptMethodsOption = new Option<bool>("--encrypt-methods")

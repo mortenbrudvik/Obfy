@@ -180,7 +180,7 @@ Tech stack: WPF + WebView2, React 19 + Vite + TypeScript (Vitest, Testing Librar
 | Virtualization | 24 | Bytecode interpreter for eligible instance and static methods (objects, non-generic calls, fields, newobj, ldstr; i4/i8/r4/r8). Skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, typeof (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded). Per-build permute+XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset. Deterrent, not confidentiality. |
 | MethodEncryption | 25 | XOR-encrypts method IL in the PE (Windows; per-method keys; skips generics) |
 | ControlFlow | 30 | State-machine dispatch of basic blocks and/or opaque predicates |
-| ReferenceProxy | 40 | Hides in-module call targets behind proxy methods |
+| ReferenceProxy | 40 | Hides call targets behind proxy methods. Skips constructors, generics, varargs, prefixed calls (`constrained.`, `tail.`, `readonly.`), pointers and unknown receivers. A known value-type receiver is passed by reference; `callvirt` on a value type stays direct. Out-of-module calls need `proxyExternalCalls`, and nested compiler/interop types are skipped |
 | SymbolRenaming | 50 | Renames types, methods, fields, properties, events, namespaces |
 | MetadataRemoval | 90 | Strips debug info and attributes |
 

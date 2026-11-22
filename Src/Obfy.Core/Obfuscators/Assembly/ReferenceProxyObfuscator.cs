@@ -12,9 +12,12 @@ namespace Obfy.Core.Obfuscators.Assembly;
 /// longer reference the original method token. In-module calls are proxied when
 /// <see cref="ProtectionSettings.ReferenceProxy"/> is on. Out-of-module calls (BCL and third-party)
 /// are proxied only when <see cref="ProtectionSettings.ProxyExternalCalls"/> is also on;
-/// compiler/interop/pointer/value-type/generic/<c>constrained.</c> sites are skipped.
-/// Private, protected, and private-protected methods are trampolined from a nested type of the
-/// declaring type so <c>ldftn</c> is legal. External proxies are keyed by assembly identity.
+/// compiler and interop types (including nested types), pointers, generics and
+/// <c>constrained.</c> sites are skipped. An instance call is proxied only when the receiver is a
+/// known reference type or a known value type; a value-type receiver is passed by reference.
+/// Private, protected, and private-protected methods, and methods whose declaring type is not
+/// visible to a sibling type, are trampolined from a nested type of the declaring type so
+/// <c>ldftn</c> is legal. External proxies are keyed by assembly identity.
 /// </summary>
 public class ReferenceProxyObfuscator : IObfuscator
 {
@@ -43,6 +46,7 @@ public class ReferenceProxyObfuscator : IObfuscator
             TypeDef? moduleProxy = null;
             var nestedProxies = new Dictionary<TypeDef, TypeDef>();
             var proxies = new Dictionary<string, MethodDef>(StringComparer.Ordinal);
+            var receivers = ReceiverIndex.Build(module);
             var created = 0;
 
             foreach (var type in module.GetTypes().ToList())
@@ -79,7 +83,7 @@ public class ReferenceProxyObfuscator : IObfuscator
                             continue;
                         if (instr.Operand is not IMethod called)
                             continue;
-                        if (!CanProxy(called, module, context))
+                        if (!CanProxy(called, module, context, receivers, instr.OpCode == OpCodes.Callvirt))
                             continue;
 
                         var home = ClassifyProxy(called, module);
@@ -93,7 +97,7 @@ public class ReferenceProxyObfuscator : IObfuscator
                         var key = ProxyKey(called, instr.OpCode.Code);
                         if (!proxies.TryGetValue(key, out var proxy))
                         {
-                            proxy = CreateProxy(called, instr.OpCode == OpCodes.Callvirt, owner.Methods.Count);
+                            proxy = CreateProxy(called, instr.OpCode == OpCodes.Callvirt, owner.Methods.Count, receivers);
                             if (proxy == null)
                                 continue;
                             owner.Methods.Add(proxy);
@@ -154,8 +158,9 @@ public class ReferenceProxyObfuscator : IObfuscator
             return CanReachFromModuleProxy(resolved, module) ? ProxyHome.Module : ProxyHome.Skip;
         }
 
-        var access = AccessOf(resolved!);
-        if (access is MethodAttributes.Private or MethodAttributes.Family or MethodAttributes.FamANDAssem)
+        // A public method of a private nested type is still invisible to Obfy.Runtime.<RefProxy>.
+        // The trampoline has to live inside the declaring type, or the call stays direct.
+        if (NeedsNestedHome(resolved!))
         {
             // A nested trampoline inside an open generic type is not a stable ldftn target.
             // Leave the direct call so the original method still runs.
@@ -165,6 +170,37 @@ public class ReferenceProxyObfuscator : IObfuscator
         }
 
         return ProxyHome.Module;
+    }
+
+    private static bool NeedsNestedHome(MethodDef method)
+    {
+        var access = AccessOf(method);
+        if (access is MethodAttributes.Private or MethodAttributes.Family or MethodAttributes.FamANDAssem)
+            return true;
+
+        return !VisibleToModuleProxy(method.DeclaringType);
+    }
+
+    /// <summary>
+    /// A top-level sibling can see public and assembly types, and nested types that are themselves
+    /// public or assembly, as long as every enclosing type is too. Private, protected and
+    /// private-protected nested types are visible only from inside the enclosing type.
+    /// </summary>
+    private static bool VisibleToModuleProxy(TypeDef? type)
+    {
+        for (var current = type; current != null; current = current.DeclaringType)
+        {
+            if (current.DeclaringType == null)
+                return true;
+
+            var visibility = current.Attributes & TypeAttributes.VisibilityMask;
+            if (visibility is TypeAttributes.NestedPrivate
+                or TypeAttributes.NestedFamily
+                or TypeAttributes.NestedFamANDAssem)
+                return false;
+        }
+
+        return true;
     }
 
     private static bool CanReachFromModuleProxy(MethodDef resolved, ModuleDef module)
@@ -259,7 +295,8 @@ public class ReferenceProxyObfuscator : IObfuscator
         return declaring.Scope?.ToString() ?? "";
     }
 
-    private static bool CanProxy(IMethod called, ModuleDef module, PipelineContext context)
+    private static bool CanProxy(
+        IMethod called, ModuleDef module, PipelineContext context, ReceiverIndex receivers, bool virtualCall)
     {
         if (called.Name == ".ctor" || called.Name == ".cctor")
             return false;
@@ -290,25 +327,32 @@ public class ReferenceProxyObfuscator : IObfuscator
         {
             if (!context.Settings.Protection.ProxyExternalCalls)
                 return false;
-            return !IsUnsafeExternal(called);
+            if (IsUnsafeExternal(called))
+                return false;
+        }
+        else if (resolved!.IsPinvokeImpl || resolved.IsNative)
+        {
+            return false;
         }
 
-        if (resolved!.IsPinvokeImpl || resolved.IsNative)
-            return false;
+        // The call site pushes an object reference for a class and a managed pointer for a value
+        // type. The trampoline can repeat that only when the kind is known. callvirt on a value
+        // type needs a constrained. prefix, which is not a legal ldvirtftn.
+        if (called.MethodSig.HasThis)
+        {
+            var kind = receivers.KindOf(called.DeclaringType);
+            if (kind != ReceiverKind.Reference && kind != ReceiverKind.ValueType)
+                return false;
+            if (virtualCall && kind == ReceiverKind.ValueType)
+                return false;
+        }
 
         return true;
     }
 
     private static bool IsUnsafeExternal(IMethod called)
     {
-        var ns = called.DeclaringType?.Namespace ?? "";
-        var typeName = called.DeclaringType?.Name.String ?? "";
-        if (ns.StartsWith("System.Runtime.CompilerServices", StringComparison.Ordinal) ||
-            ns.StartsWith("System.Runtime.InteropServices", StringComparison.Ordinal))
-            return true;
-        if (typeName is "RuntimeHelpers" or "Unsafe" or "Interlocked" or "Volatile" or "GCHandle" or "Buffer")
-            return true;
-        if (called.DeclaringType?.IsValueType == true)
+        if (IsCompilerOrInterop(called.DeclaringType))
             return true;
 
         var sig = called.MethodSig!;
@@ -324,6 +368,35 @@ public class ReferenceProxyObfuscator : IObfuscator
 
         return false;
     }
+
+    /// <summary>
+    /// A nested type's <c>TypeRef</c> stores an empty namespace. The namespace lives on the
+    /// enclosing type, so <c>YieldAwaitable/YieldAwaiter</c> is still a compiler type.
+    /// </summary>
+    private static bool IsCompilerOrInterop(ITypeDefOrRef? type)
+    {
+        for (var depth = 0; type != null && depth < 16; depth++, type = Enclosing(type))
+        {
+            var ns = type.Namespace ?? "";
+            if (ns.StartsWith("System.Runtime.CompilerServices", StringComparison.Ordinal) ||
+                ns.StartsWith("System.Runtime.InteropServices", StringComparison.Ordinal))
+                return true;
+
+            var name = type.Name?.String ?? "";
+            if (name is "RuntimeHelpers" or "Unsafe" or "Interlocked" or "Volatile" or "GCHandle" or "Buffer")
+                return true;
+        }
+
+        return false;
+    }
+
+    private static ITypeDefOrRef? Enclosing(ITypeDefOrRef type) => type switch
+    {
+        TypeDef defined => defined.DeclaringType,
+        TypeRef reference => reference.DeclaringType,
+        TypeSpec spec when spec.ScopeType is { } scope && !ReferenceEquals(scope, spec) => scope,
+        _ => null
+    };
 
     /// <summary>
     /// The convention byte also carries HasThis/Generic flags (an instance vararg method is
@@ -358,19 +431,21 @@ public class ReferenceProxyObfuscator : IObfuscator
         return false;
     }
 
-    private static MethodDef? CreateProxy(IMethod target, bool virt, int nameIndex)
+    private static MethodDef? CreateProxy(IMethod target, bool virt, int nameIndex, ReceiverIndex receivers)
     {
         var sig = target.MethodSig;
-        if (sig == null)
+        if (sig == null || target.DeclaringType == null)
             return null;
 
         var paramTypes = new List<TypeSig>();
         if (sig.HasThis)
         {
-            TypeSig thisType = target.DeclaringType.ToTypeSig();
-            if (thisType.IsValueType)
-                thisType = new ByRefSig(thisType);
-            paramTypes.Add(thisType);
+            var kind = receivers.KindOf(target.DeclaringType);
+            if (kind != ReceiverKind.Reference && kind != ReceiverKind.ValueType)
+                return null;
+            if (virt && kind == ReceiverKind.ValueType)
+                return null;
+            paramTypes.Add(ReceiverParameter(target.DeclaringType, kind));
         }
 
         paramTypes.AddRange(sig.Params);
@@ -384,15 +459,19 @@ public class ReferenceProxyObfuscator : IObfuscator
         var body = new CilBody();
         proxy.Body = body;
 
+        // ldarg takes a parameter operand (a uint16 index), not an int32. Ldarg.ToInstruction(int)
+        // throws once a trampoline has five or more arguments, which aborts the whole run.
         for (var i = 0; i < paramTypes.Count; i++)
         {
-            body.Instructions.Add(i switch
+            var parameter = proxy.Parameters[i];
+            body.Instructions.Add(parameter.Index switch
             {
                 0 => Instruction.Create(OpCodes.Ldarg_0),
                 1 => Instruction.Create(OpCodes.Ldarg_1),
                 2 => Instruction.Create(OpCodes.Ldarg_2),
                 3 => Instruction.Create(OpCodes.Ldarg_3),
-                _ => OpCodes.Ldarg.ToInstruction(i)
+                <= byte.MaxValue => Instruction.Create(OpCodes.Ldarg_S, parameter),
+                _ => Instruction.Create(OpCodes.Ldarg, parameter)
             });
         }
 
@@ -408,5 +487,174 @@ public class ReferenceProxyObfuscator : IObfuscator
         body.MaxStack = (ushort)Math.Max(8, paramTypes.Count + 2);
         body.UpdateInstructionOffsets();
         return proxy;
+    }
+
+    /// <summary>
+    /// The receiver the call site already pushed: the value type's address, or the object reference.
+    /// A corlib primitive stays a primitive (<c>int32&amp;</c>), not a <c>valuetype</c> token.
+    /// </summary>
+    private static TypeSig ReceiverParameter(ITypeDefOrRef declaring, ReceiverKind kind)
+    {
+        if (declaring.Module?.CorLibTypes.GetCorLibTypeSig(declaring) is { } corLib)
+            return corLib.IsValueType ? new ByRefSig(corLib) : corLib;
+
+        return kind == ReceiverKind.ValueType
+            ? new ByRefSig(new ValueTypeSig(declaring))
+            : new ClassSig(declaring);
+    }
+
+    private enum ReceiverKind { Unknown, Reference, ValueType }
+
+    /// <summary>
+    /// How each type is used in this module. <see cref="TypeRef.IsValueType"/> is false when the
+    /// assembly cannot be resolved, and a nested type's namespace is empty, so the signatures
+    /// already in the module are the other source: a <c>valuetype</c> encoding is a value type.
+    /// </summary>
+    private sealed class ReceiverIndex
+    {
+        private readonly Dictionary<string, ReceiverKind> _kinds = new(StringComparer.Ordinal);
+
+        public static ReceiverIndex Build(ModuleDef module)
+        {
+            var index = new ReceiverIndex();
+            foreach (var member in module.GetMemberRefs())
+            {
+                if (member.MethodSig != null)
+                    index.Note(member.MethodSig);
+                else
+                    index.Note(member.FieldSig?.Type);
+            }
+
+            foreach (var type in module.GetTypes())
+            {
+                foreach (var field in type.Fields)
+                    index.Note(field.FieldSig?.Type);
+                foreach (var method in type.Methods)
+                {
+                    index.Note(method.MethodSig);
+                    if (!method.HasBody)
+                        continue;
+                    foreach (var local in method.Body.Variables)
+                        index.Note(local.Type);
+                }
+            }
+
+            return index;
+        }
+
+        public ReceiverKind KindOf(ITypeDefOrRef? type)
+        {
+            if (type == null)
+                return ReceiverKind.Unknown;
+
+            if (type is TypeSpec spec)
+                return KindOfSignature(spec.TypeSig);
+
+            if (type.Module?.CorLibTypes.GetCorLibTypeSig(type) is { } corLib)
+                return corLib.IsValueType ? ReceiverKind.ValueType : ReceiverKind.Reference;
+
+            if (type is TypeDef defined)
+                return defined.IsValueType ? ReceiverKind.ValueType : ReceiverKind.Reference;
+
+            if (type is TypeRef reference)
+            {
+                var resolved = reference.Resolve();
+                if (resolved != null)
+                    return resolved.IsValueType ? ReceiverKind.ValueType : ReceiverKind.Reference;
+            }
+
+            return _kinds.TryGetValue(Key(type), out var kind) ? kind : ReceiverKind.Unknown;
+        }
+
+        private static ReceiverKind KindOfSignature(TypeSig? sig)
+        {
+            sig = sig?.RemovePinnedAndModifiers();
+            if (sig is GenericInstSig generic)
+            {
+                if (generic.GenericType is ValueTypeSig)
+                    return ReceiverKind.ValueType;
+                if (generic.GenericType is ClassSig)
+                    return ReceiverKind.Reference;
+                return ReceiverKind.Unknown;
+            }
+
+            if (sig == null)
+                return ReceiverKind.Unknown;
+            if (sig.IsValueType || sig.ElementType == ElementType.ValueType)
+                return ReceiverKind.ValueType;
+            if (sig.ElementType is ElementType.Class or ElementType.Object or ElementType.String)
+                return ReceiverKind.Reference;
+            return ReceiverKind.Unknown;
+        }
+
+        private void Note(MethodBaseSig? sig)
+        {
+            if (sig == null)
+                return;
+            Note(sig.RetType);
+            foreach (var parameter in sig.Params)
+                Note(parameter);
+            if (sig.ParamsAfterSentinel == null)
+                return;
+            foreach (var parameter in sig.ParamsAfterSentinel)
+                Note(parameter);
+        }
+
+        private void Note(TypeSig? sig)
+        {
+            for (var depth = 0; sig != null && depth < 32; depth++)
+            {
+                sig = sig.RemovePinnedAndModifiers();
+                switch (sig)
+                {
+                    case null:
+                        return;
+                    case GenericInstSig generic:
+                        Note(generic.GenericType);
+                        foreach (var argument in generic.GenericArguments)
+                            Note(argument);
+                        return;
+                    case FnPtrSig function:
+                        Note(function.MethodSig);
+                        return;
+                    case ValueTypeSig valueType:
+                        Remember(valueType.TypeDefOrRef, ReceiverKind.ValueType);
+                        return;
+                    case ClassSig reference:
+                        Remember(reference.TypeDefOrRef, ReceiverKind.Reference);
+                        return;
+                    default:
+                        sig = sig.Next;
+                        break;
+                }
+            }
+        }
+
+        private void Remember(ITypeDefOrRef? type, ReceiverKind kind)
+        {
+            if (type == null || type is TypeSpec)
+                return;
+
+            var key = Key(type);
+            if (_kinds.TryGetValue(key, out var existing) && existing != kind)
+            {
+                _kinds[key] = ReceiverKind.Unknown;
+                return;
+            }
+
+            _kinds[key] = kind;
+        }
+
+        private static string Key(ITypeDefOrRef type)
+        {
+            var scope = type.Scope switch
+            {
+                AssemblyRef assembly => assembly.FullName,
+                ModuleRef moduleRef => "module:" + moduleRef.Name.String,
+                ModuleDef module when module.Assembly != null => module.Assembly.FullName,
+                _ => type.Scope?.ToString() ?? ""
+            };
+            return scope + "|" + type.FullName;
+        }
     }
 }

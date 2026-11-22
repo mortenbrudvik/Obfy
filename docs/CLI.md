@@ -45,7 +45,7 @@ obfy <input>... [options]
 | `--watermark-id <id>` | | Enable watermarking and set `watermark.id` (trimmed; whitespace-only is an error) | Off |
 | `--virtualize` | | Enable IL virtualization of eligible methods (no EH/generics/byref/custom structs/ctors; gated off NativeAOT / IL2CPP / Blazor WASM) | Off |
 | `--incremental` | | Skip re-obfuscation when input and settings are unchanged and the output is still the file the last run wrote. The cache file next to the output holds counts and hashes, never names. Single assembly or merge only: a closed set (several assemblies, a solution or project) or C# source is built in full and the run says so once in a warning; also not used when the output replaces the input. `--map` rebuilds when the earlier run renamed symbols, `--report` also when it skipped items or raised warnings. Changing the output after the run (Authenticode-signing it, or a post-build step that touches it) makes the next run build it again (`docs/Configuration.md`) | Off |
-| `--reference-proxy` | | Enable reference proxy | Off |
+| `--reference-proxy` | | Enable reference proxy. A method with more than 16 parameters stays a direct call, and a call the proxy cannot forward stays direct instead of failing the run | Off |
 | `--proxy-external` | | Also proxy selected out-of-module calls (enables `--reference-proxy`). Skips compiler and interop types, including nested types, plus pointers, by-refs, generics, varargs and constructors. A known value-type instance call is proxied by reference; an unknown receiver or `callvirt` on a value type stays direct | Off |
 | `--encrypt-methods` | | Encrypt method IL in the PE image (Windows) | Off |
 | `--no-string-encryption` | | Disable string encryption | Off |

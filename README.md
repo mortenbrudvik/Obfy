@@ -144,7 +144,7 @@ Then in Visual Studio: Extensions → Manage Extensions → Install from VSIX, a
 **Features:**
 - Right-click project → **Obfuscate** to protect your output assembly
 - **Enable / Disable Post-Build Obfuscation** for automatic protection on each build
-- **Cancel Obfuscation** (in the project menu while a run is active). A run that takes longer than the time limit (30 minutes; Tools → Options → Obfy → General → Run Timeout) is stopped and reported
+- **Cancel Obfuscation** (project menu, shown only while a run is active) stops every run the extension has started. A run longer than **Run Timeout (minutes)** is stopped: 30 minutes unless you change it under Tools → Options → Obfy → General (below 1 counts as 30, above 1440 counts as 1440). There is no CLI flag and no `obfy.json` key for that limit. A cancel is a warning; a timeout is an error. Details are in [Advanced Usage](docs/Advanced.md#visual-studio-extension)
 - **Obfy Settings** dialog with level presets (Minimal/Standard/Aggressive/Custom)
 - Per-project configuration stored in `obfy.json`
 - Output window integration for real-time progress

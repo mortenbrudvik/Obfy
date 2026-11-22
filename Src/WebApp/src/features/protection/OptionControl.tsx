@@ -17,6 +17,7 @@ interface OptionControlProps {
   choices: SettingsChoices;
   /** What the host says is wrong with this option, if anything. */
   error: string | null;
+  disabled?: boolean;
   /** Answers when the host has taken the change in. */
   onUpdate: (patch: SettingsPatch) => Committed;
   onPickKey: () => void;
@@ -27,27 +28,27 @@ const asNumber = (value: unknown) => (typeof value === "number" ? value : 0);
 const asList = (value: unknown) => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
 
 /** One option of a technique: the control for its kind, with its help always shown beneath it. */
-export default function OptionControl({ technique, option, values, choices, error, onUpdate, onPickKey }: OptionControlProps) {
+export default function OptionControl({ technique, option, values, choices, error, disabled, onUpdate, onPickKey }: OptionControlProps) {
   const patchKey = (key: string) => `${technique}.${key}`;
   const set = (key: string, value: boolean | number | string | string[]) => onUpdate({ [patchKey(key)]: value });
 
   switch (option.type) {
     case "select":
-      return <SelectOption option={option} value={asText(values[option.key])} choices={choices} error={error} onChange={(v) => set(option.key, v)} />;
+      return <SelectOption option={option} value={asText(values[option.key])} choices={choices} error={error} disabled={disabled} onChange={(v) => set(option.key, v)} />;
     case "number":
-      return <NumberOption option={option} value={asNumber(values[option.key])} error={error} onChange={(v) => set(option.key, v)} />;
+      return <NumberOption option={option} value={asNumber(values[option.key])} error={error} disabled={disabled} onChange={(v) => set(option.key, v)} />;
     case "range":
-      return <RangeOption option={option} value={asNumber(values[option.key])} error={error} onChange={(v) => set(option.key, v)} />;
+      return <RangeOption option={option} value={asNumber(values[option.key])} error={error} disabled={disabled} onChange={(v) => set(option.key, v)} />;
     case "check":
-      return <CheckOption option={option} checked={values[option.key] === true} error={error} onChange={(v) => set(option.key, v)} />;
+      return <CheckOption option={option} checked={values[option.key] === true} error={error} disabled={disabled} onChange={(v) => set(option.key, v)} />;
     case "group":
-      return <GroupOption option={option} values={values} onChange={(key, v) => set(key, v)} />;
+      return <GroupOption option={option} values={values} disabled={disabled} onChange={(key, v) => set(key, v)} />;
     case "text":
-      return <TextOption option={option} value={asText(values[option.key])} error={error} onCommit={(v) => set(option.key, v)} />;
+      return <TextOption option={option} value={asText(values[option.key])} error={error} disabled={disabled} onCommit={(v) => set(option.key, v)} />;
     case "file":
-      return <TextOption option={option} value={asText(values[option.key])} error={error} onCommit={(v) => set(option.key, v)} onBrowse={onPickKey} />;
+      return <TextOption option={option} value={asText(values[option.key])} error={error} disabled={disabled} onCommit={(v) => set(option.key, v)} onBrowse={onPickKey} />;
     case "list":
-      return <ListOption option={option} value={asList(values[option.key])} error={error} onCommit={(v) => set(option.key, v)} />;
+      return <ListOption option={option} value={asList(values[option.key])} error={error} disabled={disabled} onCommit={(v) => set(option.key, v)} />;
   }
 }
 
@@ -56,11 +57,12 @@ interface SelectOptionProps {
   value: string;
   choices: SettingsChoices;
   error: string | null;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }
 
 /** A drop-down whose help explains the value it shows now. */
-function SelectOption({ option, value, choices, error, onChange }: SelectOptionProps) {
+function SelectOption({ option, value, choices, error, disabled, onChange }: SelectOptionProps) {
   const set = option.choiceSet ? content.choiceSets[option.choiceSet] : undefined;
   const offered = set ? choices[set.source] : [];
   // Without a list from the host, offer what the content knows; keep a value the list does not have, so the box is never blank.
@@ -73,7 +75,7 @@ function SelectOption({ option, value, choices, error, onChange }: SelectOptionP
       <Field label={option.label} help={help} error={error}>
         {(control) => (
           <div className="ctl">
-            <Select {...control} value={value} options={values.map((v) => ({ value: v, label: set?.values[v]?.label ?? v }))} onChange={onChange} />
+            <Select {...control} value={value} disabled={disabled} options={values.map((v) => ({ value: v, label: set?.values[v]?.label ?? v }))} onChange={onChange} />
           </div>
         )}
       </Field>
@@ -85,11 +87,12 @@ interface NumberOptionProps {
   option: OptionContent;
   value: number;
   error: string | null;
+  disabled?: boolean;
   onChange: (value: number) => void;
 }
 
 /** A number box: what is typed is kept while the box has focus, and a number is sent as soon as there is one. */
-function NumberOption({ option, value, error, onChange }: NumberOptionProps) {
+function NumberOption({ option, value, error, disabled, onChange }: NumberOptionProps) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <div className="opt">
@@ -103,6 +106,7 @@ function NumberOption({ option, value, error, onChange }: NumberOptionProps) {
               min={option.min}
               max={option.max}
               value={draft ?? String(value)}
+              disabled={disabled}
               onChange={(e) => {
                 const text = e.target.value;
                 setDraft(text);
@@ -119,7 +123,7 @@ function NumberOption({ option, value, error, onChange }: NumberOptionProps) {
 }
 
 /** A slider that keeps its own position while it is dragged, so the answers coming back never pull it around. */
-function RangeOption({ option, value, error, onChange }: NumberOptionProps) {
+function RangeOption({ option, value, error, disabled, onChange }: NumberOptionProps) {
   const [live, setLive] = useState<number | null>(null);
   return (
     <div className="opt" onBlur={() => setLive(null)}>
@@ -131,6 +135,7 @@ function RangeOption({ option, value, error, onChange }: NumberOptionProps) {
               min={option.min}
               max={option.max}
               value={live ?? value}
+              disabled={disabled}
               onChange={(next) => {
                 setLive(next);
                 onChange(next);
@@ -147,11 +152,12 @@ interface CheckOptionProps {
   option: OptionContent;
   checked: boolean;
   error: string | null;
+  disabled?: boolean;
   onChange: (checked: boolean) => void;
 }
 
 /** A tick box with its label beside it and its help beneath. */
-function CheckOption({ option, checked, error, onChange }: CheckOptionProps) {
+function CheckOption({ option, checked, error, disabled, onChange }: CheckOptionProps) {
   const id = useId();
   const describedBy = [option.help ? `${id}-help` : null, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
   return (
@@ -162,6 +168,7 @@ function CheckOption({ option, checked, error, onChange }: CheckOptionProps) {
             type="checkbox"
             className="chk"
             checked={checked}
+            disabled={disabled}
             aria-describedby={describedBy}
             onChange={(e) => onChange(e.target.checked)}
           />{" "}
@@ -185,11 +192,12 @@ function CheckOption({ option, checked, error, onChange }: CheckOptionProps) {
 interface GroupOptionProps {
   option: OptionContent;
   values: Record<string, unknown>;
+  disabled?: boolean;
   onChange: (key: string, checked: boolean) => void;
 }
 
 /** A row of tick boxes under one label and one help text. */
-function GroupOption({ option, values, onChange }: GroupOptionProps) {
+function GroupOption({ option, values, disabled, onChange }: GroupOptionProps) {
   const id = useId();
   return (
     <div className="opt" role="group" aria-labelledby={`${id}-label`} aria-describedby={option.help ? `${id}-help` : undefined}>
@@ -203,6 +211,7 @@ function GroupOption({ option, values, onChange }: GroupOptionProps) {
               type="checkbox"
               className="chk"
               checked={values[member.key] === true}
+              disabled={disabled}
               onChange={(e) => onChange(member.key, e.target.checked)}
             />{" "}
             {member.label}
@@ -222,17 +231,18 @@ interface TextOptionProps {
   option: OptionContent;
   value: string;
   error: string | null;
+  disabled?: boolean;
   onCommit: (value: string) => Committed;
   /** A Browse… button beside the box, for an option that names a file. */
   onBrowse?: () => void;
 }
 
 /** A text box that follows the host's value and sends what was typed when it is left, or on Enter. */
-function TextOption({ option, value, error, onCommit, onBrowse }: TextOptionProps) {
+function TextOption({ option, value, error, disabled, onCommit, onBrowse }: TextOptionProps) {
   const [text, setText, send] = useDraft(value);
   // Committed on leaving the box or on Enter. A shortcut that acts first (run, save) flushes it through here.
   const commit = async (): Promise<FlushResult> => {
-    if (text === value) return "idle";
+    if (disabled || text === value) return "idle";
     return (await send(text, onCommit)) === false ? "failed" : "sent";
   };
   usePendingEdit(commit);
@@ -248,6 +258,7 @@ function TextOption({ option, value, error, onCommit, onBrowse }: TextOptionProp
               aria-required={option.required ? true : undefined}
               placeholder={option.placeholder}
               value={text}
+              disabled={disabled}
               onChange={(e) => setText(e.target.value)}
               onBlur={() => void commit()}
               onKeyDown={(e: KeyboardEvent) => {
@@ -255,7 +266,7 @@ function TextOption({ option, value, error, onCommit, onBrowse }: TextOptionProp
               }}
             />
             {onBrowse && (
-              <button type="button" className="btn" onClick={onBrowse}>
+              <button type="button" className="btn" disabled={disabled} onClick={onBrowse}>
                 {strings.protection.browse}
               </button>
             )}
@@ -270,15 +281,16 @@ interface ListOptionProps {
   option: OptionContent;
   value: string[];
   error: string | null;
+  disabled?: boolean;
   onCommit: (value: string[]) => Committed;
 }
 
 /** A box of patterns, one per line; the host trims, drops blanks and duplicates. Sent when the box is left. */
-export function ListOption({ option, value, error, onCommit }: ListOptionProps) {
+export function ListOption({ option, value, error, disabled, onCommit }: ListOptionProps) {
   const joined = value.join("\n");
   const [text, setText, send] = useDraft(joined);
   const commit = async (): Promise<FlushResult> => {
-    if (text === joined) return "idle";
+    if (disabled || text === joined) return "idle";
     return (await send(text, (typed) => onCommit(typed.split(/\r?\n/)))) === false ? "failed" : "sent";
   };
   usePendingEdit(commit);
@@ -292,6 +304,7 @@ export function ListOption({ option, value, error, onCommit }: ListOptionProps) 
             rows={Math.max(2, Math.min(6, value.length + 1))}
             placeholder={option.placeholder}
             value={text}
+            disabled={disabled}
             onChange={(e) => setText(e.target.value)}
             onBlur={() => void commit()}
           />

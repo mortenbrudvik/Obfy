@@ -92,6 +92,21 @@ public class SourceSymbolRenamer : IObfuscator
                         continue;
                     if (ObfuscationAttributeRules.IsExcluded(definition, ObfuscationFeature.Renaming))
                         continue;
+                    if (IsExcludedOnPartialImplementation(definition))
+                        continue;
+
+                    // A record positional parameter also declares a synthesized property of the same
+                    // name. Check the backing property against all renaming rules before accepting the pair,
+                    // or a positional property implementing an interface / excluded / XAML-bindable gets broken.
+                    IPropertySymbol? recordProperty = null;
+                    if (definition is IParameterSymbol param &&
+                        node.Parent?.Parent is RecordDeclarationSyntax &&
+                        param.ContainingType is { } recordType)
+                    {
+                        recordProperty = recordType.GetMembers(param.Name).OfType<IPropertySymbol>().FirstOrDefault();
+                        if (recordProperty != null && !ShouldRenameRecordProperty(recordProperty, settings, scope))
+                            continue;
+                    }
 
                     string newName;
                     do
@@ -100,16 +115,8 @@ public class SourceSymbolRenamer : IObfuscator
                     } while (reservedNames.Contains(newName));
                     renames[definition] = newName;
 
-                    // A record positional parameter also declares a synthesized property of the same
-                    // name. Use-sites bind to the property, so both must share the new name.
-                    if (definition is IParameterSymbol param &&
-                        node.Parent?.Parent is RecordDeclarationSyntax &&
-                        param.ContainingType is { } recordType)
-                    {
-                        var property = recordType.GetMembers(param.Name).OfType<IPropertySymbol>().FirstOrDefault();
-                        if (property != null)
-                            renames[property.OriginalDefinition] = newName;
-                    }
+                    if (recordProperty != null)
+                        renames[recordProperty.OriginalDefinition] = newName;
                 }
             }
 
@@ -139,8 +146,8 @@ public class SourceSymbolRenamer : IObfuscator
                         renames.TryGetValue(Canonical(declared), out var declName))
                     {
                         tokenRenames[token] = declName;
-                        // A partial method is declared twice (definition and implementation) but is one method.
-                        if (declared is not IMethodSymbol { PartialDefinitionPart: not null })
+                        // A partial method/property is declared twice (definition and implementation) but is one member.
+                        if (!IsPartialImplementationPart(declared))
                             CountDeclaration(declared, stats);
                         continue;
                     }
@@ -230,9 +237,39 @@ public class SourceSymbolRenamer : IObfuscator
         }
     }
 
+    private static readonly HashSet<string> CompilerPatternMembers = new(StringComparer.Ordinal)
+    {
+        "GetEnumerator",
+        "GetAsyncEnumerator",
+        "MoveNext",
+        "MoveNextAsync",
+        "Current",
+        "GetAwaiter",
+        "IsCompleted",
+        "GetResult",
+        "OnCompleted",
+        "UnsafeOnCompleted",
+        "Deconstruct",
+        "Add",
+        "Dispose",
+        "DisposeAsync",
+        "Slice",
+        "PrintMembers",
+        "Select",
+        "SelectMany",
+        "Where",
+        "OrderBy",
+        "OrderByDescending",
+        "ThenBy",
+        "ThenByDescending",
+        "GroupBy",
+        "Join",
+        "GroupJoin"
+    };
+
     /// <summary>
     /// The symbol that stands for a declaration everywhere: the generic definition and the defining part
-    /// of a partial method (its implementation is declared separately but must share the name).
+    /// of a partial method/property (its implementation and parameters are declared separately but share the name).
     /// </summary>
     private static ISymbol Canonical(ISymbol symbol)
     {
@@ -241,9 +278,40 @@ public class SourceSymbolRenamer : IObfuscator
         {
             IMethodSymbol { PartialDefinitionPart: { } definition } => definition.OriginalDefinition,
             IPropertySymbol { PartialDefinitionPart: { } definition } => definition.OriginalDefinition,
+            IParameterSymbol { ContainingSymbol: IMethodSymbol { AssociatedSymbol: IPropertySymbol prop } } param
+                when param.Ordinal >= 0 && param.Ordinal < prop.OriginalDefinition.Parameters.Length
+                => Canonical(prop.OriginalDefinition.Parameters[param.Ordinal]),
+            IParameterSymbol { ContainingSymbol: IMethodSymbol { PartialDefinitionPart: { } methodDef } } param
+                when param.Ordinal >= 0 && param.Ordinal < methodDef.OriginalDefinition.Parameters.Length
+                => methodDef.OriginalDefinition.Parameters[param.Ordinal],
+            IParameterSymbol { ContainingSymbol: IPropertySymbol { PartialDefinitionPart: { } propDef } } param
+                when param.Ordinal >= 0 && param.Ordinal < propDef.OriginalDefinition.Parameters.Length
+                => propDef.OriginalDefinition.Parameters[param.Ordinal],
             _ => symbol
         };
     }
+
+    private static bool IsPartialImplementationPart(ISymbol symbol) => symbol switch
+    {
+        IMethodSymbol { PartialDefinitionPart: not null } => true,
+        IPropertySymbol { PartialDefinitionPart: not null } => true,
+        IParameterSymbol { ContainingSymbol: IMethodSymbol { PartialDefinitionPart: not null } } => true,
+        IParameterSymbol { ContainingSymbol: IPropertySymbol { PartialDefinitionPart: not null } } => true,
+        _ => false
+    };
+
+    private static bool IsExcludedOnPartialImplementation(ISymbol symbol) => symbol switch
+    {
+        IMethodSymbol { PartialImplementationPart: { } impl } => ObfuscationAttributeRules.IsExcluded(impl, ObfuscationFeature.Renaming),
+        IPropertySymbol { PartialImplementationPart: { } impl } => ObfuscationAttributeRules.IsExcluded(impl, ObfuscationFeature.Renaming),
+        IParameterSymbol { ContainingSymbol: IMethodSymbol { PartialImplementationPart: { } impl } } param
+            when param.Ordinal >= 0 && param.Ordinal < impl.Parameters.Length
+            => ObfuscationAttributeRules.IsExcluded(impl.Parameters[param.Ordinal], ObfuscationFeature.Renaming),
+        IParameterSymbol { ContainingSymbol: IPropertySymbol { PartialImplementationPart: { } impl } } param
+            when param.Ordinal >= 0 && param.Ordinal < impl.Parameters.Length
+            => ObfuscationAttributeRules.IsExcluded(impl.Parameters[param.Ordinal], ObfuscationFeature.Renaming),
+        _ => false
+    };
 
     private static string SymbolMapDisplay(ISymbol symbol) =>
         symbol is ILocalSymbol or IParameterSymbol
@@ -328,14 +396,28 @@ public class SourceSymbolRenamer : IObfuscator
         return IsRenamable(symbol, settings, scope);
     }
 
-    private static bool IsRenamable(ISymbol symbol, SymbolRenamingSettings settings, SourceScope scope)
+    private static bool ShouldRenameRecordProperty(
+        IPropertySymbol property, SymbolRenamingSettings settings, SourceScope scope)
+    {
+        if (!settings.RenameProperties)
+            return false;
+
+        if (!IsRenamable(property, settings, scope, allowImplicitlyDeclared: true))
+            return false;
+
+        return !ObfuscationAttributeRules.IsExcluded(property, ObfuscationFeature.Renaming);
+    }
+
+    private static bool IsRenamable(
+        ISymbol symbol, SymbolRenamingSettings settings, SourceScope scope, bool allowImplicitlyDeclared = false)
     {
         // Never rename anything not declared in the source (framework/metadata symbols).
         if (!symbol.Locations.Any(l => l.IsInSource))
             return false;
 
-        // Never rename implicitly declared members (auto-property backing fields, record members, ...).
-        if (symbol.IsImplicitlyDeclared)
+        // Never rename implicitly declared members (auto-property backing fields, record members, ...),
+        // unless checking a record positional parameter's synthesized backing property.
+        if (!allowImplicitlyDeclared && symbol.IsImplicitlyDeclared)
             return false;
 
         // Leave Obfy's own injected runtime helpers and their members untouched.
@@ -350,16 +432,20 @@ public class SourceSymbolRenamer : IObfuscator
         if (symbol is IMethodSymbol { MethodKind: not MethodKind.Ordinary })
             return false;
 
+        // C# duck-typed compiler pattern members (foreach, await, deconstruction, LINQ query syntax, etc.)
+        // are looked up by exact name rather than interface/override dispatch.
+        if (symbol is IMethodSymbol or IPropertySymbol && CompilerPatternMembers.Contains(symbol.Name))
+            return false;
+
         // Renaming an override, virtual/abstract member, or interface implementation would break the
         // contract with the base type or interface. Events follow the same rule (an event that
         // implements INotifyPropertyChanged.PropertyChanged must keep its name).
-        if (symbol is IMethodSymbol or IPropertySymbol or IEventSymbol)
-        {
-            if (symbol.IsOverride || symbol.IsVirtual || symbol.IsAbstract)
-                return false;
-            if (ImplementsInterfaceMember(symbol))
-                return false;
-        }
+        if (symbol is IMethodSymbol or IPropertySymbol or IEventSymbol && IsContractKeptMember(symbol))
+            return false;
+
+        // Keep parameter names on methods/indexers that override or implement a base/interface/virtual contract.
+        if (symbol is IParameterSymbol parameter && HasContractKeptContainingMember(parameter))
+            return false;
 
         // Preserve the externally visible API surface if requested.
         if (settings.PreservePublicApi && IsExternallyVisible(symbol))
@@ -386,6 +472,29 @@ public class SourceSymbolRenamer : IObfuscator
         }
 
         return true;
+    }
+
+    private static bool HasContractKeptContainingMember(IParameterSymbol parameter) => parameter.ContainingSymbol switch
+    {
+        IMethodSymbol method => IsContractKeptMember(method),
+        IPropertySymbol property => IsContractKeptMember(property),
+        _ => false
+    };
+
+    private static bool IsContractKeptMember(ISymbol symbol)
+    {
+        if (symbol.IsOverride || symbol.IsVirtual || symbol.IsAbstract)
+            return true;
+        if (symbol.ContainingType?.TypeKind == TypeKind.Interface)
+            return true;
+        if (symbol is IMethodSymbol { ExplicitInterfaceImplementations.Length: > 0 } or
+            IPropertySymbol { ExplicitInterfaceImplementations.Length: > 0 } or
+            IEventSymbol { ExplicitInterfaceImplementations.Length: > 0 })
+        {
+            return true;
+        }
+
+        return ImplementsInterfaceMember(symbol);
     }
 
     /// <summary>

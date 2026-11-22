@@ -248,14 +248,27 @@ function Invoke-DevTools {
         }
     }
     finally {
-        if ($socket.State -eq [System.Net.WebSockets.WebSocketState]::Open) {
-            $null = $socket.CloseAsync(
-                [System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure,
-                "done",
-                [System.Threading.CancellationToken]::None).GetAwaiter().GetResult()
+        try {
+            if ($socket.State -eq [System.Net.WebSockets.WebSocketState]::Open) {
+                $closeCts = [System.Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(2))
+                try {
+                    $null = $socket.CloseAsync(
+                        [System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure,
+                        "done",
+                        $closeCts.Token).GetAwaiter().GetResult()
+                }
+                finally {
+                    $closeCts.Dispose()
+                }
+            }
         }
-        $socket.Dispose()
-        $cts.Dispose()
+        catch {
+            # Best-effort close; never hang or mask an exception from the try block.
+        }
+        finally {
+            $socket.Dispose()
+            $cts.Dispose()
+        }
     }
 }
 
@@ -322,24 +335,47 @@ function Assert-ProcessedUi {
     # An elevated host ignores the variable above. The machine policy is what reaches that host.
     # The value is removed in the finally block so a local elevated build does not leave the port forced on.
     $policyPath = "HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+    $policyCandidateKeys = @(
+        "HKLM:\Software\Policies\Microsoft\Edge",
+        "HKLM:\Software\Policies\Microsoft\Edge\WebView2",
+        $policyPath
+    )
     $policyName = "ObfyUI.exe"
+    $policyModified = $false
     $policyWritten = $false
     $policyHadValue = $false
     $policyPrevious = $null
-    $policyKeyExisted = $false
+    $policyKeysCreated = [System.Collections.Generic.List[string]]::new()
     $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
         [Security.Principal.WindowsBuiltInRole]::Administrator)
 
     $app = $null
     try {
         if ($elevated) {
-            $policyKeyExisted = Test-Path -LiteralPath $policyPath
-            New-Item -Path $policyPath -Force | Out-Null
-            $names = @((Get-Item -LiteralPath $policyPath).Property)
-            if ($names -contains $policyName) {
-                $policyHadValue = $true
-                $policyPrevious = (Get-ItemProperty -LiteralPath $policyPath -Name $policyName).$policyName
+            foreach ($candidateKey in $policyCandidateKeys) {
+                if (-not (Test-Path -LiteralPath $candidateKey)) {
+                    $createdItem = New-Item -Path $candidateKey -Force
+                    if ($createdItem) {
+                        $createdItem.Close()
+                        $createdItem.Dispose()
+                    }
+                    $policyKeysCreated.Add($candidateKey)
+                }
             }
+            $item = Get-Item -LiteralPath $policyPath
+            try {
+                if (@($item.GetValueNames()) -contains $policyName) {
+                    $policyHadValue = $true
+                    $policyPrevious = (Get-ItemProperty -LiteralPath $policyPath -Name $policyName).$policyName
+                }
+            }
+            finally {
+                if ($item) {
+                    $item.Close()
+                    $item.Dispose()
+                }
+            }
+            $policyModified = $true
             New-ItemProperty -LiteralPath $policyPath -Name $policyName -Value $debugArguments -PropertyType String -Force | Out-Null
             $policyWritten = $true
         }
@@ -448,15 +484,41 @@ function Assert-ProcessedUi {
             $app.WaitForExit(10000) | Out-Null
         }
         if ($app) { $app.Dispose() }
-        if ($policyWritten) {
-            if ($policyHadValue) {
-                New-ItemProperty -LiteralPath $policyPath -Name $policyName -Value $policyPrevious -PropertyType String -Force | Out-Null
+        if ($policyModified) {
+            try {
+                if ($policyHadValue) {
+                    New-ItemProperty -LiteralPath $policyPath -Name $policyName -Value $policyPrevious -PropertyType String -Force | Out-Null
+                }
+                else {
+                    Remove-ItemProperty -LiteralPath $policyPath -Name $policyName -ErrorAction SilentlyContinue
+                }
             }
-            else {
-                Remove-ItemProperty -LiteralPath $policyPath -Name $policyName -ErrorAction SilentlyContinue
+            catch {
+                Write-Warning "Failed to restore WebView2 policy '$policyName' at ${policyPath}: $($_.Exception.Message)"
             }
-            if (-not $policyKeyExisted) {
-                Remove-Item -LiteralPath $policyPath -ErrorAction SilentlyContinue
+        }
+        for ($i = $policyKeysCreated.Count - 1; $i -ge 0; $i--) {
+            $createdKey = $policyKeysCreated[$i]
+            try {
+                if (Test-Path -LiteralPath $createdKey) {
+                    $isEmpty = $false
+                    $keyItem = Get-Item -LiteralPath $createdKey -ErrorAction Stop
+                    try {
+                        $isEmpty = ($keyItem.SubKeyCount -eq 0 -and $keyItem.ValueCount -eq 0)
+                    }
+                    finally {
+                        if ($keyItem) {
+                            $keyItem.Close()
+                            $keyItem.Dispose()
+                        }
+                    }
+                    if ($isEmpty) {
+                        Remove-Item -LiteralPath $createdKey -ErrorAction Stop
+                    }
+                }
+            }
+            catch {
+                Write-Warning "Failed to clean up empty WebView2 policy key '${createdKey}': $($_.Exception.Message)"
             }
         }
         if (Test-Path -LiteralPath $work) {
@@ -644,10 +706,20 @@ if (-not $SkipObfuscation -and -not $SkipPublish) {
     # string encryption, control flow, renaming and metadata stripping, and it keeps the names the
     # shipped programs still read: configuration and snapshot properties, bridge envelopes, request
     # records, and XAML-bound properties on *ViewModel types.
-    $SelfObfuscationConfig = Join-Path $BuildDir "self-obfuscation.json"
-    if (-not (Test-Path -LiteralPath $SelfObfuscationConfig)) {
-        throw "Self-obfuscation config not found: $SelfObfuscationConfig"
+    $BaseSelfObfuscationConfig = Join-Path $BuildDir "self-obfuscation.json"
+    if (-not (Test-Path -LiteralPath $BaseSelfObfuscationConfig)) {
+        throw "Self-obfuscation config not found: $BaseSelfObfuscationConfig"
     }
+
+    # The CLI publish folder has no XAML, so preserveXaml triggers a spurious ClosedSetNoXamlBindableTypes
+    # warning; generate a temporary override with preserveXaml disabled instead of duplicating the config file.
+    $CliSelfObfuscationConfig = Join-Path $TempObfyDir "self-obfuscation-cli.json"
+    $cliConfig = Get-Content -LiteralPath $BaseSelfObfuscationConfig -Raw | ConvertFrom-Json
+    $cliConfig.symbolRenaming.preserveXaml = $false
+    [System.IO.File]::WriteAllText(
+        $CliSelfObfuscationConfig,
+        ($cliConfig | ConvertTo-Json -Depth 10),
+        [System.Text.UTF8Encoding]::new($false))
 
     $ProductAssemblies = @(
         "obfy.dll",
@@ -661,7 +733,10 @@ if (-not $SkipObfuscation -and -not $SkipPublish) {
         "Logging.Core.dll"
     )
 
-    function Protect-ProductAssemblies([string]$SourceDir, [string]$OutputDir) {
+    function Protect-ProductAssemblies(
+        [string]$SourceDir,
+        [string]$OutputDir,
+        [string]$SelfObfuscationConfig = $BaseSelfObfuscationConfig) {
         $inputs = @()
         foreach ($name in $ProductAssemblies) {
             $path = Join-Path $SourceDir $name
@@ -692,7 +767,7 @@ if (-not $SkipObfuscation -and -not $SkipPublish) {
     }
 
     Write-Host "  Obfuscating CLI assemblies..." -ForegroundColor Gray
-    Protect-ProductAssemblies $PublishDir $ObfuscatedCliDir
+    Protect-ProductAssemblies $PublishDir $ObfuscatedCliDir $CliSelfObfuscationConfig
 
     Write-Host "  Obfuscating UI assemblies..." -ForegroundColor Gray
     Protect-ProductAssemblies $PublishDirUI $ObfuscatedUiDir

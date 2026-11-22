@@ -31,6 +31,16 @@ public partial class ShellWindow : FluentWindow
     private DispatcherTimer? _revealTimer;
     private bool _cloaked;
     private bool _revealed;
+    private bool _closed;
+
+    // Internal test seams so unit tests can exercise Preload/Reveal without spawning a live window or WebView2.
+    internal Func<nint, bool, bool> CloakWindow { get; set; } = SetCloaked;
+    internal Action? ShowWindowOverride { get; set; }
+    internal Action? ActivateWindowOverride { get; set; }
+    internal Func<bool>? IsWindowVisibleOverride { get; set; }
+    internal TimeSpan RevealInterval { get; set; } = RevealTimeout;
+    internal bool IsRevealed => _revealed;
+    internal bool IsRevealTimerEnabled => _revealTimer?.IsEnabled == true;
 
     public ShellWindow(
         ShellViewModel viewModel, ThemeController theme, AppReadyCoordinator ready, ShutdownCoordinator shutdown,
@@ -51,6 +61,8 @@ public partial class ShellWindow : FluentWindow
         Closing += OnClosing;
         Closed += (_, _) =>
         {
+            _closed = true;
+            _revealed = true;
             _ready.Ready -= OnReady;
             viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _revealTimer?.Stop();
@@ -60,23 +72,22 @@ public partial class ShellWindow : FluentWindow
     /// <summary>Shows the window where nobody can see it, so its page loads before anyone asks for it.</summary>
     public void Preload()
     {
-        if (IsVisible)
+        if (_closed || IsWindowVisible())
             return;
 
         var handle = new WindowInteropHelper(this).EnsureHandle();
-        _cloaked = SetCloaked(handle, true);
+        _cloaked = CloakWindow(handle, true);
         if (!_cloaked)
         {
             _logger.LogWarning("Could not cloak the window while its page loads; it shows while loading");
-            _revealed = true;
-            Show();
-            StartRevealTimer();
-            return;
+        }
+        else
+        {
+            ShowInTaskbar = false;
+            ShowActivated = false;
         }
 
-        ShowInTaskbar = false;
-        ShowActivated = false;
-        Show();
+        ShowWindow();
         StartRevealTimer();
 
         // The page may have been ready before the subscription.
@@ -92,7 +103,7 @@ public partial class ShellWindow : FluentWindow
     /// </summary>
     private void StartRevealTimer()
     {
-        var timer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher) { Interval = RevealTimeout };
+        var timer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher) { Interval = RevealInterval };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
@@ -107,22 +118,44 @@ public partial class ShellWindow : FluentWindow
     /// <summary>Uncovers the window and gives it the focus. Once; later calls do nothing.</summary>
     public void Reveal()
     {
-        if (_revealed)
+        if (_revealed || _closed)
             return;
 
         _revealed = true;
         _revealTimer?.Stop();
-        ShowInTaskbar = true;
-        ShowActivated = true;
-        Show();
-        if (_cloaked)
+        if (_cloaked || !IsWindowVisible())
         {
-            SetCloaked(new WindowInteropHelper(this).Handle, false);
-            _cloaked = false;
+            ShowInTaskbar = true;
+            ShowActivated = true;
+            ShowWindow();
+            if (_cloaked)
+            {
+                CloakWindow(new WindowInteropHelper(this).Handle, false);
+                _cloaked = false;
+            }
+
+            ActivateWindow();
         }
 
-        Activate();
         _viewModel.NotifyRevealed();
+    }
+
+    private bool IsWindowVisible() => IsWindowVisibleOverride?.Invoke() ?? IsVisible;
+
+    private void ShowWindow()
+    {
+        if (ShowWindowOverride is { } show)
+            show();
+        else
+            Show();
+    }
+
+    private void ActivateWindow()
+    {
+        if (ActivateWindowOverride is { } activate)
+            activate();
+        else
+            Activate();
     }
 
     private void OnReady() => Dispatcher.BeginInvoke(Reveal);

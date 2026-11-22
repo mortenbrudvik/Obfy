@@ -11,8 +11,7 @@ public class ClearFilesRequestHandler(InputSession session, RunCoordinator run) 
 {
     public ValueTask<InputSnapshot> Handle(ClearFilesRequest request, CancellationToken cancellationToken)
     {
-        run.EnsureNotRunning();
-        session.Clear();
+        run.WhileIdle(() => session.Clear());
         return new ValueTask<InputSnapshot>(session.GetSnapshot());
     }
 }

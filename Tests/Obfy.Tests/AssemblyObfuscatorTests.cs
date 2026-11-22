@@ -3935,7 +3935,7 @@ public class AssemblyObfuscatorTests
         neutralize.Body.Instructions.Any(i =>
             i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "VirtualProtect").ShouldBeTrue();
         neutralize.Body.Instructions.Any(i =>
-            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "LoadLibraryW").ShouldBeTrue();
+            i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "LoadLibraryExW").ShouldBeTrue();
         neutralize.Body.Instructions.Any(i =>
             i.OpCode == OpCodes.Call && i.Operand is IMethod m && m.Name == "GetModuleHandleW").ShouldBeTrue();
         neutralize.Body.Instructions.Any(i =>
@@ -3955,7 +3955,7 @@ public class AssemblyObfuscatorTests
 
         var charset = PInvokeAttributes.CharSetMask;
         (dump.FindMethod("GetModuleHandleW")!.ImplMap!.Attributes & charset).ShouldBe(PInvokeAttributes.CharSetUnicode);
-        (dump.FindMethod("LoadLibraryW")!.ImplMap!.Attributes & charset).ShouldBe(PInvokeAttributes.CharSetUnicode);
+        (dump.FindMethod("LoadLibraryExW")!.ImplMap!.Attributes & charset).ShouldBe(PInvokeAttributes.CharSetUnicode);
         (dump.FindMethod("GetProcAddress")!.ImplMap!.Attributes & charset).ShouldBe(PInvokeAttributes.CharSetAnsi);
 
         wipe.Body.Instructions.Any(i => i.IsLdcI4() && i.GetLdcI4Value() == 0x20B).ShouldBeTrue();

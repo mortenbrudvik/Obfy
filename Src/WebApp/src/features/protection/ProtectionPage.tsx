@@ -3,8 +3,10 @@ import Notice from "../../components/Notice";
 import Select from "../../components/Select";
 import { content, SCOPE_ID } from "../../content/content";
 import { useOnlineGuide } from "../../hooks/useOnlineGuide";
+import { usePushedState } from "../../hooks/usePushedState";
+import { events } from "../../interop/api";
 import { strings } from "../../strings";
-import type { SettingsPatch } from "../../types/domain";
+import type { RunSnapshot, SettingsPatch } from "../../types/domain";
 import LevelCards from "./LevelCards";
 import { switchPatch } from "./patches";
 import ScopeDetail from "./ScopeDetail";
@@ -20,6 +22,8 @@ const baseName = (path: string) => path.split(/[\\/]/).pop() || path;
 /** The Protection screen: the level, the target runtime, and every technique with its own explanation and options. */
 export default function ProtectionPage() {
   const { settings, failed, error, applyLevel, update, setRuntimeProfile, openConfig, saveConfig, pickSigningKey } = useProtection();
+  const { state: run } = usePushedState<RunSnapshot>("run", "get", events.runChanged);
+  const locked = run?.status === "Running";
   const [openGuide, guideError] = useOnlineGuide();
   const [selected, setSelected] = useState("symbolRenaming");
   const [query, setQuery] = useState("");
@@ -50,7 +54,7 @@ export default function ProtectionPage() {
           <span className={settings.dirty || !settings.configPath ? "chip" : "chip saved"} title={settings.configPath ?? undefined}>
             <b>{chip.name}</b> · {chip.state}
           </span>
-          <button type="button" className="btn sm" onClick={() => void openConfig()}>
+          <button type="button" className="btn sm" disabled={locked} onClick={() => void openConfig()}>
             {strings.protection.openConfig}
           </button>
           <button type="button" className="btn sm" onClick={() => void saveConfig()}>
@@ -59,6 +63,7 @@ export default function ProtectionPage() {
         </div>
       </div>
 
+      {locked && <Notice>{strings.files.editingLocked}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       {guideError && <Notice tone="error">{guideError}</Notice>}
 
@@ -67,7 +72,7 @@ export default function ProtectionPage() {
           {strings.protection.level}
         </span>
       </div>
-      <LevelCards level={settings.level} onSelect={(level) => void applyLevel(level)} />
+      <LevelCards level={settings.level} disabled={locked} onSelect={(level) => void applyLevel(level)} />
 
       <div className="rtrow">
         <label htmlFor="protection-runtime" className="label">
@@ -77,6 +82,7 @@ export default function ProtectionPage() {
           id="protection-runtime"
           aria-describedby="protection-runtime-help"
           value={settings.runtimeProfile}
+          disabled={locked}
           options={profiles.map((profile) => ({ value: profile, label: content.runtimeProfiles[profile] ?? profile }))}
           onChange={(profile) => void setRuntimeProfile(profile)}
         />
@@ -93,6 +99,7 @@ export default function ProtectionPage() {
           settings={settings}
           selected={technique?.id ?? SCOPE_ID}
           query={query}
+          disabled={locked}
           onQuery={setQuery}
           onSelect={setSelected}
           onSwitch={(id, on) => send(switchPatch(id, contentFor(id), on))}
@@ -102,12 +109,13 @@ export default function ProtectionPage() {
             key={technique.id}
             technique={technique}
             snapshot={settings}
+            disabled={locked}
             onUpdate={send}
             onPickKey={() => void pickSigningKey()}
             onOpenGuide={guide}
           />
         ) : (
-          <ScopeDetail snapshot={settings} onUpdate={send} onOpenGuide={guide} />
+          <ScopeDetail snapshot={settings} disabled={locked} onUpdate={send} onOpenGuide={guide} />
         )}
       </div>
     </div>

@@ -30,10 +30,20 @@ internal sealed class TogglePostBuildCommand : BaseCommand<TogglePostBuildComman
         }
 
         // Toggle the post-build setting
-        var currentlyEnabled = await settingsService.IsPostBuildEnabledAsync(project);
-        var newState = !currentlyEnabled;
-
-        await settingsService.SetPostBuildEnabledAsync(project, newState);
+        bool newState;
+        try
+        {
+            var currentlyEnabled = await settingsService.IsPostBuildEnabledAsync(project);
+            newState = !currentlyEnabled;
+            await settingsService.SetPostBuildEnabledAsync(project, newState);
+        }
+        catch (Exception ex)
+        {
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            output?.Error($"Failed to toggle post-build obfuscation for {project.Name}: {ex.Message}");
+            await VS.MessageBox.ShowErrorAsync("Obfy", $"Failed to update post-build setting: {ex.Message}");
+            return;
+        }
 
         // Update command text
         Command.Text = newState ? "Disable Post-Build Obfuscation" : "Enable Post-Build Obfuscation";

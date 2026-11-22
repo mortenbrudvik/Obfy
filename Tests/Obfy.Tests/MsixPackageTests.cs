@@ -233,8 +233,8 @@ public class MsixPackageTests
     {
         var script = ReadBuildScript();
         script.ShouldContain("version.json");
-        script.ShouldContain("0..65535");
-        script.ShouldContain("$($version.major).$($version.minor).$($version.patch).0");
+        script.ShouldContain("Get-ProductVersion.ps1");
+        script.ShouldContain("$productVersion.0");
         script.ShouldContain("missing Package/Identity");
     }
 

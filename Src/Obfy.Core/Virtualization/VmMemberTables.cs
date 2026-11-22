@@ -18,19 +18,19 @@ public sealed class VmMemberTables
     public ushort AddMethod(IMethod method)
     {
         ArgumentNullException.ThrowIfNull(method);
-        return Add(Methods, _methodKeys, method, method.MDToken, method.FullName);
+        return Add(Methods, _methodKeys, method, method.MDToken, ScopeKey(method.DeclaringType), method.FullName);
     }
 
     public ushort AddField(IField field)
     {
         ArgumentNullException.ThrowIfNull(field);
-        return Add(Fields, _fieldKeys, field, field.MDToken, field.FullName);
+        return Add(Fields, _fieldKeys, field, field.MDToken, ScopeKey(field.DeclaringType), field.FullName);
     }
 
     public ushort AddType(ITypeDefOrRef type)
     {
         ArgumentNullException.ThrowIfNull(type);
-        return Add(Types, _typeKeys, type, type.MDToken, type.FullName);
+        return Add(Types, _typeKeys, type, type.MDToken, ScopeKey(type), type.FullName);
     }
 
     internal void Rollback(int methodCount, int fieldCount, int typeCount)
@@ -45,11 +45,13 @@ public sealed class VmMemberTables
         Dictionary<string, ushort> keys,
         T item,
         MDToken token,
+        string scopeName,
         string fullName)
     {
         if (token.Rid != 0 && keys.TryGetValue(TokenKey(token), out var id))
             return id;
-        if (keys.TryGetValue(NameKey(fullName), out id))
+        var nameKey = NameKey(scopeName, fullName);
+        if (keys.TryGetValue(nameKey, out id))
             return id;
         if (list.Count > ushort.MaxValue)
             throw new VmMemberTableOverflowException();
@@ -58,7 +60,7 @@ public sealed class VmMemberTables
         list.Add(item);
         if (token.Rid != 0)
             keys[TokenKey(token)] = id;
-        keys[NameKey(fullName)] = id;
+        keys[nameKey] = id;
         return id;
     }
 
@@ -83,7 +85,25 @@ public sealed class VmMemberTables
 
     private static string TokenKey(MDToken token) => "t:" + token.Raw.ToString("X8");
 
-    private static string NameKey(string fullName) => "n:" + fullName;
+    private static string NameKey(string scopeName, string fullName) => "n:" + scopeName + "|" + fullName;
+
+    private static string ScopeKey(ITypeDefOrRef? type)
+    {
+        if (type is null)
+            return string.Empty;
+
+        if (type.Scope is AssemblyRef assemblyRef && !UTF8String.IsNullOrEmpty(assemblyRef.Name))
+            return assemblyRef.FullName;
+
+        var defined = type.DefinitionAssembly;
+        if (defined is not null && !UTF8String.IsNullOrEmpty(defined.Name))
+            return defined.FullName;
+
+        if (type.Scope is ModuleRef moduleRef)
+            return "module:" + moduleRef.Name;
+
+        return type.Scope?.ToString() ?? string.Empty;
+    }
 }
 
 /// <summary>

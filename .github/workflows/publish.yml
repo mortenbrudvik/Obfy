@@ -88,6 +88,8 @@ jobs:
 
     - name: Push to NuGet
       shell: pwsh
+      env:
+        NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
       run: |
         $version = "${{ steps.version.outputs.version }}"
         $lower = $version.ToLowerInvariant()
@@ -100,9 +102,13 @@ jobs:
           throw "NuGet version check for Obfy $version returned HTTP $([int]$existing.StatusCode)."
         }
 
+        if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
+          throw "NUGET_API_KEY is missing from the NuGet login step."
+        }
+
         $packages = Get-ChildItem ./artifacts -Filter *.nupkg
         if (-not $packages) { throw "No .nupkg in ./artifacts" }
         foreach ($pkg in $packages) {
-          dotnet nuget push $pkg.FullName --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json
+          dotnet nuget push $pkg.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json
           if ($LASTEXITCODE -ne 0) { throw "nuget push failed for $($pkg.Name)" }
         }

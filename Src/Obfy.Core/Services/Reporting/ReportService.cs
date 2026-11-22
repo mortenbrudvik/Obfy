@@ -94,6 +94,24 @@ public class ReportService : IReportService
         foreach (var report in reports)
             statistics.Merge(report.Statistics);
 
+        var combinedSymbols = new Dictionary<string, string>(StringComparer.Ordinal);
+        var seenWarnings = new HashSet<string>(StringComparer.Ordinal);
+        var uniqueRuntimeWarnings = new List<string>();
+        var combinedSkipped = new List<SkippedItem>();
+        foreach (var result in results)
+        {
+            foreach (var pair in result.SymbolMap)
+                combinedSymbols[pair.Key] = pair.Value;
+
+            foreach (var warning in result.Warnings)
+            {
+                if (seenWarnings.Add(warning))
+                    uniqueRuntimeWarnings.Add(warning);
+            }
+
+            combinedSkipped.AddRange(result.SkippedItems);
+        }
+
         return new ObfuscationReport
         {
             Metadata = new ReportMetadata
@@ -103,12 +121,18 @@ public class ReportService : IReportService
                 Level = settings.Level,
                 TotalElapsedTime = new TimeSpan(reports.Sum(report => report.Metadata.TotalElapsedTime.Ticks))
             },
-            FileInfo = reports[0].FileInfo,
+            FileInfo = new FileInfoSection
+            {
+                InputPath = reports[0].FileInfo.InputPath,
+                OutputPath = reports[0].FileInfo.OutputPath,
+                InputSizeBytes = reports.Sum(static report => report.FileInfo.InputSizeBytes),
+                OutputSizeBytes = reports.Sum(static report => report.FileInfo.OutputSizeBytes)
+            },
             Files = reports.Select(report => report.FileInfo).ToList(),
             Statistics = statistics,
-            SymbolSummary = SumSymbolSummaries(reports),
+            SymbolSummary = BuildSymbolSummary(combinedSymbols.Keys, settings.SymbolRenaming.Mode),
             SettingsUsed = reports[0].SettingsUsed,
-            Warnings = reports.SelectMany(report => report.Warnings).ToList(),
+            Warnings = BuildWarningsCore(combinedSkipped, uniqueRuntimeWarnings, statistics, settings),
             ProcessingTimes = reports.SelectMany(report => report.ProcessingTimes).ToList()
         };
     }
@@ -184,37 +208,42 @@ public class ReportService : IReportService
         }
     }
 
-    private static SymbolMapSummary BuildSymbolSummary(PipelineContext context, ObfySettings settings)
+    private static SymbolMapSummary BuildSymbolSummary(PipelineContext context, ObfySettings settings) =>
+        BuildSymbolSummary(context.SymbolMap.Keys, settings.SymbolRenaming.Mode);
+
+    private static SymbolMapSummary BuildSymbolSummary(IEnumerable<string> keys, NamingMode mode)
     {
+        var total = 0;
         var typeCount = 0;
         var methodCount = 0;
         var fieldCount = 0;
         var propertyCount = 0;
         var parameterCount = 0;
 
-        foreach (var key in context.SymbolMap.Keys)
+        foreach (var key in keys)
         {
-            if (key.StartsWith("Type:"))
+            total++;
+            if (key.StartsWith("Type:", StringComparison.Ordinal))
                 typeCount++;
-            else if (key.StartsWith("Method:"))
+            else if (key.StartsWith("Method:", StringComparison.Ordinal))
                 methodCount++;
-            else if (key.StartsWith("Field:"))
+            else if (key.StartsWith("Field:", StringComparison.Ordinal))
                 fieldCount++;
-            else if (key.StartsWith("Property:"))
+            else if (key.StartsWith("Property:", StringComparison.Ordinal))
                 propertyCount++;
-            else if (key.StartsWith("Parameter:"))
+            else if (key.StartsWith("Parameter:", StringComparison.Ordinal))
                 parameterCount++;
         }
 
         return new SymbolMapSummary
         {
-            TotalSymbolsRenamed = context.SymbolMap.Count,
+            TotalSymbolsRenamed = total,
             TypesRenamed = typeCount,
             MethodsRenamed = methodCount,
             FieldsRenamed = fieldCount,
             PropertiesRenamed = propertyCount,
             ParametersRenamed = parameterCount,
-            NamingModeUsed = settings.SymbolRenaming.Mode
+            NamingModeUsed = mode
         };
     }
 
@@ -236,12 +265,18 @@ public class ReportService : IReportService
     private static List<ReportWarning> BuildWarnings(
         PipelineContext context,
         ObfuscationResult result,
+        ObfySettings settings) =>
+        BuildWarningsCore(context.SkippedItems, context.Warnings, result.Statistics, settings);
+
+    private static List<ReportWarning> BuildWarningsCore(
+        IReadOnlyList<SkippedItem> skippedItems,
+        IEnumerable<string> runtimeWarnings,
+        ObfuscationStatistics statistics,
         ObfySettings settings)
     {
         var warnings = new List<ReportWarning>();
 
         // Check for skipped items
-        var skippedItems = context.SkippedItems;
         if (skippedItems.Count > 0)
         {
             var groupedSkips = skippedItems
@@ -267,10 +302,10 @@ public class ReportService : IReportService
             }
         }
 
-        AddRuntimeWarnings(warnings, context.Warnings);
+        AddRuntimeWarnings(warnings, runtimeWarnings);
 
         // Check for unused settings
-        if (settings.StringEncryption.Enabled && result.Statistics.StringsEncrypted == 0)
+        if (settings.StringEncryption.Enabled && statistics.StringsEncrypted == 0)
         {
             warnings.Add(new ReportWarning
             {
@@ -282,7 +317,7 @@ public class ReportService : IReportService
             });
         }
 
-        if (settings.ConstantEncryption.Enabled && result.Statistics.ConstantsEncrypted == 0)
+        if (settings.ConstantEncryption.Enabled && statistics.ConstantsEncrypted == 0)
         {
             warnings.Add(new ReportWarning
             {
@@ -294,7 +329,7 @@ public class ReportService : IReportService
             });
         }
 
-        if (settings.ResourceEncryption.Enabled && result.Statistics.ResourcesEncrypted == 0)
+        if (settings.ResourceEncryption.Enabled && statistics.ResourcesEncrypted == 0)
         {
             warnings.Add(new ReportWarning
             {
@@ -306,7 +341,7 @@ public class ReportService : IReportService
             });
         }
 
-        if (settings.ControlFlow.Enabled && result.Statistics.MethodsControlFlowObfuscated == 0)
+        if (settings.ControlFlow.Enabled && statistics.MethodsControlFlowObfuscated == 0)
         {
             warnings.Add(new ReportWarning
             {
@@ -318,7 +353,7 @@ public class ReportService : IReportService
             });
         }
 
-        if (settings.Protection.MethodEncryption && result.Statistics.MethodsEncrypted == 0)
+        if (settings.Protection.MethodEncryption && statistics.MethodsEncrypted == 0)
         {
             warnings.Add(new ReportWarning
             {
@@ -330,7 +365,7 @@ public class ReportService : IReportService
             });
         }
 
-        if (settings.DependencyEmbedding.Enabled && result.Statistics.AssembliesEmbedded == 0)
+        if (settings.DependencyEmbedding.Enabled && statistics.AssembliesEmbedded == 0)
         {
             warnings.Add(new ReportWarning
             {
@@ -342,8 +377,14 @@ public class ReportService : IReportService
             });
         }
 
-        if (settings.SymbolRenaming.Enabled && result.Statistics.TypesRenamed == 0 &&
-            result.Statistics.MethodsRenamed == 0 && result.Statistics.FieldsRenamed == 0)
+        if (settings.SymbolRenaming.Enabled
+            && statistics.TypesRenamed == 0
+            && statistics.MethodsRenamed == 0
+            && statistics.FieldsRenamed == 0
+            && statistics.PropertiesRenamed == 0
+            && statistics.ParametersRenamed == 0
+            && statistics.EventsRenamed == 0
+            && statistics.NamespacesRenamed == 0)
         {
             warnings.Add(new ReportWarning
             {
@@ -357,7 +398,7 @@ public class ReportService : IReportService
 
         // Check for public API changes
         if (settings.SymbolRenaming.Enabled && !settings.SymbolRenaming.PreservePublicApi &&
-            result.Statistics.TypesRenamed > 0)
+            statistics.TypesRenamed > 0)
         {
             warnings.Add(new ReportWarning
             {
@@ -416,189 +457,11 @@ public class ReportService : IReportService
         };
     }
 
-    private static SymbolMapSummary SumSymbolSummaries(IReadOnlyList<ObfuscationReport> reports)
-    {
-        return new SymbolMapSummary
-        {
-            TotalSymbolsRenamed = reports.Sum(report => report.SymbolSummary.TotalSymbolsRenamed),
-            TypesRenamed = reports.Sum(report => report.SymbolSummary.TypesRenamed),
-            MethodsRenamed = reports.Sum(report => report.SymbolSummary.MethodsRenamed),
-            FieldsRenamed = reports.Sum(report => report.SymbolSummary.FieldsRenamed),
-            PropertiesRenamed = reports.Sum(report => report.SymbolSummary.PropertiesRenamed),
-            ParametersRenamed = reports.Sum(report => report.SymbolSummary.ParametersRenamed),
-            NamingModeUsed = reports[0].SymbolSummary.NamingModeUsed
-        };
-    }
-
-    private static SymbolMapSummary BuildSymbolSummaryFromResult(ObfuscationResult result, ObfySettings settings)
-    {
-        var typeCount = 0;
-        var methodCount = 0;
-        var fieldCount = 0;
-        var propertyCount = 0;
-        var parameterCount = 0;
-
-        foreach (var key in result.SymbolMap.Keys)
-        {
-            if (key.StartsWith("Type:"))
-                typeCount++;
-            else if (key.StartsWith("Method:"))
-                methodCount++;
-            else if (key.StartsWith("Field:"))
-                fieldCount++;
-            else if (key.StartsWith("Property:"))
-                propertyCount++;
-            else if (key.StartsWith("Parameter:"))
-                parameterCount++;
-        }
-
-        return new SymbolMapSummary
-        {
-            TotalSymbolsRenamed = result.SymbolMap.Count,
-            TypesRenamed = typeCount,
-            MethodsRenamed = methodCount,
-            FieldsRenamed = fieldCount,
-            PropertiesRenamed = propertyCount,
-            ParametersRenamed = parameterCount,
-            NamingModeUsed = settings.SymbolRenaming.Mode
-        };
-    }
+    private static SymbolMapSummary BuildSymbolSummaryFromResult(ObfuscationResult result, ObfySettings settings) =>
+        BuildSymbolSummary(result.SymbolMap.Keys, settings.SymbolRenaming.Mode);
 
     private static List<ReportWarning> BuildWarningsFromResult(
         ObfuscationResult result,
-        ObfySettings settings)
-    {
-        var warnings = new List<ReportWarning>();
-
-        // Check for skipped items
-        var skippedItems = result.SkippedItems;
-        if (skippedItems.Count > 0)
-        {
-            var groupedSkips = skippedItems
-                .GroupBy(s => s.Reason)
-                .OrderByDescending(g => g.Count());
-
-            foreach (var group in groupedSkips)
-            {
-                var examples = string.Join(", ", group.Take(3).Select(i => i.ItemName));
-                if (group.Count() > 3)
-                {
-                    examples += $", ... (+{group.Count() - 3} more)";
-                }
-
-                warnings.Add(new ReportWarning
-                {
-                    Severity = WarningSeverity.Info,
-                    Category = WarningCategory.SkippedItem,
-                    Message = $"{group.Count()} items skipped: {FormatSkipReason(group.Key)}",
-                    RelatedItem = group.Key.ToString(),
-                    Details = examples
-                });
-            }
-        }
-
-        AddRuntimeWarnings(warnings, result.Warnings);
-
-        // Check for unused settings
-        if (settings.StringEncryption.Enabled && result.Statistics.StringsEncrypted == 0)
-        {
-            warnings.Add(new ReportWarning
-            {
-                Severity = WarningSeverity.Warning,
-                Category = WarningCategory.UnusedSetting,
-                Message = "String encryption was enabled but no strings were encrypted",
-                RelatedItem = "StringEncryption",
-                Details = "The assembly may not contain string literals, or they may all be below the minimum length threshold."
-            });
-        }
-
-        if (settings.ConstantEncryption.Enabled && result.Statistics.ConstantsEncrypted == 0)
-        {
-            warnings.Add(new ReportWarning
-            {
-                Severity = WarningSeverity.Warning,
-                Category = WarningCategory.UnusedSetting,
-                Message = "Constant encryption was enabled but no constants were encrypted",
-                RelatedItem = "ConstantEncryption",
-                Details = "Constants may be below the threshold or the assembly may not contain numeric literals."
-            });
-        }
-
-        if (settings.ResourceEncryption.Enabled && result.Statistics.ResourcesEncrypted == 0)
-        {
-            warnings.Add(new ReportWarning
-            {
-                Severity = WarningSeverity.Warning,
-                Category = WarningCategory.UnusedSetting,
-                Message = "Resource encryption was enabled but no resources were encrypted",
-                RelatedItem = "ResourceEncryption",
-                Details = "The assembly may not contain embedded resources, or they may all be excluded by patterns."
-            });
-        }
-
-        if (settings.ControlFlow.Enabled && result.Statistics.MethodsControlFlowObfuscated == 0)
-        {
-            warnings.Add(new ReportWarning
-            {
-                Severity = WarningSeverity.Warning,
-                Category = WarningCategory.UnusedSetting,
-                Message = "Control flow obfuscation was enabled but no methods were obfuscated",
-                RelatedItem = "ControlFlow",
-                Details = "Methods may be too simple, contain exception handlers, or be excluded."
-            });
-        }
-
-        if (settings.Protection.MethodEncryption && result.Statistics.MethodsEncrypted == 0)
-        {
-            warnings.Add(new ReportWarning
-            {
-                Severity = WarningSeverity.Warning,
-                Category = WarningCategory.UnusedSetting,
-                Message = "Method encryption was enabled but no methods were encrypted",
-                RelatedItem = "MethodEncryption",
-                Details = "Methods may be generic, too short, runtime helpers, or otherwise ineligible."
-            });
-        }
-
-        if (settings.DependencyEmbedding.Enabled && result.Statistics.AssembliesEmbedded == 0)
-        {
-            warnings.Add(new ReportWarning
-            {
-                Severity = WarningSeverity.Warning,
-                Category = WarningCategory.UnusedSetting,
-                Message = "Dependency embedding was enabled but no assemblies were packed",
-                RelatedItem = "DependencyEmbedding",
-                Details = "Referenced DLLs must sit next to the input as '{Name}.dll'; framework assemblies are not embedded."
-            });
-        }
-
-        if (settings.SymbolRenaming.Enabled && result.Statistics.TypesRenamed == 0 &&
-            result.Statistics.MethodsRenamed == 0 && result.Statistics.FieldsRenamed == 0)
-        {
-            warnings.Add(new ReportWarning
-            {
-                Severity = WarningSeverity.Warning,
-                Category = WarningCategory.UnusedSetting,
-                Message = "Symbol renaming was enabled but no symbols were renamed",
-                RelatedItem = "SymbolRenaming",
-                Details = "All symbols may be preserved due to exclusion rules or public API preservation."
-            });
-        }
-
-        // Check for public API changes
-        if (settings.SymbolRenaming.Enabled && !settings.SymbolRenaming.PreservePublicApi &&
-            result.Statistics.TypesRenamed > 0)
-        {
-            warnings.Add(new ReportWarning
-            {
-                Severity = WarningSeverity.Important,
-                Category = WarningCategory.PublicApiChange,
-                Message = "Public API names may have been changed",
-                RelatedItem = "PreservePublicApi",
-                Details = "If this assembly is consumed by other projects, consider enabling 'Preserve Public API' to maintain compatibility."
-            });
-        }
-
-        return warnings;
-    }
+        ObfySettings settings) =>
+        BuildWarningsCore(result.SkippedItems, result.Warnings, result.Statistics, settings);
 }

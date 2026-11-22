@@ -29,11 +29,17 @@ export default function FilesPage() {
   }
 
   const problem = error && <Notice tone="error">{error}</Notice>;
+  const notices = input.notices.map((notice, i) => (
+    <Notice key={i} tone={noticeTone[notice.level]} title={notice.title}>
+      {notice.message}
+    </Notice>
+  ));
 
   if (input.files.length === 0) {
     return (
       <>
         {problem}
+        {notices}
         <EmptyState onPick={() => void pick()} onLoadConfig={() => void openConfig()} />
       </>
     );
@@ -47,11 +53,7 @@ export default function FilesPage() {
       </div>
 
       {problem}
-      {input.notices.map((notice, i) => (
-        <Notice key={i} tone={noticeTone[notice.level]} title={notice.title}>
-          {notice.message}
-        </Notice>
-      ))}
+      {notices}
 
       <div className="toolbar">
         <button type="button" className="btn" disabled={locked} onClick={() => void pick()}>

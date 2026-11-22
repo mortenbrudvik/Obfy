@@ -392,7 +392,33 @@ public static class Vm
         if (expected.IsEnum)
             value = Convert.ChangeType(value, Enum.GetUnderlyingType(expected));
 
-        return UnboxArg(value);
+        return CoerceFloatSlot(UnboxArg(value), expected);
+    }
+
+    static VmValue CoerceFloatSlot(VmValue v, VmType slotType)
+    {
+        if (slotType == VmType.R8 && v.Type == VmType.R4)
+            return R8(ToDouble(v));
+        if (slotType == VmType.R4 && v.Type == VmType.R8)
+            return R4(ToFloat(v));
+        return v;
+    }
+
+    static VmValue CoerceFloatSlot(VmValue v, Type expected)
+    {
+        if (expected == typeof(double))
+            return CoerceFloatSlot(v, VmType.R8);
+        if (expected == typeof(float))
+            return CoerceFloatSlot(v, VmType.R4);
+        return v;
+    }
+
+    static void WidenFloatPair(ref VmValue l, ref VmValue r)
+    {
+        if (l.Type == VmType.R4 && r.Type == VmType.R8)
+            l = R8(ToDouble(l));
+        else if (l.Type == VmType.R8 && r.Type == VmType.R4)
+            r = R8(ToDouble(r));
     }
 
     static object BoxReturn(VmValue v, Type rt)
@@ -422,9 +448,9 @@ public static class Vm
             case TypeCode.UInt64:
                 return unchecked((ulong)v.Bits);
             case TypeCode.Single:
-                return ToR4(v);
+                return ToFloat(v);
             case TypeCode.Double:
-                return ToR8(v);
+                return ToDouble(v);
             default:
                 return v.Ref;
         }
@@ -449,7 +475,7 @@ public static class Vm
         }
 
         if (!isVoid)
-            Push(ref frames[depth], value);
+            Push(ref frames[depth], CoerceFloatSlot(value, rt!));
         done = false;
         return null!;
     }
@@ -488,8 +514,15 @@ public static class Vm
         if (id < 0 || id >= _starts.Length)
             throw Fault("invalid method id");
         var args = new VmValue[argc];
+        var count = id < _argumentCounts.Length ? _argumentCounts[id] : 0;
+        var offset = id < _argumentOffsets.Length ? _argumentOffsets[id] : 0;
         for (var i = argc - 1; i >= 0; i--)
-            args[i] = Pop(ref f);
+        {
+            var arg = Pop(ref f);
+            if (i < count)
+                arg = CoerceFloatSlot(arg, ArgumentTypeAt(offset + i));
+            args[i] = arg;
+        }
 
         var next = depth + 1;
         if (next >= MaxCallDepth)
@@ -914,7 +947,11 @@ public static class Vm
     {
         if ((uint)index >= (uint)f.Args.Length)
             throw Fault("argument index out of range");
-        f.Args[index] = value;
+        var count = (uint)f.MethodId < (uint)_argumentCounts.Length ? _argumentCounts[f.MethodId] : 0;
+        var coerced = index < count
+            ? CoerceFloatSlot(value, ArgumentTypeAt(_argumentOffsets[f.MethodId] + index))
+            : value;
+        f.Args[index] = CoerceFloatSlot(coerced, f.Args[index].Type);
     }
 
     static VmValue Loc(ref Frame f, int index)
@@ -928,7 +965,7 @@ public static class Vm
     {
         if ((uint)index >= (uint)f.Locals.Length)
             throw Fault("local index out of range");
-        f.Locals[index] = value;
+        f.Locals[index] = CoerceFloatSlot(value, f.Locals[index].Type);
     }
 
     static void CondBranch(ref Frame f, bool take)
@@ -971,6 +1008,7 @@ public static class Vm
 
     static bool Equal(VmValue l, VmValue r)
     {
+        WidenFloatPair(ref l, ref r);
         if (l.Type != r.Type)
             throw Fault("type mismatch");
         switch (l.Type)
@@ -992,6 +1030,7 @@ public static class Vm
 
     static bool Greater(VmValue l, VmValue r, bool unsigned)
     {
+        WidenFloatPair(ref l, ref r);
         if (l.Type != r.Type)
             throw Fault("type mismatch");
         if (unsigned)
@@ -1014,6 +1053,7 @@ public static class Vm
 
     static bool Less(VmValue l, VmValue r, bool unsigned)
     {
+        WidenFloatPair(ref l, ref r);
         if (l.Type != r.Type)
             throw Fault("type mismatch");
         if (unsigned)
@@ -1041,6 +1081,7 @@ public static class Vm
     /// </summary>
     static bool LessOrEqual(VmValue l, VmValue r, bool unsigned)
     {
+        WidenFloatPair(ref l, ref r);
         if (l.Type != r.Type)
             throw Fault("type mismatch");
         switch (l.Type)
@@ -1059,6 +1100,7 @@ public static class Vm
     /// </summary>
     static bool GreaterOrEqual(VmValue l, VmValue r, bool unsigned)
     {
+        WidenFloatPair(ref l, ref r);
         if (l.Type != r.Type)
             throw Fault("type mismatch");
         switch (l.Type)
@@ -1157,6 +1199,7 @@ public static class Vm
     {
         var r = Pop(ref f);
         var l = Pop(ref f);
+        WidenFloatPair(ref l, ref r);
         if (l.Type != r.Type)
             throw Fault("type mismatch");
         Push(ref f, BinValue(l, r, op));

@@ -12,12 +12,14 @@ public class ApplyLevelRequestHandler(ProtectionSession session, RunCoordinator 
 {
     public ValueTask<SettingsSnapshot> Handle(ApplyLevelRequest request, CancellationToken cancellationToken)
     {
-        run.EnsureNotRunning();
-        var name = Enum.GetNames<ObfuscationLevel>()
-            .FirstOrDefault(n => n.Equals(request.Level?.Trim(), StringComparison.OrdinalIgnoreCase))
-            ?? throw new ObfyApiException("settings.invalidValue", $"Unknown level: {request.Level}");
+        run.WhileIdle(() =>
+        {
+            var name = Enum.GetNames<ObfuscationLevel>()
+                .FirstOrDefault(n => n.Equals(request.Level?.Trim(), StringComparison.OrdinalIgnoreCase))
+                ?? throw new ObfyApiException("settings.invalidValue", $"Unknown level: {request.Level}");
 
-        session.ApplyLevel(Enum.Parse<ObfuscationLevel>(name));
+            session.ApplyLevel(Enum.Parse<ObfuscationLevel>(name));
+        });
         return new ValueTask<SettingsSnapshot>(session.GetSnapshot());
     }
 }

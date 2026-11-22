@@ -78,8 +78,9 @@ public class AssemblyProcessor : IAssemblyProcessor
         }
 
         // StrongNameKey on the first write allocates the signature directory. After IL XOR,
-        // SignInPlace refreshes the blob. Anti-tamper hashes the whole file except its own
-        // slot, so the hash must be patched last (after the final signature).
+        // AntiTamperPePostProcessor patches the integrity hash before AssemblySigner.SignInPlace
+        // (zeroing both the hash slot and strong-name signature slot during hashing so signing
+        // covers the patched hash).
         var strongNameKey = AssemblySigner.TryLoadKey(context.Settings.Signing);
 
         var writerOptions = new ModuleWriterOptions(context.Module)

@@ -266,7 +266,7 @@ public static class VmEncoder
             WriteU16At(buffer, operandIndex, (ushort)dest);
         }
 
-        if (lastOp is not (VmOp.Ret or VmOp.Throw))
+        if (lastOp is not (VmOp.Ret or VmOp.Throw or VmOp.Br))
         {
             skipReason = VmSkipReasons.InvalidBytecode;
             tables.Rollback(methodMark, fieldMark, typeMark);
@@ -605,9 +605,9 @@ public static class VmEncoder
         if (instr.Operand is not ITypeDefOrRef type)
             return Fail(VmSkipReasons.UnsupportedOpcode, out skipReason);
 
-        // Nullable<T> has no representation in the VM: box/unbox/isinst/castclass would fault on a
-        // present value and mishandle null (the CLR returns an empty nullable for unbox.any).
-        if (opcode is not VmOp.Newarr && IsNullableType(type))
+        // Nullable<T> and native int types have no representation in the VM: box/unbox/isinst/castclass
+        // would fault on a present value and mishandle null.
+        if (opcode is not VmOp.Newarr && (IsNullableType(type) || IsNativeIntType(type)))
             return Fail(VmSkipReasons.NonPrimitiveValuetype, out skipReason);
         buffer.Add((byte)opcode);
         WriteU16(buffer, tables.AddType(type));
@@ -998,21 +998,18 @@ public static class VmEncoder
         reason = null;
         if (sig is null)
             return true;
+        if ((sig.CallingConvention & CallingConvention.Mask) == CallingConvention.VarArg
+            || (sig.ParamsAfterSentinel is not null && sig.ParamsAfterSentinel.Count > 0))
+        {
+            reason = VmSkipReasons.UnsupportedOpcode;
+            return false;
+        }
         if (!IsSupportedType(sig.RetType, out reason))
             return false;
         foreach (var param in sig.Params)
         {
             if (!IsSupportedType(param, out reason))
                 return false;
-        }
-
-        if (sig.ParamsAfterSentinel is not null)
-        {
-            foreach (var param in sig.ParamsAfterSentinel)
-            {
-                if (!IsSupportedType(param, out reason))
-                    return false;
-            }
         }
 
         return true;
@@ -1031,7 +1028,7 @@ public static class VmEncoder
             return false;
         }
 
-        if (IsNullableSig(sig))
+        if (sig.ElementType is ElementType.I or ElementType.U || IsNullableSig(sig))
         {
             reason = VmSkipReasons.NonPrimitiveValuetype;
             return false;
@@ -1051,6 +1048,9 @@ public static class VmEncoder
             TypeSpec spec => IsNullableSig(spec.TypeSig),
             _ => type.FullName == NullableFullName
         };
+
+    private static bool IsNativeIntType(ITypeDefOrRef? type) =>
+        type?.FullName is "System.IntPtr" or "System.UIntPtr";
 
     /// <summary>
     /// A static callee on another type with a precise-init (not beforefieldinit) static constructor

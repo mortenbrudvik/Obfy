@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Obfy Backlog</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<style>
+/* Layout: one column. Progress first (a count, a bar, what is still open by priority), then one plain checklist with open items grouped by priority and done items below, then the details of each open item with filters, then where the finished work went. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --ink: #14202e;
+  --muted: #566475;
+  --line: #dce2ea;
+  --accent: #1f5fae;
+  --accent-bg: #e5edf8;
+  --done: #1b7a47;
+  --done-bg: #e3f3ea;
+  --p1: #a82d24;
+  --p1-bg: #fbe9e7;
+  --p2: #8a5700;
+  --p2-bg: #fbf0d9;
+  --p3: #445468;
+  --p3-bg: #e9edf2;
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e151e;
+    --surface: #151e2a;
+    --ink: #e5ebf2;
+    --muted: #93a1b2;
+    --line: #26323f;
+    --accent: #84b5f2;
+    --accent-bg: #172a42;
+    --done: #6fcf97;
+    --done-bg: #14301f;
+    --p1: #ff9288;
+    --p1-bg: #3a1c1a;
+    --p2: #f0bb52;
+    --p2-bg: #36290f;
+    --p3: #a3b3c6;
+    --p3-bg: #1e2937;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e151e;
+  --surface: #151e2a;
+  --ink: #e5ebf2;
+  --muted: #93a1b2;
+  --line: #26323f;
+  --accent: #84b5f2;
+  --accent-bg: #172a42;
+  --done: #6fcf97;
+  --done-bg: #14301f;
+  --p1: #ff9288;
+  --p1-bg: #3a1c1a;
+  --p2: #f0bb52;
+  --p2-bg: #36290f;
+  --p3: #a3b3c6;
+  --p3-bg: #1e2937;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  padding-block: 32px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 860px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.15; }
+.lede { color: var(--muted); margin: 8px 0 0; max-width: 62ch; }
+.asof { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin: 12px 0 0; }
+button:focus-visible, #q:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* progress */
+.progress { margin-top: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; }
+.pcount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.pcount .big { font-family: var(--font-display); font-size: 36px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.pcount .of { color: var(--muted); font-size: 15px; }
+.pcount .pct { margin-left: auto; font-family: var(--font-mono); font-size: 14px; color: var(--done); font-variant-numeric: tabular-nums; }
+.bar { height: 10px; border-radius: 999px; background: var(--p3-bg); overflow: hidden; margin-top: 12px; }
+.bar > i { display: block; height: 100%; background: var(--done); border-radius: 999px; }
+.openby { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+.openby b { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.openby .o1 b { color: var(--p1); }
+.openby .o2 b { color: var(--p2); }
+.openby .o3 b { color: var(--p3); }
+
+/* checklist */
+.sec { font-size: 18px; font-weight: 600; margin-top: 32px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.sec .n { font-family: var(--font-mono); font-size: 13px; font-weight: 400; color: var(--muted); }
+.sub { font-size: 13px; font-weight: 600; color: var(--muted); margin: 18px 0 4px; letter-spacing: 0.02em; }
+.sub .def { font-weight: 400; }
+.list { list-style: none; margin: 0; padding: 0; }
+.row { display: grid; grid-template-columns: 22px 52px minmax(0, 1fr) auto; align-items: baseline; gap: 2px 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.row .box { align-self: center; width: 18px; height: 18px; border: 2px solid var(--muted); border-radius: 4px; }
+.row.done .box { border-color: var(--done); background: var(--done); position: relative; }
+.row.done .box::after { content: ""; position: absolute; left: 4px; top: 0; width: 5px; height: 10px; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.row .rid { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.row .t { min-width: 0; }
+.row a.t { color: var(--ink); text-decoration: none; }
+.row a.t:hover { text-decoration: underline; text-underline-offset: 3px; }
+.row.done .t { color: var(--muted); }
+.row .tag { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.pill { font-family: var(--font-mono); font-size: 11px; font-weight: 500; padding: 1px 8px; border-radius: 4px; letter-spacing: 0.04em; }
+.pill.p1 { color: var(--p1); background: var(--p1-bg); }
+.pill.p2 { color: var(--p2); background: var(--p2-bg); }
+.pill.p3 { color: var(--p3); background: var(--p3-bg); }
+
+/* details */
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 320px; min-width: 0; }
+.chip {
+  appearance: none; font: inherit; font-size: 13px; cursor: pointer; color: var(--muted);
+  background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; min-height: 30px;
+}
+.chip:hover { color: var(--ink); border-color: var(--muted); }
+.chip[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
+#q {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; min-height: 34px;
+  flex: 1 1 200px; min-width: 0; max-width: 100%;
+}
+#q::placeholder { color: var(--muted); }
+.count { font-size: 13px; color: var(--muted); margin: 14px 0 0; font-variant-numeric: tabular-nums; }
+.item { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 4px 18px; padding: 18px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 16px; }
+.rail { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.body { min-width: 0; }
+.item h3 { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.meta { font-size: 12px; color: var(--muted); margin: 2px 0 8px; letter-spacing: 0.02em; }
+.meta b { font-weight: 500; color: var(--accent); }
+.body p { margin: 0; max-width: 68ch; }
+.body p + p { margin-top: 6px; }
+.lab { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-right: 8px; }
+.refs { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 10px; }
+.ref { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); background: var(--p3-bg); border-radius: 4px; padding: 1px 6px; overflow-wrap: anywhere; }
+.empty { padding: 28px 0; color: var(--muted); }
+
+.where { margin-top: 40px; border-top: 1px solid var(--line); padding-top: 18px; }
+.where h2 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 13px; width: 100%; min-width: 420px; }
+th, td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+
+@media (max-width: 600px) {
+  h1 { font-size: 26px; }
+  .progress { padding: 14px 14px; }
+  .pcount .big { font-size: 30px; }
+  .row { grid-template-columns: 22px minmax(0, 1fr) auto; }
+  .row .rid { display: none; }
+  .row .tag { grid-column: 2 / -1; white-space: normal; }
+  .item { grid-template-columns: minmax(0, 1fr); }
+  .rail { flex-direction: row; align-items: center; gap: 10px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chip { transition: border-color 0.12s, background 0.12s, color 0.12s; }
+  .bar > i { transition: width 0.3s; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Obfy backlog</h1>
+    <p class="lede">The online guide, overwrite protection, bug fixes, docs, privacy, Rider removal, CI work and the findings of the 21 and 22 November code reviews. What is done, and what is still open.</p>
+    <p class="asof" id="asof"></p>
+  </header>
+
+  <section class="progress" aria-label="Progress">
+    <div class="pcount"><span class="big" id="pdone"></span><span class="of" id="pof"></span><span class="pct" id="ppct"></span></div>
+    <div class="bar" id="pbar" role="progressbar" aria-label="Items done" aria-valuemin="0"><i id="pfill"></i></div>
+    <div class="openby" id="openby"></div>
+  </section>
+
+  <h2 class="sec">Open <span class="n" id="nopen"></span></h2>
+  <div id="openlist"></div>
+
+  <h2 class="sec">Done <span class="n" id="ndone"></span></h2>
+  <ul class="list" id="donelist"></ul>
+
+  <h2 class="sec" id="details-title">Details of the open items</h2>
+  <div class="tools">
+    <div class="chips" id="areas" role="group" aria-label="Filter by area"></div>
+    <input id="q" type="search" placeholder="Search the details" aria-label="Search the details" autocomplete="off">
+  </div>
+  <p class="count" id="count" aria-live="polite"></p>
+  <main id="list"></main>
+
+  <section class="where">
+    <h2>Where the finished work went</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Repo</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td>Obfy</td><td>Merged into main as PR #33 (15988d0), PR #34 (d294551), and PR #35 (5251e42), plus docs, CI console-test, and XAML closed-set warning fixes up to f2bf4ad, pushed to origin/main.</td></tr>
+          <tr><td>Obfy, 22 Nov review &amp; Wave 1 fixes</td><td>Verified on origin/main @ f2bf4ad with Wave 1 review fixes (branch fix/nov-22-review-wave-1) merged into local main (not yet pushed to origin/main): 28 items closed today plus B-71 and B-85 already on main (30/72 fixed on the 22 Nov board, 77 done overall, all 7 Critical fixed) and 10 items partially addressed; verified by 3,187 passing .NET tests, 276 passing WebApp Vitest tests, ESLint clean, and fresh-eyes diff reviews. Two worktrees remain under .worktrees (closed-set-followups, fix-ci-flaui), both already on or superseded by main (see B-62).</td></tr>
+          <tr><td>Homepage</td><td>Merged into main and live at brudvik.com (936a8b0). Branch and worktree removed.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+var GROUPS = {
+  p1: { label: "P1", def: "Before release, or hides regressions" },
+  p2: { label: "P2", def: "Soon, and some need a decision" },
+  p3: { label: "P3", def: "When convenient" }
+};
+
+var DONE = [
+  { id: "D-01", title: "Online guide published at brudvik.com/obfy/guide", tag: "live" },
+  { id: "D-02", title: "Obfy product page published at brudvik.com/obfy", tag: "live" },
+  { id: "D-03", title: "Privacy page published at brudvik.com/obfy/privacy, PRIVACY.md rewritten", tag: "live, see B-30" },
+  { id: "D-04", title: "In-app Guide cut to a quick-start with links to the online guide", tag: "PR #33" },
+  { id: "D-05", title: "Technique copy corrected against the code (seven errors)", tag: "PR #33" },
+  { id: "D-06", title: "Run bar hints match what the run writes", tag: "PR #33" },
+  { id: "D-07", title: "Native packing greyed out for NativeAOT, IL2CPP and Blazor", tag: "PR #33" },
+  { id: "D-08", title: "Loaded configs that differ from their preset run as Custom", tag: "PR #33" },
+  { id: "D-09", title: "Desktop app refuses a run that would replace an input", tag: "PR #33" },
+  { id: "D-10", title: "Rider plugin removed", tag: "PR #33" },
+  { id: "D-11", title: "Stale docs corrected, README screenshots recaptured", tag: "PR #33" },
+  { id: "D-12", title: "CI UI step finds its DLL, and the web UI tests reach WebView2 on the runner", tag: "PR #33, #34" },
+  { id: "D-13", title: "UI test harness made deterministic (F1 test, load wait)", tag: "PR #33" },
+  { id: "D-14", title: "Store facts checked, OS support and IDE extension wording made true", tag: "pages live" },
+  { id: "D-15", title: "Dropped files that are ignored or are not a configuration now say so", tag: "PR #32" },
+  { id: "D-16", title: "CI on main green end to end: build, linux-cli, UI tests", tag: "two runs" },
+  { id: "D-17", title: "Merged branches and worktrees cleaned up", tag: "see B-62" },
+  { id: "D-18", title: "Full code review at 4e98558; the override-renaming and NaN fixes confirmed by running repros", tag: "PR #32" },
+  { id: "D-19", title: "Aggressive output starts on SDK-built apps; scenario tests run protected net8, net9 and net10 apps", tag: "B-41, B-42 · main" },
+  { id: "D-20", title: "Package-version test no longer scans worktrees", tag: "B-43 · main" },
+  { id: "D-21", title: "Desktop app refuses a symbol map that would replace a listed file or a run output", tag: "B-44 · main" },
+  { id: "D-22", title: "Starting a run keeps the disk off the run lock; no run starts once a close is approved", tag: "B-45 · main" },
+  { id: "D-23", title: "Ctrl+C stops single-file and merge runs in the CLI", tag: "B-46 · main" },
+  { id: "D-24", title: "A screen that fails to draw keeps the sidebar and run bar", tag: "B-48 · main" },
+  { id: "D-25", title: "version.json is the single version source; the release tag must match it", tag: "B-51 · main" },
+  { id: "D-26", title: "Text typed after a commit survives the host's echo", tag: "B-52 · main" },
+  { id: "D-27", title: "Virtualization works together with symbol renaming, in single-assembly and closed-set runs", tag: "B-68 · main" },
+  { id: "D-28", title: "A cache hit returns the real statistics, stores no names, and rebuilds when the map or report is needed", tag: "B-49 · main" },
+  { id: "D-29", title: "A cache hit is taken only when the output on disk is the file the cached run wrote", tag: "B-67 · main" },
+  { id: "D-30", title: "An in-place run does not use the incremental cache, and says so once", tag: "B-64 · main" },
+  { id: "D-31", title: "Visual Studio extension can stop a hung run: a time limit, cancel on close or rebuild, whole process tree ended", tag: "B-47 · main" },
+  { id: "D-32", title: "Vulnerable MessagePack replaced by 2.5.303 in the Visual Studio extension; scan clean", tag: "B-50 · main" },
+  { id: "D-33", title: "Post-build step no longer stops when the output pane is missing", tag: "B-58 · main" },
+  { id: "D-34", title: "Renaming keeps members used through a generic instantiation working, in single, merge and closed-set runs", tag: "B-77 · main" },
+  { id: "D-35", title: "Protected apps run on .NET Framework 4.6.1 and 4.8 and on .NET Core 3.1 through .NET 10; scenario tests cover each installed target", tag: "B-66 · main" },
+  { id: "D-36", title: "CLI refuses a --map or --report path that would replace an input, an output, the config or the signing key file", tag: "B-69 · main" },
+  { id: "D-37", title: "Closed-set failures that name no file print a problem line", tag: "B-57 · main" },
+  { id: "D-38", title: "A run says when --incremental cannot apply; the cache entry is written atomically", tag: "B-73 · main" },
+  { id: "D-39", title: "A packed app with encrypted method bodies starts, with the native host and with the portable launcher", tag: "B-79 · main" },
+  { id: "D-40", title: "The installer script protects each publish folder in one closed-set run", tag: "B-82 · main" },
+  { id: "D-41", title: "The installer keeps the names the shipped programs read (build/self-obfuscation.json) and its build runs the protected CLI and desktop app before packaging; a full installer build passed", tag: "B-82 · main" },
+  { id: "D-42", title: "Named arguments of custom attributes, and type names in typeof and enum arguments, follow a rename", tag: "B-80 · main" },
+  { id: "D-43", title: "Renamed members' original names no longer stay in the output through leftover MemberRef and MethodSpec rows; the changelog says which names do stay", tag: "B-81 · main" },
+  { id: "D-44", title: "A member reference that names a derived type is rewritten to the member the runtime calls, including when generic substitution makes two methods look alike", tag: "B-80 · main" },
+  { id: "D-45", title: "Reference proxy no longer aborts the run on a call with five or more arguments; Obfy.Core.dll protects at Aggressive", tag: "B-78 · main" },
+  { id: "D-46", title: "Reference proxy no longer crashes on a call to a method of a private, protected or private-protected nested type", tag: "B-78 · main" },
+  { id: "D-47", title: "With --proxy-external, a value-type receiver is passed by reference and a call the proxy cannot forward stays direct, so an async method that awaits Task.Yield runs", tag: "B-78 · main" },
+  { id: "D-48", title: "Updated docs for the review fixes (CHANGELOG.md, CLAUDE.md, docs/Advanced.md, docs/Testing.md, .claude/commands/publish.md)", tag: "B-71 · main (PR #35)" },
+  { id: "D-49", title: "Resolved NuGet publish contradiction in .claude/commands/publish.md (OIDC workflow-only; manual push marked emergency note)", tag: "B-85 · main (5fdc40c)" },
+  { id: "D-50", title: "ClosedSetProcessor rewrites InternalsVisibleTo(PublicKey=...) on closed-set signing", tag: "B-36 · main" },
+  { id: "D-51", title: "RunCoordinator.WhileIdle closes files.remove and sibling quick-mutation vs run-start races", tag: "B-37 · main" },
+  { id: "D-52", title: "CLI prints \"--level is ignored\" and config error warnings once (errors to stderr)", tag: "B-39 · main" },
+  { id: "D-53", title: "Core cleanup complete (SettingsValidator recursive + indexers, ConstantEncryptionObfuscator dead region removed, AssemblyProcessor comment fixed, DecryptorIl try/finally AES disposal)", tag: "B-60 · main" },
+  { id: "D-54", title: "SourceStringEncryptor decodes raw interpolated text ({{{{ and \\u007b\\u007b/\\x7b) with tests", tag: "B-65 · main" },
+  { id: "D-55", title: "Moved SourceProcessor.PlanMultiFileOutputPaths (Directory.Exists) out of InputSession._gate", tag: "B-72 · main" },
+  { id: "D-56", title: "Fixed ResourceEncryptionObfuscator typed loader IL stack imbalance (nsNull Nop)", tag: "B-86 · main" },
+  { id: "D-57", title: "Fixed VM R4/R8 stack widening (BoxReturn, Bin, comparisons, CallVm, DoRet, SetLoc, SetArg)", tag: "B-87 · main" },
+  { id: "D-58", title: "Fixed ControlFlowObfuscator opaque predicates (SimplifyBranches/OptimizeBranches, CFG zero-depth sites, MaxStack)", tag: "B-88 · main" },
+  { id: "D-59", title: "Fixed ControlFlowFlattener CFG BFS stack-depth propagation & MaxStack", tag: "B-89 · main" },
+  { id: "D-60", title: "Fixed AntiTamperObfuscator single-file ProcessPath CLR DataDirectory guard + SHA256 try/finally disposal", tag: "B-90 · main" },
+  { id: "D-61", title: "Fixed AntiDumpObfuscator x86 ret 0x1C/xor eax,eax, ARM64 guard, LoadLibraryExW, UIntPtr, VirtualProtect restore", tag: "B-91 · main" },
+  { id: "D-62", title: "Fixed build/ObfySetup.iss {sys}\\taskkill.exe in PrepareToInstall/[UninstallRun] and EnvAddPath RegValueExists guard", tag: "B-92 · main" },
+  { id: "D-63", title: "Fixed ClosedSetProcessor HasEntryPoint use-after-dispose when packing is enabled", tag: "B-93 · main" },
+  { id: "D-64", title: "Fixed transitive BFS entry-point reachability in ClosedSetProcessor & SolutionAnalyzer", tag: "B-94 · main" },
+  { id: "D-65", title: "Fixed closed-set combined reports N× symbol/warning duplication and aggregated FileInfo", tag: "B-96 · main" },
+  { id: "D-66", title: "Fixed WildcardMatcher ReDoS (RegexOptions.NonBacktracking) + bounded 4096 cache", tag: "B-97 · main" },
+  { id: "D-67", title: "Fixed ObfuscationAttributeRules case-insensitive feature normalization + enclosing outer type walk", tag: "B-98 · main" },
+  { id: "D-68", title: "Fixed SymbolRenamingObfuscator pre-mutation parameter collection, namespace exclusions, PreservePublicApi NestedPublic/protected", tag: "B-99 · main" },
+  { id: "D-69", title: "Qualified System.Reflection.Assembly & System.Resources.ResourceManager signature matching", tag: "B-100 · main" },
+  { id: "D-70", title: "Fixed ReferenceProxyObfuscator enclosing type visibility + skipped caller-sensitive BCL APIs", tag: "B-101 · main" },
+  { id: "D-71", title: "Fixed Roslyn SourceControlFlowObfuscator (pattern vars, nested labels, unique tick var, no unreachable CS0162)", tag: "B-102 · main" },
+  { id: "D-72", title: "Fixed Roslyn SourceSymbolRenamer (record positional properties, duck-typed C# patterns, partial/override params)", tag: "B-103 · main" },
+  { id: "D-73", title: "Fixed VM IntPtr/UIntPtr screening in VmEncoder", tag: "B-104 · main" },
+  { id: "D-74", title: "Fixed CLI FillNullSections, duplicate JSON keys (JsonDocument), Wizard summary order / PreservePublicApiChoice / overwrite loop", tag: "B-107 · main" },
+  { id: "D-75", title: "Fixed FilesPage empty-state notices; disabled ProtectionPage & Ctrl+O/Ctrl+L during active run", tag: "B-108 · main" },
+  { id: "D-76", title: "Fixed VS CliArgumentBuilder.Quote dash-prefixed paths, ObfySettingsJson duplicate keys/malformed JSON, SettingsDialogViewModel Custom preservation, OpenSettingsCommand/TogglePostBuildCommand error handling", tag: "B-109 · main" },
+  { id: "D-77", title: "Fixed publish.yml to pass NUGET_API_KEY via env: instead of PowerShell double-quoted interpolation", tag: "B-110 · main" }
+];
+
+var ITEMS = [
+  { id: "B-01", pri: "p1", area: "Release", kind: "Release", title: "Publish 2.0.0, then remove the release notes",
+    why: "NuGet and GitHub releases are at 1.3.0 while the code says 2.0.0. The product page, the guide and the privacy page are live and each carries a release note about this, with a test marked for removal. The README still links the 1.3.0 installer.",
+    next: "Tag and publish 2.0.0. The tag must now match version.json (v2.0.0, 2.0.0 or a prerelease such as 2.0.0-rc.1), or the publish workflow stops before building. Then delete the three notes and their tests, and update the README installer link and its “1.3.0 product” line. CHANGELOG.md has a dated [2.0.0] section and an Unreleased section but no v2.0.0 tag yet; decide at release whether the Unreleased entries fold into 2.0.0 or ship under their own heading.",
+    refs: ["version.json", "CHANGELOG.md", "README.md", "public/obfy/index.html", "public/obfy/guide/index.html", "public/obfy/privacy/index.html"] },
+  { id: "B-02", pri: "p1", area: "Release", kind: "Release", title: "Point the Store privacy URL at the web page",
+    why: "The Store listing uses the GitHub PRIVACY.md as its privacy policy. The new page at brudvik.com/obfy/privacy says the same things and is easier to find. The Store page also shows no version, so it is not confirmed that 2.0.0 is what ships.",
+    next: "The page is live. Set the policy URL in Partner Center and check which version the listing carries.",
+    refs: ["package/store-identity.json", "PRIVACY.md"] },
+  { id: "B-10", pri: "p2", area: "Docs", kind: "Verify", title: "Test the behaviours the guide leaves out",
+    why: "Re-signing after protection with the integrity check and older target frameworks (net461 through net10.0) are now tested and documented. Still unverified or undocumented: PublishSingleFile bundles (broken with AntiTamper — see B-90); short-name collisions across separately protected runs; compiled XAML (BAML) exclusion docs; the integrity check on NativeAOT and IL2CPP; the GitHub Actions snippet; whether exclusions.attributes replaces the default list in docs/Advanced.md; the technique cost remarks (not benchmarked); and running the Visual Studio extension live.",
+    next: "Test each remaining item (coordinate PublishSingleFile with B-90 and VS live testing with B-70), document exclusions.attributes behavior in docs/Advanced.md, and update the guide and product page with what holds.",
+    refs: ["public/obfy/guide/index.html", "docs/Advanced.md", "docs/Platforms.md", "docs/Testing.md"] },
+  { id: "B-11", pri: "p2", area: "Privacy", kind: "Verify", title: "Confirm the privacy statements that rest on Microsoft or on a grep",
+    why: "Not verifiable from code: Windows moving AppData into the Store package folder, the WebView2 bootstrapper’s download, the Microsoft Store’s own data collection, and Windows crash reporting. “No network code in written assemblies” rests on a source grep only.",
+    next: "Check each against Microsoft’s documentation or a test install, and add a test that scans output assemblies for network references.",
+    refs: ["PRIVACY.md", "public/obfy/privacy/index.html"] },
+  { id: "B-13", pri: "p3", area: "Release", kind: "Idea", title: "Add a macOS job to CI",
+    why: "CI runs the CLI tests on Windows and Ubuntu only. The pages say the CLI is tested on Windows and Linux and say nothing about macOS.",
+    next: "Add a macOS runner that runs Obfy.Console.Tests. If it passes, say so on the pages.",
+    refs: [".github/workflows/ci.yml"] },
+  { id: "B-14", pri: "p3", area: "Release", kind: "Decide", title: "Decide whether to publish the Visual Studio extension",
+    why: "The Visual Studio extension is not on the Visual Studio Marketplace and not in a release. The pages say it is built from source.",
+    next: "Publish it, or keep it source-only and leave the wording as it is.",
+    refs: ["Src/Obfy.VisualStudio"] },
+  { id: "B-15", pri: "p3", area: "App", kind: "Idea", title: "Make the online guide button open the matching section",
+    why: "The “Read more online” links open the matching section. The “Open the full guide online” button on the Guide screen always opens the start.",
+    next: "Pass a section id from the Guide screen, for example shortcuts.",
+    refs: ["Src/WebApp/src/features/guide/GuidePage.tsx", "Src/Obfy.App/Features/App/GuideLinks.cs"] },
+  { id: "B-16", pri: "p3", area: "App", kind: "Idea", title: "Add Save As for configuration",
+    why: "Save writes to the file you opened or last saved, and asks only the first time. Backend SaveConfigRequest(SaveAs = true) and api.settings.saveConfig(true) already exist; only the UI button, hook action, and keyboard shortcut are missing.",
+    next: "Wire saveConfig(true) through useProtection and add a Save As button and shortcut on the Protection page.",
+    refs: ["Src/Obfy.App/Features/Settings/SaveConfigRequest.cs", "Src/WebApp/src/interop/api.ts", "Src/WebApp/src/features/protection/useProtection.ts", "Src/WebApp/src/features/protection/ProtectionPage.tsx"] },
+  { id: "B-17", pri: "p3", area: "App", kind: "Decide", title: "Use one output rule in the desktop app and the CLI",
+    why: "--merge without -o writes {name}.merged{ext} in the CLI and *.obfuscated.* in the app. For a solution the CLI writes obfy-out next to the solution file, while the app writes it next to the first included assembly, usually inside bin. The docs now say which tool each rule is about.",
+    next: "Pick one rule for each case and change the other tool to match.",
+    refs: ["Src/Obfy.Console/Program.cs", "Src/Obfy.App/Sessions/InputSession.cs", "docs/CLI.md"] },
+  { id: "B-18", pri: "p3", area: "Core", kind: "Idea", title: "Sign after packing",
+    why: "Signing runs before packing. The default win-x64 native launcher is a native PE stub and cannot be strong-name signed (its inner managed payload already is strong-name signed). This gap applies to the portable managed launcher.",
+    next: "Sign the portable managed launcher after packing when signing is configured, or keep the docs explicit that only the managed payload is strong-named.",
+    refs: ["Src/Obfy.Core/Services/ObfuscationService.cs", "Src/Obfy.Core/Utilities/ManagedLauncherPacker.cs", "Src/Obfy.Core/Utilities/PackingApplicator.cs"] },
+  { id: "B-19", pri: "p3", area: "Core", kind: "Idea", title: "Keep the types that XAML names, automatically",
+    why: "Preserve XAML keeps only public properties of types that look bindable. A window or control named in XAML still needs a manual exclusion. How compiled XAML is handled is unverified.",
+    next: "Collect type names from XAML files in a project run and exclude them. Check it with the WPF fixture.",
+    refs: ["Src/Obfy.Core/Obfuscators/Assembly/SymbolRenamingObfuscator.cs", "Tests/Obfy.ScenarioTests"] },
+  { id: "B-20", pri: "p3", area: "Privacy", kind: "Decide", title: "Decide whether the watermark id may be logged",
+    why: "The watermark obfuscator logs the watermark id in some warnings. The privacy page does not claim the id is never logged.",
+    next: "Stop logging the id, or keep logging it and say so on the page.",
+    refs: ["Src/Obfy.Core/Obfuscators/Assembly/WatermarkObfuscator.cs"] },
+  { id: "B-22", pri: "p3", area: "Homepage", kind: "Verify", title: "Look at the ignis-demo e2e flake",
+    why: "Different ignis-demo tests failed and then passed on retry in several full runs, including the one before the deploy. Run alone, the spec passed 22 of 22. It is unrelated to the Obfy pages.",
+    next: "Check the timing in the ignis-demo spec.",
+    refs: ["tests/e2e/ignis-demo.spec.js"] },
+  { id: "B-23", pri: "p3", area: "Homepage", kind: "Idea", title: "Add a Protection screenshot to the product page",
+    why: "The page shows the Start, Files and Results screens. The Protection screen, where levels and techniques are chosen, has none.",
+    next: "Capture it the way the others were (the Release shell driven over CDP) and add it to the page.",
+    refs: ["public/obfy/index.html"] },
+  { id: "B-24", pri: "p3", area: "Homepage", kind: "Idea", title: "Show subsections in the guide’s contents",
+    why: "The rail lists the 11 sections only. The 22 subsections are reachable by anchor but not from the rail, and nothing marks the section you are reading.",
+    next: "Add nested entries and a scroll highlight if the guide grows.",
+    refs: ["public/obfy/guide/index.html"] },
+  { id: "B-25", pri: "p3", area: "Docs", kind: "Decide", title: "Leave or footnote the old WPF wording in history",
+    why: "A past CHANGELOG entry under 2.0.0 and the plans and specs in docs/superpowers still describe the WPF window. They were left as history on purpose.",
+    next: "Leave them, or add a note that they predate the web UI.",
+    refs: ["CHANGELOG.md", "docs/superpowers"] },
+  { id: "B-26", pri: "p3", area: "Housekeeping", kind: "Chore", title: "Delete the leftover sample output",
+    why: "The screenshot run created C:\\Projects\\MyApp\\out\\MyApp.dll. The automated delete was blocked because C:\\Projects is a protected path.",
+    next: "Delete C:\\Projects\\MyApp by hand if you do not use it.",
+    refs: ["C:\\Projects\\MyApp\\out\\MyApp.dll"] },
+  { id: "B-27", pri: "p3", area: "Homepage", kind: "Chore", title: "Make the sitemap script runnable on this machine",
+    why: "scripts/build-sitemap.mjs needs WAVEUI_DIR, a checkout of the WaveUI repo, and there is none here. The Obfy sitemap entries were edited by hand, and the lastmod unit test caught the one date that was missed (the home page).",
+    next: "Clone the WaveUI repo, set WAVEUI_DIR, and run the script after page changes instead of editing dates by hand.",
+    refs: ["scripts/build-sitemap.mjs", "tests/unit/sitemap.test.js"] },
+  { id: "B-28", pri: "p3", area: "Core", kind: "Decide", title: "Decide whether the CLI should warn before writing over an input",
+    why: "The desktop app refuses a run that would replace an input. The CLI still writes over the original when -o is the input's folder. That is the documented MSBuild post-build step, and the write is atomic, so a failed run no longer truncates the original. A successful run still replaces it, by design. The CLI now does refuse a --map or --report path that would replace an input or an output.",
+    next: "Decide whether -o into an input's own folder, outside the post-build case, should warn or need a flag. Add tests either way.",
+    refs: ["Src/Obfy.Console/Program.cs", "Src/Obfy.App/Sessions/OutputCollisions.cs"] },
+  { id: "B-29", pri: "p3", area: "Release", kind: "Chore", title: "Update the GitHub Actions that still target Node 20",
+    why: "The CI log warns that checkout, setup-dotnet, setup-node, upload-artifact and msvc-dev-cmd target Node.js 20, which is deprecated, and are being forced onto Node 24. Dependabot has open PRs for some of them (#28, #29, #30). The same log notes that the rebuilt native host differs from the committed binary, which is compiler output and not a source change.",
+    next: "Review and merge the Dependabot PRs once CI is green, and check the remaining actions for Node 24 versions.",
+    refs: [".github/workflows/ci.yml", "PR #28", "PR #29", "PR #30"] },
+  { id: "B-30", pri: "p2", area: "Privacy", kind: "Fix", title: "Update the privacy pages for what the logs now contain",
+    why: "PRIVACY.md and /obfy/privacy say the logs name the files Obfy read and wrote with their full paths, plus the types, methods and resources it processed. File paths, Windows usernames and exception messages are scrubbed in the shipped apps, while Obfy.Core still logs type.FullName, method.FullName, resource names and watermark.id, and NativePacker and ManagedLauncherPacker still emit Trace.WriteLine calls with destination/temp paths.",
+    next: "Scrub or settle the remaining Obfy.Core symbol/resource/watermark logs and packer Trace.WriteLine calls, rewrite the log paragraph in PRIVACY.md and on brudvik.com/obfy/privacy to match, and redeploy the homepage.",
+    refs: ["PRIVACY.md", "public/obfy/privacy/index.html (homepage repo)", "Src/Obfy.Core/Utilities/NativePacker.cs", "Src/Obfy.Core/Utilities/ManagedLauncherPacker.cs", "Src/Obfy.Core/Obfuscators/Assembly/WatermarkObfuscator.cs"] },
+  { id: "B-31", pri: "p2", area: "Release", kind: "Chore", title: "Gate the NuGet publish behind a GitHub Environment",
+    why: "The publish job in publish.yml has no environment, so a release, or a manual run from main or a tag, publishes to nuget.org with no human approval. An approval gate needs repository settings, which a code change cannot create. Left open by the code review.",
+    next: "Create a GitHub Environment (for example nuget-publish) with required reviewers and deployment limited to main and tags. Add environment: nuget-publish to the publish job, and bind the nuget.org trusted-publishing policy to that environment.",
+    refs: [".github/workflows/publish.yml"] },
+  { id: "B-32", pri: "p2", area: "Release", kind: "Chore", title: "Pin the hash of the native host pack download",
+    why: "Src/Obfy.NativeHost/build.ps1 takes Microsoft.NETCore.App.Host.win-x64 8.0.6 from a local pack or restores it, and checks no hash, so a substituted package would end up in the packer stub. The package was not in the local NuGet cache, so no trusted hash was at hand and none was pinned.",
+    next: "Take the SHA-512 from a trusted restore’s .nupkg.sha512 and pin it in build.ps1. build.ps1 is a stamp input, so regenerate Src/Obfy.NativeHost/dist/sources.sha256 afterwards.",
+    refs: ["Src/Obfy.NativeHost/build.ps1", "Src/Obfy.NativeHost/dist/sources.sha256"] },
+  { id: "B-33", pri: "p2", area: "Release", kind: "Verify", title: "Check where the Store (MSIX) app writes its files",
+    why: "A packaged app’s writes under %LOCALAPPDATA% and %APPDATA% are likely redirected into its package folder. If so, the Open log folder button and PRIVACY.md point at a path the app never wrote to. Not tested on an installed package. Related to B-11.",
+    next: "Install the MSIX and see where the logs, ui-preferences.json and the WebView2 profile land. If they are redirected, set desktop6:FileSystemWriteVirtualization to disabled in the manifest (it needs the unvirtualizedResources capability), or point the docs at the package path.",
+    refs: ["package/AppxManifest.xml", "PRIVACY.md", "build/build-msix.ps1"] },
+  { id: "B-34", pri: "p2", area: "Core", kind: "Fix", title: "Close three gaps in packed apps (plus [STAThread] in B-105)",
+    why: "A native-packed app runs through the managed bootstrap. Reading the code, foreground threads are cut off when wmain returns, and exceptions are caught in the bootstrap so AppDomain.UnhandledException handlers never fire. Assembly.GetEntryAssembly() is probably null under component hosting, which was suspected and never run. Setting the entry assembly in the bootstrap was tried and reverted: AntiTamper treats a null entry assembly with an empty Location as packed and skips, so the change broke AntiTamper together with packing. In addition, [STAThread] is never honored by packed hosts, breaking WPF and STA WinForms apps (see B-105).",
+    next: "Needs native-host and bootstrap work (coordinate with B-105). First run a packed app that prints Assembly.GetEntryAssembly() to settle the third gap. Any change to PackedBootstrap or the host means regenerating the sources stamp and rebuilding the host.",
+    refs: ["Src/Obfy.PackedBootstrap/PackedBootstrap.cs", "Src/Obfy.NativeHost", "Src/Obfy.NativeHost/dist/sources.sha256", "Src/Obfy.Core/Utilities/ManagedLauncherPacker.cs"] },
+  { id: "B-35", pri: "p2", area: "App", kind: "Idea", title: "Ask before replacing unsaved settings",
+    why: "Opening a configuration, or dropping a .json file, replaces the current settings with no prompt, although the settings snapshot already knows when it is dirty. A prompt needs an in-app dialog rather than window.confirm.",
+    next: "Show a confirmation dialog on open-configuration and on a configuration drop when the snapshot is dirty.",
+    refs: ["Src/Obfy.App/Sessions/ProtectionSession.cs", "Src/Obfy.App/Sessions/InputSession.cs"] },
+  { id: "B-38", pri: "p3", area: "Docs", kind: "Fix", title: "Tighten the configuration schema",
+    why: "schemas/obfy.schema.json has additionalProperties: true everywhere, so editors cannot flag a misspelled key. The schema lives at the repository root, not under Src/Obfy.VSCode.",
+    next: "Set additionalProperties to false on the objects whose keys are fixed. Check it against the output of obfy config generate and the example configurations, and add a test that validates a generated configuration against it.",
+    refs: ["schemas/obfy.schema.json", "Src/Obfy.VSCode"] },
+  { id: "B-40", pri: "p3", area: "Core", kind: "Verify", title: "Check what nameof gives after source renaming",
+    why: "A review noted that nameof of a renamed symbol yields the new name. A search of the source obfuscators and the source tests finds no mention of nameof, so the behaviour is neither tested nor documented.",
+    next: "Write a test with nameof next to a string that depends on the old name, then document the result in docs/Techniques.md.",
+    refs: ["Src/Obfy.Core/Obfuscators/Source", "docs/Techniques.md"] },
+  { id: "B-53", pri: "p3", area: "App", kind: "Fix", title: "Warn about unknown configuration keys in the desktop app",
+    why: "The CLI now warns about keys no setting reads. The desktop app loads the same file silently, so a misspelled key runs with the default. Related to B-38.",
+    next: "Reuse the CLI's key check in ConfigFile.LoadAsync and show a notice.",
+    refs: ["Src/Obfy.App/Services/ConfigFile.cs", "Src/Obfy.Console/ConfigKeyValidator.cs"] },
+  { id: "B-54", pri: "p3", area: "App", kind: "Fix", title: "Bound the run log",
+    why: "The host's LogBuffer keeps every line until it is cleared, and each snapshot copies the whole list. The page now keeps 5,000 lines, but a reviewer reports that the cap also trims what Problems only and Copy can see (not checked).",
+    next: "Cap the host buffer, and keep warnings and errors out of the page's trimming.",
+    refs: ["Src/Obfy.App/Sessions/LogBuffer.cs", "Src/WebApp/src/features/results/logModel.ts", "Src/WebApp/src/features/results/LogTab.tsx"] },
+  { id: "B-55", pri: "p3", area: "App", kind: "Fix", title: "Handle CoreWebView2 origin guard (cloak-refused timer & closed-window guard fixed)",
+    why: "Fixed in ShellWindow.xaml.cs: cloak-refused path now publishes app.revealed and stops/disposes _revealTimer, and closed-window guard prevents late timer ticks from revealing a closed window (alongside earlier run-bar and failed-cancel fixes). Remaining: top-level CoreWebView2 has no AddHostObjectToScriptWithOrigins API (only CoreWebView2Frame does), so the bridge relies on the navigation guards alone.",
+    next: "Harden or document the CoreWebView2 navigation/origin guard without relying on AddHostObjectToScriptWithOrigins.",
+    refs: ["Src/Obfy.UI/Views/ShellWindow.xaml.cs", "Src/Obfy.WebView/WebViewHandler.cs"] },
+  { id: "B-56", pri: "p3", area: "Release", kind: "Chore", title: "Clear stale files from Assets on build",
+    why: "CopyFrontend copies dist into Assets and never deletes, so old hashed bundles pile up and can reach an install layout. Publish fails only on an empty dist, so a publish with SkipFrontendBuild and an old dist ships an old page.",
+    next: "Empty Assets before the copy, and make the frontend build a requirement of publish.",
+    refs: ["Src/Obfy.UI/Obfy.UI.csproj"] },
+  { id: "B-59", pri: "p3", area: "Core", kind: "Decide", title: "Decide whether output should be reproducible",
+    why: "Control flow uses an unseeded Random, and name generation uses Random.Shared with a random salt. Two runs on the same input differ, and no setting offers a seed.",
+    next: "Add a seed setting, or say in the docs that output is not reproducible.",
+    refs: ["Src/Obfy.Core/Obfuscators/Assembly/ControlFlowObfuscator.cs", "Src/Obfy.Core/Utilities/NameGenerator.cs"] },
+  { id: "B-61", pri: "p3", area: "Release", kind: "Chore", title: "Pin the SDK and lock the packages",
+    why: "There is no global.json, nuget.config or packages.lock.json, so the local SDK and transitive packages float and nothing detects a substituted package. Dependabot covers GitHub Actions only.",
+    next: "Add global.json, a nuget.config with package source mapping, and lock files restored in locked mode. Add nuget and npm to Dependabot.",
+    refs: ["Directory.Packages.props", ".github/dependabot.yml"] },
+  { id: "B-62", pri: "p3", area: "Housekeeping", kind: "Chore", title: "Clean up the two superseded worktrees under .worktrees",
+    why: "C:\\localhost has already been deleted. All commits in the two remaining worktrees under .worktrees — closed-set-followups (e2e9dfd) and fix-ci-flaui (branch fix/ci-flaui-filter, f75c0f5) — are already on or superseded by main.",
+    next: "Remove both remaining worktrees and delete their local branches.",
+    refs: [".worktrees"] },
+  { id: "B-63", pri: "p3", area: "Tests", kind: "Idea", title: "Close the remaining test gaps the review found",
+    why: "Fixed on main: the Vitest test that pushed an event the host does not have, and the hardcoded 3,000 ms waits. Still open: no test protects code that looks up its own members by name after renaming; AssemblyProcessor_Save_ResignsWithSnk returns early off Windows and passes without checking anything; ControlFlow_TickCount64Predicate retries up to 40 times for a random predicate; and the package-version test would not notice if its scan found only some of the projects. Also, virtualization with symbol renaming is tested only for single-assembly and closed-set runs, not a merge run.",
+    next: "Add the reflection test and document what it shows. Turn the early return into a platform skip, seed the predicate test, and assert a known project is in the scan. Add a merge run that combines virtualization and renaming.",
+    refs: ["Tests/Obfy.Tests/EndToEndObfuscationTests.cs", "Tests/Obfy.Tests/ServiceTests.cs", "Tests/Obfy.Tests/CentralPackageVersionTests.cs", "Tests/Obfy.Tests/Virtualization/VmWithRenamingTests.cs"] },
+  { id: "B-70", pri: "p2", area: "IDE", kind: "Fix", title: "Make the Visual Studio extension build, package and run its commands",
+    why: "Command GUIDs and LICENSE.txt are fixed and pinned by tests. Still open: Obfy.VisualStudio.csproj never imports Microsoft.VsSDK.targets, so no .vsix is produced; source.extension.vsixmanifest still hardcodes 1.3.0; README instructions for the VSIX are broken; and live testing inside Visual Studio (the four commands, options page, and cancel paths) has not been run. Related to B-14.",
+    next: "Import Microsoft.VsSDK.targets to produce a .vsix, build it in CI, align or clarify the 1.3.0 manifest version, fix the README instructions, and test the extension live in Visual Studio.",
+    refs: ["Src/Obfy.VisualStudio/Obfy.VisualStudio.csproj", "Src/Obfy.VisualStudio/source.extension.vsixmanifest", "Src/Obfy.VisualStudio/ObfyVsixCommandTable.vsct", "README.md"] },
+  { id: "B-74", pri: "p3", area: "Core", kind: "Decide", title: "Decide what a cancelled CLI run prints and returns",
+    why: "Ctrl+C now stops every kind of run, but a cancelled run prints nothing and exits with code 1, the same as a failure. Nothing in the CLI catches the cancellation.",
+    next: "Print Cancelled and choose an exit code (130 is the convention), then update the exit-code table in docs/CLI.md. Or leave it and say so there.",
+    refs: ["Src/Obfy.Console/Program.cs", "docs/CLI.md"] },
+  { id: "B-75", pri: "p3", area: "App", kind: "Idea", title: "Send page errors to the host log",
+    why: "A screen that fails to draw now shows an error in place, but the error goes only to the page's console, which nobody sees in a Release build. Nothing reaches the log file, so a report from a user cannot be diagnosed.",
+    next: "Add a bridge endpoint that logs the error type (never the message) and call it from both error boundaries.",
+    refs: ["Src/WebApp/src/components/ErrorBoundary.tsx", "Src/Obfy.Interop/ApiRegistrations.cs"] },
+  { id: "B-76", pri: "p3", area: "Core", kind: "Verify", title: "Check trimmed apps with the injected framework reference",
+    why: "Protected apps now reference System.Runtime.InteropServices and, on older targets, other framework assemblies the app may never have used itself. If protection runs after PublishTrimmed, such a reference may be missing. Not tested; those apps crashed before the fix anyway.",
+    next: "Publish a trimmed fixture, protect it at Aggressive and run it. Gate or document the result.",
+    refs: ["Src/Obfy.Core/Utilities/FrameworkReferences.cs", "docs/Platforms.md"] },
+  { id: "B-83", pri: "p2", area: "Release", kind: "Chore", title: "Verify installer start check on GitHub Actions package.yml (CloseAsync & HKLM cleanup fixed)",
+    why: "Fixed in build-installer.ps1: added CloseAsync timeout, fixed HKLM policy cleanup logic, and added RegistryKey.Dispose() in Assert-ProcessedUi. Remaining: verify on a real GitHub Actions package.yml run.",
+    next: "Run and confirm the first package.yml workflow run passes on a real GitHub Actions runner.",
+    refs: [".github/workflows/package.yml", "build/build-installer.ps1"] },
+  { id: "B-84", pri: "p2", area: "Release", kind: "Fix", title: "Exercise native failure panel buttons in Assert-ProcessedUi (closed-set warnings fixed)",
+    why: "Fixed: commit 333584c fixed UI closed-set warnings (preserving ShellViewModel and raising preserveXaml once per closed set only when no assembly has XAML-bindable types), and build-installer.ps1 now applies a CLI closed-set preserveXaml: false override. Remaining: Assert-ProcessedUi still needs runtime exercise of the native failure panel's Restart, Open log folder, and Quit buttons.",
+    next: "Add runtime verification of the native failure panel buttons in Assert-ProcessedUi.",
+    refs: ["build/build-installer.ps1", "build/self-obfuscation.json", "Src/Obfy.UI/Views/ShellWindow.xaml"] },
+  { id: "B-95", pri: "p2", area: "Core", kind: "Fix", title: "Fix MergeAndObfuscateAsync incremental cache and sibling dependency embedding",
+    why: "Fixed: MergeAndObfuscateAsync now preserves InputPath (inputList[0]) for reporting. Remaining: merge incremental caching and non-merged sibling dependency embedding still differ from single-assembly runs.",
+    next: "Fix incremental cache keying/validation and non-merged sibling dependency embedding in MergeAndObfuscateAsync and add merge regression tests.",
+    refs: ["Src/Obfy.Core/Services/ObfuscationService.cs", "Src/Obfy.Core/Services/AssemblyMerger.cs"] },
+  { id: "B-105", pri: "p2", area: "Core", kind: "Fix", title: "Honor [STAThread] in packed hosts so WPF and STA WinForms apps work",
+    why: "Both the native packer bootstrap and the portable managed launcher ignore [STAThread] on the packed entry point, leaving the main thread MTA and breaking WPF and STA WinForms applications (see also B-34).",
+    next: "Detect STAThreadAttribute on the payload entry point and ensure the entry thread is STA in PackedBootstrap and ManagedLauncherPacker, rebuild the native host + stamp, and test a packed WPF/WinForms app.",
+    refs: ["Src/Obfy.PackedBootstrap/PackedBootstrap.cs", "Src/Obfy.NativeHost/host.c", "Src/Obfy.Core/Utilities/ManagedLauncherPacker.cs"] },
+  { id: "B-106", pri: "p2", area: "App", kind: "Fix", title: "Close remaining async OS dialog TOCTOU in RunCoordinator",
+    why: "Fixed: RunCoordinator Start() _runTask, Finish() snapshot, _publishGate disk I/O removal, and quick-mutation WhileIdle (B-37) are fixed. Remaining: async OS dialog TOCTOU across PickFiles, OpenConfig, PickOutputFolder, PickSymbolMap, and PickSigningKey.",
+    next: "Close async OS dialog TOCTOU windows for PickFiles/OpenConfig/PickOutputFolder/PickSymbolMap/PickSigningKey against run start and add Obfy.App.Tests concurrency tests.",
+    refs: ["Src/Obfy.App/Sessions/RunCoordinator.cs", "Src/Obfy.App/Sessions/InputSession.cs", "Src/Obfy.App/Sessions/ProtectionSession.cs"] },
+  { id: "B-111", pri: "p3", area: "Core", kind: "Chore", title: "Finish remaining Core pipeline & reporting cleanups (Validate null lists, batch grouping, SettingsSummary)",
+    why: "Fixed: context.OutputPath, ObfuscateBatchAsync trailing slashes, FrameworkReferences System.Private.CoreLib token, MetadataRemoval assembly attributes, and HtmlReportGenerator encoding. Remaining: ObfySettings.Validate null lists, ObfuscateBatchAsync non-contiguous .cs grouping, and ReportService SettingsSummary fields.",
+    next: "Fix ObfySettings.Validate null lists, ObfuscateBatchAsync non-contiguous .cs grouping, and ReportService SettingsSummary fields, with unit tests.",
+    refs: ["Src/Obfy.Core/Services/ObfuscationService.cs", "Src/Obfy.Core/Models/ObfySettings.cs", "Src/Obfy.Core/Services/Reporting/ReportService.cs"] },
+  { id: "B-112", pri: "p3", area: "Core", kind: "Chore", title: "Finish remaining VM & Native host hardening (volatile./ref structs, host.c stack, PE encryptor)",
+    why: "Fixed: VmMemberTables assembly-scoped keys and VmEncoder VarArg & trailing Br handling. Remaining: VmEncoder volatile. & unresolved external ref structs, host.c 320KB stack buffers, ResolvingUnmanagedDll in PackedBootstrap, and MethodBodyPeEncryptor magic scan & RVA bounds.",
+    next: "Apply the remaining VmEncoder, host.c, PackedBootstrap, and MethodBodyPeEncryptor hardening fixes, regenerating the native host source stamp/binary if host/bootstrap changes, and add regression tests.",
+    refs: ["Src/Obfy.Core/Virtualization/VmEncoder.cs", "Src/Obfy.NativeHost/host.c", "Src/Obfy.PackedBootstrap/PackedBootstrap.cs", "Src/Obfy.Core/Utilities/MethodBodyPeEncryptor.cs"] },
+  { id: "B-113", pri: "p3", area: "App", kind: "Chore", title: "Finish remaining frontend & WPF shell polish (RestartAsync race, keyboard a11y, stuck errors)",
+    why: "Fixed: RunningView 200-line scroll, techniques.json inclusions.types, WebViewControl logger, App.OnExit NLog flush, and ShellWindow closed-window guard. Remaining: ShutdownCoordinator.RestartAsync race, LevelCards/FileTable keyboard accessibility, and stuck useAppAction errors.",
+    next: "Fix ShutdownCoordinator.RestartAsync race, LevelCards/FileTable keyboard accessibility, and stuck useAppAction errors, updating Vitest and Obfy.UI.Tests as needed.",
+    refs: ["Src/Obfy.App/Services/ShutdownCoordinator.cs", "Src/WebApp/src/features/protection/LevelCards.tsx", "Src/WebApp/src/features/files/FileTable.tsx", "Src/WebApp/src/hooks/useAppAction.ts"] },
+  { id: "B-114", pri: "p3", area: "App", kind: "Chore", title: "Finish remaining CLI & App edge cases (static options, ADS/UNC, filename collision, .tmp race, preview TOCTOU)",
+    why: "Fixed: ConfigKeyValidator duplicate keys using JsonDocument. Remaining: Program.CreateRootCommand static options, OutputCollisions NTFS ADS / \\\\?\\UNC\\ paths, FindModuleResult duplicate filename collisions, SettingsService .tmp race, and ResultsStore preview TOCTOU.",
+    next: "Fix each remaining CLI and App edge case with targeted unit tests.",
+    refs: ["Src/Obfy.Console/Program.cs", "Src/Obfy.App/Sessions/OutputCollisions.cs", "Src/Obfy.App/Sessions/RunCoordinator.cs", "Src/Obfy.App/Services/SettingsService.cs", "Src/Obfy.App/Sessions/ResultsStore.cs"] },
+  { id: "B-115", pri: "p3", area: "Docs", kind: "Chore", title: "Finish remaining docs, MAUI example, xUnit1031 warning, and stray nul file cleanup",
+    why: "Fixed: build-msix.ps1 delegating to Get-ProductVersion.ps1. Remaining: docs/Testing-Roadmap.md, examples/maui/obfy.json, docs/Competitive-Analysis.md, OutputWriteTests.cs xUnit1031 warning, and stray 0-byte nul file at repo root (needs deletion outside sandbox).",
+    next: "Update docs/Testing-Roadmap.md, examples/maui/obfy.json, and docs/Competitive-Analysis.md, fix the OutputWriteTests.cs xUnit1031 warning, and delete the stray nul file outside the sandbox.",
+    refs: ["docs/Testing-Roadmap.md", "examples/maui/obfy.json", "docs/Competitive-Analysis.md", "Tests/Obfy.Tests/OutputWriteTests.cs", "nul"] }
+];
+
+var state = { area: "All", q: "" };
+
+function el(tag, cls, text) {
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+function matches(it) {
+  if (state.area !== "All" && it.area !== state.area) return false;
+  if (state.q) {
+    var hay = (it.id + " " + it.title + " " + it.why + " " + it.next + " " + it.area + " " + it.kind + " " + it.refs.join(" ")).toLowerCase();
+    if (hay.indexOf(state.q) === -1) return false;
+  }
+  return true;
+}
+
+function renderProgress() {
+  var done = DONE.length, open = ITEMS.length, total = done + open;
+  var pct = Math.round(done * 100 / total);
+  document.getElementById("pdone").textContent = done + " done";
+  document.getElementById("pof").textContent = "of " + total + " items";
+  document.getElementById("ppct").textContent = pct + "%";
+  var bar = document.getElementById("pbar");
+  bar.setAttribute("aria-valuemax", String(total));
+  bar.setAttribute("aria-valuenow", String(done));
+  bar.setAttribute("aria-valuetext", done + " of " + total + " items done");
+  document.getElementById("pfill").style.width = pct + "%";
+  document.getElementById("asof").textContent = "Updated 2026-11-22: Wave 1 fixes (fix/nov-22-review-wave-1) merged into local main (not pushed) (28 closed, 10 partial; 3,187 .NET & 276 WebApp tests passing) · " + open + " open · " + done + " done";
+  document.getElementById("nopen").textContent = open;
+  document.getElementById("ndone").textContent = done;
+
+  var by = document.getElementById("openby");
+  by.appendChild(document.createTextNode("Still open:"));
+  ["p1", "p2", "p3"].forEach(function (p) {
+    var n = ITEMS.filter(function (i) { return i.pri === p; }).length;
+    var s = el("span", "o" + p.slice(1));
+    s.appendChild(el("b", null, String(n)));
+    s.appendChild(document.createTextNode(" " + GROUPS[p].label));
+    by.appendChild(s);
+  });
+}
+
+function renderChecklist() {
+  var box = document.getElementById("openlist");
+  ["p1", "p2", "p3"].forEach(function (p) {
+    var rows = ITEMS.filter(function (i) { return i.pri === p; });
+    if (!rows.length) return;
+    var h = el("div", "sub", GROUPS[p].label + " ");
+    h.appendChild(el("span", "def", GROUPS[p].def + " · " + rows.length));
+    box.appendChild(h);
+    var ul = el("ul", "list");
+    rows.forEach(function (it) {
+      var li = el("li", "row");
+      li.appendChild(el("span", "box"));
+      li.appendChild(el("span", "rid", it.id));
+      var a = el("a", "t", it.title);
+      a.href = "#" + it.id;
+      a.addEventListener("click", function () {
+        if (state.area !== "All" || state.q) {
+          state.area = "All"; state.q = ""; document.getElementById("q").value = ""; render();
+        }
+      });
+      li.appendChild(a);
+      li.appendChild(el("span", "pill " + it.pri, GROUPS[it.pri].label));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+  });
+
+  var dl = document.getElementById("donelist");
+  DONE.forEach(function (d) {
+    var li = el("li", "row done");
+    li.appendChild(el("span", "box"));
+    li.appendChild(el("span", "rid", d.id));
+    li.appendChild(el("span", "t", d.title));
+    li.appendChild(el("span", "tag", d.tag));
+    dl.appendChild(li);
+  });
+}
+
+function buildAreas() {
+  var box = document.getElementById("areas");
+  var seen = ["All"];
+  ITEMS.forEach(function (i) { if (seen.indexOf(i.area) === -1) seen.push(i.area); });
+  seen.forEach(function (a) {
+    var b = el("button", "chip", a);
+    b.type = "button";
+    b.dataset.area = a;
+    b.setAttribute("aria-pressed", a === "All" ? "true" : "false");
+    b.addEventListener("click", function () { state.area = a; render(); });
+    box.appendChild(b);
+  });
+}
+
+function itemNode(it) {
+  var a = el("article", "item");
+  a.id = it.id;
+  var rail = el("div", "rail");
+  rail.appendChild(el("span", "id", it.id));
+  rail.appendChild(el("span", "pill " + it.pri, GROUPS[it.pri].label));
+  a.appendChild(rail);
+
+  var body = el("div", "body");
+  body.appendChild(el("h3", null, it.title));
+  var meta = el("div", "meta");
+  meta.appendChild(el("b", null, it.kind));
+  meta.appendChild(document.createTextNode(" · " + it.area));
+  body.appendChild(meta);
+
+  var why = el("p");
+  why.appendChild(el("span", "lab", "Why open"));
+  why.appendChild(document.createTextNode(it.why));
+  body.appendChild(why);
+
+  var next = el("p");
+  next.appendChild(el("span", "lab", "Next"));
+  next.appendChild(document.createTextNode(it.next));
+  body.appendChild(next);
+
+  if (it.refs.length) {
+    var refs = el("div", "refs");
+    it.refs.forEach(function (r) { refs.appendChild(el("span", "ref", r)); });
+    body.appendChild(refs);
+  }
+  a.appendChild(body);
+  return a;
+}
+
+function render() {
+  Array.prototype.forEach.call(document.querySelectorAll(".chip"), function (b) {
+    b.setAttribute("aria-pressed", state.area === b.dataset.area ? "true" : "false");
+  });
+  var list = document.getElementById("list");
+  list.textContent = "";
+  var shown = 0;
+  ["p1", "p2", "p3"].forEach(function (p) {
+    ITEMS.filter(function (i) { return i.pri === p && matches(i); }).forEach(function (it) {
+      shown++;
+      list.appendChild(itemNode(it));
+    });
+  });
+  if (!shown) list.appendChild(el("p", "empty", "No items match. Clear the area filter or change the search."));
+  document.getElementById("count").textContent = "Showing " + shown + " of " + ITEMS.length;
+}
+
+document.getElementById("q").addEventListener("input", function (e) {
+  state.q = e.target.value.trim().toLowerCase();
+  render();
+});
+
+renderProgress();
+renderChecklist();
+buildAreas();
+render();
+</script>
+</body>
+</html>

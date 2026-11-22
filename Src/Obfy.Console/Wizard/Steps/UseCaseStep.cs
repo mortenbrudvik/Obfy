@@ -40,6 +40,7 @@ public class UseCaseStep : WizardStep
             context.IsPublicApi = AnsiConsole.Confirm(
                 "Does this project expose a public API that external code will call?",
                 defaultValue: useCase == "Class Library / NuGet Package");
+            context.PreservePublicApiChoice = context.IsPublicApi;
 
             if (context.IsPublicApi)
             {

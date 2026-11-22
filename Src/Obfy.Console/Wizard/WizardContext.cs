@@ -33,6 +33,11 @@ public class WizardContext
     public bool IsPublicApi { get; set; }
 
     /// <summary>
+    /// Explicit choice made by the user for preserving public API names (<see langword="null"/> when not asked).
+    /// </summary>
+    public bool? PreservePublicApiChoice { get; set; }
+
+    /// <summary>
     /// Whether the wizard was cancelled.
     /// </summary>
     public bool Cancelled { get; set; }

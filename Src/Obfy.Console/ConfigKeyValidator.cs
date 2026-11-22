@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Obfy.Core.Models;
 
@@ -20,23 +19,26 @@ internal static class ConfigKeyValidator
     /// </summary>
     public static IReadOnlyList<string> FindUnknownKeys(string json)
     {
-        JsonNode? root;
+        JsonDocument doc;
         try
         {
-            root = JsonNode.Parse(json);
+            doc = JsonDocument.Parse(json);
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or ArgumentException)
         {
             return [];
         }
 
-        var unknown = new List<string>();
-        if (root is JsonObject obj)
-            Walk(obj, typeof(ObfySettings), prefix: "", unknown);
-        return unknown;
+        using (doc)
+        {
+            var unknown = new List<string>();
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                Walk(doc.RootElement, typeof(ObfySettings), prefix: "", unknown);
+            return unknown;
+        }
     }
 
-    private static void Walk(JsonObject obj, Type type, string prefix, List<string> unknown)
+    private static void Walk(JsonElement obj, Type type, string prefix, List<string> unknown)
     {
         var settable = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(static p => p.SetMethod is { IsPublic: true }
@@ -44,8 +46,9 @@ internal static class ConfigKeyValidator
                 && p.GetCustomAttribute<JsonIgnoreAttribute>() is null)
             .ToList();
 
-        foreach (var (key, value) in obj)
+        foreach (var prop in obj.EnumerateObject())
         {
+            var key = prop.Name;
             if (key.StartsWith('$'))
                 continue;
 
@@ -58,8 +61,8 @@ internal static class ConfigKeyValidator
                 continue;
             }
 
-            if (value is JsonObject child && IsSettingsObject(property.PropertyType))
-                Walk(child, property.PropertyType, path, unknown);
+            if (prop.Value.ValueKind == JsonValueKind.Object && IsSettingsObject(property.PropertyType))
+                Walk(prop.Value, property.PropertyType, path, unknown);
         }
     }
 

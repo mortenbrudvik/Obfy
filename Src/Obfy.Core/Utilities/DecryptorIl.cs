@@ -135,8 +135,15 @@ internal static class DecryptorIl
         body.Variables.Add(transformLocal);
         body.Variables.Add(resultLocal);
 
-        // aes = Aes.Create(); aes.Key = key;
-        body.Instructions.Add(Instruction.Create(OpCodes.Call, aesCreate));
+        // try { aes = Aes.Create(); aes.Key = key; ... result = transform.TransformFinalBlock(...); }
+        // finally { transform?.Dispose(); aes?.Dispose(); }
+        var tryStart = Instruction.Create(OpCodes.Call, aesCreate);
+        var finallyStart = Instruction.Create(OpCodes.Ldloc, transformLocal);
+        var checkAes = Instruction.Create(OpCodes.Ldloc, aesLocal);
+        var endFinally = Instruction.Create(OpCodes.Endfinally);
+        var returnResult = Instruction.Create(OpCodes.Ldloc, resultLocal);
+
+        body.Instructions.Add(tryStart);
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, aesLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, aesLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
@@ -185,14 +192,29 @@ internal static class DecryptorIl
         body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, transformFinal));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, resultLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, returnResult));
 
+        body.Instructions.Add(finallyStart);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, checkAes));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, transformLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, dispose));
+
+        body.Instructions.Add(checkAes);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, endFinally));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, aesLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, dispose));
+        body.Instructions.Add(endFinally);
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, resultLocal));
+        body.Instructions.Add(returnResult);
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Finally)
+        {
+            TryStart = tryStart,
+            TryEnd = finallyStart,
+            HandlerStart = finallyStart,
+            HandlerEnd = returnResult
+        });
 
         body.UpdateInstructionOffsets();
         return method;

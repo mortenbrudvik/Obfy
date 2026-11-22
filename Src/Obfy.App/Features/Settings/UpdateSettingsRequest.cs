@@ -15,12 +15,14 @@ public class UpdateSettingsRequestHandler(ProtectionSession session, RunCoordina
 {
     public ValueTask<SettingsSnapshot> Handle(UpdateSettingsRequest request, CancellationToken cancellationToken)
     {
-        run.EnsureNotRunning();
-        var patch = new Dictionary<string, object?>(request.Patch.Count);
-        foreach (var (key, value) in request.Patch)
-            patch[key] = ToValue(key, value);
+        run.WhileIdle(() =>
+        {
+            var patch = new Dictionary<string, object?>(request.Patch.Count);
+            foreach (var (key, value) in request.Patch)
+                patch[key] = ToValue(key, value);
 
-        session.Update(patch);
+            session.Update(patch);
+        });
         return new ValueTask<SettingsSnapshot>(session.GetSnapshot());
     }
 

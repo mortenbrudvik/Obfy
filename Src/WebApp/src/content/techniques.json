@@ -493,8 +493,8 @@
         "help": "One pattern per line. When any inclusion is listed, only matching names are protected."
       },
       {
-        "set": "inclusions", "key": "types", "label": "Only these types", "placeholder": "MyApp.Licensing.*",
-        "help": "One pattern per line. A type matches when its namespace or its name matches."
+        "set": "inclusions", "key": "types", "label": "Only these types", "placeholder": "LicenseValidator*",
+        "help": "One pattern per line. Matches the short type name only (without the namespace)."
       },
       {
         "set": "inclusions", "key": "methods", "label": "Only these methods", "placeholder": "Validate*",

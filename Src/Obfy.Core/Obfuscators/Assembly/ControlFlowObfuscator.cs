@@ -13,11 +13,10 @@ namespace Obfy.Core.Obfuscators.Assembly;
 public class ControlFlowObfuscator : IObfuscator
 {
     /// <summary>
-    /// How many values an opaque predicate holds on the evaluation stack above the depth where it is
-    /// inserted. The deepest form (<c>call; dup; ldc.i4.1; add; mul</c>) peaks at three. Raise this if a
-    /// deeper form is ever added.
+    /// Extra stack headroom added to <see cref="CilBody.MaxStack"/> when <see cref="CilBody.KeepOldMaxStack"/>
+    /// is preserved on a body with an existing positive <c>MaxStack</c>.
     /// </summary>
-    private const int OpaquePredicateStackHeadroom = 3;
+    private const int OpaquePredicateStackHeadroom = 4;
 
     private readonly ILogger<ControlFlowObfuscator> _logger;
     private readonly Random _random = new();
@@ -188,12 +187,14 @@ public class ControlFlowObfuscator : IObfuscator
         // that precedes such a branch MUST sit on an empty evaluation stack; otherwise the dispatcher
         // is reachable at differing stack depths and the JIT rejects the body as unverifiable.
         // Compute the running stack depth after each instruction and split only at depth 0.
+        var hasReturnValue = method.ReturnType?.RemovePinnedAndModifiers()?.ElementType is { } retType &&
+                             retType != ElementType.Void;
         var depthAfter = new int[work.Count];
         var depth = 0;
         foreach (var (instr, index) in work.Select((instr, index) => (instr, index)))
         {
-            instr.CalculateStackUsage(out var pushes, out var pops);
-            depth = depth - pops + pushes;
+            instr.CalculateStackUsage(hasReturnValue, out var pushes, out var pops);
+            depth = pops < 0 ? pushes : depth - pops + pushes;
             if (depth < 0)
                 return false; // unexpected underflow — refuse rather than emit invalid IL
             depthAfter[index] = depth;
@@ -277,8 +278,14 @@ public class ControlFlowObfuscator : IObfuscator
         foreach (var instr in rebuilt)
             instructions.Add(instr);
 
-        body.KeepOldMaxStack = true;
-        body.MaxStack = (ushort)Math.Max(body.MaxStack, (ushort)8);
+        if (body.MaxStack == 0)
+        {
+            body.KeepOldMaxStack = false;
+        }
+        else if (body.KeepOldMaxStack)
+        {
+            body.MaxStack = (ushort)Math.Max((int)body.MaxStack, 8);
+        }
         body.UpdateInstructionOffsets();
         return true;
     }
@@ -287,29 +294,44 @@ public class ControlFlowObfuscator : IObfuscator
     {
         var body = method.Body;
         var instructions = body.Instructions;
-        var insertCount = 0;
+        var depthBefore = ControlFlowFlattener.ComputeDepthBefore(method);
+        if (depthBefore == null)
+            return false;
 
-        // Insert opaque predicates at random positions
+        // Insert opaque predicates only at reachable zero-stack-depth points that are neither
+        // immediately after a prefix/unconditional transfer nor on an EH boundary.
+        var clampedIntensity = Math.Clamp(intensity, 1, 100);
         var positions = new List<int>();
         for (var i = 0; i < instructions.Count - 1; i++)
         {
+            if (depthBefore[i] != 0)
+                continue;
+
             if (i > 0 && ObfuscatorHelpers.IsPrefix(instructions[i - 1]))
+                continue;
+
+            if (i > 0 && IsUnconditionalTransfer(instructions[i - 1]))
                 continue;
 
             if (IsExceptionHandlerBoundary(body, instructions[i]))
                 continue;
 
-            if (_random.Next(100) < Math.Clamp(intensity, 1, 100))
+            if (_random.Next(100) < clampedIntensity)
             {
                 positions.Add(i);
             }
         }
 
-        // Insert in reverse order to maintain indices
-        positions.Reverse();
+        if (positions.Count == 0)
+            return false;
 
-        foreach (var pos in positions)
+        body.SimplifyBranches();
+
+        var insertCount = 0;
+        // Insert in reverse order to maintain indices
+        for (var p = positions.Count - 1; p >= 0; p--)
         {
+            var pos = positions[p];
             if (pos >= instructions.Count)
                 continue;
 
@@ -317,17 +339,28 @@ public class ControlFlowObfuscator : IObfuscator
             insertCount++;
         }
 
-        // A predicate can be inserted where the stack is already as deep as the body's declared
-        // maximum, so the rewritten body needs that maximum plus the predicate's own headroom. A
-        // fixed floor of 8 is not enough: a site six deep plus the three-deep form needs nine, and
-        // the JIT rejects the method (InvalidProgramException).
-        var headroom = insertCount > 0 ? OpaquePredicateStackHeadroom : 0;
-        body.KeepOldMaxStack = true;
-        body.MaxStack = (ushort)Math.Max(body.MaxStack + headroom, 8);
-        body.UpdateInstructionOffsets();
+        body.OptimizeBranches();
 
+        if (insertCount > 0)
+        {
+            if (body.MaxStack == 0)
+            {
+                body.KeepOldMaxStack = false;
+            }
+            else if (body.KeepOldMaxStack)
+            {
+                body.MaxStack = (ushort)Math.Min(ushort.MaxValue, Math.Max(body.MaxStack + OpaquePredicateStackHeadroom, 8));
+            }
+        }
+
+        body.UpdateInstructionOffsets();
         return insertCount > 0;
     }
+
+    private static bool IsUnconditionalTransfer(Instruction instr) =>
+        instr.OpCode.FlowControl is FlowControl.Branch or FlowControl.Return or FlowControl.Throw ||
+        instr.OpCode.Code == Code.Jmp ||
+        instr.OpCode == OpCodes.Switch;
 
     private bool ApplyCombined(MethodDef method, int intensity, bool isHelper, PipelineContext context)
     {

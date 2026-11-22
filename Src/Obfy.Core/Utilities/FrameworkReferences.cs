@@ -28,6 +28,7 @@ internal static class FrameworkReferences
     private const string PrivateCoreLib = "System.Private.CoreLib";
     private const string Mscorlib = "mscorlib";
     private const string AesFullName = "System.Security.Cryptography.Aes";
+    private static readonly PublicKeyToken MicrosoftPublicKeyToken = new("b03f5f7f11d50a3a");
 
     /// <summary>
     /// Where a type lives for core libraries up to <paramref name="UpToMajor"/> (the major version of the core
@@ -217,8 +218,11 @@ internal static class FrameworkReferences
             if (!made.TryGetValue(simpleName, out var assembly))
             {
                 var corlib = module.CorLibTypes.AssemblyRef;
+                var publicKeyOrToken = CorlibName(module) == PrivateCoreLib
+                    ? MicrosoftPublicKeyToken
+                    : corlib.PublicKeyOrToken;
                 made[simpleName] = assembly = new AssemblyRefUser(
-                    simpleName, version ?? corlib.Version, corlib.PublicKeyOrToken, corlib.Culture);
+                    simpleName, version ?? corlib.Version, publicKeyOrToken, corlib.Culture);
             }
 
             return assembly;

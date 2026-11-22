@@ -19,7 +19,7 @@ internal static class ControlFlowFlattener
         if (instructions.Count < 8)
             return false;
 
-        var depthBefore = ComputeDepthBefore(instructions);
+        var depthBefore = ComputeDepthBefore(method);
         if (depthBefore == null)
             return false;
 
@@ -162,8 +162,14 @@ internal static class ControlFlowFlattener
         foreach (var instr in rebuilt)
             instructions.Add(instr);
 
-        body.KeepOldMaxStack = true;
-        body.MaxStack = (ushort)Math.Max(body.MaxStack, (ushort)8);
+        if (body.MaxStack == 0)
+        {
+            body.KeepOldMaxStack = false;
+        }
+        else if (body.KeepOldMaxStack)
+        {
+            body.MaxStack = (ushort)Math.Max((int)body.MaxStack, 8);
+        }
         body.UpdateInstructionOffsets();
         return true;
     }
@@ -180,11 +186,21 @@ internal static class ControlFlowFlattener
                 switch (instr.Operand)
                 {
                     case Instruction target:
-                        leaders.Add(instructions.IndexOf(target));
+                    {
+                        var targetIndex = instructions.IndexOf(target);
+                        if (targetIndex >= 0)
+                            leaders.Add(targetIndex);
                         break;
+                    }
                     case IList<Instruction> targets:
                         foreach (var target in targets)
-                            leaders.Add(instructions.IndexOf(target));
+                        {
+                            if (target == null)
+                                continue;
+                            var targetIndex = instructions.IndexOf(target);
+                            if (targetIndex >= 0)
+                                leaders.Add(targetIndex);
+                        }
                         break;
                 }
 
@@ -201,17 +217,137 @@ internal static class ControlFlowFlattener
         return leaders;
     }
 
-    private static int[]? ComputeDepthBefore(IList<Instruction> instructions)
+    internal const int UnreachableDepth = -1;
+
+    internal static int[]? ComputeDepthBefore(MethodDef method)
     {
-        var depthBefore = new int[instructions.Count];
-        var depth = 0;
+        var body = method.Body;
+        if (body == null)
+            return null;
+
+        var instructions = body.Instructions;
+        if (instructions.Count == 0)
+            return Array.Empty<int>();
+
+        var indexOf = new Dictionary<Instruction, int>(instructions.Count);
         for (var i = 0; i < instructions.Count; i++)
+            indexOf[instructions[i]] = i;
+
+        var depthBefore = new int[instructions.Count];
+        Array.Fill(depthBefore, UnreachableDepth);
+
+        var queue = new Queue<int>();
+
+        bool Enqueue(int index, int depth)
         {
-            depthBefore[i] = depth;
-            instructions[i].CalculateStackUsage(out var pushes, out var pops);
-            depth = depth - pops + pushes;
-            if (depth < 0)
-                return null;
+            if (index < 0 || index >= instructions.Count)
+                return false;
+
+            if (depthBefore[index] == UnreachableDepth)
+            {
+                depthBefore[index] = depth;
+                queue.Enqueue(index);
+                return true;
+            }
+
+            return depthBefore[index] == depth;
+        }
+
+        if (!Enqueue(0, 0))
+            return null;
+
+        if (body.HasExceptionHandlers)
+        {
+            foreach (var eh in body.ExceptionHandlers)
+            {
+                if (eh.TryStart != null && eh.TryStart != eh.TryEnd &&
+                    indexOf.TryGetValue(eh.TryStart, out var tryIdx) && !Enqueue(tryIdx, 0))
+                    return null;
+
+                if (eh.FilterStart != null &&
+                    indexOf.TryGetValue(eh.FilterStart, out var filterIdx) && !Enqueue(filterIdx, 1))
+                    return null;
+
+                if (eh.HandlerStart != null && eh.HandlerStart != eh.HandlerEnd &&
+                    indexOf.TryGetValue(eh.HandlerStart, out var handlerIdx))
+                {
+                    var handlerDepth = eh.HandlerType is ExceptionHandlerType.Catch or ExceptionHandlerType.Filter
+                        ? 1
+                        : 0;
+                    if (!Enqueue(handlerIdx, handlerDepth))
+                        return null;
+                }
+            }
+        }
+
+        var hasReturnValue = method.ReturnType?.RemovePinnedAndModifiers()?.ElementType is { } retType &&
+                             retType != ElementType.Void;
+
+        while (queue.Count > 0)
+        {
+            var idx = queue.Dequeue();
+            var instr = instructions[idx];
+            var depth = depthBefore[idx];
+
+            instr.CalculateStackUsage(hasReturnValue, out var pushes, out var pops);
+            int nextDepth;
+            if (pops < 0)
+            {
+                // StackBehaviour.PopAll (leave, leave.s, endfinally) clears the evaluation stack.
+                nextDepth = pushes;
+            }
+            else
+            {
+                nextDepth = depth - pops + pushes;
+                if (nextDepth < 0)
+                    return null;
+            }
+
+            switch (instr.OpCode.FlowControl)
+            {
+                case FlowControl.Branch:
+                    if (instr.Operand is not Instruction branchTarget ||
+                        !indexOf.TryGetValue(branchTarget, out var branchIdx) ||
+                        !Enqueue(branchIdx, nextDepth))
+                        return null;
+                    break;
+
+                case FlowControl.Cond_Branch:
+                    if (idx + 1 < instructions.Count && !Enqueue(idx + 1, nextDepth))
+                        return null;
+
+                    switch (instr.Operand)
+                    {
+                        case Instruction condTarget:
+                            if (!indexOf.TryGetValue(condTarget, out var condIdx) || !Enqueue(condIdx, nextDepth))
+                                return null;
+                            break;
+                        case IList<Instruction> switchTargets:
+                            foreach (var target in switchTargets)
+                            {
+                                if (target == null ||
+                                    !indexOf.TryGetValue(target, out var switchIdx) ||
+                                    !Enqueue(switchIdx, nextDepth))
+                                    return null;
+                            }
+                            break;
+                    }
+                    break;
+
+                case FlowControl.Return:
+                case FlowControl.Throw:
+                    break;
+
+                case FlowControl.Call:
+                    if (instr.OpCode.Code != Code.Jmp && idx + 1 < instructions.Count && !Enqueue(idx + 1, nextDepth))
+                        return null;
+                    break;
+
+                default:
+                    if (idx + 1 < instructions.Count && !Enqueue(idx + 1, nextDepth))
+                        return null;
+                    break;
+            }
         }
 
         return depthBefore;

@@ -104,16 +104,30 @@ public class ConfigurationWizard
         ApplyUseCaseDefaults(context);
 
         // Check for existing file
-        if (context.OutputFile.Exists)
+        while (context.OutputFile.Exists)
         {
             var overwrite = AnsiConsole.Confirm(
                 $"[yellow]File '{Markup.Escape(context.OutputFile.Name)}' already exists. Overwrite?[/]",
                 defaultValue: false);
 
-            if (!overwrite)
+            if (overwrite)
+                break;
+
+            var newPath = AnsiConsole.Ask<string>("Enter new file path:");
+            if (string.IsNullOrWhiteSpace(newPath))
             {
-                var newPath = AnsiConsole.Ask<string>("Enter new file path:", "obfy.json");
-                context.OutputFile = new FileInfo(newPath);
+                AnsiConsole.MarkupLine("[red]File path cannot be empty.[/]");
+                continue;
+            }
+
+            try
+            {
+                context.OutputFile = new FileInfo(newPath.Trim());
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or System.Security.SecurityException)
+            {
+                AnsiConsole.MarkupLine($"[red]Invalid file path: {Markup.Escape(ex.Message)}[/]");
+                return false;
             }
         }
 
@@ -190,7 +204,8 @@ public class ConfigurationWizard
         switch (context.UseCase)
         {
             case "Class Library / NuGet Package":
-                context.Settings.SymbolRenaming.PreservePublicApi = true;
+                if (context.PreservePublicApiChoice != false)
+                    context.Settings.SymbolRenaming.PreservePublicApi = true;
                 break;
 
             case "Desktop Application":
@@ -207,18 +222,24 @@ public class ConfigurationWizard
 
             case "Game (Unity)":
                 foreach (var ns in PlatformExclusions.UnityNamespaces)
-                    context.Settings.Exclusions.Namespaces.Add(ns);
+                {
+                    if (!context.Settings.Exclusions.Namespaces.Contains(ns))
+                        context.Settings.Exclusions.Namespaces.Add(ns);
+                }
                 context.Settings.RuntimeProfile = RuntimeProfile.UnityIl2Cpp;
                 break;
 
             case "Web Application (ASP.NET)":
                 foreach (var attribute in PlatformExclusions.AspNetMvcAttributes)
-                    context.Settings.Exclusions.Attributes.Add(attribute);
+                {
+                    if (!context.Settings.Exclusions.Attributes.Contains(attribute))
+                        context.Settings.Exclusions.Attributes.Add(attribute);
+                }
                 break;
         }
 
-        // If marked as public API, always preserve public names
-        if (context.IsPublicApi)
+        // If marked as public API, preserve public names unless explicitly turned off.
+        if (context.IsPublicApi && context.PreservePublicApiChoice != false)
         {
             context.Settings.SymbolRenaming.PreservePublicApi = true;
         }

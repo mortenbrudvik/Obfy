@@ -44,13 +44,14 @@ interface TechniqueListProps {
   settings: SettingsSnapshot;
   selected: string;
   query: string;
+  disabled?: boolean;
   onQuery: (query: string) => void;
   onSelect: (id: string) => void;
   onSwitch: (id: string, on: boolean) => void;
 }
 
 /** The left list: a search box and the techniques under their group labels, each with its switch, summary and badges. */
-export default function TechniqueList({ settings, selected, query, onQuery, onSelect, onSwitch }: TechniqueListProps) {
+export default function TechniqueList({ settings, selected, query, disabled, onQuery, onSelect, onSwitch }: TechniqueListProps) {
   const rows = matching(allRows(settings), query);
   const groups = [...new Set(rows.map((row) => row.group))];
 
@@ -84,6 +85,7 @@ export default function TechniqueList({ settings, selected, query, onQuery, onSe
                     key={row.id}
                     row={row}
                     selected={selected === row.id}
+                    disabled={disabled}
                     onSelect={() => onSelect(row.id)}
                     onSwitch={(on) => onSwitch(row.id, on)}
                   />
@@ -99,11 +101,12 @@ export default function TechniqueList({ settings, selected, query, onQuery, onSe
 interface TechniqueRowProps {
   row: Row;
   selected: boolean;
+  disabled?: boolean;
   onSelect: () => void;
   onSwitch: (on: boolean) => void;
 }
 
-function TechniqueRow({ row, selected, onSelect, onSwitch }: TechniqueRowProps) {
+function TechniqueRow({ row, selected, disabled, onSelect, onSwitch }: TechniqueRowProps) {
   const technique = row.technique;
   const unavailable = technique !== undefined && !technique.available;
   const classes = ["trow", selected ? "sel" : "", unavailable ? "na" : ""].filter(Boolean).join(" ");
@@ -111,7 +114,7 @@ function TechniqueRow({ row, selected, onSelect, onSwitch }: TechniqueRowProps) 
   return (
     <li className={classes}>
       {technique ? (
-        <Toggle label={row.name} testId={`toggle-${row.id}`} checked={technique.enabled && technique.available} disabled={unavailable} onChange={onSwitch} />
+        <Toggle label={row.name} testId={`toggle-${row.id}`} checked={technique.enabled && technique.available} disabled={unavailable || disabled} onChange={onSwitch} />
       ) : (
         <span className="swgap" />
       )}

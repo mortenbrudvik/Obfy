@@ -1,4 +1,5 @@
 using Autofac;
+using Microsoft.Extensions.Logging;
 using Obfy.App.Features.App;
 using Obfy.App.Services;
 using Obfy.App.Sessions;
@@ -29,7 +30,7 @@ public class HybridModule : Module
         builder.RegisterType<ApiEventPublisher>().As<IEventPublisher>().SingleInstance();
 
         // One web view for the whole app: the aggregator pushes events through it and the shell window hosts it.
-        builder.RegisterType<WebViewControl>()
+        builder.Register(c => new WebViewControl(c.Resolve<ILogger<WebViewControl>>()))
             .AsSelf()
             .As<IWebViewInterop>()
             .SingleInstance();

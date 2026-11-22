@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 
 namespace Obfy.Core.Utilities;
@@ -9,7 +10,8 @@ namespace Obfy.Core.Utilities;
 /// </summary>
 public static class WildcardMatcher
 {
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex> Cache = new(StringComparer.Ordinal);
+    private const int MaxCacheEntries = 4096;
+    private static readonly ConcurrentDictionary<string, Regex> Cache = new(StringComparer.Ordinal);
 
     public static bool IsMatch(string? value, string pattern)
     {
@@ -18,11 +20,20 @@ public static class WildcardMatcher
         if (string.IsNullOrEmpty(value))
             return false;
 
-        var regex = Cache.GetOrAdd(pattern, static p =>
+        if (!Cache.TryGetValue(pattern, out var regex))
         {
-            var text = "^" + Regex.Escape(p).Replace("\\*", ".*").Replace("\\?", ".") + "$";
-            return new Regex(text, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-        });
+            regex = CompilePattern(pattern);
+            if (Cache.Count >= MaxCacheEntries)
+                Cache.Clear();
+            Cache.TryAdd(pattern, regex);
+        }
+
         return regex.IsMatch(value);
+    }
+
+    private static Regex CompilePattern(string pattern)
+    {
+        var text = "^" + Regex.Escape(pattern).Replace("\\*", ".*").Replace("\\?", ".") + "$";
+        return new Regex(text, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     }
 }

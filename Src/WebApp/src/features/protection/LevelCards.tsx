@@ -31,11 +31,12 @@ const meterLabels = [strings.protection.meters.protection, strings.protection.me
 interface LevelCardsProps {
   /** The host's current level. */
   level: string;
+  disabled?: boolean;
   onSelect: (level: string) => void;
 }
 
 /** The four level cards, one a radio each. */
-export default function LevelCards({ level, onSelect }: LevelCardsProps) {
+export default function LevelCards({ level, disabled, onSelect }: LevelCardsProps) {
   return (
     <div className="levels" role="radiogroup" aria-labelledby="protection-level-label">
       {levels.map((info) => (
@@ -45,6 +46,7 @@ export default function LevelCards({ level, onSelect }: LevelCardsProps) {
           role="radio"
           className="lvl"
           aria-checked={level === info.id}
+          disabled={disabled}
           onClick={() => onSelect(info.id)}
         >
           <span className="t">

@@ -89,6 +89,7 @@ public class SourceControlFlowObfuscator : IObfuscator
         private readonly SemanticModel _model;
         private readonly SourceScope _scope;
         private readonly Random _random = new();
+        private int _tickCounter;
 
         public int MethodsObfuscated { get; private set; }
 
@@ -119,13 +120,14 @@ public class SourceControlFlowObfuscator : IObfuscator
             // Value-returning methods need a terminal statement after the switch dispatcher's loop,
             // or the compiler reports CS0161 ("not all code paths return a value").
             var needsReturnValue = MethodNeedsReturnValue(node);
+            var usedNames = CollectIdentifierNames(node);
 
             // Apply control flow obfuscation based on mode
             var newBody = _settings.Mode switch
             {
-                ControlFlowMode.OpaquePredicate => InsertOpaquePredicates(node.Body),
-                ControlFlowMode.Switch => ConvertToSwitchDispatcher(node, needsReturnValue),
-                ControlFlowMode.Combined => InsertOpaquePredicates(ConvertToSwitchDispatcher(node, needsReturnValue)),
+                ControlFlowMode.OpaquePredicate => InsertOpaquePredicates(node.Body, usedNames),
+                ControlFlowMode.Switch => ConvertToSwitchDispatcher(node, needsReturnValue, usedNames),
+                ControlFlowMode.Combined => InsertOpaquePredicates(ConvertToSwitchDispatcher(node, needsReturnValue, usedNames), usedNames),
                 _ => node.Body
             };
 
@@ -138,7 +140,30 @@ public class SourceControlFlowObfuscator : IObfuscator
             return base.VisitMethodDeclaration(node);
         }
 
-        private BlockSyntax InsertOpaquePredicates(BlockSyntax body)
+        private static HashSet<string> CollectIdentifierNames(MethodDeclarationSyntax method)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var token in method.DescendantTokens())
+            {
+                if (token.IsKind(SyntaxKind.IdentifierToken))
+                    names.Add(token.ValueText);
+            }
+
+            return names;
+        }
+
+        private string NextTickVariableName(HashSet<string> usedNames)
+        {
+            string name;
+            do
+            {
+                name = $"__obfyTick_{++_tickCounter}";
+            } while (!usedNames.Add(name));
+
+            return name;
+        }
+
+        private BlockSyntax InsertOpaquePredicates(BlockSyntax body, HashSet<string> usedNames)
         {
             var newStatements = new List<StatementSyntax>();
             var transformedAny = false;
@@ -148,7 +173,7 @@ public class SourceControlFlowObfuscator : IObfuscator
                 // Randomly insert opaque predicates based on intensity
                 if (CanWrapInPredicate(statement) && _random.Next(100) < _settings.Intensity)
                 {
-                    newStatements.Add(CreateOpaquePredicate(statement));
+                    newStatements.Add(CreateOpaquePredicate(statement, usedNames));
                     transformedAny = true;
                 }
                 else
@@ -164,7 +189,7 @@ public class SourceControlFlowObfuscator : IObfuscator
                 {
                     if (CanWrapInPredicate(newStatements[i]))
                     {
-                        newStatements[i] = CreateOpaquePredicate(newStatements[i]);
+                        newStatements[i] = CreateOpaquePredicate(newStatements[i], usedNames);
                         transformedAny = true;
                         break;
                     }
@@ -185,10 +210,13 @@ public class SourceControlFlowObfuscator : IObfuscator
             if (statement is LocalDeclarationStatementSyntax or LocalFunctionStatementSyntax or LabeledStatementSyntax)
                 return false;
 
-            // `out var` and other declaration expressions are scoped to the enclosing block.
-            // A nested predicate block would hide those names from later statements.
+            // `out var`, pattern variables (`is string s`, `is not string s`), local functions and nested
+            // labels are scoped to the enclosing block; a nested predicate block would hide them.
             return !statement.DescendantNodes().Any(n =>
-                n is DeclarationExpressionSyntax or LocalFunctionStatementSyntax);
+                n is DeclarationExpressionSyntax
+                    or SingleVariableDesignationSyntax
+                    or LocalFunctionStatementSyntax
+                    or LabeledStatementSyntax);
         }
 
         private static bool MethodNeedsReturnValue(MethodDeclarationSyntax method)
@@ -226,10 +254,10 @@ public class SourceControlFlowObfuscator : IObfuscator
         // whitespace: factory nodes print as "thrownew" and "int__state" when written to a file.
         private const string OriginalMarker = "__obfyOriginal";
 
-        private const string OpaquePredicateShell = """
+        private static string BuildOpaquePredicateShell(string tickVar) => $$"""
             {
-                int __obfyTick = global::System.Environment.TickCount;
-                if (unchecked(__obfyTick * (__obfyTick + 1)) % 2 == 0)
+                int {{tickVar}} = global::System.Environment.TickCount;
+                if (unchecked({{tickVar}} * ({{tickVar}} + 1)) % 2 == 0)
                 {
                     __obfyOriginal;
                 }
@@ -240,9 +268,10 @@ public class SourceControlFlowObfuscator : IObfuscator
             }
             """;
 
-        private StatementSyntax CreateOpaquePredicate(StatementSyntax originalStatement)
+        private StatementSyntax CreateOpaquePredicate(StatementSyntax originalStatement, HashSet<string> usedNames)
         {
-            var shell = (BlockSyntax)SyntaxFactory.ParseStatement(OpaquePredicateShell);
+            var tickVar = NextTickVariableName(usedNames);
+            var shell = (BlockSyntax)SyntaxFactory.ParseStatement(BuildOpaquePredicateShell(tickVar));
             var marker = shell.DescendantNodes().OfType<ExpressionStatementSyntax>()
                 .Single(e => e.Expression is IdentifierNameSyntax { Identifier.ValueText: OriginalMarker });
 
@@ -298,9 +327,9 @@ public class SourceControlFlowObfuscator : IObfuscator
                     return false;
                 }
 
-                // Declaration expressions (`out var x`) and nested local functions introduce names
-                // whose scope is the enclosing block. Flattening puts each statement in its own
-                // switch section, so those names would not be visible to later statements.
+                // Declaration expressions (`out var x`), pattern variables, nested local functions and labels
+                // introduce names whose scope is the enclosing block. Flattening puts each statement in its
+                // own switch section, so those names would not be visible to later statements.
                 if (statement.DescendantNodes().Any(n =>
                         n is BreakStatementSyntax
                             or ContinueStatementSyntax
@@ -308,7 +337,9 @@ public class SourceControlFlowObfuscator : IObfuscator
                             or YieldStatementSyntax
                             or LocalDeclarationStatementSyntax
                             or LocalFunctionStatementSyntax
-                            or DeclarationExpressionSyntax))
+                            or DeclarationExpressionSyntax
+                            or SingleVariableDesignationSyntax
+                            or LabeledStatementSyntax))
                 {
                     return false;
                 }
@@ -317,7 +348,7 @@ public class SourceControlFlowObfuscator : IObfuscator
             return true;
         }
 
-        private BlockSyntax ConvertToSwitchDispatcher(MethodDeclarationSyntax method, bool needsReturnValue)
+        private BlockSyntax ConvertToSwitchDispatcher(MethodDeclarationSyntax method, bool needsReturnValue, HashSet<string> usedNames)
         {
             var body = method.Body!;
             if (body.Statements.Count < 3)
@@ -333,7 +364,11 @@ public class SourceControlFlowObfuscator : IObfuscator
 
             // Create state variable and switch-based dispatcher
             var statements = body.Statements.ToList();
-            var stateVar = $"__state_{_random.Next(1000, 9999)}";
+            string stateVar;
+            do
+            {
+                stateVar = $"__state_{_random.Next(1000, 9999)}";
+            } while (!usedNames.Add(stateVar));
 
             // Assign random, distinct state numbers. The range grows with the statement count so a long
             // method (a large InitializeComponent) can never run out of unused states and spin forever;
@@ -365,8 +400,11 @@ public class SourceControlFlowObfuscator : IObfuscator
                 var nextState = i + 1 < statements.Count ? states[i + 1] : -1;
                 text.AppendLine($"            case {states[i]}:");
                 text.AppendLine($"                {StatementMarkerPrefix}{i};");
-                text.AppendLine($"                {stateVar} = {nextState};");
-                text.AppendLine("                break;");
+                if (statements[i] is not (ReturnStatementSyntax or ThrowStatementSyntax))
+                {
+                    text.AppendLine($"                {stateVar} = {nextState};");
+                    text.AppendLine("                break;");
+                }
             }
 
             text.AppendLine("            default:");

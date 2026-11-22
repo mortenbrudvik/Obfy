@@ -10,6 +10,7 @@ import { contentFor } from "./techniqueContent";
 interface TechniqueDetailProps {
   technique: TechniqueState;
   snapshot: SettingsSnapshot;
+  disabled?: boolean;
   onUpdate: (patch: SettingsPatch) => Committed;
   onPickKey: () => void;
   onOpenGuide: (topic: string) => void;
@@ -19,7 +20,7 @@ interface TechniqueDetailProps {
  * The right-hand panel for one technique: what it does, what to know before using it, every option with its help
  * always shown, and a before and after where there is one. Everything that varies comes from the host's snapshot.
  */
-export default function TechniqueDetail({ technique, snapshot, onUpdate, onPickKey, onOpenGuide }: TechniqueDetailProps) {
+export default function TechniqueDetail({ technique, snapshot, disabled, onUpdate, onPickKey, onOpenGuide }: TechniqueDetailProps) {
   const words = contentFor(technique.id);
   const on = technique.enabled && technique.available;
   const errorFor = (key: string) => snapshot.errors.find((e) => e.field === `${technique.id}.${key}`)?.message ?? null;
@@ -29,7 +30,7 @@ export default function TechniqueDetail({ technique, snapshot, onUpdate, onPickK
       <DetailHead
         name={words.name}
         summary={words.summary}
-        switchState={{ on, disabled: !technique.available, onChange: (next) => onUpdate(switchPatch(technique.id, words, next)) }}
+        switchState={{ on, disabled: !technique.available || Boolean(disabled), onChange: (next) => onUpdate(switchPatch(technique.id, words, next)) }}
       />
 
       {!technique.available && (
@@ -74,6 +75,7 @@ export default function TechniqueDetail({ technique, snapshot, onUpdate, onPickK
                 values={technique.options}
                 choices={snapshot.choices}
                 error={errorFor(option.key)}
+                disabled={disabled}
                 onUpdate={onUpdate}
                 onPickKey={onPickKey}
               />

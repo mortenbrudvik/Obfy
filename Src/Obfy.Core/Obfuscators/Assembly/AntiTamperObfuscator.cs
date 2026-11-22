@@ -250,6 +250,13 @@ public class AntiTamperObfuscator : IObfuscator
         var body = new CilBody { InitLocals = true };
         method.Body = body;
 
+        var assemblyType = FrameworkReferences.Type(module, "System.Reflection", "Assembly");
+        var environmentType = FrameworkReferences.Type(module, "System", "Environment");
+        var fileType = FrameworkReferences.Type(module, "System.IO", "File");
+        var sha256Type = FrameworkReferences.Type(module, "System.Security.Cryptography", "SHA256");
+        var bufferType = FrameworkReferences.Type(module, "System", "Buffer");
+        var disposableType = FrameworkReferences.Type(module, "System", "IDisposable");
+
         var pathLocal = new Local(module.CorLibTypes.String);
         var bytesLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
         var storedLocal = new Local(new SZArraySig(module.CorLibTypes.Byte));
@@ -258,6 +265,11 @@ public class AntiTamperObfuscator : IObfuscator
         var iLocal = new Local(module.CorLibTypes.Int32);
         var snOffLocal = new Local(module.CorLibTypes.Int32);
         var snSizeLocal = new Local(module.CorLibTypes.Int32);
+        var fromProcessPathLocal = new Local(module.CorLibTypes.Boolean);
+        var lfanewLocal = new Local(module.CorLibTypes.Int32);
+        var peMagicLocal = new Local(module.CorLibTypes.Int32);
+        var ddOffsetLocal = new Local(module.CorLibTypes.Int32);
+        var shaLocal = new Local(new ClassSig(sha256Type));
         body.Variables.Add(pathLocal);
         body.Variables.Add(bytesLocal);
         body.Variables.Add(storedLocal);
@@ -266,12 +278,11 @@ public class AntiTamperObfuscator : IObfuscator
         body.Variables.Add(iLocal);
         body.Variables.Add(snOffLocal);
         body.Variables.Add(snSizeLocal);
-
-        var assemblyType = FrameworkReferences.Type(module, "System.Reflection", "Assembly");
-        var environmentType = FrameworkReferences.Type(module, "System", "Environment");
-        var fileType = FrameworkReferences.Type(module, "System.IO", "File");
-        var sha256Type = FrameworkReferences.Type(module, "System.Security.Cryptography", "SHA256");
-        var bufferType = FrameworkReferences.Type(module, "System", "Buffer");
+        body.Variables.Add(fromProcessPathLocal);
+        body.Variables.Add(lfanewLocal);
+        body.Variables.Add(peMagicLocal);
+        body.Variables.Add(ddOffsetLocal);
+        body.Variables.Add(shaLocal);
 
         var getExecutingAssembly = new MemberRefUser(module, "GetExecutingAssembly",
             MethodSig.CreateStatic(new ClassSig(assemblyType)), assemblyType);
@@ -293,6 +304,8 @@ public class AntiTamperObfuscator : IObfuscator
         var computeHash = new MemberRefUser(module, "ComputeHash",
             MethodSig.CreateInstance(new SZArraySig(module.CorLibTypes.Byte), new SZArraySig(module.CorLibTypes.Byte)),
             sha256Type);
+        var dispose = new MemberRefUser(module, "Dispose",
+            MethodSig.CreateInstance(module.CorLibTypes.Void), disposableType);
         var arrayType = FrameworkReferences.Type(module, "System", "Array");
         var blockCopy = new MemberRefUser(module, "BlockCopy",
             MethodSig.CreateStatic(
@@ -309,17 +322,18 @@ public class AntiTamperObfuscator : IObfuscator
             bitConverterType);
 
         var skipLabel = Instruction.Create(OpCodes.Ret);
+        var markVerified = Instruction.Create(OpCodes.Ldc_I4_1);
         var exitLabel = Instruction.Create(OpCodes.Ldstr, "Obfy anti-tamper: assembly integrity check failed");
 
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, verifiedField));
         body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, skipLabel));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
-        body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, verifiedField));
 
         var tryStart = Instruction.Create(OpCodes.Call, getExecutingAssembly);
         body.Instructions.Add(tryStart);
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, getLocation));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, fromProcessPathLocal));
         var havePath = Instruction.Create(OpCodes.Ldloc, pathLocal);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
@@ -329,8 +343,7 @@ public class AntiTamperObfuscator : IObfuscator
         if (FrameworkReferences.SupportsProcessPath(module))
         {
             // Location empty: only fall back to ProcessPath when this assembly is the process
-            // entry (single-file). ALC / LoadFromStream loads are a different assembly than
-            // the host and must skip — hashing the launcher would false-fail.
+            // entry. ALC / LoadFromStream loads are a different assembly than the host and must skip.
             var skipPop = Instruction.Create(OpCodes.Pop);
             body.Instructions.Add(Instruction.Create(OpCodes.Call, getEntryAssembly));
             body.Instructions.Add(Instruction.Create(OpCodes.Dup));
@@ -338,22 +351,24 @@ public class AntiTamperObfuscator : IObfuscator
             body.Instructions.Add(Instruction.Create(OpCodes.Call, getExecutingAssembly));
             var processPath = Instruction.Create(OpCodes.Call, getProcessPath);
             body.Instructions.Add(Instruction.Create(OpCodes.Beq, processPath));
-            body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+            body.Instructions.Add(Instruction.Create(OpCodes.Br, markVerified));
 
             body.Instructions.Add(processPath);
             body.Instructions.Add(Instruction.Create(OpCodes.Stloc, pathLocal));
+            body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+            body.Instructions.Add(Instruction.Create(OpCodes.Stloc, fromProcessPathLocal));
             body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, pathLocal));
             body.Instructions.Add(Instruction.Create(OpCodes.Call, isNullOrEmpty));
             body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, havePath));
-            body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+            body.Instructions.Add(Instruction.Create(OpCodes.Br, markVerified));
             body.Instructions.Add(skipPop);
-            body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+            body.Instructions.Add(Instruction.Create(OpCodes.Br, markVerified));
         }
         else
         {
             // No ProcessPath on this target (.NET Framework, netstandard, before .NET 6): an empty Location
             // is a single-file or in-memory load, which is documented as skipped.
-            body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
+            body.Instructions.Add(Instruction.Create(OpCodes.Br, markVerified));
         }
 
         body.Instructions.Add(havePath);
@@ -363,12 +378,93 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, findOffset));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, offsetLocal));
+
+        var checkBundle = Instruction.Create(OpCodes.Ldloc, fromProcessPathLocal);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, offsetLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
-        // Missing hash blob is tamper (or a failed patch), not the documented single-file skip.
-        body.Instructions.Add(Instruction.Create(OpCodes.Blt, exitLabel));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bge, checkBundle));
+        // Missing hash blob: skip if we fell back to ProcessPath (e.g. compressed single-file bundle),
+        // otherwise FailFast because the on-disk assembly was tampered with.
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, fromProcessPathLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brtrue, markVerified));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, exitLabel));
 
-        body.Instructions.Add(Instruction.CreateLdcI4(AssemblyHashComputer.HashSize));
+        // When falling back to ProcessPath, skip native single-file apphost bundles (CLR header RVA == 0)
+        // because _blob hashes the embedded DLL rather than the enclosing bundle executable.
+        var afterBundleCheck = Instruction.CreateLdcI4(AssemblyHashComputer.HashSize);
+        var isPe32Plus = Instruction.Create(OpCodes.Ldloc, lfanewLocal);
+        var checkComRva = Instruction.Create(OpCodes.Ldloc, ddOffsetLocal);
+        body.Instructions.Add(checkBundle);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, afterBundleCheck));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.CreateLdcI4(184));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, markVerified));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x3C));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, toInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, lfanewLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, lfanewLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(Instruction.Create(OpCodes.Blt, markVerified));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, lfanewLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.CreateLdcI4(28));
+        body.Instructions.Add(Instruction.Create(OpCodes.Sub));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bgt, markVerified));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, lfanewLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x50));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, markVerified));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, lfanewLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldelem_U1));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x45));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, markVerified));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, lfanewLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(24));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, toInt32));
+        body.Instructions.Add(Instruction.CreateLdcI4(0xFFFF));
+        body.Instructions.Add(Instruction.Create(OpCodes.And));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, peMagicLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peMagicLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x20B));
+        body.Instructions.Add(Instruction.Create(OpCodes.Beq, isPe32Plus));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, peMagicLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(0x10B));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bne_Un, markVerified));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, lfanewLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(24 + 96));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, ddOffsetLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Br, checkComRva));
+        body.Instructions.Add(isPe32Plus);
+        body.Instructions.Add(Instruction.CreateLdcI4(24 + 112));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, ddOffsetLocal));
+        body.Instructions.Add(checkComRva);
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldlen));
+        body.Instructions.Add(Instruction.Create(OpCodes.Conv_I4));
+        body.Instructions.Add(Instruction.CreateLdcI4(15 * 8));
+        body.Instructions.Add(Instruction.Create(OpCodes.Sub));
+        body.Instructions.Add(Instruction.Create(OpCodes.Bgt, markVerified));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, ddOffsetLocal));
+        body.Instructions.Add(Instruction.CreateLdcI4(14 * 8));
+        body.Instructions.Add(Instruction.Create(OpCodes.Add));
+        body.Instructions.Add(Instruction.Create(OpCodes.Call, toInt32));
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, markVerified));
+
+        body.Instructions.Add(afterBundleCheck);
         body.Instructions.Add(Instruction.Create(OpCodes.Newarr, module.CorLibTypes.Byte.TypeDefOrRef));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, storedLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
@@ -445,11 +541,24 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Blt, snBody));
 
         body.Instructions.Add(afterSn);
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, shaLocal));
+        var shaTryStart = Instruction.Create(OpCodes.Ldloc, shaLocal);
+        var shaFinallyStart = Instruction.Create(OpCodes.Ldloc, shaLocal);
+        var shaEndFinally = Instruction.Create(OpCodes.Endfinally);
+        var shaAfterFinally = Instruction.Create(OpCodes.Ldc_I4_0);
+        body.Instructions.Add(shaTryStart);
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bytesLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, computeHash));
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, computedLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, shaAfterFinally));
 
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+        body.Instructions.Add(shaFinallyStart);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, shaEndFinally));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, shaLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, dispose));
+        body.Instructions.Add(shaEndFinally);
+
+        body.Instructions.Add(shaAfterFinally);
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, iLocal));
         var cmpCheck = Instruction.Create(OpCodes.Ldloc, iLocal);
         var cmpBody = Instruction.Create(OpCodes.Ldloc, computedLocal);
@@ -468,6 +577,9 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(cmpCheck);
         body.Instructions.Add(Instruction.CreateLdcI4(AssemblyHashComputer.HashSize));
         body.Instructions.Add(Instruction.Create(OpCodes.Blt, cmpBody));
+
+        body.Instructions.Add(markVerified);
+        body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, verifiedField));
         body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
 
         body.Instructions.Add(exitLabel);
@@ -481,6 +593,13 @@ public class AntiTamperObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Leave, skipLabel));
         body.Instructions.Add(skipLabel);
 
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Finally)
+        {
+            TryStart = shaTryStart,
+            TryEnd = shaFinallyStart,
+            HandlerStart = shaFinallyStart,
+            HandlerEnd = shaAfterFinally
+        });
         body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
         {
             TryStart = tryStart,

@@ -85,6 +85,7 @@ public class SymbolRenamingStep : WizardStep
                 defaultValue: context.Settings.SymbolRenaming.PreservePublicApi || context.IsPublicApi);
 
             context.Settings.SymbolRenaming.PreservePublicApi = preservePublic;
+            context.PreservePublicApiChoice = preservePublic;
 
             if (preservePublic)
             {

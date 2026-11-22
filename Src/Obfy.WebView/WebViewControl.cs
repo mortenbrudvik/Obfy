@@ -13,14 +13,18 @@ public class WebViewControl : WebView2, IWebViewInterop
     /// <summary>Whether the page has been found unreachable since the last message that reached it. UI thread only.</summary>
     private bool _unreachableLogged;
 
-    public WebViewControl() : this(NullLogger.Instance)
+    public WebViewControl() : this((ILogger)NullLogger.Instance)
+    {
+    }
+
+    public WebViewControl(ILogger<WebViewControl> logger) : this((ILogger)logger)
     {
     }
 
     /// <summary>For tests: the control with its log lines sent to <paramref name="logger"/>.</summary>
     protected WebViewControl(ILogger logger)
     {
-        _logger = logger;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <summary>

@@ -38,9 +38,10 @@ export default function RunningView({ files, log }: RunningViewProps) {
 
   // The newest line stays in view, as it would in a terminal.
   const box = useRef<HTMLDivElement>(null);
+  const lastLineId = tail[tail.length - 1]?.id;
   useEffect(() => {
     if (box.current) box.current.scrollTop = box.current.scrollHeight;
-  }, [tail.length]);
+  }, [lastLineId]);
 
   return (
     <>

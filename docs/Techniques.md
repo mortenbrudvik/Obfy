@@ -288,6 +288,8 @@ This is a **deterrent, not confidentiality**. The interpreter, opcode map, and X
 
 Per-build opcode permutation and XOR of the bytecode blob (from the incremental-cache key). This is not a unique generated VM per run. NativeAOT / Unity IL2CPP / Blazor WASM (`runtimeProfile`) gate the feature off with a warning.
 
+Virtualization runs together with symbol renaming: the copied interpreter is renamed like any other type in the module, and every reference inside it points at the copied definition, so it follows the rename.
+
 When virtualization is enabled, string encryption (priority 10) and constant encryption (priority 11) skip the selected methods so `ldstr` / `ldc.*` still reach the encoder. Those literals then live in the XOR blob instead of going through the decryptor.
 
 **Settings:**
@@ -451,10 +453,14 @@ public class _‌‌‍‏‌
 - Constructors (`.ctor`, `.cctor`) — also skipped by control-flow flatten
 - Module entry point (not every method named `Main`)
 - Interface implementations
-- `virtual` public/family methods on an **unsealed** type (even with no overrides)
+- Every `virtual` method: overrides, interface implementations, finalizers and delegate `Invoke`, in every type (structs and sealed classes too), because the name is matched against a base slot that may live in another assembly
 - `SpecialName` / `RuntimeSpecialName` members (property accessors, ctors)
 
 Compiler-generated types (async state machines, display classes, lambdas) are **not** automatically preserved.
+
+**References follow a rename** in a single assembly, a merge and a closed set. That covers the member references C# writes for a member of a closed generic type the module defines (`Box<int>.Item`, a method, an accessor, a closure over `T`), a reference whose parent is a derived type (the member is found on that type or up its base chain, with the base type's generic arguments substituted), and the type and member names stored in custom attributes: the named arguments of `[Info(Note = "x")]`, and the type names inside `typeof` and enum arguments, arrays of them included. A member that is excluded, or kept because the public API is preserved, keeps its name in all of these.
+
+**What stays readable in the output.** The assembly is written with new string, user-string and blob heaps, and without the original MemberRef and MethodSpec rows, so a name that was renamed or a literal that was encrypted is not carried along beside its replacement. Names the renamer keeps are still in the bytes: virtual methods, a preserved public API, framework members, and the parameter names of constructors and accessors. String and constant literals are plaintext unless that encryption is on. The row ids of TypeDef, Field, Method, Param, Event and Property are kept, so a metadata token of one of those that is written into code still resolves; a MemberRef or MethodSpec token is renumbered.
 
 **Settings:**
 
@@ -869,7 +875,7 @@ Set `packing.rid` to `portable` for the previous managed `{name}.launcher.exe` +
 
 This is **not** Pre-JIT, **not** self-contained, and **not** ARM64. Packing hides the managed PE on disk; the decryption key is in the overlay and is chosen at random for that pack. The `.obfycache` sidecar is not that key. Anyone who runs or inspects the EXE can recover IL. This is obfuscation, not confidentiality.
 
-The payload stays in memory (`AssemblyLoadContext.LoadFromStream`); anti-tamper skips ALC loads instead of hashing the host. Sibling assemblies next to the packed EXE are resolved from the load context. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning. NativeAOT / Unity IL2CPP / Blazor WASM turn packing off with a warning. Closed-set / solution / multi-assembly runs pack each entry-point output and leave libraries managed. Merge packs the merged entry-point assembly. Signing hashes the managed PE **before** pack, so the native EXE is not strong-named. GUI vs console is a PE Subsystem patch on the same stub. Runtimeconfig TFM prefers the assembly `TargetFrameworkAttribute` (then the input sibling JSON), otherwise the Obfy process version.
+The payload stays in memory (`AssemblyLoadContext.LoadFromStream`); anti-tamper skips ALC loads instead of hashing the host. Sibling assemblies next to the packed EXE are resolved from the load context. Packing requires an entry point; class libraries fail the run. Source inputs skip packing with a warning. NativeAOT / Unity IL2CPP / Blazor WASM turn packing off with a warning. Closed-set / solution / multi-assembly runs pack each entry-point output and leave libraries managed. Merge packs the merged entry-point assembly. When `methodEncryption` is also on, the host XOR-decrypts the method bodies of the payload before it loads the assembly (`MethodImageDecryptor`, in the native host's bootstrap and in the portable launcher): a stream load has no mapped module for the in-assembly decryptor to patch. Signing hashes the managed PE **before** pack, so the native EXE is not strong-named. GUI vs console is a PE Subsystem patch on the same stub. Runtimeconfig TFM prefers the assembly `TargetFrameworkAttribute` (then the input sibling JSON), otherwise the Obfy process version.
 
 ## See Also
 

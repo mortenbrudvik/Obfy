@@ -99,6 +99,10 @@ public class DotnetToolPackTests : IDisposable
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        // A reusable MSBuild node that `dotnet pack` starts outlives it and inherits the redirected pipes, so
+        // ReadToEnd below would wait for the node's idle timeout (about 15 minutes) on a machine with no idle node.
+        start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        start.Environment["DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER"] = "1";
         foreach (var arg in args)
             start.ArgumentList.Add(arg);
 

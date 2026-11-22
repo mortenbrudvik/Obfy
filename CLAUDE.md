@@ -32,7 +32,7 @@ Obfy/
 │   │   └── Utilities/         # Helper classes (NativePacker, ManagedLauncherPacker)
 │   ├── Obfy.NativeHost/       # Prebuilt win-x64 CLR-host stub (not in Obfy.sln)
 │   ├── Obfy.PackedBootstrap/  # Managed bootstrap loaded by the native host
-│   ├── Obfy.VisualStudio/     # Visual Studio 2022 extension (C#)
+│   ├── Obfy.VisualStudio/     # Visual Studio 2022 extension (C#); see "Visual Studio extension"
 │   ├── Obfy.VSCode/           # VS Code stub (schema + problem matcher)
 │   ├── Settings.Core/         # JSON settings persistence
 │   └── Logging.Core/          # NLog logging infrastructure
@@ -42,15 +42,18 @@ Obfy/
 │   ├── Obfy.App.Tests/        # Session + handler unit tests (UI logic, no WPF)
 │   ├── Obfy.Interop.Tests/    # Bridge, registry, events, request JSON + content contract tests
 │   ├── Obfy.UI.Tests/         # Shell wiring, shutdown coordinator, host service
-│   ├── Obfy.ScenarioTests/    # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
+│   ├── Obfy.ScenarioTests/    # SDK fixtures, protected-app startup per target framework, installer settings + platform (Blazor/AOT/MAUI/Unity)
 │   ├── Obfy.VisualStudio.Tests/ # VS helpers without a hive
 │   └── Obfy.UI.AutomationTests/ # Locator tests + Playwright-over-WebView2 e2e + one FlaUI smoke (Category=UI)
 ├── scripts/
 │   └── dev.ps1                # Dev loop: Vite dev server + the shell
 ├── docs/                      # Documentation
 ├── package/                   # MSIX manifest and Store assets
+├── version.json               # The product version: the only place it is written
 ├── build/                     # Build scripts and installer
-│   ├── build-installer.ps1    # Installer build automation
+│   ├── build-installer.ps1    # Installer build: publish, self-protect, start checks, Inno Setup
+│   ├── self-obfuscation.json  # Settings the installer protects Obfy's own assemblies with
+│   ├── Get-ProductVersion.ps1 # Reads and validates version.json
 │   ├── build-msix.ps1         # MSIX package for Store / sideload
 │   ├── generate-msix-assets.ps1 # Store logo/splash assets from app.png
 │   ├── ObfySetup.iss          # Inno Setup script
@@ -95,6 +98,11 @@ dotnet run --project Src/Obfy.UI/Obfy.UI.csproj -c Release
 
 # .NET-only work: skip the npm steps (Obfy.UI.csproj otherwise runs npm ci + npm run build before Build)
 dotnet build Obfy.sln -p:SkipFrontendBuild=true
+
+# Build the installer (Inno Setup 6, the .NET SDK, Node 24). Protects Obfy's own assemblies, then starts the
+# protected CLI and the protected desktop app and stops if either fails (needs an interactive Windows session and
+# the WebView2 Runtime). See "Version and installer"
+.\build\build-installer.ps1
 
 # Build MSIX (sideload identity)
 .\build\build-msix.ps1
@@ -177,14 +185,16 @@ Tech stack: WPF + WebView2, React 19 + Vite + TypeScript (Vitest, Testing Librar
 | AntiDecompiler | 20 | Injects junk types/methods and optional decoy ConfusedBy/Dotfuscator attributes |
 | Watermark | 21 | Embeds a customer/build id as a pinned `WatermarkAttribute` |
 | AntiTamper | 22 | Verifies assembly integrity at runtime |
-| Virtualization | 24 | Bytecode interpreter for eligible instance and static methods (objects, non-generic calls, fields, newobj, ldstr; i4/i8/r4/r8). Skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, typeof (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded). Per-build permute+XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset. Deterrent, not confidentiality. |
-| MethodEncryption | 25 | XOR-encrypts method IL in the PE (Windows; per-method keys; skips generics) |
+| Virtualization | 24 | Bytecode interpreter for eligible instance and static methods (objects, non-generic calls, fields, newobj, ldstr; i4/i8/r4/r8). Skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, typeof (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach (array foreach can be encoded). Per-build permute+XOR; gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset. The copied interpreter is declared in full before its bodies are copied (`VmImporter`), so its own members are references to definitions and follow symbol renaming. Deterrent, not confidentiality. |
+| MethodEncryption | 25 | XOR-encrypts method IL in the PE (Windows; per-method keys; skips generics). The in-assembly decryptor needs a mapped module; a packed app loads from a stream, so `MethodImageDecryptor` decrypts first (see Packing) |
 | ControlFlow | 30 | State-machine dispatch of basic blocks and/or opaque predicates |
 | ReferenceProxy | 40 | Hides call targets behind proxy methods. Skips constructors, generics, varargs, prefixed calls (`constrained.`, `tail.`, `readonly.`), pointers and unknown receivers. A known value-type receiver is passed by reference; `callvirt` on a value type stays direct. Out-of-module calls need `proxyExternalCalls`, and nested compiler/interop types are skipped |
-| SymbolRenaming | 50 | Renames types, methods, fields, properties, events, namespaces |
+| SymbolRenaming | 50 | Renames types, methods, fields, properties, events, namespaces. Never renames a virtual method. A snapshot/apply pass copies each new name onto the references that bind by name: MemberRefs (including those on generic instantiations of the module's own types and on a derived-type parent), custom attribute named arguments, `typeof` and enum arguments. The writer does not preserve MemberRef or MethodSpec row ids (`AssemblyProcessor.OutputMetadataFlags`), so the original names do not stay in unreferenced rows |
 | MetadataRemoval | 90 | Strips debug info and attributes |
 
-Packing (post-save, not an `IObfuscator`): native win-x64 FDD CLR-host stub that replaces the managed PE; `packing.rid: portable` keeps the managed launcher. Closed-set / solution runs pack each entry-point output. Not a Pre-JIT packer.
+Packing (post-save, not an `IObfuscator`): native win-x64 FDD CLR-host stub that replaces the managed PE; `packing.rid: portable` keeps the managed launcher. Closed-set / solution runs pack each entry-point output. Not a Pre-JIT packer. Both hosts load the payload with `LoadFromStream`, which has no mapped module, so both run `MethodImageDecryptor.Decrypt` on the bytes first (`Obfy.PackedBootstrap/MethodImageDecryptor.cs`: called from `PackedBootstrap`, and compiled into the portable launcher from the `Obfy.MethodImageDecryptor.cs` resource in Obfy.Core). That file is an input of the native-host source stamp: after editing it or `PackedBootstrap.cs`, rebuild the host (`Src/Obfy.NativeHost/build.ps1`) and commit the exe and `dist/sources.sha256`, or CI fails.
+
+**Target frameworks:** every injected framework type and member goes through `Obfy.Core/Utilities/FrameworkReferences` (scope by the module's core library and version; `SupportsProcessPath`, `SupportsTickCount64`, `SupportsRuntimeInformation` decide members), and a test (`FrameworkReferenceChokePointTests`) fails if an obfuscator builds its own reference. Protected apps run on netcoreapp3.1, net5.0 to net10.0 and net461 to net48, and netstandard2.0 libraries run on those runtimes; no technique is gated by target. `Obfy.ScenarioTests/ProtectedConsoleStartupTests` builds and runs an SDK app per target and skips a target visibly when its runtime or reference assemblies are not installed.
 
 ### Source Obfuscators (Roslyn)
 
@@ -232,7 +242,12 @@ Uses Autofac with module-based registration (`ObfuscationModule`).
 | `Src/WebApp/src/content/techniques.json` | Technique and option copy (contract-tested against the host) |
 | `scripts/dev.ps1` | Dev loop: Vite on 5250 + the shell |
 | `Obfy.Core/Models/SymbolMapKey.cs` | Parses symbol-map keys for the Results tree |
-| `package/AppxManifest.xml` | MSIX identity, full-trust capability, CLI alias |
+| `version.json`, `Directory.Build.props` | The product version, and the props file that gives it to the projects under `Src` |
+| `build/build-installer.ps1`, `build/self-obfuscation.json` | Installer build (self-protection and start checks) and the settings it protects Obfy's own assemblies with |
+| `Obfy.Core/Utilities/FrameworkReferences.cs` | The one place that scopes injected framework types and members to the target framework |
+| `Obfy.Console/RunPathGuard.cs` | Refuses a `--map` / `--report` path that would replace an input, an output, the `-c` file or the signing key file |
+| `Obfy.VisualStudio/Services/CliProcessRunner.cs` | Runs the CLI for the Visual Studio extension with a time limit, cancellation and a whole-tree kill |
+| `package/AppxManifest.xml` | MSIX identity, full-trust capability, CLI alias (its Version is a snapshot pinned to `version.json`) |
 | `package/store-identity.json` | Partner Center Name / Publisher / Product ID for `-Store` packs |
 | `PRIVACY.md` | Privacy policy for Microsoft Store listing |
 | `build/build-msix.ps1` | Store/sideload MSIX pack pipeline |
@@ -259,6 +274,20 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 - Bug fixes: Write regression tests
 - Before commit: All tests must pass
 
+## Version and installer
+
+- **Version**: `version.json` holds exactly three integer keys, `major`, `minor` and `patch` (0 to 65535, no leading zeros, nothing else), and is the only place the product version is written. `Directory.Build.props` gives it to every project under `Src` as `Version` (assembly, file, informational and NuGet package version), except `Obfy.VisualStudio` (its version is in `source.extension.vsixmanifest`), `Obfy.PackedBootstrap` and `Obfy.VmRuntime`. `build-installer.ps1` reads it through `build/Get-ProductVersion.ps1` and passes `/DMyAppVersion` to ISCC (`ObfySetup.iss` has no default and stops with `#error` without it). `build-msix.ps1` stamps the package `Identity Version` from it. `publish.yml` runs `build/Resolve-PackageVersion.ps1 -VersionFile`, so a release tag (or the manual input) must carry the same `major.minor.patch`; a prerelease suffix on the tag is allowed, and `-p:Version=...` overrides the file for the build. The one copy kept by hand is the `Identity Version` snapshot in `package/AppxManifest.xml` (`major.minor.patch.0`): a test fails until it matches. A test also fails if a project or props file states a `<Version>`, so never add one
+- **Installer build** (`build/build-installer.ps1`, seven steps: find Inno Setup, clean the publish folders, publish the CLI, publish the UI, protect and check, prepare the output folder and the WebView2 bootstrapper, compile the installer). Step 5 protects Obfy's own assemblies (`obfy.dll`, `ObfyUI.dll`, `Obfy.App`, `Obfy.Core`, `Obfy.Interop`, `Obfy.WebView`, `Obfy.Common`, `Settings.Core`, `Logging.Core`) with a copy of the freshly published `obfy.exe`, in **one closed-set run per publish folder** (`build/publish` for the CLI, `build/publish-ui` for the app), because the assemblies call each other: protecting them one at a time renames public types in Obfy.Core while the CLI still calls the old names (`InstallerSelfProtectionScenarioTests` runs both ways). Nothing is copied back until every output exists. The settings are the whole of `build/self-obfuscation.json`, passed with `-c` and no technique flags: string encryption, control flow (switch mode, intensity 50), symbol renaming (`preservePublicApi: false`, `preserveXaml: true`) and metadata removal, with `exclusions` for the names the shipped programs read at run time (`Obfy.Core.Models`, `Obfy.App.Models`, `*Request`, `AppInfo`, `ApiError`, `UiPreferences`, `<>*`). A name that a program reads and the renamer takes will fail the checks below; add it to `exclusions` there
+- **Start checks** (still step 5, before the temp folders are removed and before any packaging). `Assert-ProcessedCli` runs the protected `obfy.exe`: `--version` prints a version; it builds a throw-away net10.0 console project under `%TEMP%`, protects it at `-l standard` (the output must report encrypted strings) and runs the result; `config generate` must write `"level"` and `"stringEncryption"`; and a handwritten configuration with every protection off must load without "Unknown configuration key", report "No transformations were applied", and give an output that runs. `Assert-ProcessedUi` starts the protected `ObfyUI.exe` on that probe with its own WebView2 profile and preferences (`OBFY_WEBVIEW2_USER_DATA`, `OBFY_UI_PREFERENCES`) and a debug port, then reads the page over the DevTools protocol: the Files screen is shown (not the crash view) and the bridge exists; `app.info`, `files.get` and `settings.applyLevel` answer with the documented names; a run started through `run.start` finishes with no failures within 120 seconds; and the assembly it wrote runs. It needs an interactive Windows session and the WebView2 Runtime, and when the shell is elevated it sets the machine policy `HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments` for `ObfyUI.exe` (an elevated WebView2 host ignores the environment variable, as in the CI UI-test step) and puts it back afterwards. It does not prove every screen, the native file dialog or a machine with no desktop
+- **When a check fails** the script throws and no installer is built. The error carries the command's own output, and the UI failures end with the tail of the newest log in `%LOCALAPPDATA%\Obfy\Logs`. The protected files stay in `build/publish` and `build/publish-ui`, so run `build\publish\obfy.exe` or `build\publish-ui\ObfyUI.exe` by hand; `build/temp-obfy`, `obfuscated-cli` and `obfuscated-ui` are removed by the next run. `-SkipObfuscation` and `-SkipPublish` skip protection and the checks. `.github/workflows/package.yml` runs the script on the Windows runner
+
+## Visual Studio extension
+
+- **Runs**: `ObfuscateCommand` and the post-build step (`BuildEvents`) register each run with `ObfuscationRunTracker` and pass its token to `CliProcessRunner`, which owns the CLI process. A run ends when the process exits, the token is cancelled or the time limit passes (30 minutes, `CliProcessRunner.DefaultTimeoutMinutes`; Tools > Options > Obfy > General > Run Timeout (minutes), above 1440 counts as 1440, below 1 as 30). On cancel or timeout the whole process tree is ended: the CLI runs in a kill-on-close job object (`ProcessJob`), with `taskkill /T /F` as the fallback. The tracker cancels a run when the solution closes, the package is disposed, a new build of the same project starts, or the **Cancel Obfuscation** command is used (project context menu, visible only while a run is active)
+- **Commands**: register each one as `[Command(PackageGuids.CommandSetString, PackageIds.x)]`. The one-argument form registers under the package GUID, and the `.vsct` defines every button under the command-set GUID, so the command would never run. `CommandTableTests` reads the `.vsct` and the command sources and fails when they disagree
+- **Tests** (`Obfy.VisualStudio.Tests`) link the files of `Src/Obfy.VisualStudio` that have no Visual Studio dependency (see the test project); a new such file that needs a test must be linked there. The tests that run real child processes are Windows-only
+- **Dependencies**: `MessagePack` 2.5.303 is a direct reference (version in `Directory.Packages.props`) that replaces the vulnerable 2.5.192 the Visual Studio SDK brings in; remove it when the 17.x SDK asks for 2.5.303 or later. It is not in the VSIX
+
 ## Data Storage
 
 - Settings: user-chosen `obfy.json` (`obfy config generate` / Save Configuration); UI prefs at `%APPDATA%\Obfy\ui-preferences.json` (override with `OBFY_UI_PREFERENCES`). A session `-o` path is not saved
@@ -272,4 +301,4 @@ git worktree add .worktrees/<branch-name> -b <branch-name>
 | `NameGenerator` | Generates obfuscated symbol names |
 | `EncryptionHelper` | String encryption utilities |
 | `PipelineContext` | Shared state across obfuscators |
-| `IncrementalCache` | SHA-256 of the Obfy.Core MVID + input bytes + settings (`{output}.obfycache`); locked/corrupt cache is a miss |
+| `IncrementalCache` | `{output}.obfycache`: a JSON entry with a SHA-256 key (Obfy.Core version + MVID, input bytes, settings, signing key file, embedded dependencies), the cached run's statistics, three counts (symbol-map entries, skipped items, warnings) and the length + SHA-256 of the output and of its packing files. Numbers and hashes only, never a name or the symbol map. A hit needs the key and every fingerprint to match, so an output replaced since the cache was written is a miss; a locked, corrupt or older-layout file is a miss. It covers a single assembly or a merge, and is not used when the output replaces the input. `ObfuscationRunOptions` (`NeedsSymbolMap`, `NeedsReport`) makes a hit decline when the caller needs what the cache does not hold: `--map` and `--report` set them, the desktop app sets both. The entry is written to a temp file and moved into place |

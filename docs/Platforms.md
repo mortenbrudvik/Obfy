@@ -1,5 +1,17 @@
 # Platform notes
 
+## Target frameworks
+
+Protected assemblies run on .NET Core 3.1 (`netcoreapp3.1`), .NET 5 through .NET 10, and .NET Framework 4.6.1 through 4.8 (`net461` to `net48`). A `netstandard2.0` library runs on any of those. No technique is turned off for a target. The injected helper code names framework types (`File`, `Environment`, `Marshal`, the hashing and AES types, and others) through the assemblies the input's own core library reference points at, and the version of that reference decides where each type lives (the `System.Runtime` facade of net6 has no `RuntimeInformation`, the `System.Security.Cryptography` assembly does not exist before .NET 7, and `File` is not in the net5 facade), so the output loads on the framework it was built for.
+
+Three members depend on the target, and each is left out or replaced where the target lacks it:
+
+- Anti-tamper's single-file fallback through `Environment.ProcessPath` is emitted for .NET 6 and later only. On other targets an assembly with an empty `Location` is skipped, as [Techniques.md](Techniques.md) describes.
+- Control-flow opaque predicates draw on `Environment.TickCount64` only where the core library has it (.NET Core 3.0 and later), not on .NET Framework or netstandard 2.0 modules. The other runtime values they use are on every target.
+- Anti-dump reads the process architecture through `RuntimeInformation`, which .NET Framework has from 4.7.1; on a .NET Framework target before 4.7.1 (net461, for one) it reads the pointer size instead.
+
+The test suite builds and starts a protected SDK app on each of these targets whose runtime and reference assemblies are installed, and skips the others with a reason in the test output (`ProtectedConsoleStartupTests`; see [Testing.md](Testing.md)). Method encryption and anti-dump need Windows. The platform profiles below add their own restrictions.
+
 ## Unity
 
 See [Unity.md](Unity.md). Use `runtimeProfile: UnityIl2Cpp` for IL2CPP players.

@@ -122,7 +122,7 @@ Only after Phase 1 is green. Same harness, more fixtures.
 | TR-24 | Satellite / `*.resources.dll` skip: one fixture or a built satellite; confirm default exclude leaves it unobfuscated and the parent still loads. | S | Low | ✅ Done (`SatelliteTests`) |
 | TR-25 | Split CLI “integration” file: parse vs process. Rename tests that only parse so the file list stops over-claiming. | S | Low | ✅ Done (`IntegrationParseTests` / `IntegrationProcessTests`) |
 
-**Out of Phase 2 on purpose:** ASP.NET, worker services, mixed-mode, netframework TFMs. Add those when a bug or a claimed platform requires them.
+**Out of Phase 2 on purpose:** ASP.NET, worker services, mixed-mode, netframework TFMs. Add those when a bug or a claimed platform requires them. Target frameworks have since been added for that reason: injected references crashed protected apps on net48, net5, net6 and netcoreapp3.1, so `ProtectedConsoleStartupTests` now builds and runs an SDK app on each documented target (see [Testing.md](Testing.md)).
 
 ---
 

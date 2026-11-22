@@ -10,17 +10,19 @@ This page gives no test counts, because they change with almost every commit. Ea
 
 | Project | Covers | Run |
 |---------|--------|-----|
-| Obfy.Tests | Core obfuscation logic, including ILSpy decompiler-resistance fixtures, schema contract, Settings.Core validation of `ObfySettings`, and build/CI/installer/MSIX guards (`HybridBuildTests`, `CiUiWorkflowTests`, `InstallerWebView2Tests`, `MsixPackageTests`) | `dotnet test Tests/Obfy.Tests` |
-| Obfy.Console.Tests | CLI parsing (`CommandParsingTests`, `SolutionInputTests`), `Program.Main` process tests, wizard file write | `dotnet test Tests/Obfy.Console.Tests` |
-| Obfy.App.Tests | The UI sessions (`ProtectionSession`, `InputSession`, `LogBuffer`, `ResultsStore`, `RunCoordinator`), the endpoint handlers, `JsonUtils`. No WPF, no WebView2 | `dotnet test Tests/Obfy.App.Tests` |
+| Obfy.Tests | Core obfuscation logic, including ILSpy decompiler-resistance fixtures, schema contract, Settings.Core validation of `ObfySettings`, the symbol-renaming reference rewrites, the framework-target tables, the incremental cache, and build/CI/installer/MSIX/version guards (`HybridBuildTests`, `CiUiWorkflowTests`, `InstallerWebView2Tests`, `InstallerPackagingTests`, `MsixPackageTests`, `ReleaseVersionConsistencyTests`, `CentralPackageVersionTests`) | `dotnet test Tests/Obfy.Tests` |
+| Obfy.Console.Tests | CLI parsing (`CommandParsingTests`, `SolutionInputTests`), `Program.Main` process tests, wizard file write, Ctrl+C cancellation, the `--map` / `--report` path guard, `--incremental` through the CLI, the version of the built CLI | `dotnet test Tests/Obfy.Console.Tests` |
+| Obfy.App.Tests | The UI sessions (`ProtectionSession`, `InputSession`, `LogBuffer`, `ResultsStore`, `RunCoordinator`, including its lock and the output and symbol-map collision checks), the endpoint handlers, `JsonUtils`. No WPF, no WebView2 | `dotnet test Tests/Obfy.App.Tests` |
 | Obfy.Interop.Tests | The bridge (`ApiBridge`, `ApiRegistry`, `ApiRegistrations`), event aggregator and publisher, `WebViewHandler`, request JSON contracts, and `TechniqueContentContractTests` | `dotnet test Tests/Obfy.Interop.Tests` |
-| Obfy.UI.Tests | Shell wiring (`HybridWiringTests`), host service, startup command line | `dotnet test Tests/Obfy.UI.Tests` |
+| Obfy.UI.Tests | Shell wiring (`HybridWiringTests`), the shutdown coordinator and the window's close path (`ShutdownCoordinatorTests`, `ShellClosingTests`), host service, startup command line | `dotnet test Tests/Obfy.UI.Tests` |
 | Obfy.UI.AutomationTests | Locator unit tests (default CI), plus `Category=UI` tests: Playwright-over-WebView2 end-to-end (`WebUiTests`) and one FlaUI window smoke (`FlaUiSmokeTests`) | `dotnet test Tests/Obfy.UI.AutomationTests` for the locator tests; `--filter Category=UI` for the end-to-end cases (see below) |
-| Obfy.ScenarioTests | SDK fixtures and checks (Unity stub, merge, WPF, WinForms, console, examples), plus `Category=Platform` tests (Blazor, NativeAOT, MAUI Windows) | `dotnet test Tests/Obfy.ScenarioTests` (default job); `--filter Category=Platform` for the platform tests |
-| Obfy.VisualStudio.Tests | VS settings JSON, settings dialog ViewModel, CLI argv, in-place copy, output-assembly locator, CLI path locator (no VS hive) | `dotnet test Tests/Obfy.VisualStudio.Tests` |
-| Web app (Vitest, `Src/WebApp`) | The page: shell and run bar, Files, Protection (including the Read more online calls), Results, the in-app Guide quick-start and its online-guide button, shared components, interop client and the `api.app.openGuide` wrapper, content | `npm run test:run` in `Src/WebApp` |
+| Obfy.ScenarioTests | SDK fixtures and checks (Unity stub, merge, WPF, WinForms, console, examples), a protected console app started on each target framework, the installer's self-protection settings, plus `Category=Platform` tests (Blazor, NativeAOT, MAUI Windows) | `dotnet test Tests/Obfy.ScenarioTests` (default job); `--filter Category=Platform` for the platform tests |
+| Obfy.VisualStudio.Tests | VS settings JSON, settings dialog ViewModel, CLI argv, in-place copy, output-assembly locator, CLI path locator, the CLI process runner (cancel, time limit, whole-tree kill), the run tracker, the command table (no VS hive) | `dotnet test Tests/Obfy.VisualStudio.Tests` |
+| Web app (Vitest, `Src/WebApp`) | The page: shell and run bar, the per-screen error boundary, text drafts (`useDraft`), Files, Protection (including the Read more online calls), Results, the in-app Guide quick-start and its online-guide button, shared components, interop client and the `api.app.openGuide` wrapper, content | `npm run test:run` in `Src/WebApp` |
 
 The default CI filter is `Category!=UI&Category!=Platform`, so the `Category=UI` and `Category=Platform` tests are not part of a plain `dotnet test`. Counts are xUnit cases (`[Theory]` expansions included), so a project's total is not its number of methods.
+
+Some cases need more than the .NET 10 SDK. `ProtectedConsoleStartupTests` builds an SDK app and runs it protected on each of net10.0, net9.0, net8.0, net7.0, net6.0, net5.0, netcoreapp3.1, net48 and net461 (Windows only: method encryption and anti-dump use `kernel32`). A target is skipped, with the reason in the test output, when this machine does not have its runtime (`dotnet --list-runtimes`; the .NET Framework 4.x runtime for net48 and net461) or, for net48 and net461, its reference assemblies (a targeting pack, or the `Microsoft.NETFramework.ReferenceAssemblies.<tfm>` package in the NuGet cache, which any restore of a project that targets it fills). The framework the tests themselves run on is never skipped. CI installs the .NET 10, 9 and 8.0.106 SDKs, so those targets always run there. `Obfy.Tests` checks the same targets without running an app (`FrameworkReferencesTests`: every injected type and member reference against that target's reference assemblies) and skips a target the same way. Tests that scan the repository for project files skip `.worktrees`, `bin`, `obj` and `node_modules` by folder name, so running the suite inside a worktree reads only that checkout.
 
 ## Test Stack
 
@@ -105,6 +107,13 @@ Tests the core obfuscation engine:
 - **Service tests**: ObfuscationService, ReportService
 - **Pipeline tests**: Execution order, context management
 - **Utility tests**: NameGenerator, EncryptionHelper
+- **Symbol renaming**: each rewrite of a reference that binds by name is run, not just inspected. `SymbolRenamingGenericInstantiationTests` (members of generic instantiations of the module's own types), `SymbolRenamingAttributeArgumentTests` (named, `typeof` and enum arguments of custom attributes), `SymbolRenamingDerivedParentTests` (a member reference that names a derived type), `SymbolRenamingLeftoverNamesTests` and `SymbolRenamingRowIdTests` (original names left in the output bytes, and which row ids survive), for a single assembly, a closed set and a merge. `StaleMemberReferenceScanner` fails any reference that names a member its definition no longer has
+- **Virtualization with renaming**: `VmWithRenamingTests` protects an app with Virtualization and symbol renaming together and runs it; `VmImporterTests` pins the cause
+- **Reference proxy**: `ReferenceProxyRuntimeMatrixTests` runs one call shape at a time (argument counts, private nested types, value-type receivers, calls that must stay direct)
+- **Framework targets**: `FrameworkReferencesTests` and `FrameworkReferenceChokePointTests` (every injected reference goes through `FrameworkReferences`)
+- **Incremental cache**: `IncrementalCacheTests`, `IncrementalCacheAtomicWriteTests`, the `CoreServicesIncremental*Tests` (what a hit returns and when it is taken, in-place runs, the cases the cache does not cover) and `PathIdentityTests`
+- **Packing**: `MethodImageDecryptorTests`, `PackedBootstrapTests`, `NativePackerTests`
+- **Version and release**: `ReleaseVersionConsistencyTests`, `DirectoryBuildPropsVersionTests`, `ProductVersionScriptTests` and `ResolvePackageVersionTests` pin `version.json` as the one version source, the `package/AppxManifest.xml` snapshot and the tag check in `publish.yml`. `InstallerPackagingTests` pins what `build-installer.ps1` does (the start checks themselves run only when the installer is built, see `CLAUDE.md`)
 
 Location: `Tests/Obfy.Tests/`
 
@@ -122,11 +131,16 @@ Tests the command-line interface:
 | IntegrationParseTests | CLI parse without invoking `Program.Main` |
 | IntegrationProcessTests | `Program.Main` for generate, dry-run, missing file, bad JSON, unknown level |
 | DotnetToolPackTests | Packed `Obfy` nupkg / tool layout |
+| CliCancellationTests | An already-cancelled token stops each input mode (single assembly, merge, closed set, C# source) and writes nothing |
+| CliMapReportGuardTests, RunPathGuardTests | `--map` / `--report` refused when the path would replace an input, an output, the `-c` file, the signing key file or a stream; the problem-matcher line; nothing is written |
+| CliIncrementalCacheTests, CliIncrementalNotAppliedTests | `--incremental`: what a hit prints and returns, `--map` / `--report` rebuilding, the warning when it covers nothing |
+| ProductVersionTests | The built CLI carries the version in `version.json` |
 
 Key patterns:
 
 - Uses `Program.CreateRootCommand()` for testing
 - Uses `TestConsole` for capturing output
+- `ProblemLineCapture` collects the problem-matcher lines a run prints
 - Creates temp files for integration tests
 
 Location: `Tests/Obfy.Console.Tests/`
@@ -141,7 +155,7 @@ All UI behaviour lives in `Obfy.App`, so it is tested without WPF or WebView2:
 | InputSession | file list, solution/project expansion, include flags, output and symbol-map paths, drops, mode hint |
 | LogBuffer | appended lines, batching, clear |
 | ResultsStore | summary, symbol tree, paging and search, preview decompile (off the calling thread), exports |
-| RunCoordinator | start/cancel, blockers and their reasons, progress, closed-set/merge selection, failed-start recovery |
+| RunCoordinator | start/cancel, blockers and their reasons, progress, closed-set/merge selection, failed-start recovery; `RunCoordinatorLockTests` (no disk work under the run lock, no run once a close is approved), `OutputCollisionTests` (a planned output or the symbol-map path that is a listed file) |
 | Features | settings endpoint handlers |
 
 Key patterns:
@@ -166,7 +180,7 @@ Location: `Tests/Obfy.Interop.Tests/`
 
 ### Obfy.UI.Tests (shell)
 
-`HybridWiringTests` (the container resolves the shell, bridge and sessions), `ApplicationHostServiceTests` and `StartupArgumentsTests` in Obfy.App.Tests (files and `-o` from the command line). No window is created.
+`HybridWiringTests` (the container resolves the shell, bridge and sessions, and an approved close refuses `Start`), `ShutdownCoordinatorTests` and `ShellClosingTests` (what a close, Quit and Restart ask and do, and that a close that does not happen reopens the door), `ApplicationHostServiceTests` and `StartupArgumentsTests` in Obfy.App.Tests (files and `-o` from the command line). No window is created.
 
 Location: `Tests/Obfy.UI.Tests/`
 
@@ -189,7 +203,16 @@ Vitest tests for the page: shell and run bar, Files, Protection, Results, the Gu
 
 ### Obfy.VisualStudio.Tests
 
-Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBuilder`, `OutputAssemblyLocator`, `ObfyCliLocator`, `SettingsDialogViewModel`). Linked from `Src/Obfy.VisualStudio/Services` so CI does not load the VSIX SDK.
+Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBuilder`, `OutputAssemblyLocator`, `ObfyCliLocator`, `SettingsDialogViewModel`, `OutputServiceExtensions`). Linked from `Src/Obfy.VisualStudio` (the files with no Visual Studio dependency, see the test project) so CI does not load the VSIX SDK. A new file that needs a test has to be linked there.
+
+| Test | What it proves |
+|------|----------------|
+| `CliProcessRunnerTests`, `CliProcessRunnerTimeoutTests`, `CliRunResultTests` | The runner against real child processes (a copy of `cmd.exe` and of `ping.exe`): cancel and the time limit end a long child and its children promptly, output before the kill is kept, a normal run is unaffected, a helper the CLI leaves running survives a normal run, and how a stopped run is reported. Windows only (`WindowsFactAttribute`); the limit tests run everywhere |
+| `ProcessJobTests` | The job object: terminate, kill on close, disarmed close |
+| `ObfuscationRunTrackerTests` | Which events cancel which runs |
+| `CommandTableTests` | Every command class is registered under a command-set GUID and id that the `.vsct` defines as a button, and every button has a command class. Reads the `.vsct` and the sources, since the commands need the Visual Studio SDK |
+
+The event wiring in `BuildEvents`, the commands and the options page only run inside Visual Studio and are not covered.
 
 Location: `Tests/Obfy.VisualStudio.Tests/`
 
@@ -207,6 +230,10 @@ Compile → obfuscate → run real SDK projects. Fixtures live under `Tests/Obfy
 | `SatelliteTests` | `*.resources.dll` satellite is not rewritten; parent still loads cultures |
 | `MsBuildIntegrationTests` | Example AfterBuild target invokes the CLI on Release |
 | `MergeScenarioTests` | Two SDK class libraries merge (and merge+obfuscate) then ALC-invoke |
+| `ProtectedConsoleStartupTests` | An SDK console app (`HelloConsole`) protected with the Aggressive preset, and with each of AntiDebug, AntiDump (a probe checks the dump hook is patched), MethodEncryption, AntiTamper, AES strings and Virtualization alone, and Virtualization together with symbol renaming, starts and runs on each target framework (see above); so does `RichConsole` (an embedded resource, a resx and a sibling assembly) with every technique at once |
+| `GenericInstantiationScenarioTests` | An SDK app (`GenericConsole`) that uses generic types it defines runs like the original after symbol renaming, single assembly and merge |
+| `InstallerSelfProtectionScenarioTests` | `build/self-obfuscation.json` protects a library and an app as one closed set and the result runs; protecting them one at a time fails with `TypeLoadException` |
+| `SdkRuntimeSkipTests` | A target whose runtime or reference assemblies are missing is skipped with the reason, never failed or silently passed |
 | `UnitySampleTests` | `examples/unity/obfy.json` on a stub with `UnityEngine` types (default job) |
 | `BlazorWasmTests` | Publish WASM, obfuscate `_framework/*.dll`, ALC-invoke probe (`Category=Platform`) |
 | `NativeAotTests` | Obfuscate IL, `PublishAot`, run native exe (`Category=Platform`) |
@@ -288,4 +315,4 @@ PRs and pushes to `main` run `.github/workflows/ci.yml`:
 | `build` | Windows: Node 24, `npm ci`, `npm run lint` and `npm run test:run` in `Src/WebApp` (the .NET build then builds the page), then `dotnet test -c Release` with `Category!=UI&Category!=Platform` and `coverage.runsettings`. Coverage report + 80% **warning** (not a hard fail). Sticky PR comment is best-effort (`continue-on-error`, same-repo PRs only). The same job then runs `Category=UI`. |
 | `linux-cli` | Ubuntu `dotnet test Tests/Obfy.Console.Tests` (cross-platform CLI claim). |
 
-The `Category=UI` tests run on the Windows `build` job after the default suite. That runner's session is interactive and has the WebView2 Runtime, so they can launch `ObfyUI.exe` and attach Playwright to it over a debug port. Default `dotnet test` still skips `Category=UI`, so a local run does not open the window. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml`: NativeAOT on pull requests, and the full set on the weekly schedule and `workflow_dispatch`. A skipped platform test fails that job. `dotnet new maui` is allowed 180s because the first run restores the template pack. See [Testing-Roadmap.md](Testing-Roadmap.md).
+The `Category=UI` tests run on the Windows `build` job after the default suite. That runner's session is interactive and has the WebView2 Runtime, so they can launch `ObfyUI.exe` and attach Playwright to it over a debug port. Default `dotnet test` still skips `Category=UI`, so a local run does not open the window. `.github/workflows/package.yml` builds the MSIX and the Inno installer on pushes and pull requests to `main`; building the installer runs its start checks (the protected CLI and the protected desktop app), so a self-protection change that breaks either fails there. Platform tests (`Category=Platform`) run from `.github/workflows/platform.yml`: NativeAOT on pull requests, and the full set on the weekly schedule and `workflow_dispatch`. A skipped platform test fails that job. `dotnet new maui` is allowed 180s because the first run restores the template pack. See [Testing-Roadmap.md](Testing-Roadmap.md).

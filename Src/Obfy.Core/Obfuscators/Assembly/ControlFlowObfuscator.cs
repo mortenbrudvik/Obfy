@@ -289,19 +289,31 @@ public class ControlFlowObfuscator : IObfuscator
         var instructions = body.Instructions;
         var insertCount = 0;
 
-        // Insert opaque predicates at random positions
+        // An opaque predicate pushes its own condition value and branches at the insertion
+        // point. Inserting it where the evaluation stack is already non-empty (e.g. between
+        // a compiler-emitted `dup` and the instruction that consumes it) produces IL the JIT
+        // rejects with InvalidProgramException. Reuse the flattener's stack-depth analysis
+        // and only insert at sites with an empty stack. If depth cannot be computed, skip
+        // insertion entirely rather than emit unverifiable IL.
+        var depthBefore = ControlFlowFlattener.ComputeDepthBefore(instructions);
         var positions = new List<int>();
-        for (var i = 0; i < instructions.Count - 1; i++)
+        if (depthBefore != null)
         {
-            if (i > 0 && ObfuscatorHelpers.IsPrefix(instructions[i - 1]))
-                continue;
-
-            if (IsExceptionHandlerBoundary(body, instructions[i]))
-                continue;
-
-            if (_random.Next(100) < Math.Clamp(intensity, 1, 100))
+            for (var i = 0; i < instructions.Count - 1; i++)
             {
-                positions.Add(i);
+                if (depthBefore[i] != 0)
+                    continue;
+
+                if (i > 0 && ObfuscatorHelpers.IsPrefix(instructions[i - 1]))
+                    continue;
+
+                if (IsExceptionHandlerBoundary(body, instructions[i]))
+                    continue;
+
+                if (_random.Next(100) < Math.Clamp(intensity, 1, 100))
+                {
+                    positions.Add(i);
+                }
             }
         }
 

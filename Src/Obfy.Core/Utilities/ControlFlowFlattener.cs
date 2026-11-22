@@ -201,7 +201,7 @@ internal static class ControlFlowFlattener
         return leaders;
     }
 
-    private static int[]? ComputeDepthBefore(IList<Instruction> instructions)
+    internal static int[]? ComputeDepthBefore(IList<Instruction> instructions)
     {
         var depthBefore = new int[instructions.Count];
         var depth = 0;

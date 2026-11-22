@@ -57,9 +57,10 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
         get => _level;
         set
         {
-            if (SetProperty(ref _level, value))
+            if (SetProperty(ref _level, value) && value != ObfuscationLevel.Custom)
             {
-                // When level changes, update the individual toggles to match
+                // When level changes to a preset, update the individual toggles to match;
+                // switching to Custom preserves the user's current toggle values.
                 ApplyLevel();
             }
         }
@@ -228,6 +229,11 @@ public class SettingsDialogViewModel : INotifyPropertyChanged
 
     private void ApplyLevel()
     {
+        if (_level == ObfuscationLevel.Custom)
+        {
+            return;
+        }
+
         var levelSettings = ObfySettings.ForLevel(_level);
 
         // Temporarily disable the custom level switch

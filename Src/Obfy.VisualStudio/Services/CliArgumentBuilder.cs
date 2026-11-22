@@ -14,6 +14,8 @@ public static class CliArgumentBuilder
     private static readonly Regex LastInteger = new(@"-?\d+", RegexOptions.Compiled);
     private static readonly Regex AnsiEscape = new("\u001b\\[[0-9;?]*[ -/]*[@-~]", RegexOptions.Compiled);
 
+    private static readonly HashSet<string> KnownFlags = new(StringComparer.Ordinal) { "-o", "-c", "-l", "--map" };
+
     public static IReadOnlyList<string> Build(
         string assemblyPath,
         string? outputPath,
@@ -21,27 +23,28 @@ public static class CliArgumentBuilder
         ObfuscationLevel? level = null,
         bool generateSymbolMap = false)
     {
-        var args = new List<string> { assemblyPath };
+        var args = new ArgvList();
+        args.AddValue(assemblyPath);
 
         if (!string.IsNullOrEmpty(outputPath))
         {
             var outputDir = Path.GetDirectoryName(Path.GetFullPath(outputPath));
             if (!string.IsNullOrEmpty(outputDir))
             {
-                args.Add("-o");
-                args.Add(outputDir);
+                args.AddFlag("-o");
+                args.AddValue(outputDir);
             }
         }
 
         if (!string.IsNullOrEmpty(configPath))
         {
-            args.Add("-c");
-            args.Add(configPath!);
+            args.AddFlag("-c");
+            args.AddValue(configPath!);
         }
         else if (level is not null)
         {
-            args.Add("-l");
-            args.Add(level.Value.ToString().ToLowerInvariant());
+            args.AddFlag("-l");
+            args.AddValue(level.Value.ToString().ToLowerInvariant());
         }
 
         if (generateSymbolMap)
@@ -55,8 +58,8 @@ public static class CliArgumentBuilder
                     nameof(assemblyPath));
             }
 
-            args.Add("--map");
-            args.Add(Path.Combine(assemblyDir, assemblyName + ".map.json"));
+            args.AddFlag("--map");
+            args.AddValue(Path.Combine(assemblyDir, assemblyName + ".map.json"));
         }
 
         return args;
@@ -64,12 +67,14 @@ public static class CliArgumentBuilder
 
     public static string ToCommandLine(IReadOnlyList<string> args)
     {
+        var argv = args as ArgvList;
         var sb = new StringBuilder();
         for (var i = 0; i < args.Count; i++)
         {
             if (i > 0)
                 sb.Append(' ');
-            sb.Append(Quote(args[i]));
+            var isLiteralFlag = argv != null ? argv.IsFlag(i) : KnownFlags.Contains(args[i]);
+            sb.Append(isLiteralFlag ? args[i] : Quote(args[i]));
         }
 
         return sb.ToString();
@@ -77,9 +82,6 @@ public static class CliArgumentBuilder
 
     internal static string Quote(string value)
     {
-        if (value.Length > 0 && value[0] == '-')
-            return value;
-
         // CommandLineToArgvW treats a backslash before a quote as an escape.
         // A trailing backslash must be doubled or "C:\" swallows the closing quote.
         var sb = new StringBuilder();
@@ -114,6 +116,26 @@ public static class CliArgumentBuilder
             sb.Append('\\', slashes * 2);
         sb.Append('"');
         return sb.ToString();
+    }
+
+    private sealed class ArgvList : IReadOnlyList<string>
+    {
+        private readonly List<(string Value, bool IsFlag)> _items = new();
+
+        public int Count => _items.Count;
+        public string this[int index] => _items[index].Value;
+
+        public void AddFlag(string flag) => _items.Add((flag, true));
+        public void AddValue(string value) => _items.Add((value, false));
+        public bool IsFlag(int index) => _items[index].IsFlag;
+
+        public IEnumerator<string> GetEnumerator()
+        {
+            foreach (var item in _items)
+                yield return item.Value;
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     /// <summary>

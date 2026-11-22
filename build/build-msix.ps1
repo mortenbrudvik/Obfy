@@ -1,4 +1,4 @@
-# Build a sideload/Store MSIX package for Obfy (UI + CLI).
+﻿# Build a sideload/Store MSIX package for Obfy (UI + CLI).
 # Requires the Windows SDK (MakeAppx, MakePri, SignTool).
 #
 # Default identity is local/sideload (Subject = -Publisher, default CN=Obfy).
@@ -95,26 +95,11 @@ function Find-SdkTool {
 }
 
 function Get-PackageVersion {
-    if (-not (Test-Path $VersionFile)) {
-        throw "version.json not found at $VersionFile"
+    $productVersion = (& (Join-Path $BuildDir "Get-ProductVersion.ps1") -VersionFile $VersionFile | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($productVersion)) {
+        throw "Get-ProductVersion.ps1 did not return a version from $VersionFile"
     }
-
-    $version = Get-Content $VersionFile -Raw | ConvertFrom-Json
-    foreach ($part in @("major", "minor", "patch")) {
-        $value = $version.$part
-        if ($null -eq $value) {
-            throw "version.json '$part' must be an integer, got ''"
-        }
-        try {
-            $intValue = [int]$value
-        } catch {
-            throw "version.json '$part' must be an integer, got '$value'"
-        }
-        if ($intValue -lt 0 -or $intValue -gt 65535) {
-            throw "version.json '$part'=$intValue is outside the MSIX 0..65535 range"
-        }
-    }
-    return "$($version.major).$($version.minor).$($version.patch).0"
+    return "$productVersion.0"
 }
 
 function Get-PublishFileCount([string]$Path) {

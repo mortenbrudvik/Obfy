@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -60,24 +61,23 @@ public static class ObfySettingsJson
     /// </summary>
     public static string Serialize(ObfySettings settings, string? existingJson = null)
     {
-        var node = ParseObject(existingJson) ?? new JsonObject();
-        node["level"] = settings.Level.ToString().ToLowerInvariant();
-        node["postBuildEnabled"] = settings.PostBuildEnabled;
+        var node = ParseOrCreateObject(existingJson);
+        SetProperty(node, "level", settings.Level.ToString().ToLowerInvariant());
+        SetProperty(node, "postBuildEnabled", settings.PostBuildEnabled);
         SetEnabled(node, "stringEncryption", settings.StringEncryption);
         SetEnabled(node, "controlFlow", settings.ControlFlow);
         SetEnabled(node, "symbolRenaming", settings.SymbolRenaming);
         SetEnabled(node, "constantEncryption", settings.ConstantEncryption);
         SetEnabled(node, "resourceEncryption", settings.ResourceEncryption);
 
-        var protection = node["protection"] as JsonObject ?? new JsonObject();
-        protection["antiDebug"] = settings.AntiDebug;
-        protection["antiDump"] = settings.AntiDump;
-        protection["referenceProxy"] = settings.ReferenceProxy;
+        var protection = TakeOrCreateObject(node, "protection");
+        SetProperty(protection, "antiDebug", settings.AntiDebug);
+        SetProperty(protection, "antiDump", settings.AntiDump);
+        SetProperty(protection, "referenceProxy", settings.ReferenceProxy);
         SetEnabled(protection, "antiTamper", settings.AntiTamper);
         SetEnabled(protection, "antiDecompiler", settings.AntiDecompiler);
-        protection["methodEncryption"] = settings.MethodEncryption;
-        protection["proxyExternalCalls"] = settings.ProxyExternalCalls;
-        node["protection"] = protection;
+        SetProperty(protection, "methodEncryption", settings.MethodEncryption);
+        SetProperty(protection, "proxyExternalCalls", settings.ProxyExternalCalls);
 
         WritePresetValues(node, settings.Level);
 
@@ -112,46 +112,124 @@ public static class ObfySettingsJson
                 return;
         }
 
-        var controlFlow = (JsonObject)node["controlFlow"]!;
-        controlFlow["mode"] = "switch";
-        controlFlow["intensity"] = intensity;
+        var controlFlow = TakeOrCreateObject(node, "controlFlow");
+        SetProperty(controlFlow, "mode", "switch");
+        SetProperty(controlFlow, "intensity", intensity);
 
-        var constants = (JsonObject)node["constantEncryption"]!;
-        constants["algorithm"] = "xor";
+        var constants = TakeOrCreateObject(node, "constantEncryption");
+        SetProperty(constants, "algorithm", "xor");
 
-        var metadata = node["metadata"] as JsonObject ?? new JsonObject();
-        metadata["removeDebugInfo"] = true;
-        metadata["removeAttributes"] = removeAttributes;
-        node["metadata"] = metadata;
+        var metadata = TakeOrCreateObject(node, "metadata");
+        SetProperty(metadata, "removeDebugInfo", true);
+        SetProperty(metadata, "removeAttributes", removeAttributes);
     }
 
     public static string PatchPostBuildEnabled(string existingJson, bool enabled)
     {
-        var node = ParseObject(existingJson) ?? new JsonObject();
-        node["postBuildEnabled"] = enabled;
+        var node = ParseOrCreateObject(existingJson);
+        SetProperty(node, "postBuildEnabled", enabled);
         return node.ToJsonString(WriteOptions);
     }
 
-    private static JsonObject? ParseObject(string? json)
+    private static JsonObject ParseOrCreateObject(string? json)
     {
         if (json == null || string.IsNullOrWhiteSpace(json))
-            return null;
+            return new JsonObject();
+
+        JsonNode? parsed;
         try
         {
-            return JsonNode.Parse(json) as JsonObject;
+            parsed = JsonNode.Parse(json);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            return null;
+            throw new InvalidOperationException(
+                "Existing obfy.json is not valid JSON. Fix the file before saving so existing settings are not lost.",
+                ex);
         }
+
+        if (parsed is not JsonObject obj)
+        {
+            throw new InvalidOperationException(
+                "Existing obfy.json must contain a JSON object at the root.");
+        }
+
+        return obj;
     }
 
     private static void SetEnabled(JsonObject parent, string name, bool enabled)
     {
-        if (parent[name] is JsonObject existing)
-            existing["enabled"] = enabled;
-        else
-            parent[name] = new JsonObject { ["enabled"] = enabled };
+        var existing = TakeOrCreateObject(parent, name);
+        SetProperty(existing, "enabled", enabled);
+    }
+
+    private static void SetProperty(JsonObject obj, string camelCaseName, JsonNode? value)
+    {
+        List<string>? keysToRemove = null;
+        foreach (var prop in obj)
+        {
+            if (string.Equals(prop.Key, camelCaseName, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(prop.Key, camelCaseName, StringComparison.Ordinal))
+            {
+                keysToRemove ??= new List<string>();
+                keysToRemove.Add(prop.Key);
+            }
+        }
+
+        if (keysToRemove != null)
+        {
+            foreach (var key in keysToRemove)
+                obj.Remove(key);
+        }
+
+        obj[camelCaseName] = value;
+    }
+
+    private static JsonObject TakeOrCreateObject(JsonObject parent, string camelCaseName)
+    {
+        JsonObject? kept = null;
+        if (parent.TryGetPropertyValue(camelCaseName, out var exactNode) && exactNode is JsonObject exactObj)
+        {
+            kept = exactObj;
+        }
+
+        List<string>? keysToRemove = null;
+        foreach (var prop in parent)
+        {
+            if (!string.Equals(prop.Key, camelCaseName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (kept == null && prop.Value is JsonObject candidateObj)
+            {
+                kept = candidateObj;
+            }
+
+            if (!string.Equals(prop.Key, camelCaseName, StringComparison.Ordinal) ||
+                kept == null ||
+                !ReferenceEquals(prop.Value, kept))
+            {
+                keysToRemove ??= new List<string>();
+                keysToRemove.Add(prop.Key);
+            }
+        }
+
+        if (keysToRemove != null)
+        {
+            foreach (var key in keysToRemove)
+                parent.Remove(key);
+        }
+
+        if (kept == null)
+        {
+            kept = new JsonObject();
+            parent[camelCaseName] = kept;
+        }
+        else if (!parent.ContainsKey(camelCaseName))
+        {
+            parent[camelCaseName] = kept;
+        }
+
+        return kept;
     }
 
     private static bool TryReadLevel(JsonElement root, out ObfuscationLevel level)

@@ -78,8 +78,8 @@ Filename: "{app}\UI\{#MyAppUIExeName}"; Description: "Launch Obfy"; Flags: nowai
 
 [UninstallRun]
 ; Kill running instances before uninstall
-Filename: "taskkill"; Parameters: "/f /im {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillObfy"
-Filename: "taskkill"; Parameters: "/f /im {#MyAppUIExeName}"; Flags: runhidden; RunOnceId: "KillObfyUI"
+Filename: "{sys}\taskkill.exe"; Parameters: "/f /im {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillObfy"
+Filename: "{sys}\taskkill.exe"; Parameters: "/f /im {#MyAppUIExeName}"; Flags: runhidden; RunOnceId: "KillObfyUI"
 
 [Code]
 const
@@ -154,11 +154,23 @@ begin
       'Install WebView2 manually from https://developer.microsoft.com/microsoft-edge/webview2/ and re-run setup.';
 end;
 
-// Runs after the user confirms the install, so the machine-wide runtime is only installed
-// once they have committed. A non-empty result aborts setup with that message.
+// Terminates running instances after the user confirms installation, using the qualified System32 executable.
+procedure StopRunningInstances;
+var
+  TaskKillPath: string;
+  ResultCode: Integer;
+begin
+  TaskKillPath := ExpandConstant('{sys}\taskkill.exe');
+  Exec(TaskKillPath, '/f /im {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(TaskKillPath, '/f /im {#MyAppUIExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+// Runs after the user confirms the install, so running instances are only stopped and the
+// machine-wide runtime is only installed once they have committed. A non-empty result aborts setup with that message.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
+  StopRunningInstances;
   if not IsWebView2RuntimeInstalled then
     Result := InstallWebView2Runtime(NeedsRestart);
 end;
@@ -167,7 +179,13 @@ procedure EnvAddPath(Path: string);
 var
   Paths: string;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+  if RegValueExists(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path') then
+  begin
+    // Do not overwrite an existing Path if querying it fails (e.g. unexpected type or length).
+    if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+      exit;
+  end
+  else
     Paths := '';
 
   // Check if path already exists
@@ -246,15 +264,4 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
     EnvRemovePath(ExpandConstant('{app}'));
-end;
-
-// Kill running instances before installation
-function InitializeSetup(): Boolean;
-var
-  ResultCode: Integer;
-begin
-  // Try to kill any running instances
-  Exec('taskkill', '/f /im obfy.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec('taskkill', '/f /im ObfyUI.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Result := True;
 end;

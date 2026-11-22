@@ -14,6 +14,9 @@ public static class ObfuscationAttributeRules
 {
     public static bool IsExcluded(IHasCustomAttribute provider, ObfuscationFeature feature, ICollection<string>? warnings = null)
     {
+        if (provider is IMemberDef member)
+            return IsExcluded(member, feature, warnings);
+
         bool? exact = null;
         bool? all = null;
 
@@ -44,22 +47,22 @@ public static class ObfuscationAttributeRules
     }
 
     /// <summary>
-    /// Member-level <c>Exclude</c> wins. Otherwise the declaring type's directive applies
-    /// only when that type's <c>ApplyToMembers</c> is true (framework default).
+    /// Member-level <c>Exclude</c> wins. Otherwise walks enclosing declaring types; the nearest
+    /// declaring type with a directive applies only when that type's <c>ApplyToMembers</c> is true
+    /// (framework default).
     /// </summary>
     public static bool IsExcluded(IMemberDef member, ObfuscationFeature feature, ICollection<string>? warnings = null)
     {
         if (TryGetDirective(member, feature, out var exclude, warnings))
             return exclude;
 
-        var declaring = member.DeclaringType;
-        if (declaring == null)
-            return false;
+        for (var declaring = member.DeclaringType; declaring != null; declaring = declaring.DeclaringType)
+        {
+            if (TryGetDirective(declaring, feature, out var parentExclude, warnings))
+                return parentExclude && ApplyToMembers(declaring, feature);
+        }
 
-        if (!IsExcluded(declaring, feature, warnings))
-            return false;
-
-        return ApplyToMembers(declaring, feature);
+        return false;
     }
 
     public static bool ApplyToMembers(TypeDef type, ObfuscationFeature feature)
@@ -85,15 +88,19 @@ public static class ObfuscationAttributeRules
         return true;
     }
 
-    public static bool MatchesInclusions(TypeDef type, MethodDef? method, InclusionRules inclusions)
+    public static bool MatchesInclusions(TypeDef? type, MethodDef? method, InclusionRules inclusions)
     {
         if (!inclusions.HasAny)
             return true;
 
-        if (inclusions.Namespaces.Any(n => ObfuscatorHelpers.MatchesPattern(type.Namespace, n)))
-            return true;
-        if (inclusions.Types.Any(t => ObfuscatorHelpers.MatchesPattern(type.Name, t)))
-            return true;
+        for (var current = type; current != null; current = current.DeclaringType)
+        {
+            if (inclusions.Namespaces.Any(n => ObfuscatorHelpers.MatchesPattern(current.Namespace, n)))
+                return true;
+            if (inclusions.Types.Any(t => ObfuscatorHelpers.MatchesPattern(current.Name, t)))
+                return true;
+        }
+
         if (method != null && inclusions.Methods.Any(m => ObfuscatorHelpers.MatchesPattern(method.Name, m)))
             return true;
 
@@ -119,19 +126,23 @@ public static class ObfuscationAttributeRules
     /// <summary>
     /// Whether the type should be visited for member processing. A type-level exclude with
     /// <c>ApplyToMembers=true</c> skips the whole type; <c>ApplyToMembers=false</c> still
-    /// visits members.
+    /// visits members. Walks enclosing declaring types for nested types.
     /// </summary>
     public static bool AllowType(TypeDef type, ObfySettings settings, ObfuscationFeature feature, ICollection<string>? warnings = null)
     {
-        if (ObfuscatorHelpers.IsRuntimeHelper(type) && feature != ObfuscationFeature.ControlFlow)
-            return false;
-        if (type.Namespace == "Obfy.Core.Models")
-            return false;
+        for (var current = type; current != null; current = current.DeclaringType)
+        {
+            if (ObfuscatorHelpers.IsRuntimeHelper(current) && feature != ObfuscationFeature.ControlFlow)
+                return false;
+            if (current.Namespace == "Obfy.Core.Models")
+                return false;
+            if (ObfuscatorHelpers.IsExcluded(current, settings.Exclusions))
+                return false;
+        }
+
         if (IsExcluded(type, feature, warnings) && ApplyToMembers(type, feature))
             return false;
-        if (!TypeMayContainInclusions(type, settings.Inclusions))
-            return false;
-        return !ObfuscatorHelpers.IsExcluded(type, settings.Exclusions);
+        return TypeMayContainInclusions(type, settings.Inclusions);
     }
 
     public static bool AllowMethod(MethodDef method, ObfySettings settings, ObfuscationFeature feature, ICollection<string>? warnings = null)
@@ -274,7 +285,9 @@ public static class ObfuscationAttributeRules
     }
 
     private static string Normalize(string feature) =>
-        feature.Replace(" ", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal);
+        feature.Replace(" ", "", StringComparison.Ordinal)
+               .Replace("-", "", StringComparison.Ordinal)
+               .ToLowerInvariant();
 
     private static void NoteUnknownFeature(string featureName, string target, ICollection<string>? warnings)
     {

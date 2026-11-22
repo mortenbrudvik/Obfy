@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 
 namespace Settings.Core.Validation;
 
@@ -53,7 +54,8 @@ public static class SettingsValidator
         var isValid = Validator.TryValidateObject(settings, context, results, validateAllProperties: true);
 
         // Recursively validate nested objects
-        ValidateNestedObjects(settings, results, ref isValid);
+        var visited = new HashSet<object>(ReferenceEqualityComparer.Instance) { settings };
+        ValidateNestedObjects(settings, string.Empty, visited, results, ref isValid);
 
         return isValid;
     }
@@ -70,19 +72,27 @@ public static class SettingsValidator
         return TryValidate(settings, results);
     }
 
-    private static void ValidateNestedObjects<T>(T settings, ICollection<ValidationResult> results, ref bool isValid) where T : class
+    private static void ValidateNestedObjects(
+        object current,
+        string prefix,
+        HashSet<object> visited,
+        ICollection<ValidationResult> results,
+        ref bool isValid)
     {
-        var properties = typeof(T).GetProperties()
-            .Where(p => p.PropertyType.IsClass
-                && p.PropertyType != typeof(string)
-                && p.CanRead);
+        var properties = current.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(static p => p.CanRead
+                && p.GetIndexParameters().Length == 0
+                && p.PropertyType.IsClass
+                && p.PropertyType != typeof(string));
 
         foreach (var property in properties)
         {
-            var value = property.GetValue(settings);
-            if (value == null)
+            var value = property.GetValue(current);
+            if (value == null || !visited.Add(value))
                 continue;
 
+            var path = string.IsNullOrEmpty(prefix) ? property.Name : $"{prefix}.{property.Name}";
             var nestedContext = new ValidationContext(value);
             var nestedResults = new List<ValidationResult>();
 
@@ -92,10 +102,12 @@ public static class SettingsValidator
                 foreach (var result in nestedResults)
                 {
                     results.Add(new ValidationResult(
-                        $"{property.Name}.{result.ErrorMessage}",
-                        result.MemberNames.Select(m => $"{property.Name}.{m}")));
+                        $"{path}.{result.ErrorMessage}",
+                        result.MemberNames.Select(m => $"{path}.{m}")));
                 }
             }
+
+            ValidateNestedObjects(value, path, visited, results, ref isValid);
         }
     }
 }

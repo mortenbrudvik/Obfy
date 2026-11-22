@@ -142,7 +142,7 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
                     if ((instr.OpCode == OpCodes.Callvirt || instr.OpCode == OpCodes.Call) &&
                         called.Name == "GetManifestResourceStream" &&
-                        called.DeclaringType?.Name == "Assembly")
+                        called.DeclaringType?.FullName is "System.Reflection.Assembly" or "System.Reflection.RuntimeAssembly")
                     {
                         callsGetStream = true;
                     }
@@ -292,9 +292,11 @@ public class ResourceEncryptionObfuscator : IObfuscator
 
         var streamLocal = new Local(new ClassSig(streamType));
         var bufferLocal = new Local(new ClassSig(memoryStreamType));
+        var resultLocal = new Local(new ClassSig(streamType));
         var iLocal = new Local(module.CorLibTypes.Int32);
         body.Variables.Add(streamLocal);
         body.Variables.Add(bufferLocal);
+        body.Variables.Add(resultLocal);
         body.Variables.Add(iLocal);
 
         var getStream = new MemberRefUser(module, "GetManifestResourceStream",
@@ -357,22 +359,48 @@ public class ResourceEncryptionObfuscator : IObfuscator
         body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 
-        // buffer = new MemoryStream(); stream.CopyTo(buffer); stream.Dispose();
+        // try { buffer = new MemoryStream(); stream.CopyTo(buffer); result = new MemoryStream(D(buffer.ToArray(), _k)); }
+        // finally { stream?.Dispose(); buffer?.Dispose(); }
+        var finallyStart = Instruction.Create(OpCodes.Ldloc, streamLocal);
+        var checkBuffer = Instruction.Create(OpCodes.Ldloc, bufferLocal);
+        var endFinally = Instruction.Create(OpCodes.Endfinally);
+        var returnResult = Instruction.Create(OpCodes.Ldloc, resultLocal);
+
         body.Instructions.Add(readAndDecrypt); // newobj MemoryStream()
         body.Instructions.Add(Instruction.Create(OpCodes.Stloc, bufferLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, streamLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufferLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, copyTo));
-        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, streamLocal));
-        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, dispose));
 
-        // return new MemoryStream(D(buffer.ToArray(), _k));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufferLocal));
         body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, toArray));
         body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, keyField));
         body.Instructions.Add(Instruction.Create(OpCodes.Call, bytesDecrypt));
         body.Instructions.Add(Instruction.Create(OpCodes.Newobj, msByteCtor));
+        body.Instructions.Add(Instruction.Create(OpCodes.Stloc, resultLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Leave, returnResult));
+
+        body.Instructions.Add(finallyStart);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, checkBuffer));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, streamLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, dispose));
+
+        body.Instructions.Add(checkBuffer);
+        body.Instructions.Add(Instruction.Create(OpCodes.Brfalse, endFinally));
+        body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, bufferLocal));
+        body.Instructions.Add(Instruction.Create(OpCodes.Callvirt, dispose));
+        body.Instructions.Add(endFinally);
+
+        body.Instructions.Add(returnResult);
         body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Finally)
+        {
+            TryStart = readAndDecrypt,
+            TryEnd = finallyStart,
+            HandlerStart = finallyStart,
+            HandlerEnd = returnResult
+        });
 
         body.UpdateInstructionOffsets();
         return method;
@@ -406,7 +434,7 @@ public class ResourceEncryptionObfuscator : IObfuscator
             stringType);
 
         var typeNull = Instruction.Create(OpCodes.Ldarg_0);
-        var nsNull = Instruction.Create(OpCodes.Ldarg_0);
+        var nsNull = Instruction.Create(OpCodes.Nop);
         var resolved = Instruction.Create(OpCodes.Ldarg_0);
 
         // if (type == null) return Load(asm, name);
@@ -497,36 +525,48 @@ public class ResourceEncryptionObfuscator : IObfuscator
                     if (called.Name != "GetManifestResourceStream")
                         continue;
 
-                    var declaring = called.DeclaringType?.Name?.String;
-                    var arity = called.MethodSig?.Params.Count ?? -1;
-                    var isAssembly = declaring is "Assembly" or "RuntimeAssembly";
-                    var isModule = declaring is "Module" or "RuntimeModule";
-
-                    if (isAssembly && arity == 1)
-                    {
-                        instr.OpCode = OpCodes.Call;
-                        instr.Operand = loadResource;
-                        modified = true;
-                        rewritten++;
+                    var declaringFullName = called.DeclaringType?.FullName;
+                    var isAssembly = declaringFullName is "System.Reflection.Assembly" or "System.Reflection.RuntimeAssembly";
+                    var isModule = declaringFullName is "System.Reflection.Module" or "System.Reflection.RuntimeModule";
+                    if (!isAssembly && !isModule)
                         continue;
-                    }
 
-                    if (isAssembly && arity == 2)
+                    var sig = called.MethodSig;
+                    if (sig is { HasThis: true })
                     {
-                        instr.OpCode = OpCodes.Call;
-                        instr.Operand = loadTyped;
-                        modified = true;
-                        rewritten++;
-                        continue;
-                    }
+                        if (isAssembly &&
+                            sig.Params.Count == 1 &&
+                            sig.Params[0].RemovePinnedAndModifiers().ElementType == ElementType.String)
+                        {
+                            instr.OpCode = OpCodes.Call;
+                            instr.Operand = loadResource;
+                            modified = true;
+                            rewritten++;
+                            continue;
+                        }
 
-                    if (isModule && arity == 1)
-                    {
-                        instr.OpCode = OpCodes.Call;
-                        instr.Operand = loadModule;
-                        modified = true;
-                        rewritten++;
-                        continue;
+                        if (isAssembly &&
+                            sig.Params.Count == 2 &&
+                            sig.Params[0].RemovePinnedAndModifiers().FullName == "System.Type" &&
+                            sig.Params[1].RemovePinnedAndModifiers().ElementType == ElementType.String)
+                        {
+                            instr.OpCode = OpCodes.Call;
+                            instr.Operand = loadTyped;
+                            modified = true;
+                            rewritten++;
+                            continue;
+                        }
+
+                        if (isModule &&
+                            sig.Params.Count == 1 &&
+                            sig.Params[0].RemovePinnedAndModifiers().ElementType == ElementType.String)
+                        {
+                            instr.OpCode = OpCodes.Call;
+                            instr.Operand = loadModule;
+                            modified = true;
+                            rewritten++;
+                            continue;
+                        }
                     }
 
                     context.Warnings.Add(

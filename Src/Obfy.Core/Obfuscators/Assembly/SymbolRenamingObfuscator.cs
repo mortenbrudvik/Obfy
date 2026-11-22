@@ -74,6 +74,10 @@ public class SymbolRenamingObfuscator : IObfuscator
             var propertyRenames = new Dictionary<PropertyDef, string>();
             var eventRenames = new Dictionary<EventDef, string>();
             var namespaceRenames = new Dictionary<string, string>(StringComparer.Ordinal);
+            var namespaceTargets = new Dictionary<string, List<TypeDef>>(StringComparer.Ordinal);
+            var parameterRenameMethods = new List<MethodDef>();
+
+            var preservedNamespaces = CollectPreservedNamespaces(module, settings);
 
             foreach (var type in module.GetTypes())
             {
@@ -85,25 +89,33 @@ public class SymbolRenamingObfuscator : IObfuscator
                 if (settings.PreserveXaml && ObfuscatorHelpers.LooksLikeXamlBindable(type))
                     xamlBindableSeen++;
 
+                var canRenameType = CanRenameType(type, settings, context.Settings.Inclusions);
+
                 // Rename type
-                if (settings.RenameTypes && CanRenameType(type, settings, context.Settings.Inclusions))
+                if (settings.RenameTypes && canRenameType)
                 {
                     var newName = _nameGenerator.Generate(type.Name, settings.Mode);
                     typeRenames[type] = newName;
                     context.SymbolMap[$"Type:{type.FullName}"] = newName;
                 }
 
-                // Rename methods
-                if (settings.RenameMethods)
+                // Collect methods for method and/or parameter renaming while original names still apply
+                if (settings.RenameMethods || settings.RenameParameters)
                 {
                     foreach (var method in type.Methods)
                     {
-                        if (CanRenameMethod(method, settings, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
+                        if (!CanRenameMethod(method, settings, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
+                            continue;
+
+                        if (settings.RenameMethods)
                         {
                             var newName = _nameGenerator.Generate(method.Name, settings.Mode);
                             methodRenames[method] = newName;
                             context.SymbolMap[MethodSymbolKey(type, method)] = newName;
                         }
+
+                        if (settings.RenameParameters)
+                            parameterRenameMethods.Add(method);
                     }
                 }
 
@@ -156,15 +168,22 @@ public class SymbolRenamingObfuscator : IObfuscator
                 }
 
                 if (settings.RenameNamespaces &&
+                    canRenameType &&
                     !string.IsNullOrEmpty(type.Namespace) &&
-                    !(settings.PreservePublicApi && type.IsPublic))
+                    !ObfuscatorHelpers.IsPinnedAttributeType(type))
                 {
                     var originalNs = type.Namespace.String;
-                    if (!namespaceRenames.ContainsKey(originalNs))
+                    if (!preservedNamespaces.Contains(originalNs))
                     {
-                        var newNs = _nameGenerator.Generate(originalNs, settings.Mode);
-                        namespaceRenames[originalNs] = newNs;
-                        context.SymbolMap[$"Namespace:{originalNs}"] = newNs;
+                        if (!namespaceTargets.TryGetValue(originalNs, out var targets))
+                        {
+                            targets = new List<TypeDef>();
+                            namespaceTargets[originalNs] = targets;
+                        }
+
+                        targets.Add(type);
+                        if (!namespaceRenames.ContainsKey(originalNs))
+                            namespaceRenames[originalNs] = _nameGenerator.Generate(originalNs, settings.Mode);
                     }
                 }
             }
@@ -217,27 +236,16 @@ public class SymbolRenamingObfuscator : IObfuscator
                 stats.EventsRenamed++;
             }
 
-            var preservedNamespaces = new HashSet<string>(StringComparer.Ordinal);
-            if (settings.PreservePublicApi)
+            foreach (var (originalNs, targets) in namespaceTargets)
             {
-                foreach (var type in module.GetTypes())
-                {
-                    if (type.IsPublic && !string.IsNullOrEmpty(type.Namespace))
-                        preservedNamespaces.Add(type.Namespace.String);
-                }
-            }
-
-            foreach (var (originalNs, newNs) in namespaceRenames)
-            {
-                if (preservedNamespaces.Contains(originalNs))
+                if (targets.Count == 0)
                     continue;
 
-                foreach (var type in module.GetTypes())
-                {
-                    if (type.Namespace == originalNs && !ObfuscatorHelpers.IsPinnedAttributeType(type))
-                        type.Namespace = newNs;
-                }
+                var newNs = namespaceRenames[originalNs];
+                foreach (var type in targets)
+                    type.Namespace = newNs;
 
+                context.SymbolMap[$"Namespace:{originalNs}"] = newNs;
                 stats.NamespacesRenamed++;
             }
 
@@ -245,36 +253,9 @@ public class SymbolRenamingObfuscator : IObfuscator
 
             RenameDerivedResources(module, runtimeNames);
 
-            // Rename parameters if enabled
+            // Rename parameters using the eligibility captured prior to symbol name mutations
             if (settings.RenameParameters)
-            {
-                foreach (var type in module.GetTypes())
-                {
-                    // Respect the same type-level skip as members (pinned attributes, helpers with
-                    // Rename = false, exclusions/inclusions).
-                    if (ShouldSkipType(type, context, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
-                        continue;
-
-                    foreach (var method in type.Methods)
-                    {
-                        // Parameter names follow CanRenameMethod: skipped for constructors, entry
-                        // points, virtuals/overrides/interface impls, and public methods when
-                        // PreservePublicApi is set. Named-argument / reflection callers of public APIs
-                        // are only safe with PreservePublicApi = true (the default is false).
-                        if (!CanRenameMethod(method, settings, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
-                            continue;
-
-                        foreach (var param in method.Parameters)
-                        {
-                            if (!string.IsNullOrEmpty(param.Name) && !param.IsHiddenThisParameter)
-                            {
-                                param.Name = _nameGenerator.Generate(param.Name, settings.Mode);
-                                stats.ParametersRenamed++;
-                            }
-                        }
-                    }
-                }
-            }
+                RenameCollectedParameters(parameterRenameMethods, settings, stats, cancellationToken);
 
             if (settings.PreserveXaml && xamlBindableSeen == 0)
                 context.Warnings.Add(NoXamlBindableTypes);
@@ -337,11 +318,11 @@ public class SymbolRenamingObfuscator : IObfuscator
         {
             cancellationToken.ThrowIfCancellationRequested();
             var runtimeNames = SnapshotRuntimeNames(module);
-            ApplyClosedSetRenames(module, settings.SymbolRenaming, plan, namespaceRenames, stats);
+            ApplyClosedSetRenames(plan, namespaceRenames, sharedContext, stats);
             RenameDerivedResources(module, runtimeNames);
 
             if (settings.SymbolRenaming.RenameParameters)
-                RenameClosedSetParameters(module, settings, sharedContext, stats, cancellationToken);
+                RenameCollectedParameters(plan.ParameterRenameMethods, settings.SymbolRenaming, stats, cancellationToken);
         }
 
         // One warning for the set, and only when none of the modules that asked for preserveXaml had a
@@ -369,6 +350,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         CancellationToken cancellationToken)
     {
         var settings = moduleSettings.SymbolRenaming;
+        var preservedNamespaces = CollectPreservedNamespaces(module, settings);
 
         foreach (var type in module.GetTypes())
         {
@@ -380,23 +362,31 @@ public class SymbolRenamingObfuscator : IObfuscator
             if (settings.PreserveXaml && ObfuscatorHelpers.LooksLikeXamlBindable(type))
                 plan.XamlBindableSeen++;
 
-            if (settings.RenameTypes && CanRenameType(type, settings, moduleSettings.Inclusions))
+            var canRenameType = CanRenameType(type, settings, moduleSettings.Inclusions);
+
+            if (settings.RenameTypes && canRenameType)
             {
                 var newName = _nameGenerator.Generate(type.Name, settings.Mode);
                 plan.TypeRenames[type] = newName;
                 sharedContext.SymbolMap[$"Type:{type.FullName}"] = newName;
             }
 
-            if (settings.RenameMethods)
+            if (settings.RenameMethods || settings.RenameParameters)
             {
                 foreach (var method in type.Methods)
                 {
-                    if (CanRenameMethod(method, settings, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
+                    if (!CanRenameMethod(method, settings, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
+                        continue;
+
+                    if (settings.RenameMethods)
                     {
                         var newName = _nameGenerator.Generate(method.Name, settings.Mode);
                         plan.MethodRenames[method] = newName;
                         sharedContext.SymbolMap[MethodSymbolKey(type, method)] = newName;
                     }
+
+                    if (settings.RenameParameters)
+                        plan.ParameterRenameMethods.Add(method);
                 }
             }
 
@@ -448,27 +438,31 @@ public class SymbolRenamingObfuscator : IObfuscator
             }
 
             if (settings.RenameNamespaces &&
+                canRenameType &&
                 !string.IsNullOrEmpty(type.Namespace) &&
-                !(settings.PreservePublicApi && type.IsPublic))
+                !ObfuscatorHelpers.IsPinnedAttributeType(type))
             {
                 var originalNs = type.Namespace.String;
-                if (!namespaceRenames.ContainsKey(originalNs))
+                if (!preservedNamespaces.Contains(originalNs))
                 {
-                    var newNs = _nameGenerator.Generate(originalNs, settings.Mode);
-                    namespaceRenames[originalNs] = newNs;
-                    sharedContext.SymbolMap[$"Namespace:{originalNs}"] = newNs;
-                }
+                    if (!plan.NamespaceTargets.TryGetValue(originalNs, out var targets))
+                    {
+                        targets = new List<TypeDef>();
+                        plan.NamespaceTargets[originalNs] = targets;
+                    }
 
-                plan.NamespacesToApply.Add(originalNs);
+                    targets.Add(type);
+                    if (!namespaceRenames.ContainsKey(originalNs))
+                        namespaceRenames[originalNs] = _nameGenerator.Generate(originalNs, settings.Mode);
+                }
             }
         }
     }
 
     private static void ApplyClosedSetRenames(
-        ModuleDef module,
-        SymbolRenamingSettings settings,
         ClosedSetRenamePlan plan,
         Dictionary<string, string> namespaceRenames,
+        PipelineContext sharedContext,
         ObfuscationStatistics stats)
     {
         foreach (var (type, newName) in plan.TypeRenames)
@@ -502,63 +496,54 @@ public class SymbolRenamingObfuscator : IObfuscator
             stats.EventsRenamed++;
         }
 
-        var preservedNamespaces = new HashSet<string>(StringComparer.Ordinal);
-        if (settings.PreservePublicApi)
+        foreach (var (originalNs, targets) in plan.NamespaceTargets)
         {
-            foreach (var type in module.GetTypes())
-            {
-                if (type.IsPublic && !string.IsNullOrEmpty(type.Namespace))
-                    preservedNamespaces.Add(type.Namespace.String);
-            }
-        }
-
-        foreach (var originalNs in plan.NamespacesToApply)
-        {
-            if (preservedNamespaces.Contains(originalNs))
+            if (targets.Count == 0)
                 continue;
 
             var newNs = namespaceRenames[originalNs];
-            foreach (var type in module.GetTypes())
-            {
-                if (type.Namespace == originalNs && !ObfuscatorHelpers.IsPinnedAttributeType(type))
-                    type.Namespace = newNs;
-            }
+            foreach (var type in targets)
+                type.Namespace = newNs;
 
+            sharedContext.SymbolMap[$"Namespace:{originalNs}"] = newNs;
             stats.NamespacesRenamed++;
         }
     }
 
-    private void RenameClosedSetParameters(
-        ModuleDef module,
-        ObfySettings moduleSettings,
-        PipelineContext sharedContext,
+    private void RenameCollectedParameters(
+        IReadOnlyList<MethodDef> methods,
+        SymbolRenamingSettings settings,
         ObfuscationStatistics stats,
         CancellationToken cancellationToken)
     {
-        var settings = moduleSettings.SymbolRenaming;
-
-        foreach (var type in module.GetTypes())
+        foreach (var method in methods)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (ShouldSkipType(type, sharedContext, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
-                continue;
-
-            foreach (var method in type.Methods)
+            foreach (var param in method.Parameters)
             {
-                if (!CanRenameMethod(method, settings, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
-                    continue;
-
-                foreach (var param in method.Parameters)
+                if (!string.IsNullOrEmpty(param.Name) && !param.IsHiddenThisParameter)
                 {
-                    if (!string.IsNullOrEmpty(param.Name) && !param.IsHiddenThisParameter)
-                    {
-                        param.Name = _nameGenerator.Generate(param.Name, settings.Mode);
-                        stats.ParametersRenamed++;
-                    }
+                    param.Name = _nameGenerator.Generate(param.Name, settings.Mode);
+                    stats.ParametersRenamed++;
                 }
             }
         }
+    }
+
+    private static HashSet<string> CollectPreservedNamespaces(ModuleDef module, SymbolRenamingSettings settings)
+    {
+        var preserved = new HashSet<string>(StringComparer.Ordinal);
+        if (!settings.PreservePublicApi)
+            return preserved;
+
+        foreach (var type in module.GetTypes())
+        {
+            if (IsExternallyVisible(type) && !string.IsNullOrEmpty(type.Namespace))
+                preserved.Add(type.Namespace.String);
+        }
+
+        return preserved;
     }
 
     /// <summary>
@@ -1461,7 +1446,8 @@ public class SymbolRenamingObfuscator : IObfuscator
         public Dictionary<FieldDef, string> FieldRenames { get; } = new();
         public Dictionary<PropertyDef, string> PropertyRenames { get; } = new();
         public Dictionary<EventDef, string> EventRenames { get; } = new();
-        public HashSet<string> NamespacesToApply { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, List<TypeDef>> NamespaceTargets { get; } = new(StringComparer.Ordinal);
+        public List<MethodDef> ParameterRenameMethods { get; } = new();
         public int XamlBindableSeen { get; set; }
     }
 
@@ -1478,17 +1464,20 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (type.IsGlobalModuleType)
             return true;
 
-        if (exclusions.Namespaces.Any(n => MatchesPattern(type.Namespace, n)))
-            return true;
+        for (var current = type; current != null; current = current.DeclaringType)
+        {
+            if (exclusions.Namespaces.Any(n => MatchesPattern(current.Namespace, n)))
+                return true;
 
-        if (exclusions.Types.Any(t => MatchesPattern(type.Name, t)))
-            return true;
+            if (exclusions.Types.Any(t => MatchesPattern(current.Name, t)))
+                return true;
 
-        if (ObfuscatorHelpers.HasExcludedAttribute(type, exclusions))
-            return true;
+            if (ObfuscatorHelpers.HasExcludedAttribute(current, exclusions))
+                return true;
 
-        if (ObfuscatorHelpers.IsComVisibleTrue(type))
-            return true;
+            if (ObfuscatorHelpers.IsComVisibleTrue(current))
+                return true;
+        }
 
         if (ObfuscationAttributeRules.IsExcluded(type, ObfuscationFeature.Renaming, warnings) &&
             ObfuscationAttributeRules.ApplyToMembers(type, ObfuscationFeature.Renaming))
@@ -1505,7 +1494,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (type.Module.EntryPoint?.DeclaringType == type)
             return false;
 
-        if (settings.PreservePublicApi && type.IsPublic)
+        if (settings.PreservePublicApi && IsExternallyVisible(type))
             return false;
 
         if (type.IsRuntimeSpecialName || type.IsSpecialName)
@@ -1533,7 +1522,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (method.DeclaringType.Module.EntryPoint == method)
             return false;
 
-        if (settings.PreservePublicApi && method.IsPublic)
+        if (settings.PreservePublicApi && IsExternallyVisible(method))
             return false;
 
         if (method.IsRuntimeSpecialName || method.IsSpecialName)
@@ -1604,8 +1593,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         InclusionRules inclusions,
         ICollection<string> warnings)
     {
-        var isPublic = (evt.AddMethod?.IsPublic ?? false) || (evt.RemoveMethod?.IsPublic ?? false);
-        if (settings.PreservePublicApi && isPublic)
+        if (settings.PreservePublicApi && (IsExternallyVisible(evt.AddMethod) || IsExternallyVisible(evt.RemoveMethod)))
             return false;
 
         if (evt.IsSpecialName || evt.IsRuntimeSpecialName)
@@ -1630,7 +1618,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         InclusionRules inclusions,
         ICollection<string> warnings)
     {
-        if (settings.PreservePublicApi && field.IsPublic)
+        if (settings.PreservePublicApi && IsExternallyVisible(field))
             return false;
 
         if (field.IsRuntimeSpecialName || field.IsSpecialName)
@@ -1656,8 +1644,9 @@ public class SymbolRenamingObfuscator : IObfuscator
         ICollection<string> warnings)
     {
         var isPublic = (property.GetMethod?.IsPublic ?? false) || (property.SetMethod?.IsPublic ?? false);
+        var isExternallyVisible = IsExternallyVisible(property.GetMethod) || IsExternallyVisible(property.SetMethod);
 
-        if (settings.PreservePublicApi && isPublic)
+        if (settings.PreservePublicApi && isExternallyVisible)
             return false;
 
         if (property.IsRuntimeSpecialName)
@@ -1743,7 +1732,7 @@ public class SymbolRenamingObfuscator : IObfuscator
         if (method.DeclaringType.Module.EntryPoint == method)
             return false;
 
-        if (settings.PreservePublicApi && method.IsPublic)
+        if (settings.PreservePublicApi && IsExternallyVisible(method))
             return false;
 
         if (ObfuscatorHelpers.MethodMatchesExclusion(method, exclusions))
@@ -1766,6 +1755,29 @@ public class SymbolRenamingObfuscator : IObfuscator
 
         return true;
     }
+
+    private static bool IsExternallyVisible(TypeDef? type)
+    {
+        for (var current = type; current != null; current = current.DeclaringType)
+        {
+            if (current.DeclaringType == null)
+                return current.IsPublic;
+
+            if (!current.IsNestedPublic && !current.IsNestedFamily && !current.IsNestedFamilyOrAssembly)
+                return false;
+        }
+
+        return false;
+    }
+
+    private static bool IsExternallyVisible(MethodDef? method) =>
+        method != null &&
+        (method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly) &&
+        IsExternallyVisible(method.DeclaringType);
+
+    private static bool IsExternallyVisible(FieldDef field) =>
+        (field.IsPublic || field.IsFamily || field.IsFamilyOrAssembly) &&
+        IsExternallyVisible(field.DeclaringType);
 
     private static bool MatchesPattern(string value, string pattern) => WildcardMatcher.IsMatch(value, pattern);
 }

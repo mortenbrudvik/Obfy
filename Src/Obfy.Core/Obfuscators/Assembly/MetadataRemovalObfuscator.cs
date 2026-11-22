@@ -130,8 +130,9 @@ public class MetadataRemovalObfuscator : IObfuscator
             "System.Diagnostics.CodeAnalysis.SuppressMessageAttribute"
         };
 
-        // Remove from assembly
+        // Remove from module and assembly
         count += RemoveAttributesFrom(module.CustomAttributes, attributesToRemove, exclusions);
+        count += RemoveAttributesFrom(module.Assembly?.CustomAttributes, attributesToRemove, exclusions);
 
         // Remove from types and members
         foreach (var type in module.GetTypes())

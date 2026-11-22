@@ -67,7 +67,11 @@ public class SourceStringEncryptor : IObfuscator
 
                 stats.StringsEncrypted += rewriter.EncryptedCount;
 
-                newTrees.Add(newRoot.SyntaxTree.WithFilePath(tree.FilePath));
+                newTrees.Add(CSharpSyntaxTree.Create(
+                    (CSharpSyntaxNode)newRoot,
+                    options: tree.Options as CSharpParseOptions,
+                    path: tree.FilePath,
+                    encoding: tree.Encoding));
             }
 
             // Add decryption helper class if any strings were encrypted
@@ -146,9 +150,13 @@ public class SourceStringEncryptor : IObfuscator
         var root = (CompilationUnitSyntax)tree.GetRoot();
         var newLine = SyntaxFactory.EndOfLine("\n");
         var members = root.Members;
+        var eof = root.EndOfFileToken;
 
         if (members.OfType<FileScopedNamespaceDeclarationSyntax>().FirstOrDefault() is { } scoped)
         {
+            var (leadingCloseTrivia, trailingCloseTrivia, remainingEofTrivia) =
+                SplitFileScopedEofTrivia(root, scoped, eof.LeadingTrivia, newLine);
+
             var block = SyntaxFactory.NamespaceDeclaration(
                 scoped.AttributeLists,
                 scoped.Modifiers,
@@ -160,13 +168,150 @@ public class SourceStringEncryptor : IObfuscator
                 scoped.Externs,
                 scoped.Usings,
                 scoped.Members,
-                SyntaxFactory.Token(SyntaxKind.CloseBraceToken).WithLeadingTrivia(newLine).WithTrailingTrivia(newLine),
+                SyntaxFactory.Token(SyntaxKind.CloseBraceToken)
+                    .WithLeadingTrivia(leadingCloseTrivia)
+                    .WithTrailingTrivia(trailingCloseTrivia),
                 default);
             members = members.Replace(scoped, block);
+            eof = eof.WithLeadingTrivia(remainingEofTrivia);
         }
 
-        var newRoot = root.WithMembers(members.Add(member.WithLeadingTrivia(newLine, newLine)));
-        return CSharpSyntaxTree.Create(newRoot, path: tree.FilePath, encoding: tree.Encoding);
+        var newRoot = root
+            .WithMembers(members.Add(member.WithLeadingTrivia(newLine, newLine)))
+            .WithEndOfFileToken(eof);
+        return CSharpSyntaxTree.Create(
+            newRoot,
+            options: tree.Options as CSharpParseOptions,
+            path: tree.FilePath,
+            encoding: tree.Encoding);
+    }
+
+    private static (SyntaxTriviaList LeadingClose, SyntaxTriviaList TrailingClose, SyntaxTriviaList RemainingEof)
+        SplitFileScopedEofTrivia(
+            CompilationUnitSyntax root,
+            FileScopedNamespaceDeclarationSyntax scoped,
+            SyntaxTriviaList eofTrivia,
+            SyntaxTrivia newLine)
+    {
+        var outerDepth = 0;
+        foreach (var trivia in root.DescendantTrivia(descendIntoTrivia: true))
+        {
+            if (trivia.SpanStart >= scoped.SemicolonToken.SpanStart)
+                break;
+            UpdateDirectiveDepth(trivia, ref outerDepth);
+        }
+
+        var innerDepth = 0;
+        foreach (var trivia in scoped.DescendantTrivia(descendIntoTrivia: true))
+        {
+            if (trivia.SpanStart < scoped.SemicolonToken.Span.End)
+                continue;
+            UpdateDirectiveDepth(trivia, ref innerDepth, ref outerDepth);
+        }
+
+        if (innerDepth == 0 && !eofTrivia.Any(static t => t.IsDirective))
+        {
+            return (SyntaxFactory.TriviaList(newLine), SyntaxFactory.TriviaList(newLine), eofTrivia);
+        }
+
+        var beforeClose = new List<SyntaxTrivia>();
+        var afterClose = new List<SyntaxTrivia>();
+        var index = 0;
+
+        // Directives opened inside the file-scoped namespace (e.g. `#if ...` before a type) must close
+        // inside the converted block namespace before its closing `}`.
+        while (index < eofTrivia.Count && innerDepth > 0)
+        {
+            var trivia = eofTrivia[index++];
+            beforeClose.Add(trivia);
+            UpdateDirectiveDepth(trivia, ref innerDepth);
+        }
+
+        // Remaining directives close an `#if` opened before the namespace (go after `}` so the appended
+        // helper stays outside the conditional) or belong to a trailing block after the last member.
+        var lastRemainingDirective = -1;
+        for (var i = index; i < eofTrivia.Count; i++)
+        {
+            if (eofTrivia[i].IsDirective)
+                lastRemainingDirective = i;
+        }
+
+        if (lastRemainingDirective >= index)
+        {
+            if (outerDepth > 0)
+            {
+                var localDepth = 0;
+                while (index <= lastRemainingDirective && (outerDepth > 0 || localDepth > 0))
+                {
+                    var trivia = eofTrivia[index++];
+                    afterClose.Add(trivia);
+                    UpdateDirectiveDepth(trivia, ref localDepth, ref outerDepth);
+                }
+            }
+            else
+            {
+                while (index <= lastRemainingDirective)
+                    beforeClose.Add(eofTrivia[index++]);
+            }
+        }
+
+        var remaining = new List<SyntaxTrivia>(eofTrivia.Count - index);
+        for (var i = index; i < eofTrivia.Count; i++)
+            remaining.Add(eofTrivia[i]);
+
+        if (beforeClose.Count == 0 || !EndsWithNewLine(beforeClose[^1]))
+            beforeClose.Add(newLine);
+
+        if (afterClose.Count > 0)
+        {
+            if (!afterClose[0].IsKind(SyntaxKind.EndOfLineTrivia))
+                afterClose.Insert(0, newLine);
+            if (!EndsWithNewLine(afterClose[^1]))
+                afterClose.Add(newLine);
+        }
+        else
+        {
+            afterClose.Add(newLine);
+        }
+
+        return (SyntaxFactory.TriviaList(beforeClose), SyntaxFactory.TriviaList(afterClose), SyntaxFactory.TriviaList(remaining));
+    }
+
+    private static bool IsDirectiveOpen(SyntaxTrivia trivia) =>
+        trivia.IsKind(SyntaxKind.IfDirectiveTrivia) || trivia.IsKind(SyntaxKind.RegionDirectiveTrivia);
+
+    private static bool IsDirectiveClose(SyntaxTrivia trivia) =>
+        trivia.IsKind(SyntaxKind.EndIfDirectiveTrivia) || trivia.IsKind(SyntaxKind.EndRegionDirectiveTrivia);
+
+    private static void UpdateDirectiveDepth(SyntaxTrivia trivia, ref int depth)
+    {
+        if (IsDirectiveOpen(trivia))
+            depth++;
+        else if (IsDirectiveClose(trivia) && depth > 0)
+            depth--;
+    }
+
+    private static void UpdateDirectiveDepth(SyntaxTrivia trivia, ref int innerDepth, ref int outerDepth)
+    {
+        if (IsDirectiveOpen(trivia))
+        {
+            innerDepth++;
+        }
+        else if (IsDirectiveClose(trivia))
+        {
+            if (innerDepth > 0)
+                innerDepth--;
+            else if (outerDepth > 0)
+                outerDepth--;
+        }
+    }
+
+    private static bool EndsWithNewLine(SyntaxTrivia trivia)
+    {
+        if (trivia.IsKind(SyntaxKind.EndOfLineTrivia))
+            return true;
+        var text = trivia.ToFullString();
+        return text.EndsWith('\n') || text.EndsWith('\r');
     }
 
     /// <summary>
@@ -352,15 +497,17 @@ public class SourceStringEncryptor : IObfuscator
             // Joining the parts with "+" would instead add adjacent numeric/char/TimeSpan holes.
             var contents = new List<InterpolatedStringContentSyntax>();
             var encryptedAny = false;
+            var isVerbatim = visited.StringStartToken.IsKind(SyntaxKind.InterpolatedVerbatimStringStartToken);
 
             foreach (var content in visited.Contents)
             {
                 if (content is InterpolatedStringTextSyntax text)
                 {
-                    // ValueText keeps the "{{" and "}}" escapes of the source; the value is the unescaped text.
-                    var value = text.TextToken.ValueText.Replace("{{", "{", StringComparison.Ordinal)
-                        .Replace("}}", "}", StringComparison.Ordinal);
-                    if (string.IsNullOrEmpty(value) || value.Length < _settings.MinStringLength)
+                    // Decode from Token.Text rather than ValueText: ValueText keeps literal "{{"/"}}"
+                    // doubled while unescaping "\u007b" -> "{", which would collapse "\u007b\u007b" into "{".
+                    if (!TryDecodeInterpolatedText(text.TextToken.Text, isVerbatim, out var value) ||
+                        string.IsNullOrEmpty(value) ||
+                        value.Length < _settings.MinStringLength)
                     {
                         contents.Add(text);
                         continue;
@@ -383,6 +530,136 @@ public class SourceStringEncryptor : IObfuscator
             return encryptedAny
                 ? visited.WithContents(SyntaxFactory.List(contents))
                 : visited;
+        }
+
+        private static bool TryDecodeInterpolatedText(string rawText, bool isVerbatim, out string decoded)
+        {
+            var sb = new System.Text.StringBuilder(rawText.Length);
+            for (var i = 0; i < rawText.Length;)
+            {
+                var ch = rawText[i];
+                if (ch is '{' or '}')
+                {
+                    if (i + 1 < rawText.Length && rawText[i + 1] == ch)
+                    {
+                        sb.Append(ch);
+                        i += 2;
+                        continue;
+                    }
+
+                    decoded = string.Empty;
+                    return false;
+                }
+
+                if (isVerbatim)
+                {
+                    if (ch == '"' && i + 1 < rawText.Length && rawText[i + 1] == '"')
+                    {
+                        sb.Append('"');
+                        i += 2;
+                        continue;
+                    }
+
+                    sb.Append(ch);
+                    i++;
+                    continue;
+                }
+
+                if (ch != '\\')
+                {
+                    sb.Append(ch);
+                    i++;
+                    continue;
+                }
+
+                if (!TryReadEscapeSequence(rawText, ref i, sb))
+                {
+                    decoded = string.Empty;
+                    return false;
+                }
+            }
+
+            decoded = sb.ToString();
+            return true;
+        }
+
+        private static bool TryReadEscapeSequence(string rawText, ref int index, System.Text.StringBuilder sb)
+        {
+            index++;
+            if (index >= rawText.Length)
+                return false;
+
+            var esc = rawText[index++];
+            switch (esc)
+            {
+                case '\'': sb.Append('\''); return true;
+                case '"': sb.Append('"'); return true;
+                case '\\': sb.Append('\\'); return true;
+                case '0': sb.Append('\0'); return true;
+                case 'a': sb.Append('\a'); return true;
+                case 'b': sb.Append('\b'); return true;
+                case 'e': sb.Append('\u001b'); return true;
+                case 'f': sb.Append('\f'); return true;
+                case 'n': sb.Append('\n'); return true;
+                case 'r': sb.Append('\r'); return true;
+                case 't': sb.Append('\t'); return true;
+                case 'v': sb.Append('\v'); return true;
+                case 'u':
+                    if (!TryReadHexDigits(rawText, ref index, 4, 4, out var codeUnit))
+                        return false;
+                    sb.Append((char)codeUnit);
+                    return true;
+                case 'x':
+                    if (!TryReadHexDigits(rawText, ref index, 1, 4, out var hexChar))
+                        return false;
+                    sb.Append((char)hexChar);
+                    return true;
+                case 'U':
+                    if (!TryReadHexDigits(rawText, ref index, 8, 8, out var codePoint))
+                        return false;
+                    if (codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF))
+                        return false;
+                    sb.Append(char.ConvertFromUtf32((int)codePoint));
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryReadHexDigits(string rawText, ref int index, int minDigits, int maxDigits, out uint value)
+        {
+            value = 0;
+            var count = 0;
+            while (count < maxDigits && index < rawText.Length && TryHexValue(rawText[index], out var digit))
+            {
+                value = (value << 4) | digit;
+                index++;
+                count++;
+            }
+
+            return count >= minDigits;
+        }
+
+        private static bool TryHexValue(char ch, out uint digit)
+        {
+            if (ch is >= '0' and <= '9')
+            {
+                digit = (uint)(ch - '0');
+                return true;
+            }
+            if (ch is >= 'a' and <= 'f')
+            {
+                digit = (uint)(ch - 'a' + 10);
+                return true;
+            }
+            if (ch is >= 'A' and <= 'F')
+            {
+                digit = (uint)(ch - 'A' + 10);
+                return true;
+            }
+
+            digit = 0;
+            return false;
         }
 
         private static bool MustRemainConstant(SyntaxNode node)

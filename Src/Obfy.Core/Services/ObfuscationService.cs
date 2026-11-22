@@ -68,7 +68,16 @@ public class ObfuscationService : IObfuscationService
             return ObfuscationResult.Failed($"Input file not found: {inputPath}");
         }
 
-        var target = ObfuscationTarget.ForFile(inputPath, outputPath, isDirectory);
+        ObfuscationTarget target;
+        try
+        {
+            target = ObfuscationTarget.ForFile(inputPath, outputPath, isDirectory);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogError("Unsupported input target ({ExceptionType})", ex.GetType().Name);
+            return ObfuscationResult.Failed(ex.Message, ex);
+        }
 
         var prepared = TryPrepareSettings(settings, out var settingsFailure);
         if (prepared is null)
@@ -142,7 +151,7 @@ public class ObfuscationService : IObfuscationService
             };
 
             context.InputPath = inputPath;
-            context.OutputPath = target.EffectiveOutputPath;
+            context.OutputPath = effectiveOutput;
             context.Warnings.AddRange(gatingWarnings);
             if (cacheNote is not null)
                 context.Warnings.Add(cacheNote);
@@ -476,7 +485,7 @@ public class ObfuscationService : IObfuscationService
                 continue;
             }
 
-            var outputPath = Path.Combine(outputDirectory, Path.GetFileName(inputPath));
+            var outputPath = Path.Combine(outputDirectory, Path.GetFileName(TrimTrailingDirectorySeparators(inputPath)));
             var single = await ObfuscateAsync(inputPath, outputPath, settings, cancellationToken).ConfigureAwait(false);
             slots.Add((single, -1));
         }
@@ -487,7 +496,7 @@ public class ObfuscationService : IObfuscationService
         if (assemblies.Count == 1)
         {
             var single = assemblies[0];
-            var outputPath = Path.Combine(outputDirectory, Path.GetFileName(single));
+            var outputPath = Path.Combine(outputDirectory, Path.GetFileName(TrimTrailingDirectorySeparators(single)));
             assemblyResults =
             [
                 await ObfuscateAsync(single, outputPath, settings, cancellationToken).ConfigureAwait(false)
@@ -529,7 +538,7 @@ public class ObfuscationService : IObfuscationService
             if (pendingSources.Count == 1)
             {
                 var single = pendingSources[0];
-                var outputPath = Path.Combine(outputDirectory, Path.GetFileName(single));
+                var outputPath = Path.Combine(outputDirectory, Path.GetFileName(TrimTrailingDirectorySeparators(single)));
                 var result = await ObfuscateAsync(single, outputPath, settings, cancellationToken).ConfigureAwait(false);
                 slots.Add((result, -1));
             }
@@ -734,6 +743,18 @@ public class ObfuscationService : IObfuscationService
                         $"Not merged (excluded by assemblyMerge.excludePatterns): {string.Join(", ", left)}. " +
                         "They are not part of the output and must stay next to it.");
                 }
+
+                obfuscationResult = ObfuscationResult.Successful(
+                    obfuscationResult.Statistics,
+                    inputPath: inputList[0],
+                    outputPath: obfuscationResult.OutputPath,
+                    elapsedTime: obfuscationResult.ElapsedTime,
+                    processingTimes: obfuscationResult.ProcessingTimes,
+                    skippedItems: obfuscationResult.SkippedItems,
+                    symbolMap: obfuscationResult.SymbolMap,
+                    warnings: obfuscationResult.Warnings,
+                    packedLauncherPath: obfuscationResult.PackedLauncherPath,
+                    fromCache: obfuscationResult.FromCache);
             }
 
             return obfuscationResult;
@@ -803,9 +824,16 @@ public class ObfuscationService : IObfuscationService
     /// </summary>
     public static string GenerateOutputPath(string inputPath)
     {
-        var directory = Path.GetDirectoryName(inputPath) ?? ".";
-        var name = Path.GetFileNameWithoutExtension(inputPath);
-        var extension = Path.GetExtension(inputPath);
+        var normalized = TrimTrailingDirectorySeparators(inputPath);
+        var directory = Path.GetDirectoryName(normalized) ?? ".";
+        var name = Path.GetFileNameWithoutExtension(normalized);
+        var extension = Path.GetExtension(normalized);
         return Path.Combine(directory, $"{name}.obfuscated{extension}");
+    }
+
+    private static string TrimTrailingDirectorySeparators(string path)
+    {
+        var trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return trimmed.Length > 0 ? trimmed : path;
     }
 }

@@ -20,12 +20,28 @@ internal static class Program
         return total;
     }
 
-    // Anti-dump overwrites the first byte of dbghelp!MiniDumpWriteDump with a ret (0xC3).
+    // Anti-dump overwrites the start of dbghelp!MiniDumpWriteDump with:
+    //   x64: 31 C0 C3        (xor eax, eax; ret)
+    //   x86: 31 C0 C2 1C 00  (xor eax, eax; ret 0x1C)
     private static bool DumpHookPatched()
     {
         var module = LoadLibraryW("dbghelp.dll");
         var procedure = module == IntPtr.Zero ? IntPtr.Zero : GetProcAddress(module, "MiniDumpWriteDump");
-        return procedure != IntPtr.Zero && Marshal.ReadByte(procedure) == 0xC3;
+        if (procedure == IntPtr.Zero)
+            return false;
+
+        if (IntPtr.Size == 4)
+        {
+            return Marshal.ReadByte(procedure, 0) == 0x31
+                && Marshal.ReadByte(procedure, 1) == 0xC0
+                && Marshal.ReadByte(procedure, 2) == 0xC2
+                && Marshal.ReadByte(procedure, 3) == 0x1C
+                && Marshal.ReadByte(procedure, 4) == 0x00;
+        }
+
+        return Marshal.ReadByte(procedure, 0) == 0x31
+            && Marshal.ReadByte(procedure, 1) == 0xC0
+            && Marshal.ReadByte(procedure, 2) == 0xC3;
     }
 
     [DllImport("kernel32", CharSet = CharSet.Unicode, EntryPoint = "LoadLibraryW")]

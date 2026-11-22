@@ -176,18 +176,12 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 context.OutputPath = job.RelativeOutput;
                 foreach (var warning in job.GatingWarnings)
                     context.Warnings.Add(warning);
-                foreach (var warning in sessionContext.Warnings)
-                {
-                    // The rename pass shares one list. This warning is about the set, so it is filed
-                    // once, on the first module, the same way as the incremental-cache note below.
-                    if (i != 0 && warning == SymbolRenamingObfuscator.ClosedSetNoXamlBindableTypes)
-                        continue;
-                    context.Warnings.Add(warning);
-                }
-                foreach (var pair in sessionContext.SymbolMap)
-                    context.SymbolMap[pair.Key] = pair.Value;
                 if (i == 0)
                 {
+                    foreach (var warning in sessionContext.Warnings)
+                        context.Warnings.Add(warning);
+                    foreach (var pair in sessionContext.SymbolMap)
+                        context.SymbolMap[pair.Key] = pair.Value;
                     context.Statistics.Merge(sessionContext.Statistics);
                     context.SkippedItems.AddRange(sessionContext.SkippedItems);
 
@@ -237,6 +231,8 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 cancellationToken.ThrowIfCancellationRequested();
                 var tempPath = Path.Combine(tempDir, job.RelativeOutput);
                 job.Context!.OutputPath = tempPath;
+                // SaveAsync disposes and nulls job.Context.Module, so inspect the entry point beforehand.
+                var jobHasEntryPoint = HasEntryPoint(job.Loaded.Module);
                 try
                 {
                     await _assemblyProcessor.SaveAsync(job.Context, tempPath, cancellationToken).ConfigureAwait(false);
@@ -257,7 +253,7 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 if (!job.PipelineSettings.Packing.Enabled)
                     continue;
 
-                if (!HasEntryPoint(job.Loaded.Module))
+                if (!jobHasEntryPoint)
                 {
                     job.Context.Warnings.Add("Packing skipped: assembly has no entry point.");
                     continue;
@@ -302,7 +298,10 @@ public class ClosedSetProcessor : IClosedSetProcessor
         finally
         {
             foreach (var item in loaded)
-                item.Module.Dispose();
+            {
+                if (!item.Saved)
+                    item.Module.Dispose();
+            }
 
             DeleteDirectory(tempDir);
         }
@@ -367,11 +366,14 @@ public class ClosedSetProcessor : IClosedSetProcessor
 
     /// <summary>
     /// Every member is re-signed with the same key, so its public key token changes. A reference from one
-    /// member to another must name the new token or the CLR (.NET Framework) refuses to bind it.
+    /// member to another must name the new token or the CLR (.NET Framework) refuses to bind it, and
+    /// <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/> targeting a member of the set
+    /// must carry the new public key so friend access continues to work after signing.
     /// </summary>
     private static void RewriteReferenceTokens(List<LoadedModule> loaded, StrongNameKey key)
     {
         var token = new PublicKey(key.PublicKey).Token;
+        var publicKeyHex = BitConverter.ToString(key.PublicKey).Replace("-", string.Empty).ToLowerInvariant();
         var memberNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in loaded)
         {
@@ -386,33 +388,97 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 if (assemblyRef.Name?.String is { } refName && memberNames.Contains(refName))
                     assemblyRef.PublicKeyOrToken = token;
             }
+
+            RewriteInternalsVisibleTo(item.Module.Assembly, memberNames, publicKeyHex);
+        }
+    }
+
+    private static void RewriteInternalsVisibleTo(
+        AssemblyDef? assembly,
+        HashSet<string> memberNames,
+        string publicKeyHex)
+    {
+        if (assembly is null)
+            return;
+
+        foreach (var attr in assembly.CustomAttributes)
+        {
+            if (!string.Equals(
+                    attr.TypeFullName,
+                    "System.Runtime.CompilerServices.InternalsVisibleToAttribute",
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (attr.ConstructorArguments.Count == 0)
+                continue;
+
+            var current = attr.ConstructorArguments[0].Value switch
+            {
+                UTF8String utf => utf.String,
+                string text => text,
+                _ => null
+            };
+            if (string.IsNullOrWhiteSpace(current))
+                continue;
+
+            var comma = current.IndexOf(',');
+            var friendName = (comma < 0 ? current : current[..comma]).Trim();
+            if (!memberNames.Contains(friendName))
+                continue;
+
+            var arg = attr.ConstructorArguments[0];
+            attr.ConstructorArguments[0] = new CAArgument(
+                arg.Type,
+                new UTF8String($"{friendName}, PublicKey={publicKeyHex}"));
         }
     }
 
     private static HashSet<string> FindAssembliesReferencedByEntryPoints(List<LoadedModule> loaded)
     {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var byName = new Dictionary<string, List<LoadedModule>>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in loaded)
         {
-            if (item.Module.Assembly?.Name?.String is { } name)
-                names.Add(name);
+            if (item.Module.Assembly?.Name?.String is not { Length: > 0 } name)
+                continue;
+            if (!byName.TryGetValue(name, out var list))
+            {
+                list = [];
+                byName[name] = list;
+            }
+
+            list.Add(item);
         }
 
         var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<LoadedModule>();
+        var visited = new HashSet<LoadedModule>();
+
         foreach (var item in loaded)
         {
-            if (!HasEntryPoint(item.Module))
-                continue;
+            if (HasEntryPoint(item.Module) && visited.Add(item))
+                queue.Enqueue(item);
+        }
 
-            var selfName = item.Module.Assembly?.Name?.String;
-            foreach (var assemblyRef in item.Module.GetAssemblyRefs())
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            var selfName = current.Module.Assembly?.Name?.String;
+            foreach (var assemblyRef in current.Module.GetAssemblyRefs())
             {
                 var refName = assemblyRef.Name?.String;
-                if (string.IsNullOrEmpty(refName) || !names.Contains(refName))
+                if (string.IsNullOrEmpty(refName) || !byName.TryGetValue(refName, out var targets))
                     continue;
                 if (selfName is not null && refName.Equals(selfName, StringComparison.OrdinalIgnoreCase))
                     continue;
+
                 referenced.Add(refName);
+                foreach (var target in targets)
+                {
+                    if (visited.Add(target))
+                        queue.Enqueue(target);
+                }
             }
         }
 

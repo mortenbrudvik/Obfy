@@ -205,14 +205,36 @@ public class ReferenceProxyObfuscator : IObfuscator
 
     private static bool CanReachFromModuleProxy(MethodDef resolved, ModuleDef module)
     {
+        var sameAssembly = SameAssembly(resolved.Module, module);
         var access = AccessOf(resolved);
-        if (access == MethodAttributes.Public)
-            return true;
-
-        if (!SameAssembly(resolved.Module, module))
+        var methodReachable = sameAssembly
+            ? access is MethodAttributes.Public or MethodAttributes.Assembly or MethodAttributes.FamORAssem
+            : access == MethodAttributes.Public;
+        if (!methodReachable)
             return false;
 
-        return access is MethodAttributes.Assembly or MethodAttributes.FamORAssem;
+        for (var current = resolved.DeclaringType; current != null; current = current.DeclaringType)
+        {
+            if (current.DeclaringType == null)
+            {
+                if (!sameAssembly && !current.IsPublic)
+                    return false;
+            }
+            else if (sameAssembly)
+            {
+                var visibility = current.Attributes & TypeAttributes.VisibilityMask;
+                if (visibility is TypeAttributes.NestedPrivate
+                    or TypeAttributes.NestedFamily
+                    or TypeAttributes.NestedFamANDAssem)
+                    return false;
+            }
+            else if (!current.IsNestedPublic)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static MethodAttributes AccessOf(MethodDef method) =>
@@ -355,6 +377,9 @@ public class ReferenceProxyObfuscator : IObfuscator
         if (IsCompilerOrInterop(called.DeclaringType))
             return true;
 
+        if (IsCallerSensitiveOrStackWalking(called))
+            return true;
+
         var sig = called.MethodSig!;
         if (IsVarArg(sig))
             return true;
@@ -367,6 +392,22 @@ public class ReferenceProxyObfuscator : IObfuscator
         }
 
         return false;
+    }
+
+    private static bool IsCallerSensitiveOrStackWalking(IMethod called)
+    {
+        var declaringFullName = called.DeclaringType?.FullName;
+        var methodName = called.Name?.String;
+
+        if (declaringFullName == "System.Reflection.Assembly" &&
+            methodName is "GetCallingAssembly" or "GetExecutingAssembly")
+            return true;
+
+        if (declaringFullName == "System.Reflection.MethodBase" &&
+            methodName == "GetCurrentMethod")
+            return true;
+
+        return declaringFullName is "System.Diagnostics.StackFrame" or "System.Diagnostics.StackTrace";
     }
 
     /// <summary>
@@ -384,6 +425,9 @@ public class ReferenceProxyObfuscator : IObfuscator
 
             var name = type.Name?.String ?? "";
             if (name is "RuntimeHelpers" or "Unsafe" or "Interlocked" or "Volatile" or "GCHandle" or "Buffer")
+                return true;
+
+            if (ns == "System.Diagnostics" && name is "StackFrame" or "StackTrace")
                 return true;
         }
 

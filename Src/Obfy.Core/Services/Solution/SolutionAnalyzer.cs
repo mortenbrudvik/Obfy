@@ -184,23 +184,36 @@ public class SolutionAnalyzer : ISolutionAnalyzer
 
     private static HashSet<string> BuildReferencedByIncludedExe(List<AnalyzedProject> included)
     {
+        var byPath = new Dictionary<string, AnalyzedProject>(ProjectPathComparer);
+        foreach (var project in included)
+            byPath[project.ProjectPath] = project;
+
         var referenced = new HashSet<string>(ProjectPathComparer);
+        var queue = new Queue<AnalyzedProject>();
+        var visited = new HashSet<string>(ProjectPathComparer);
 
         foreach (var project in included)
         {
-            if (!IsExeOrWinExe(project.Info!.OutputType))
-                continue;
+            if (IsExeOrWinExe(project.Info!.OutputType) && visited.Add(project.ProjectPath))
+                queue.Enqueue(project);
+        }
 
+        while (queue.Count > 0)
+        {
+            var project = queue.Dequeue();
             var projectDirectory = Path.GetDirectoryName(project.ProjectPath);
             if (projectDirectory is null)
                 continue;
 
-            foreach (var include in project.Info.ProjectReferences)
+            foreach (var include in project.Info!.ProjectReferences)
             {
                 if (string.IsNullOrWhiteSpace(include))
                     continue;
 
-                referenced.Add(SolutionPath.Resolve(projectDirectory, include));
+                var targetPath = SolutionPath.Resolve(projectDirectory, include);
+                referenced.Add(targetPath);
+                if (byPath.TryGetValue(targetPath, out var target) && visited.Add(targetPath))
+                    queue.Enqueue(target);
             }
         }
 

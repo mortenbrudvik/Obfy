@@ -401,11 +401,30 @@ public class StringEncryptionObfuscator : IObfuscator
                         continue;
                     if (called.Name != "GetString")
                         continue;
-                    if (called.DeclaringType?.Name != "ResourceManager")
+                    if (called.DeclaringType?.FullName != "System.Resources.ResourceManager")
                         continue;
-                    var paramCount = called.MethodSig?.Params.Count ?? 0;
-                    if (paramCount is not (1 or 2))
+                    var sig = called.MethodSig;
+                    if (sig is not { HasThis: true })
                         continue;
+                    if (sig.RetType?.RemovePinnedAndModifiers().ElementType != ElementType.String)
+                        continue;
+
+                    var paramCount = sig.Params.Count;
+                    if (paramCount == 1)
+                    {
+                        if (sig.Params[0].RemovePinnedAndModifiers().ElementType != ElementType.String)
+                            continue;
+                    }
+                    else if (paramCount == 2)
+                    {
+                        if (sig.Params[0].RemovePinnedAndModifiers().ElementType != ElementType.String ||
+                            sig.Params[1].RemovePinnedAndModifiers().FullName != "System.Globalization.CultureInfo")
+                            continue;
+                    }
+                    else
+                    {
+                        continue;
+                    }
 
                     instr.OpCode = OpCodes.Call;
                     instr.Operand = paramCount == 1 ? hook : hook2;

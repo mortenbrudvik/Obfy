@@ -290,6 +290,8 @@ obfy MyApp.dll -v -o output/
 | 1 | Error (file not found, obfuscation failed, two solution files, load failures, invalid XML, a `--map` or `--report` path that would replace an input or an output, etc.) |
 | 2 | Solution/project session had no included assemblies (all skipped) |
 
+Ctrl+C cancels the run in every input mode (a single assembly, `--merge`, a closed set, C# source): the CLI stops instead of finishing the run and writing its output.
+
 ## Environment
 
 Obfy stores configuration and logs in the following locations:

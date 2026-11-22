@@ -144,6 +144,7 @@ Then in Visual Studio: Extensions → Manage Extensions → Install from VSIX, a
 **Features:**
 - Right-click project → **Obfuscate** to protect your output assembly
 - **Enable / Disable Post-Build Obfuscation** for automatic protection on each build
+- **Cancel Obfuscation** (in the project menu while a run is active). A run that takes longer than the time limit (30 minutes; Tools → Options → Obfy → General → Run Timeout) is stopped and reported
 - **Obfy Settings** dialog with level presets (Minimal/Standard/Aggressive/Custom)
 - Per-project configuration stored in `obfy.json`
 - Output window integration for real-time progress

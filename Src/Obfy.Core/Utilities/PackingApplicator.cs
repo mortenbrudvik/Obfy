@@ -17,9 +17,17 @@ public static class PackingApplicator
         string inputPath,
         ICollection<string> warnings)
     {
-        var packed = settings.Packing.IsPortable
-            ? ManagedLauncherPacker.Pack(assemblyPath, inputPath)
-            : NativePacker.Pack(assemblyPath, settings, inputPath);
+        string packed;
+        if (settings.Packing.IsPortable)
+        {
+            var signingKey = AssemblySigner.TryLoadKey(settings.Signing);
+            packed = ManagedLauncherPacker.Pack(assemblyPath, inputPath, signingKey);
+        }
+        else
+        {
+            packed = NativePacker.Pack(assemblyPath, settings, inputPath);
+        }
+
         AddPackedWarnings(assemblyPath, settings.Packing, packed, warnings);
         return packed;
     }

@@ -4,13 +4,14 @@
   "title": "Obfy Settings",
   "description": "JSON configuration for the Obfy .NET obfuscator (Obfy.Core.Models.ObfySettings).",
   "type": "object",
-  "additionalProperties": true,
+  "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
       "description": "JSON Schema URL used by editors for validation and autocomplete.",
       "default": "https://raw.githubusercontent.com/mortenbrudvik/Obfy/main/schemas/obfy.schema.json"
     },
+    "$comment": { "type": "string" },
     "level": {
       "type": "string",
       "description": "Global obfuscation level preset.",
@@ -20,8 +21,9 @@
     "stringEncryption": {
       "type": "object",
       "description": "String encryption settings.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": true },
         "algorithm": { "$ref": "#/$defs/encryptionAlgorithm", "default": "Aes256" },
         "encryptConstantStrings": { "type": "boolean", "default": true },
@@ -32,12 +34,13 @@
     "controlFlow": {
       "type": "object",
       "description": "Control flow obfuscation settings.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": false },
         "mode": {
           "type": "string",
-          "enum": ["Switch", "OpaquePredicate", "Combined"],
+          "enum": ["Switch", "OpaquePredicate", "Combined", "switch", "opaquePredicate", "combined"],
           "default": "Switch"
         },
         "intensity": { "type": "integer", "minimum": 0, "maximum": 100, "default": 50 }
@@ -46,12 +49,13 @@
     "symbolRenaming": {
       "type": "object",
       "description": "Symbol renaming settings.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": true },
         "mode": {
           "type": "string",
-          "enum": ["Unreadable", "Sequential", "Hash", "Random"],
+          "enum": ["Unreadable", "Sequential", "Hash", "Random", "unreadable", "sequential", "hash", "random"],
           "default": "Unreadable"
         },
         "renameTypes": { "type": "boolean", "default": true },
@@ -72,8 +76,9 @@
     "protection": {
       "type": "object",
       "description": "Runtime protection settings.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "antiDebug": {
           "type": "boolean",
           "default": false,
@@ -93,8 +98,9 @@
         "methodEncryption": { "type": "boolean", "default": false },
         "antiTamper": {
           "type": "object",
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
+            "$comment": { "type": "string" },
             "enabled": { "type": "boolean", "default": false },
             "checkEntryPoint": { "type": "boolean", "default": true },
             "checkModuleInitializer": { "type": "boolean", "default": true }
@@ -102,8 +108,9 @@
         },
         "antiDecompiler": {
           "type": "object",
-          "additionalProperties": true,
+          "additionalProperties": false,
           "properties": {
+            "$comment": { "type": "string" },
             "enabled": { "type": "boolean", "default": false },
             "injectJunkTypes": { "type": "boolean", "default": true },
             "addSuppressIldasmAttribute": { "type": "boolean", "default": true },
@@ -121,8 +128,9 @@
     "metadata": {
       "type": "object",
       "description": "Metadata removal settings.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "removeDebugInfo": { "type": "boolean", "default": true },
         "removeAttributes": { "type": "boolean", "default": true },
         "stripDocumentation": { "type": "boolean", "default": true }
@@ -131,8 +139,9 @@
     "resourceEncryption": {
       "type": "object",
       "description": "Embedded resource encryption settings.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": false },
         "algorithm": { "$ref": "#/$defs/encryptionAlgorithm", "default": "Aes256" },
         "includePatterns": {
@@ -151,8 +160,9 @@
     "constantEncryption": {
       "type": "object",
       "description": "Numeric constant encryption settings.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": false },
         "algorithm": { "$ref": "#/$defs/encryptionAlgorithm", "default": "Xor" },
         "encryptIntegers": { "type": "boolean", "default": true },
@@ -168,8 +178,9 @@
     "assemblyMerge": {
       "type": "object",
       "description": "Assembly merging settings.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": false },
         "internalize": { "type": "boolean", "default": true },
         "preserveDebugInfo": { "type": "boolean", "default": false },
@@ -188,8 +199,9 @@
     "inclusions": {
       "type": "object",
       "description": "Optional allow-list. When any pattern is set, only matching namespaces, types, or methods are candidates (OR). Method-only lists still visit types that contain a matching method.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "namespaces": { "type": "array", "items": { "type": "string" }, "default": [] },
         "types": { "type": "array", "items": { "type": "string" }, "default": [] },
         "methods": { "type": "array", "items": { "type": "string" }, "default": [] }
@@ -198,8 +210,9 @@
     "exclusions": {
       "type": "object",
       "description": "Exclusion rules (types, methods, namespaces to skip).",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "namespaces": {
           "type": "array",
           "items": { "type": "string" },
@@ -233,16 +246,18 @@
     "incremental": {
       "type": "object",
       "description": "Reuse previous output when input and settings are unchanged.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": false }
       }
     },
     "packing": {
       "type": "object",
       "description": "Default win-x64 replaces the obfuscated PE with a native CLR-host stub and sibling .runtimeconfig.json. Set rid to portable for the managed {name}.launcher.exe escape hatch. Requires an entry point.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": {
           "type": "boolean",
           "default": false,
@@ -259,8 +274,9 @@
     "virtualization": {
       "type": "object",
       "description": "Replace eligible instance and static methods with a bytecode interpreter (objects, non-generic calls, fields, newobj, ldstr; i4/i8/r4/r8). Skips EH, generic methods/types/calls, byref, custom structs/Nullable<T>, switch, constructors, typeof (ldtoken), interpolators that allocate DefaultInterpolatedStringHandler, and using / enumerator-struct foreach (array foreach can be encoded). Per-build opcode permutation and XOR. Gated off NativeAOT / IL2CPP / Blazor WASM; off in every preset. Deterrent, not confidentiality.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": false },
         "maxMethods": { "type": "integer", "minimum": 1, "maximum": 256, "default": 32 }
       }
@@ -268,8 +284,9 @@
     "watermark": {
       "type": "object",
       "description": "Embed a customer/build identifier as an assembly attribute. Requires enabled=true and a non-whitespace id.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": false, "description": "Must be true together with a non-whitespace id; enabled with a blank id fails validation." },
         "id": { "type": "string", "description": "Plaintext identifier stored as the WatermarkAttribute constructor argument and Id field." }
       }
@@ -277,8 +294,9 @@
     "dependencyEmbedding": {
       "type": "object",
       "description": "Embed sibling {AssemblyRef.Name}.dll files next to the input as Obfy.Embedded.* resources and load them via AppDomain.AssemblyResolve. Disabled on NativeAot, UnityIl2Cpp, and BlazorWasm.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": false },
         "includePatterns": { "type": "array", "items": { "type": "string" }, "default": ["*.dll"] },
         "excludePatterns": { "type": "array", "items": { "type": "string" }, "default": ["*.resources.dll"] }
@@ -287,20 +305,33 @@
     "signing": {
       "type": "object",
       "description": "Re-sign the output with a strong-name key after obfuscation.",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
+        "$comment": { "type": "string" },
         "enabled": { "type": "boolean", "default": false },
-        "keyFile": { "type": "string" },
+        "keyFile": { "type": ["string", "null"] },
         "passwordEnvironmentVariable": {
-          "type": "string",
+          "type": ["string", "null"],
           "description": "Environment variable that holds the PFX password. Required for .pfx/.p12; unused for .snk."
         }
       }
     },
     "runtimeProfile": {
       "type": "string",
-      "description": "Target runtime. NativeAot, UnityIl2Cpp, and BlazorWasm disable method encryption, anti-dump, and dependency embedding. Anti-debug stays on but omits kernel32 P/Invoke.",
-      "enum": ["Default", "NativeAot", "UnityIl2Cpp", "BlazorWasm"],
+      "description": "Target runtime. NativeAot, UnityIl2Cpp, and BlazorWasm disable method encryption, anti-dump, dependency embedding, packing, and virtualization. Anti-debug stays on but omits kernel32 P/Invoke.",
+      "enum": [
+        "Default",
+        "default",
+        "NativeAot",
+        "nativeAot",
+        "nativeaot",
+        "UnityIl2Cpp",
+        "unityIl2Cpp",
+        "unityil2cpp",
+        "BlazorWasm",
+        "blazorWasm",
+        "blazorwasm"
+      ],
       "default": "Default"
     },
     "postBuildEnabled": {
@@ -312,7 +343,7 @@
   "$defs": {
     "encryptionAlgorithm": {
       "type": "string",
-      "enum": ["Xor", "Aes256"]
+      "enum": ["Xor", "xor", "Aes256", "aes256"]
     }
   }
 }

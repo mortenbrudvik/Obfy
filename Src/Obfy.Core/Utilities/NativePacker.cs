@@ -199,7 +199,7 @@ public static class NativePacker
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Trace.WriteLine($"NativePacker: failed to restore '{destination}': {ex.Message}");
+            Trace.WriteLine($"NativePacker: failed to restore original assembly ({ex.GetType().Name})");
             return false;
         }
     }
@@ -466,7 +466,7 @@ public static class NativePacker
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Trace.WriteLine($"NativePacker: failed to delete '{path}': {ex.Message}");
+            Trace.WriteLine($"NativePacker: failed to delete temporary file ({ex.GetType().Name})");
         }
     }
 }

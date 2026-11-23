@@ -90,6 +90,11 @@ public class PipelineContext
     public string? OutputPath { get; set; }
 
     /// <summary>
+    /// Additional directories probed by dependency embedding (e.g. original input folders during a merge).
+    /// </summary>
+    internal List<string> DependencySearchDirectories { get; } = new();
+
+    /// <summary>
     /// Gets the list of items skipped during obfuscation.
     /// </summary>
     public List<SkippedItem> SkippedItems { get; } = new();

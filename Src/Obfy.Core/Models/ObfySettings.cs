@@ -144,6 +144,11 @@ public class ObfySettings
     /// </summary>
     public void ApplyLevel()
     {
+        if (Level == ObfuscationLevel.Custom)
+            return;
+
+        ValidateNonNullSections();
+
         switch (Level)
         {
             // Each non-Custom branch assigns enabled bits, intensity, CF mode → Switch, XOR
@@ -249,30 +254,27 @@ public class ObfySettings
     /// </summary>
     public void Validate()
     {
-        ValidateObject(this);
-        ValidateObject(StringEncryption);
-        ValidateObject(ControlFlow);
-        ValidateObject(SymbolRenaming);
-        ValidateObject(Protection);
-        ValidateObject(Protection.AntiTamper);
-        ValidateObject(Protection.AntiDecompiler);
-        ValidateObject(Metadata);
-        ValidateObject(ResourceEncryption);
-        ValidateObject(ConstantEncryption);
-        ValidateObject(AssemblyMerge);
-        ValidateObject(DependencyEmbedding);
-        ValidateObject(Exclusions);
-        ValidateObject(Inclusions);
-        ValidateObject(Signing);
-        ValidateObject(Watermark);
-        ValidateObject(Virtualization);
-        ValidateObject(Packing);
+        Validator.ValidateObject(this, new ValidationContext(this), validateAllProperties: true);
+        foreach (var (instance, name) in GetSections())
+        {
+            if (instance is null)
+                throw new ValidationException($"Settings section '{name}' cannot be null.");
+            Validator.ValidateObject(instance, new ValidationContext(instance), validateAllProperties: true);
+        }
         if (Packing.Enabled && !Packing.IsNativeWin64 && !Packing.IsPortable)
             throw new ValidationException("packing.rid must be win-x64 or portable.");
 
         Inclusions.Namespaces ??= new();
         Inclusions.Types ??= new();
         Inclusions.Methods ??= new();
+        Exclusions.Namespaces ??= new();
+        Exclusions.Types ??= new();
+        Exclusions.Methods ??= new();
+        Exclusions.Attributes ??= new();
+        ResourceEncryption.IncludePatterns ??= new();
+        ResourceEncryption.ExcludePatterns ??= new();
+        AssemblyMerge.SearchDirectories ??= new();
+        AssemblyMerge.ExcludePatterns ??= new();
         DependencyEmbedding.IncludePatterns ??= new();
         DependencyEmbedding.ExcludePatterns ??= new();
 
@@ -297,10 +299,43 @@ public class ObfySettings
         {
             throw new ValidationException("Watermark is enabled but no id was specified.");
         }
-
-        static void ValidateObject(object instance) =>
-            Validator.ValidateObject(instance, new ValidationContext(instance), validateAllProperties: true);
     }
+
+    private void ValidateNonNullSections()
+    {
+        foreach (var (instance, name) in GetPresetSections())
+        {
+            if (instance is null)
+                throw new ValidationException($"Settings section '{name}' cannot be null.");
+        }
+    }
+
+    private (object? Instance, string Name)[] GetPresetSections() =>
+    [
+        (StringEncryption, nameof(StringEncryption)),
+        (ControlFlow, nameof(ControlFlow)),
+        (SymbolRenaming, nameof(SymbolRenaming)),
+        (Protection, nameof(Protection)),
+        (Protection?.AntiTamper, $"{nameof(Protection)}.{nameof(Protection.AntiTamper)}"),
+        (Protection?.AntiDecompiler, $"{nameof(Protection)}.{nameof(Protection.AntiDecompiler)}"),
+        (Metadata, nameof(Metadata)),
+        (ResourceEncryption, nameof(ResourceEncryption)),
+        (ConstantEncryption, nameof(ConstantEncryption)),
+        (Incremental, nameof(Incremental)),
+        (Virtualization, nameof(Virtualization)),
+        (Packing, nameof(Packing)),
+    ];
+
+    private IEnumerable<(object? Instance, string Name)> GetSections() =>
+    [
+        .. GetPresetSections(),
+        (AssemblyMerge, nameof(AssemblyMerge)),
+        (DependencyEmbedding, nameof(DependencyEmbedding)),
+        (Exclusions, nameof(Exclusions)),
+        (Inclusions, nameof(Inclusions)),
+        (Signing, nameof(Signing)),
+        (Watermark, nameof(Watermark)),
+    ];
 }
 
 /// <summary>

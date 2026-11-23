@@ -226,6 +226,62 @@ public class VmWithRenamingTests
         }
     }
 
+    [Fact]
+    public async Task MergeAndObfuscate_VirtualizedMethodCallsAcrossRenamedMergedAssemblies()
+    {
+        const string library = """
+            public class Shared
+            {
+                public int Value;
+                public static int Total;
+                public int Twice() => Value * 2;
+                public static int Add(int a, int b) => a + b;
+            }
+            """;
+        const string app = """
+            public static class Program { public static int Main() => 0; }
+
+            [System.Reflection.Obfuscation(Feature = "renaming", Exclude = true, ApplyToMembers = true)]
+            public static class Driver
+            {
+                public static int Cross(int n)
+                {
+                    var s = new Shared();
+                    s.Value = n;
+                    Shared.Total = Shared.Add(s.Twice(), 1);
+                    return Shared.Total + s.Value;
+                }
+            }
+            """;
+        var dir = NewTempDir();
+        try
+        {
+            var libPath = Compile(library, dir, "SharedLib");
+            var appPath = Compile(app, dir, "VmApp", OutputKind.ConsoleApplication, libPath);
+            var outPath = Path.Combine(dir, "MergedVm.dll");
+            var settings = SettingsFor("renaming");
+
+            var result = await CreateService().MergeAndObfuscateAsync([appPath, libPath], outPath, settings);
+            result.Success.ShouldBeTrue(result.ErrorMessage);
+            result.Statistics.ProtectionsApplied.ShouldBeGreaterThan(0);
+
+            using (var loaded = ModuleDefMD.Load(File.ReadAllBytes(outPath)))
+            {
+                IsVmStub(Driver(loaded).FindMethod("Cross")!).ShouldBeTrue("Driver.Cross should be a VM stub");
+                loaded.GetTypes().ShouldNotContain(t => t.Name == "Shared", "the merged library type must have been renamed");
+                StaleMemberReferenceScanner.Find(loaded).ShouldBeEmpty();
+            }
+
+            var expected = RunCross(appPath, 7);
+            expected.ShouldBe("Int32:22");
+            RunCross(outPath, 7).ShouldBe(expected);
+        }
+        finally
+        {
+            TryDelete(dir);
+        }
+    }
+
     private static ObfySettings SettingsFor(string combination)
     {
         var settings = new ObfySettings

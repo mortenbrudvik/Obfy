@@ -181,15 +181,8 @@ public class ServiceTests : IDisposable
     [Fact]
     public async Task AssemblyProcessor_Save_ResignsWithSnk()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
         var snkPath = Path.Combine(_tempDirectory, "test.snk");
-#pragma warning disable SYSLIB0028, CA1416
-        var cspParams = new CspParameters { KeyNumber = (int)KeyNumber.Signature };
-        using (var csp = new RSACryptoServiceProvider(1024, cspParams))
-            File.WriteAllBytes(snkPath, csp.ExportCspBlob(includePrivateParameters: true));
-#pragma warning restore SYSLIB0028, CA1416
+        WriteCrossPlatformSnk(snkPath);
 
         var assemblyPath = CreateTestAssembly("ToSign.dll");
         var outputPath = Path.Combine(_tempDirectory, "signed.dll");
@@ -204,6 +197,46 @@ public class ServiceTests : IDisposable
         signed.IsStrongNameSigned.ShouldBeTrue();
         signed.Assembly.PublicKey.ShouldNotBeNull();
         signed.Assembly.PublicKey.Data.Length.ShouldBeGreaterThan(0);
+    }
+
+    private static void WriteCrossPlatformSnk(string path)
+    {
+        using var rsa = RSA.Create(2048);
+        var p = rsa.ExportParameters(includePrivateParameters: true);
+        using var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms);
+
+        // CAPI BLOBHEADER: bType=PRIVATEKEYBLOB (0x07), bVersion=2, reserved=0, aiKeyAlg=CALG_RSA_SIGN (0x2400)
+        writer.Write((byte)0x07);
+        writer.Write((byte)0x02);
+        writer.Write((ushort)0);
+        writer.Write(0x00002400u);
+
+        // CAPI RSAPUBKEY: magic="RSA2" (0x32415352), bitlen=2048, pubexp (little-endian uint32)
+        writer.Write(0x32415352u);
+        writer.Write(2048u);
+        uint pubExp = 0;
+        foreach (var b in p.Exponent!)
+            pubExp = (pubExp << 8) | b;
+        writer.Write(pubExp);
+
+        WriteReversedPadded(writer, p.Modulus!, 256);
+        WriteReversedPadded(writer, p.P!, 128);
+        WriteReversedPadded(writer, p.Q!, 128);
+        WriteReversedPadded(writer, p.DP!, 128);
+        WriteReversedPadded(writer, p.DQ!, 128);
+        WriteReversedPadded(writer, p.InverseQ!, 128);
+        WriteReversedPadded(writer, p.D!, 256);
+
+        File.WriteAllBytes(path, ms.ToArray());
+
+        static void WriteReversedPadded(BinaryWriter w, byte[] bigEndian, int length)
+        {
+            var le = new byte[length];
+            for (var i = 0; i < bigEndian.Length; i++)
+                le[i] = bigEndian[bigEndian.Length - 1 - i];
+            w.Write(le);
+        }
     }
 
     [Fact]

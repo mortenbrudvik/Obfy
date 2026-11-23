@@ -173,8 +173,15 @@ public static class VmEncoder
             offsets[instr] = buffer.Count;
 
             var codeName = instr.OpCode.Code;
-            if (codeName is Code.Nop or Code.Volatile or Code.Unaligned)
+            if (codeName is Code.Nop or Code.Unaligned)
                 continue;
+
+            if (codeName is Code.Volatile)
+            {
+                skipReason = VmSkipReasons.UnsupportedOpcode;
+                tables.Rollback(methodMark, fieldMark, typeMark);
+                return false;
+            }
 
             if (codeName is Code.Switch)
             {
@@ -1123,31 +1130,49 @@ public static class VmEncoder
         if (sig is null)
             return false;
 
-        // Match on the sig itself so GenericInst (System.Span`1<T>) is caught even
-        // when GenericType.TypeDefOrRef is a TypeSpec with an empty Name.
-        if (IsByRefLikeName(sig.TypeName) || IsByRefLikeFullName(sig.FullName))
-            return true;
-
         if (sig is GenericInstSig generic)
         {
-            return IsByRefLikeName(generic.GenericType.TypeName)
-                || IsByRefLikeFullName(generic.GenericType.FullName)
-                || IsByRefLike(generic.GenericType.TypeDefOrRef, assumeUnresolvedValueTypeIsByRefLike);
+            var inner = generic.GenericType;
+            if (inner is null)
+                return false;
+
+            var resolved = inner.TypeDefOrRef?.ResolveTypeDef();
+            if (resolved is not null)
+                return HasIsByRefLikeAttribute(resolved);
+
+            if (inner.TypeDefOrRef is TypeSpec spec)
+            {
+                var specSig = spec.TypeSig?.RemovePinnedAndModifiers();
+                if (specSig is not null && IsByRefLike(specSig, assumeUnresolvedValueTypeIsByRefLike))
+                    return true;
+            }
+
+            if (!sig.IsValueType)
+                return false;
+
+            // Only fall back to known BCL names when the type is an unresolved value type.
+            return IsByRefLikeName(sig.TypeName)
+                || IsByRefLikeFullName(sig.FullName)
+                || IsByRefLikeName(inner.TypeName)
+                || IsByRefLikeFullName(inner.FullName)
+                || IsByRefLike(inner.TypeDefOrRef, assumeUnresolvedValueTypeIsByRefLike: false, isValueType: true);
         }
 
         if (sig is TypeDefOrRefSig tdr)
         {
-            if (IsByRefLike(tdr.TypeDefOrRef, assumeUnresolvedValueTypeIsByRefLike))
-                return true;
-            return assumeUnresolvedValueTypeIsByRefLike
-                && tdr.ElementType is ElementType.ValueType
-                && tdr.TypeDefOrRef.ResolveTypeDef() is null;
+            return IsByRefLike(
+                tdr.TypeDefOrRef,
+                assumeUnresolvedValueTypeIsByRefLike,
+                isValueType: tdr.ElementType is ElementType.ValueType);
         }
 
         return false;
     }
 
-    private static bool IsByRefLike(ITypeDefOrRef? typeRef, bool assumeUnresolvedValueTypeIsByRefLike = true)
+    private static bool IsByRefLike(
+        ITypeDefOrRef? typeRef,
+        bool assumeUnresolvedValueTypeIsByRefLike = true,
+        bool isValueType = false)
     {
         if (typeRef is null)
             return false;
@@ -1158,13 +1183,22 @@ public static class VmEncoder
             return inner is not null && IsByRefLike(inner, assumeUnresolvedValueTypeIsByRefLike);
         }
 
+        var type = typeRef.ResolveTypeDef();
+        if (type is not null)
+            return HasIsByRefLikeAttribute(type);
+
+        if (!isValueType)
+            return false;
+
         if (IsByRefLikeName(UTF8String.ToSystemStringOrEmpty(typeRef.Name)) ||
             IsByRefLikeFullName(typeRef.FullName))
             return true;
 
-        var type = typeRef.ResolveTypeDef();
-        if (type is null)
-            return false;
+        return assumeUnresolvedValueTypeIsByRefLike;
+    }
+
+    private static bool HasIsByRefLikeAttribute(TypeDef type)
+    {
         foreach (var attr in type.CustomAttributes)
         {
             if (attr.TypeFullName == IsByRefLikeAttribute)
@@ -1175,12 +1209,52 @@ public static class VmEncoder
     }
 
     private static bool IsByRefLikeName(string? name) =>
-        name is "Span`1" or "ReadOnlySpan`1";
+        name is "Span`1"
+            or "ReadOnlySpan`1"
+            or "TypedReference"
+            or "ArgIterator"
+            or "RuntimeArgumentHandle"
+            or "Utf8JsonReader"
+            or "SequenceReader`1"
+            or "DefaultInterpolatedStringHandler"
+            or "SpanSplitEnumerator`1";
 
-    private static bool IsByRefLikeFullName(string? fullName) =>
-        fullName is not null &&
-        (fullName.StartsWith("System.Span`1", StringComparison.Ordinal) ||
-         fullName.StartsWith("System.ReadOnlySpan`1", StringComparison.Ordinal));
+    private static readonly string[] KnownByRefLikeFullNames =
+    [
+        "System.Span`1",
+        "System.ReadOnlySpan`1",
+        "System.TypedReference",
+        "System.ArgIterator",
+        "System.RuntimeArgumentHandle",
+        "System.Text.Json.Utf8JsonReader",
+        "System.Buffers.SequenceReader`1",
+        "System.Runtime.CompilerServices.DefaultInterpolatedStringHandler",
+        "System.MemoryExtensions/SpanSplitEnumerator`1",
+        "System.MemoryExtensions+SpanSplitEnumerator`1"
+    ];
+
+    private static bool IsByRefLikeFullName(string? fullName)
+    {
+        if (string.IsNullOrEmpty(fullName))
+            return false;
+
+        foreach (var prefix in KnownByRefLikeFullNames)
+        {
+            if (fullName.Length == prefix.Length)
+            {
+                if (string.Equals(fullName, prefix, StringComparison.Ordinal))
+                    return true;
+            }
+            else if (fullName.Length > prefix.Length &&
+                     fullName.StartsWith(prefix, StringComparison.Ordinal) &&
+                     fullName[prefix.Length] is '<' or '[' or '/' or '+')
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsNonPrimitiveValueType(TypeSig? sig)
     {

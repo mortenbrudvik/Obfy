@@ -234,10 +234,23 @@ public class OutputWriteTests
                 RedirectStandardOutput = true,
                 UseShellExecute = false
             })!;
-            var stderr = process.StandardError.ReadToEndAsync();
-            _ = process.StandardOutput.ReadToEndAsync();
-            process.WaitForExit(30000).ShouldBeTrue("packed exe timed out");
-            process.ExitCode.ShouldBe("packed-secret-literal-777".Length, stderr.GetAwaiter().GetResult());
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var exited = true;
+            try
+            {
+                await process.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                exited = false;
+                try { process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            }
+            exited.ShouldBeTrue("packed exe timed out");
+            await stdoutTask;
+            var stderr = await stderrTask;
+            process.ExitCode.ShouldBe("packed-secret-literal-777".Length, stderr);
         }
         finally
         {

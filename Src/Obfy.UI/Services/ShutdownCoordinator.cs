@@ -36,6 +36,7 @@ public sealed class ShutdownCoordinator
 
     // UI thread only.
     private bool _preparing;
+    private bool _restarting;
 
     public ShutdownCoordinator(RunCoordinator run, InputSession input, ILogger<ShutdownCoordinator> logger)
         : this(
@@ -74,6 +75,9 @@ public sealed class ShutdownCoordinator
     /// </summary>
     public bool TryApproveWithoutAsking()
     {
+        if (_restarting || _preparing)
+            return false;
+
         if (Approved)
             return true;
 
@@ -109,7 +113,8 @@ public sealed class ShutdownCoordinator
             return true;
 
         // A second click on the close button while the first waits for the user or for the run: not another question.
-        if (_preparing)
+        // While RestartAsync is flushing preferences, do not let a concurrent Quit or close preempt the restart.
+        if (_preparing || _restarting)
             return false;
 
         _preparing = true;
@@ -173,9 +178,13 @@ public sealed class ShutdownCoordinator
     /// </summary>
     public async Task RestartAsync()
     {
+        if (_preparing || _restarting)
+            return;
+
         if (!await PrepareToCloseAsync())
             return;
 
+        _restarting = true;
         try
         {
             await WaitAsync(_flushPreferences, _preferencesTimeout, "The preferences were not written in time; restarting anyway");
@@ -187,6 +196,7 @@ public sealed class ShutdownCoordinator
                 return;
             }
 
+            _restarting = false;
             ShutDown();
         }
         catch (Exception) when (Approved)
@@ -194,6 +204,10 @@ public sealed class ShutdownCoordinator
             // Starting the new process threw: the shell is staying too. (A throwing shutdown has already taken the approval back.)
             AbandonClose();
             throw;
+        }
+        finally
+        {
+            _restarting = false;
         }
     }
 
@@ -217,11 +231,11 @@ public sealed class ShutdownCoordinator
     private static bool ConfirmWithUser()
     {
         const string text = "An obfuscation run is still in progress. Cancel it and close Obfy?";
-        var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive)
+        var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive && w.IsLoaded)
             ?? Application.Current?.MainWindow;
-        var answer = owner is null
-            ? MessageBox.Show(text, "Obfy", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
-            : MessageBox.Show(owner, text, "Obfy", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        var answer = owner is { IsLoaded: true }
+            ? MessageBox.Show(owner, text, "Obfy", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
+            : MessageBox.Show(text, "Obfy", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
         return answer == MessageBoxResult.Yes;
     }
 

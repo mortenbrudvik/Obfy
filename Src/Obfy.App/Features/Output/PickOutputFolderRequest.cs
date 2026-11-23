@@ -19,7 +19,7 @@ public class PickOutputFolderRequestHandler(InputSession session, IFileDialogs d
         run.EnsureNotRunning();
         var folder = await dialogs.PickFolderAsync("Select Output Directory").ConfigureAwait(false);
         if (!string.IsNullOrEmpty(folder))
-            session.SetOutputFolder(folder);
+            run.WhileIdle(() => session.SetOutputFolder(folder));
 
         return session.GetSnapshot();
     }

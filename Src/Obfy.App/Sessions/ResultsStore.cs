@@ -202,11 +202,30 @@ public sealed class ResultsStore
     /// throw: they come back, and are kept, as <see cref="PreviewResult.Error"/>. The text is cut by
     /// <see cref="Obfy.Core.Utilities.AssemblyPreview.Decompile"/>.
     /// </summary>
-    public async Task<PreviewResult> LoadPreviewAsync(string? assemblyPath)
+    public Task<PreviewResult> LoadPreviewAsync(string? assemblyPath) =>
+        LoadPreviewCoreAsync(assemblyPath, requireKnownPath: false);
+
+    /// <summary>
+    /// Validates that <paramref name="assemblyPath"/> is one of <see cref="SetPreviewPaths"/> atomically with the
+    /// preview-version increment, then decompiles off-thread. Used by <c>preview.get</c> so a concurrent
+    /// <see cref="BeginRun"/> or <see cref="Clear"/> can never race between validation and version capture.
+    /// </summary>
+    public Task<PreviewResult> LoadKnownPreviewAsync(string? assemblyPath) =>
+        LoadPreviewCoreAsync(assemblyPath, requireKnownPath: true);
+
+    private async Task<PreviewResult> LoadPreviewCoreAsync(string? assemblyPath, bool requireKnownPath)
     {
         int version;
         lock (_gate)
+        {
+            if (requireKnownPath && (string.IsNullOrWhiteSpace(assemblyPath)
+                || !_previewPaths.Contains(assemblyPath, StringComparer.OrdinalIgnoreCase)))
+            {
+                throw new ObfyApiException("preview.unknownPath", "That file is not one of this run's output assemblies.");
+            }
+
             version = ++_previewVersion;
+        }
 
         var result = await Task.Run(() => ResolvePreview(assemblyPath)).ConfigureAwait(false);
 

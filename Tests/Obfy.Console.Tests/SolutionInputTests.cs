@@ -21,7 +21,7 @@ public class SolutionInputTests : IDisposable
         var sln = Path.Combine("src", "App.sln");
         var parseResult = Program.CreateRootCommand().Parse($"\"{sln}\" -o out");
         parseResult.Errors.ShouldBeEmpty();
-        parseResult.GetRequiredValue(Program.InputArgument)[0].Name.ShouldBe("App.sln");
+        parseResult.ArgumentValue<FileInfo[]>("input")[0].Name.ShouldBe("App.sln");
     }
 
     [Fact]

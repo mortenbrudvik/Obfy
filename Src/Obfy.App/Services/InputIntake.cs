@@ -25,9 +25,19 @@ public sealed class InputIntake(InputSession input, ProtectionSession protection
     /// refusal is a notice the page shows.
     /// </para>
     /// </summary>
-    public async Task AddPathsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken)
+    public Task AddPathsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken) =>
+        AddPathsCoreAsync(paths, throwIfRunning: false, cancellationToken);
+
+    internal Task AddPickedPathsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken) =>
+        AddPathsCoreAsync(paths, throwIfRunning: true, cancellationToken);
+
+    private async Task AddPathsCoreAsync(IReadOnlyList<string> paths, bool throwIfRunning, CancellationToken cancellationToken)
     {
-        if (run.IsRunning)
+        if (throwIfRunning)
+        {
+            run.EnsureNotRunning();
+        }
+        else if (run.IsRunning)
         {
             logger.LogDebug("Refused {Count} path(s): a run is in progress", paths.Count);
             input.Notify(NoticeLevel.Warning, "Run in progress", RunCoordinator.InputBlockedMessage);
@@ -35,8 +45,19 @@ public sealed class InputIntake(InputSession input, ProtectionSession protection
         }
 
         logger.LogDebug("Adding {Count} path(s)", paths.Count);
-        var result = input.AddPaths(paths);
-        await LoadConfigAsync(result.ConfigPath, cancellationToken);
+        AddPathsResult result;
+        try
+        {
+            result = run.WhileIdle(() => input.AddPaths(paths));
+        }
+        catch (ObfyApiException ex) when (!throwIfRunning && ex.Code == "run.blocked")
+        {
+            logger.LogDebug("Refused {Count} path(s): a run is in progress", paths.Count);
+            input.Notify(NoticeLevel.Warning, "Run in progress", RunCoordinator.InputBlockedMessage);
+            return;
+        }
+
+        await LoadConfigAsync(result.ConfigPath, throwIfRunning, cancellationToken);
     }
 
     /// <summary>
@@ -47,22 +68,42 @@ public sealed class InputIntake(InputSession input, ProtectionSession protection
     public async Task ApplyStartupAsync(IReadOnlyList<string> args, CancellationToken cancellationToken = default)
     {
         var result = input.ApplyStartup(args);
-        await LoadConfigAsync(result.ConfigPath, cancellationToken);
+        await LoadConfigAsync(result.ConfigPath, throwIfRunning: false, cancellationToken);
     }
 
-    private async Task LoadConfigAsync(string? path, CancellationToken cancellationToken)
+    private async Task LoadConfigAsync(string? path, bool throwIfRunning, CancellationToken cancellationToken)
     {
         if (path is null)
             return;
 
+        ConfigLoadResult loaded;
         try
         {
-            protection.FromObfySettings(await ConfigFile.LoadAsync(path, cancellationToken), path);
+            loaded = await ConfigFile.LoadWithUnknownKeysAsync(path, cancellationToken);
         }
         catch (ObfyApiException ex)
         {
             logger.LogWarning("Could not load a configuration ({Code})", ex.Code);
             input.Notify(NoticeLevel.Error, "Could not load configuration", ex.Message);
+            return;
+        }
+
+        try
+        {
+            run.WhileIdle(() =>
+            {
+                protection.FromObfySettings(loaded.Settings, path);
+                input.ReplaceNoticeWithPrefix(
+                    ConfigFile.UnknownKeysNoticePrefix,
+                    NoticeLevel.Warning,
+                    "Unknown configuration keys",
+                    loaded.UnknownKeys.Count > 0 ? ConfigFile.FormatUnknownKeysNotice(loaded.UnknownKeys) : null);
+            });
+        }
+        catch (ObfyApiException ex) when (!throwIfRunning && ex.Code == "run.blocked")
+        {
+            logger.LogDebug("Refused loading dropped configuration: a run is in progress");
+            input.Notify(NoticeLevel.Warning, "Run in progress", RunCoordinator.InputBlockedMessage);
         }
     }
 }

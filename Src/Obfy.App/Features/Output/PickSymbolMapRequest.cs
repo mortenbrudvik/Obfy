@@ -18,10 +18,11 @@ public class PickSymbolMapRequestHandler(InputSession session, IFileDialogs dial
     public async ValueTask<InputSnapshot> Handle(PickSymbolMapRequest request, CancellationToken cancellationToken)
     {
         run.EnsureNotRunning();
+        session.EnsureSymbolMapEnabled();
         var path = await dialogs.PickSaveAsync("Save symbol map", "JSON files (*.json)|*.json|All files (*.*)|*.*", "symbolmap.json")
             .ConfigureAwait(false);
         if (!string.IsNullOrEmpty(path))
-            session.SetSymbolMapPath(path);
+            run.WhileIdle(() => session.SetSymbolMapPath(path));
 
         return session.GetSnapshot();
     }

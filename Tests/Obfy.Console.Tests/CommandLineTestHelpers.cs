@@ -27,4 +27,10 @@ internal static class CommandLineTestHelpers
         };
         return await command.Parse(args).InvokeAsync(config);
     }
+
+    public static T? OptionValue<T>(this ParseResult parseResult, string name) =>
+        parseResult.GetValue(parseResult.RootCommandResult.Command.Options.OfType<Option<T>>().Single(o => o.Name == name));
+
+    public static T ArgumentValue<T>(this ParseResult parseResult, string name) =>
+        parseResult.GetRequiredValue(parseResult.RootCommandResult.Command.Arguments.OfType<Argument<T>>().Single(a => a.Name == name));
 }

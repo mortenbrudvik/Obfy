@@ -114,10 +114,10 @@ public sealed class SettingsServicePreferencesTests : IDisposable
     }
 
     [Fact]
-    public async Task SavePreferences_WhenTheTempFileCannotBeWritten_LogsTheTypeOnly()
+    public async Task SavePreferences_WhenTheTargetCannotBeWritten_LogsTheTypeOnly()
     {
-        // A folder where the temp file should go: the write is refused.
-        Directory.CreateDirectory(_prefs + ".tmp");
+        // A folder where the preferences file should go: replacing it fails.
+        Directory.CreateDirectory(_prefs);
         var service = Create();
         service.LastOutputDirectory = @"C:\out";
 

@@ -986,10 +986,17 @@ public sealed class RunCoordinator : IDisposable
             .GroupBy(static m => m.InputPath!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(static g => g.Key, static g => g.Last(), StringComparer.OrdinalIgnoreCase);
 
+        var uniqueNames = assemblies
+            .GroupBy(static a => Path.GetFileName(a.Path), StringComparer.OrdinalIgnoreCase)
+            .Where(static g => g.Count() == 1)
+            .Select(static g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         foreach (var file in assemblies)
         {
             var name = Path.GetFileName(file.Path);
-            var module = FindModuleResult(file, name, byInput, result.ModuleResults);
+            var allowNameFallback = uniqueNames.Contains(name);
+            var module = FindModuleResult(file, name, allowNameFallback, byInput, result.ModuleResults);
             if (module != null)
             {
                 if (module.Success)
@@ -1005,7 +1012,7 @@ public sealed class RunCoordinator : IDisposable
                 continue;
             }
 
-            if (FindLoadFailure(file, name, result.LoadFailures) is { } loadFailure)
+            if (FindLoadFailure(file, name, allowNameFallback, result.LoadFailures) is { } loadFailure)
             {
                 SetFile(file.Id, FileStatus.Error, error: $"Failed to load {name}: {loadFailure.Message}");
                 CountFailed(1);
@@ -1044,10 +1051,13 @@ public sealed class RunCoordinator : IDisposable
     }
 
     private static ObfuscationResult? FindModuleResult(
-        InputFile file, string name, Dictionary<string, ObfuscationResult> byInput, IReadOnlyList<ObfuscationResult> modules)
+        InputFile file, string name, bool allowNameFallback, Dictionary<string, ObfuscationResult> byInput, IReadOnlyList<ObfuscationResult> modules)
     {
         if (byInput.TryGetValue(file.Path, out var module))
             return module;
+
+        if (!allowNameFallback)
+            return null;
 
         return modules.FirstOrDefault(m =>
             (!string.IsNullOrEmpty(m.InputPath)
@@ -1057,12 +1067,19 @@ public sealed class RunCoordinator : IDisposable
     }
 
     private static ClosedSetLoadFailure? FindLoadFailure(
-        InputFile file, string name, IReadOnlyList<ClosedSetLoadFailure> loadFailures)
+        InputFile file, string name, bool allowNameFallback, IReadOnlyList<ClosedSetLoadFailure> loadFailures)
     {
         foreach (var failure in loadFailures)
         {
             if (string.Equals(failure.Path, file.Path, StringComparison.OrdinalIgnoreCase))
                 return failure;
+        }
+
+        if (!allowNameFallback)
+            return null;
+
+        foreach (var failure in loadFailures)
+        {
             if (string.Equals(Path.GetFileName(failure.Path), name, StringComparison.OrdinalIgnoreCase))
                 return failure;
         }

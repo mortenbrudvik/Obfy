@@ -14,11 +14,6 @@ public record GetPreviewRequest(string? Path) : IRequest<PreviewResult>;
 
 public class GetPreviewRequestHandler(ResultsStore results) : IRequestHandler<GetPreviewRequest, PreviewResult>
 {
-    public async ValueTask<PreviewResult> Handle(GetPreviewRequest request, CancellationToken cancellationToken)
-    {
-        if (!results.IsKnownPreviewPath(request.Path))
-            throw new ObfyApiException("preview.unknownPath", "That file is not one of this run's output assemblies.");
-
-        return await results.LoadPreviewAsync(request.Path).ConfigureAwait(false);
-    }
+    public async ValueTask<PreviewResult> Handle(GetPreviewRequest request, CancellationToken cancellationToken) =>
+        await results.LoadKnownPreviewAsync(request.Path).ConfigureAwait(false);
 }

@@ -11,7 +11,6 @@ Run all test projects and report results.
 | Obfy.UI.Tests | Unit | ViewModels, startup CLI, XAML contrast |
 | Obfy.ScenarioTests | Scenario | SDK compile → obfuscate → run |
 | Obfy.UI.AutomationTests | UI | Locator unit tests (CI) + FlaUI (`Category=UI`) |
-| Obfy.VisualStudio.Tests | Unit | VS helpers (no hive) |
 
 Default `dotnet test` / CI skip `Category=UI` and `Category=Platform` (`Directory.Build.props`).
 
@@ -28,7 +27,6 @@ dotnet test Tests/Obfy.Tests/Obfy.Tests.csproj
 dotnet test Tests/Obfy.Console.Tests/Obfy.Console.Tests.csproj
 dotnet test Tests/Obfy.UI.Tests/Obfy.UI.Tests.csproj
 dotnet test Tests/Obfy.ScenarioTests/Obfy.ScenarioTests.csproj
-dotnet test Tests/Obfy.VisualStudio.Tests/Obfy.VisualStudio.Tests.csproj
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj --filter Category=UI
 ```
 

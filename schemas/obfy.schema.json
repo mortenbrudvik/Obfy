@@ -336,7 +336,7 @@
     },
     "postBuildEnabled": {
       "type": "boolean",
-      "description": "Whether post-build obfuscation is enabled (used by the Visual Studio extension).",
+      "description": "Whether post-build obfuscation is enabled. Obfy does not read this value; it is accepted so that existing configuration files that set it still load.",
       "default": false
     }
   },

@@ -90,6 +90,26 @@ function Block({ block }: { block: GuideBlock }): ReactNode {
   }
 }
 
+/**
+ * Maps in-app guide topic ids to the host's closed set of online section ids (`GuideLinks.cs`).
+ * `"start"` omits the topic (`undefined`) so the host opens the guide at its start.
+ */
+const onlineTopicIds: Record<string, string | undefined> = {
+  start: undefined,
+  keys: "shortcuts",
+  "getting-started": "getting-started",
+  "files-and-output": "files-and-output",
+  "levels-and-settings": "levels-and-settings",
+  techniques: "techniques",
+  "what-can-break": "what-can-break",
+  results: "results",
+  "stack-traces": "stack-traces",
+  shortcuts: "shortcuts",
+  "command-line": "command-line",
+  "ide-and-build": "ide-and-build",
+  troubleshooting: "troubleshooting",
+};
+
 /** The Guide: a short quick-start, a topic list on the left and the chosen topic's article on the right, with a way to the full guide online. */
 export default function GuidePage({ topic, onTopicChange }: GuidePageProps) {
   const current: GuideTopic = guideTopics.find((candidate) => candidate.id === topic) ?? guideTopics[0];
@@ -124,7 +144,7 @@ export default function GuidePage({ topic, onTopicChange }: GuidePageProps) {
         ))}
         <div className="online">
           <p>{strings.guide.onlineHint}</p>
-          <button type="button" className="btn primary" onClick={() => void openOnline()}>
+          <button type="button" className="btn primary" onClick={() => void openOnline(onlineTopicIds[current.id])}>
             {strings.guide.online}
           </button>
           {onlineError && <Notice tone="error">{onlineError}</Notice>}

@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef, type DragEvent, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import ErrorBoundary from "../../components/ErrorBoundary";
 import Notice from "../../components/Notice";
 import { flushPendingEdits } from "../../hooks/pendingEdits";
-import { useAppAction } from "../../hooks/useAppAction";
+import { useActionRunner } from "../../hooks/useAppAction";
 import { useFileDrag } from "../../hooks/useFileDrag";
 import { usePushedState } from "../../hooks/usePushedState";
 import { useReadySignal } from "../../hooks/useReadySignal";
@@ -10,7 +11,7 @@ import { useRun } from "../../hooks/useRun";
 import { useShortcuts } from "../../hooks/useShortcuts";
 import { api, events } from "../../interop/api";
 import { strings } from "../../strings";
-import type { AppInfo, InputSnapshot, ResultsSnapshot, SettingsSnapshot } from "../../types/domain";
+import type { AppInfo, InputNotice, InputSnapshot, ResultsSnapshot, SettingsSnapshot } from "../../types/domain";
 import RunBar from "./RunBar";
 import ScreenCrash from "./ScreenCrash";
 import Sidebar, { type ResultsDot, type Screen } from "./Sidebar";
@@ -20,11 +21,16 @@ import "./Shell.css";
 /** What the host listens for (WebViewHandler.FilesDroppedMessage); the dropped files travel with it. */
 const FILES_DROPPED_MESSAGE = "files.dropped";
 
+export interface ShellScreenProps {
+  onOpenConfig: () => void;
+  notices: InputNotice[];
+}
+
 interface ShellProps {
   screen: Screen;
   onNavigate: (screen: Screen) => void;
-  /** The current screen. */
-  children: ReactNode;
+  /** The current screen, or a render function receiving shell-level actions and notices. */
+  children: ReactNode | ((props: ShellScreenProps) => ReactNode);
 }
 
 /**
@@ -50,20 +56,27 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
     (run !== null || failed) && (files !== null || filesFailed) && (settings !== null || settingsFailed) && (results !== null || resultsFailed),
   );
 
-  // A shortcut's failure is shown on whatever screen is open, so it goes when the user moves on or the state changes.
+  // A shortcut's failure is shown on whatever screen is open, so it goes when the user moves on, the state changes,
+  // or another shell action runs.
   const staleAfter = [screen, files?.revision, settings?.revision].join("|");
-  const [addFiles, addFilesError] = useAppAction(async () => {
-    await api.files.pick();
-  }, strings.shell.addFilesFailed, staleAfter);
+  const [runAction, shortcutError] = useActionRunner(staleAfter);
+
+  const addFiles = () =>
+    runAction(strings.shell.addFilesFailed, async () => {
+      await api.files.pick();
+    });
   // Text typed into a box is committed when the box is left, which a shortcut does not do: it is sent first, and the
   // host has it before it is asked to save or to run.
-  const [saveConfig, saveConfigError] = useAppAction(async () => {
-    if ((await flushPendingEdits()) === "failed") throw new Error(strings.protection.failed.pending);
-    await api.settings.saveConfig();
-  }, strings.shell.saveConfigFailed, staleAfter);
-  const [openConfig, openConfigError] = useAppAction(async () => {
-    await api.settings.openConfig();
-  }, strings.shell.openConfigFailed, staleAfter);
+  const saveConfig = (saveAs: boolean) =>
+    runAction(strings.shell.saveConfigFailed, async () => {
+      if ((await flushPendingEdits()) === "failed") throw new Error(strings.protection.failed.pending);
+      await api.settings.saveConfig(saveAs);
+    });
+  const openConfig = () =>
+    runAction(strings.shell.openConfigFailed, async () => {
+      await api.settings.openConfig();
+    });
+  const [confirmOpenConfig, setConfirmOpenConfig] = useState(false);
 
   const running = run?.status === "Running";
 
@@ -89,13 +102,23 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
     if (flushed === "sent" || latestRun.current?.canStart) await start();
   };
 
+  const requestOpenConfig = () => {
+    if (running) return;
+    if (settings?.dirty) {
+      setConfirmOpenConfig(true);
+    } else {
+      void openConfig();
+    }
+  };
+
   useShortcuts({
     obfuscate: running ? undefined : () => void startAfterPendingEdits(),
     cancel: running ? () => void cancel() : undefined,
     guide: () => onNavigate("guide"),
     addFiles: running ? undefined : () => void addFiles(),
-    saveConfig: () => void saveConfig(),
-    openConfig: running ? undefined : () => void openConfig(),
+    saveConfig: () => void saveConfig(false),
+    saveConfigAs: () => void saveConfig(true),
+    openConfig: running ? undefined : requestOpenConfig,
   });
 
   // Trying a broken screen again removes the button that had focus: focus goes to the content area, where the screen is.
@@ -105,7 +128,14 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
   const includedCount = files?.files.filter((file) => file.included).length ?? 0;
   const level = settings?.level ?? null;
   const resultsDot: ResultsDot = running ? "running" : results?.state === "Finished" ? "done" : "none";
-  const shortcutError = addFilesError ?? saveConfigError ?? openConfigError;
+  const configNotices =
+    files?.notices?.filter(
+      (n) =>
+        n.title === "Unknown configuration keys" ||
+        n.title === "Could not load configuration" ||
+        n.title === "Not an Obfy configuration" ||
+        n.message.startsWith("Unknown configuration keys ignored:"),
+    ) ?? [];
 
   return (
     <div className="shell" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
@@ -130,6 +160,7 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
               Keyed on the screen: moving to another one starts it afresh. */}
           <ErrorBoundary
             key={screen}
+            screen={screen}
             fallback={(retry) => (
               <ScreenCrash
                 screen={screen}
@@ -140,7 +171,7 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
               />
             )}
           >
-            {children}
+            {typeof children === "function" ? children({ onOpenConfig: requestOpenConfig, notices: configNotices }) : children}
           </ErrorBoundary>
         </main>
         <RunBar
@@ -154,6 +185,18 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
           onCancel={() => void cancel()}
         />
       </div>
+      <ConfirmDialog
+        open={confirmOpenConfig}
+        title={strings.protection.confirmOpenConfig.title}
+        message={strings.protection.confirmOpenConfig.body}
+        confirmLabel={strings.protection.confirmOpenConfig.confirm}
+        cancelLabel={strings.protection.confirmOpenConfig.cancel}
+        onCancel={() => setConfirmOpenConfig(false)}
+        onConfirm={() => {
+          setConfirmOpenConfig(false);
+          if (!running) void openConfig();
+        }}
+      />
     </div>
   );
 }

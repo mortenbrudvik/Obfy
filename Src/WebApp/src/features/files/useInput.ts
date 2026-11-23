@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAppAction } from "../../hooks/useAppAction";
+import { useActionRunner } from "../../hooks/useAppAction";
 import { usePushedState } from "../../hooks/usePushedState";
 import { api, events } from "../../interop/api";
 import { strings } from "../../strings";
@@ -37,46 +37,29 @@ export function useInput(): UseInput {
   const [answered, setAnswered] = useState<InputSnapshot | null>(null);
   const input = answered && (!pushed || answered.revision > pushed.revision) ? answered : pushed;
 
-  const [pick, pickError] = useAppAction(async () => setAnswered(await api.files.pick()), strings.files.failed.pick);
-  const [clear, clearError] = useAppAction(async () => setAnswered(await api.files.clear()), strings.files.failed.clear);
-  const [removeRows, removeError] = useAppAction(async (ids: string[]) => {
-    for (const id of ids) setAnswered(await api.files.remove(id));
-  }, strings.files.failed.remove);
-  const [setIncluded, includeError] = useAppAction(
-    async (id: string, included: boolean) => setAnswered(await api.files.setIncluded(id, included)),
-    strings.files.failed.include,
-  );
-  const [reveal, revealError] = useAppAction(async (id: string) => setAnswered(await api.files.reveal(id)), strings.files.failed.reveal);
-  const [openOutput, openOutputError] = useAppAction(async () => setAnswered(await api.files.openOutput()), strings.files.failed.reveal);
-  const [openConfig, configError] = useAppAction(async () => {
-    await api.settings.openConfig();
-  }, strings.files.failed.config);
-  const [setOutput, outputError] = useAppAction(async (folder: string) => setAnswered(await api.output.set(folder)), strings.files.failed.output);
-  const [pickFolder, pickFolderError] = useAppAction(async () => setAnswered(await api.output.pickFolder()), strings.files.failed.output);
-  const [pickSymbolMap, pickSymbolMapError] = useAppAction(async () => setAnswered(await api.output.pickSymbolMap()), strings.files.failed.output);
-  const [setSymbolMap, symbolMapError] = useAppAction(
-    async (change: { enabled?: boolean; path?: string }) => setAnswered(await api.output.setSymbolMap(change)),
-    strings.files.failed.output,
-  );
-
-  const error =
-    pickError ?? clearError ?? removeError ?? includeError ?? revealError ?? openOutputError ?? configError ??
-    outputError ?? pickFolderError ?? pickSymbolMapError ?? symbolMapError;
+  const [act, error] = useActionRunner();
 
   return {
     input,
     failed,
     error,
-    pick: async () => void (await pick()),
-    clear: async () => void (await clear()),
-    remove: async (ids) => void (await removeRows(ids)),
-    setIncluded: async (id, included) => void (await setIncluded(id, included)),
-    reveal: async (id) => void (await reveal(id)),
-    openOutput: async () => void (await openOutput()),
-    openConfig: async () => void (await openConfig()),
-    setOutput,
-    pickFolder: async () => void (await pickFolder()),
-    pickSymbolMap: async () => void (await pickSymbolMap()),
-    setSymbolMap,
+    pick: async () => void (await act(strings.files.failed.pick, async () => setAnswered(await api.files.pick()))),
+    clear: async () => void (await act(strings.files.failed.clear, async () => setAnswered(await api.files.clear()))),
+    remove: async (ids) =>
+      void (await act(strings.files.failed.remove, async () => {
+        for (const id of ids) setAnswered(await api.files.remove(id));
+      })),
+    setIncluded: async (id, included) =>
+      void (await act(strings.files.failed.include, async () => setAnswered(await api.files.setIncluded(id, included)))),
+    reveal: async (id) => void (await act(strings.files.failed.reveal, async () => setAnswered(await api.files.reveal(id)))),
+    openOutput: async () => void (await act(strings.files.failed.reveal, async () => setAnswered(await api.files.openOutput()))),
+    openConfig: async () =>
+      void (await act(strings.files.failed.config, async () => {
+        await api.settings.openConfig();
+      })),
+    setOutput: (folder) => act(strings.files.failed.output, async () => setAnswered(await api.output.set(folder))),
+    pickFolder: async () => void (await act(strings.files.failed.output, async () => setAnswered(await api.output.pickFolder()))),
+    pickSymbolMap: async () => void (await act(strings.files.failed.output, async () => setAnswered(await api.output.pickSymbolMap()))),
+    setSymbolMap: (change) => act(strings.files.failed.output, async () => setAnswered(await api.output.setSymbolMap(change))),
   };
 }

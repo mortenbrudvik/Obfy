@@ -1,3 +1,4 @@
+import { useRef, type KeyboardEvent } from "react";
 import Badge from "../../components/Badge";
 import Meter from "../../components/Meter";
 import { strings } from "../../strings";
@@ -37,17 +38,39 @@ interface LevelCardsProps {
 
 /** The four level cards, one a radio each. */
 export default function LevelCards({ level, disabled, onSelect }: LevelCardsProps) {
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const activeIndex = levels.findIndex((info) => info.id === level);
+  const focusIndex = activeIndex >= 0 ? activeIndex : 0;
+
+  const move = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (disabled) return;
+    const last = levels.length - 1;
+    const target =
+      event.key === "ArrowRight" || event.key === "ArrowDown" ? (index === last ? 0 : index + 1)
+      : event.key === "ArrowLeft" || event.key === "ArrowUp" ? (index === 0 ? last : index - 1)
+      : null;
+    if (target === null) return;
+    event.preventDefault();
+    onSelect(levels[target].id);
+    buttons.current[target]?.focus();
+  };
+
   return (
     <div className="levels" role="radiogroup" aria-labelledby="protection-level-label">
-      {levels.map((info) => (
+      {levels.map((info, index) => (
         <button
           key={info.id}
+          ref={(el) => {
+            buttons.current[index] = el;
+          }}
           type="button"
           role="radio"
           className="lvl"
           aria-checked={level === info.id}
+          tabIndex={index === focusIndex ? 0 : -1}
           disabled={disabled}
           onClick={() => onSelect(info.id)}
+          onKeyDown={(event) => move(event, index)}
         >
           <span className="t">
             {info.name}
@@ -55,11 +78,11 @@ export default function LevelCards({ level, disabled, onSelect }: LevelCardsProp
           </span>
           <span className="d">{info.description}</span>
           {info.meters && (
-            <div className="meters">
+            <span className="meters">
               {info.meters.map((value, i) => (
                 <Meter key={meterLabels[i]} label={meterLabels[i]} value={value} />
               ))}
-            </div>
+            </span>
           )}
         </button>
       ))}

@@ -50,9 +50,12 @@ interface RowMenuProps {
 function RowMenu({ file, locked, onReveal, onRemove }: RowMenuProps) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    menu.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
     const onMouseDown = (event: globalThis.MouseEvent) => {
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -61,6 +64,7 @@ function RowMenu({ file, locked, onReveal, onRemove }: RowMenuProps) {
       setOpen(false);
       // Esc closes the menu and is done: it must not go on to cancel the run (a window-wide shortcut).
       event.stopPropagation();
+      trigger.current?.focus();
     };
     document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("keydown", onKeyDown);
@@ -75,9 +79,21 @@ function RowMenu({ file, locked, onReveal, onRemove }: RowMenuProps) {
     action();
   };
 
+  const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const items = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []);
+    if (items.length === 0) return;
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    const next = index === -1 ? 0 : (index + delta + items.length) % items.length;
+    items[next]?.focus();
+  };
+
   return (
     <div className="rowmenu" ref={root}>
       <button
+        ref={trigger}
         type="button"
         className="more"
         aria-label={`${strings.files.moreActions} ${file.name}`}
@@ -88,7 +104,7 @@ function RowMenu({ file, locked, onReveal, onRemove }: RowMenuProps) {
         {"⋯"}
       </button>
       {open && (
-        <div className="menu" role="menu">
+        <div ref={menu} className="menu" role="menu" onKeyDown={onMenuKeyDown}>
           <button type="button" role="menuitem" onClick={choose(onReveal)}>
             {strings.files.showInFolder}
           </button>
@@ -109,10 +125,9 @@ export default function FileTable({ files, locked, onSetIncluded, onRemove, onRe
 
   const onControl = (event: { target: EventTarget }) => (event.target as HTMLElement).closest("input, button") !== null;
 
-  const select = (id: string) => (event: MouseEvent) => {
-    if (onControl(event)) return;
+  const toggleRow = (id: string, multi: boolean) => {
     setSelected((current) => {
-      if (event.ctrlKey || event.metaKey) {
+      if (multi) {
         const next = new Set(current);
         if (!next.delete(id)) next.add(id);
         return next;
@@ -121,8 +136,19 @@ export default function FileTable({ files, locked, onSetIncluded, onRemove, onRe
     });
   };
 
+  const select = (id: string) => (event: MouseEvent) => {
+    if (onControl(event)) return;
+    toggleRow(id, event.ctrlKey || event.metaKey);
+  };
+
   const onKeyDown = (id: string) => (event: KeyboardEvent) => {
-    if (event.key !== "Delete" || locked || onControl(event)) return;
+    if (onControl(event)) return;
+    if ((event.key === " " && !event.altKey) || (event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.altKey)) {
+      event.preventDefault();
+      toggleRow(id, event.ctrlKey || event.metaKey);
+      return;
+    }
+    if (event.key !== "Delete" || locked) return;
     event.preventDefault();
     onRemove(selectedIds.includes(id) ? selectedIds : [id]);
   };
@@ -149,7 +175,6 @@ export default function FileTable({ files, locked, onSetIncluded, onRemove, onRe
               <tr
                 key={file.id}
                 className={className}
-                aria-selected={isSelected}
                 tabIndex={0}
                 title={file.path}
                 onClick={select(file.id)}

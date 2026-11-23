@@ -12,13 +12,15 @@ export interface ShortcutHandlers {
   addFiles?: () => void;
   /** Ctrl+S */
   saveConfig?: () => void;
+  /** Ctrl+Shift+S */
+  saveConfigAs?: () => void;
   /** Ctrl+L */
   openConfig?: () => void;
 }
 
 /** Text boxes, lists and menus: where Esc closes or clears the control (and nothing more). A tick box or a button has no use for it. */
 const ESCAPE_OWNERS =
-  'input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="range"]), textarea, select, [contenteditable]:not([contenteditable="false"]), [role="menu"], [role="listbox"], [role="dialog"]';
+  'input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="range"]), textarea, select, [contenteditable]:not([contenteditable="false"]), [role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"]';
 
 /** Esc is the control's own when something already handled it or it was pressed in a box or a menu; it must not also cancel the run. */
 function escapeIsHandled(event: KeyboardEvent): boolean {
@@ -40,6 +42,11 @@ function handlerFor(event: KeyboardEvent, handlers: ShortcutHandlers): (() => vo
     }
     return undefined;
   }
+  const withCtrlShift = (event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey;
+  if (withCtrlShift) {
+    if (event.key.toLowerCase() === "s") return handlers.saveConfigAs;
+    return undefined;
+  }
   if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return undefined;
   if (event.key === "Escape") return escapeIsHandled(event) ? undefined : handlers.cancel;
   if (event.key === "F1") return handlers.guide;
@@ -58,6 +65,7 @@ export function useShortcuts(handlers: ShortcutHandlers) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (document.querySelector('[role="alertdialog"]')) return;
       const handler = handlerFor(event, latest.current);
       if (!handler) return;
       event.preventDefault();

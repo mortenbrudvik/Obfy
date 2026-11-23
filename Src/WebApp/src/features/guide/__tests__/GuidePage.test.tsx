@@ -66,7 +66,8 @@ describe("GuidePage", () => {
 
     const table = screen.getByRole("table");
     const rows = within(table).getAllByRole("row");
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(8);
+    expect(within(table).getByText("Save configuration as")).toBeTruthy();
     const run = rows.find((row) => within(row).queryByText("Run"));
     expect(run).toBeTruthy();
     expect(Array.from(run!.querySelectorAll("kbd")).map((key) => key.textContent)).toEqual(["Ctrl", "Enter"]);

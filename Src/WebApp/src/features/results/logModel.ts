@@ -1,4 +1,5 @@
 import type { LogAppended, LogLine, LogSnapshot } from "../../types/domain";
+import { isProblem } from "./logFormat";
 
 /**
  * How many lines the page keeps. A run at debug level writes thousands, the list is drawn line by line, and every
@@ -15,17 +16,53 @@ export interface Held {
   lines: LogLine[];
   /** How many of the oldest lines were let go to stay within `MAX_LOG_LINES`, since the log was last cleared. */
   trimmed: number;
-  /** The id of the newest line let go: line ids only rise, so nothing at or below it is taken back in. */
+  /** The id of the newest non-problem line let go: non-problem line ids only rise, so nothing at or below it is taken back in. */
   trimmedId: number;
+  /** The id of the newest problem line (Warning/Error) let go when problems themselves exceeded `MAX_LOG_LINES`. */
+  trimmedProblemId: number;
 }
 
-export const emptyLog: Held = { revision: 0, floor: 0, lines: [], trimmed: 0, trimmedId: 0 };
+export const emptyLog: Held = { revision: 0, floor: 0, lines: [], trimmed: 0, trimmedId: 0, trimmedProblemId: 0 };
 
-/** Lets go of the oldest lines beyond the bound. */
+/** Lets go of the oldest lines beyond the bound, dropping non-problem lines first so warnings and errors stay intact. */
 function bounded(held: Held): Held {
   const excess = held.lines.length - MAX_LOG_LINES;
   if (excess <= 0) return held;
-  return { ...held, lines: held.lines.slice(excess), trimmed: held.trimmed + excess, trimmedId: held.lines[excess - 1].id };
+
+  let nonProblemCount = 0;
+  for (const line of held.lines) {
+    if (!isProblem(line)) nonProblemCount++;
+  }
+
+  let nonProblemsRemaining = Math.min(excess, nonProblemCount);
+  let problemsRemaining = excess - nonProblemsRemaining;
+  const kept: LogLine[] = [];
+  let maxDroppedId = held.trimmedId;
+  let maxDroppedProblemId = held.trimmedProblemId;
+
+  for (const line of held.lines) {
+    if (isProblem(line)) {
+      if (problemsRemaining > 0) {
+        problemsRemaining--;
+        if (line.id > maxDroppedProblemId) maxDroppedProblemId = line.id;
+      } else {
+        kept.push(line);
+      }
+    } else if (nonProblemsRemaining > 0) {
+      nonProblemsRemaining--;
+      if (line.id > maxDroppedId) maxDroppedId = line.id;
+    } else {
+      kept.push(line);
+    }
+  }
+
+  return {
+    ...held,
+    lines: kept,
+    trimmed: held.trimmed + excess,
+    trimmedId: maxDroppedId,
+    trimmedProblemId: maxDroppedProblemId,
+  };
 }
 
 /**
@@ -36,8 +73,10 @@ function bounded(held: Held): Held {
 export function appendBatch(held: Held, batch: LogAppended): Held {
   if (batch.revision <= held.floor) return held;
   const revision = Math.max(held.revision, batch.revision);
-  const lastId = held.lines.length > 0 ? held.lines[held.lines.length - 1].id : held.trimmedId;
-  const candidates = batch.lines.filter((line) => line.id > held.trimmedId);
+  const lastId = held.lines.length > 0 ? held.lines[held.lines.length - 1].id : Math.max(held.trimmedId, held.trimmedProblemId);
+  const candidates = batch.lines.filter((line) =>
+    isProblem(line) ? line.id > held.trimmedProblemId : line.id > held.trimmedId,
+  );
 
   if (candidates.every((line) => line.id > lastId)) {
     return bounded({ ...held, revision, lines: candidates.length > 0 ? [...held.lines, ...candidates] : held.lines });
@@ -51,5 +90,12 @@ export function appendBatch(held: Held, batch: LogAppended): Held {
 /** Takes a whole log in place of the held one, unless the held one is newer. */
 export function replaceLog(held: Held, snapshot: LogSnapshot): Held {
   if (snapshot.revision < held.revision) return held;
-  return bounded({ revision: snapshot.revision, floor: snapshot.revision, lines: snapshot.lines, trimmed: 0, trimmedId: 0 });
+  return bounded({
+    revision: snapshot.revision,
+    floor: snapshot.revision,
+    lines: snapshot.lines,
+    trimmed: 0,
+    trimmedId: 0,
+    trimmedProblemId: 0,
+  });
 }

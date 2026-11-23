@@ -13,6 +13,7 @@ export const defaultMockHandlers: MockHandlers = {
   "app.ready": () => ({}),
   // A plain browser has no host to open a browser window for the guide.
   "app.openGuide": () => ({}),
+  "app.reportError": () => ({}),
   "run.get": (): RunSnapshot => ({
     revision: 1, canStart: false, blockedReason: "Add at least one included file.", mode: "None", modeExplanation: "",
     outputHint: "", progress: 0, indeterminate: false, currentFile: null, completed: 0, total: 0, failed: 0,

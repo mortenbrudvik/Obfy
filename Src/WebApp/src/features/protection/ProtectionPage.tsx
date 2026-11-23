@@ -1,12 +1,13 @@
 import { useState } from "react";
 import Notice from "../../components/Notice";
+import { noticeTone } from "../../components/noticeTone";
 import Select from "../../components/Select";
 import { content, SCOPE_ID } from "../../content/content";
 import { useOnlineGuide } from "../../hooks/useOnlineGuide";
 import { usePushedState } from "../../hooks/usePushedState";
 import { events } from "../../interop/api";
 import { strings } from "../../strings";
-import type { RunSnapshot, SettingsPatch } from "../../types/domain";
+import type { InputNotice, RunSnapshot, SettingsPatch } from "../../types/domain";
 import LevelCards from "./LevelCards";
 import { switchPatch } from "./patches";
 import ScopeDetail from "./ScopeDetail";
@@ -19,9 +20,14 @@ import "./ProtectionPage.css";
 
 const baseName = (path: string) => path.split(/[\\/]/).pop() || path;
 
+interface ProtectionPageProps {
+  onOpenConfig?: () => void;
+  notices?: readonly InputNotice[];
+}
+
 /** The Protection screen: the level, the target runtime, and every technique with its own explanation and options. */
-export default function ProtectionPage() {
-  const { settings, failed, error, applyLevel, update, setRuntimeProfile, openConfig, saveConfig, pickSigningKey } = useProtection();
+export default function ProtectionPage({ onOpenConfig, notices }: ProtectionPageProps = {}) {
+  const { settings, failed, error, applyLevel, update, setRuntimeProfile, openConfig, saveConfig, saveConfigAs, pickSigningKey } = useProtection();
   const { state: run } = usePushedState<RunSnapshot>("run", "get", events.runChanged);
   const locked = run?.status === "Running";
   const [openGuide, guideError] = useOnlineGuide();
@@ -45,6 +51,14 @@ export default function ProtectionPage() {
 
   const profiles = settings.choices.runtimeProfiles.length > 0 ? settings.choices.runtimeProfiles : Object.keys(content.runtimeProfiles);
   const chip = configChip(settings.configPath, settings.dirty);
+  const handleOpenConfig = () => {
+    if (onOpenConfig) {
+      onOpenConfig();
+    } else {
+      void openConfig();
+    }
+  };
+  const visibleNotices = notices?.filter((notice) => notice.level === "Warning" || notice.level === "Error") ?? [];
 
   return (
     <div className="protection-page">
@@ -54,11 +68,14 @@ export default function ProtectionPage() {
           <span className={settings.dirty || !settings.configPath ? "chip" : "chip saved"} title={settings.configPath ?? undefined}>
             <b>{chip.name}</b> · {chip.state}
           </span>
-          <button type="button" className="btn sm" disabled={locked} onClick={() => void openConfig()}>
+          <button type="button" className="btn sm" disabled={locked} onClick={handleOpenConfig}>
             {strings.protection.openConfig}
           </button>
           <button type="button" className="btn sm" onClick={() => void saveConfig()}>
             {strings.protection.saveConfig}
+          </button>
+          <button type="button" className="btn sm" onClick={() => void saveConfigAs()}>
+            {strings.protection.saveConfigAs}
           </button>
         </div>
       </div>
@@ -66,6 +83,11 @@ export default function ProtectionPage() {
       {locked && <Notice>{strings.files.editingLocked}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       {guideError && <Notice tone="error">{guideError}</Notice>}
+      {visibleNotices.map((notice, i) => (
+        <Notice key={i} tone={noticeTone[notice.level]} title={notice.title}>
+          {notice.message}
+        </Notice>
+      ))}
 
       <div className="sec">
         <span className="label" id="protection-level-label">

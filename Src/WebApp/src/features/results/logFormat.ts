@@ -14,7 +14,7 @@ export const defaultLogOptions: LogOptions = { problemsOnly: false, timestamps: 
 
 export const isSeparator = (line: LogLine) => line.message === RUN_SEPARATOR;
 
-const isProblem = (line: LogLine) => line.level === "Warning" || line.level === "Error";
+export const isProblem = (line: LogLine) => line.level === "Warning" || line.level === "Error";
 
 /**
  * The lines to show. All of them, or in problems-only just the warnings and errors with the separators between runs

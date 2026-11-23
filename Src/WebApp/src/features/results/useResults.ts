@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
-import { useAppAction } from "../../hooks/useAppAction";
+import { useActionRunner } from "../../hooks/useAppAction";
 import { usePushedState } from "../../hooks/usePushedState";
 import { api, events } from "../../interop/api";
 import { strings } from "../../strings";
-import type { PreviewResult, ResultsSnapshot, ResultsState, SymbolsPage } from "../../types/domain";
+import type { ExportResult, PreviewResult, ResultsSnapshot, ResultsState, SymbolsPage } from "../../types/domain";
 
 export interface UseResults {
   /** The host's view of the results; null until the first read answers. */
@@ -51,16 +51,13 @@ export function useResults(): UseResults {
   }
 
   const [exportedTo, setExportedTo] = useState<string | null>(null);
-  const [exportMap, mapError] = useAppAction(async () => {
-    setExportedTo(null);
-    const done = await api.results.exportMap();
-    if (done.exported) setExportedTo(done.path);
-  }, strings.results.exportFailed);
-  const [exportReport, reportError] = useAppAction(async () => {
-    setExportedTo(null);
-    const done = await api.results.exportReport();
-    if (done.exported) setExportedTo(done.path);
-  }, strings.results.exportFailed);
+  const [act, error] = useActionRunner();
+  const exportFile = (call: () => Promise<ExportResult>) =>
+    act(strings.results.exportFailed, async () => {
+      setExportedTo(null);
+      const done = await call();
+      if (done.exported) setExportedTo(done.path);
+    });
 
   const querySymbols = useCallback(
     (text: string | null, parentId: string | null, offset: number, limit: number) => api.results.symbols(text, parentId, offset, limit),
@@ -72,11 +69,11 @@ export function useResults(): UseResults {
     results,
     failed,
     symbolsGeneration: generation.count,
-    error: mapError ?? reportError,
+    error,
     exportedTo,
     querySymbols,
     getPreview,
-    exportMap: async () => void (await exportMap()),
-    exportReport: async () => void (await exportReport()),
+    exportMap: async () => void (await exportFile(() => api.results.exportMap())),
+    exportReport: async () => void (await exportFile(() => api.results.exportReport())),
   };
 }

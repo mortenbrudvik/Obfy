@@ -1,8 +1,9 @@
 import Notice from "../../components/Notice";
+import { noticeTone } from "../../components/noticeTone";
 import { usePushedState } from "../../hooks/usePushedState";
 import { events } from "../../interop/api";
 import { strings } from "../../strings";
-import type { NoticeLevel, RunSnapshot } from "../../types/domain";
+import type { RunSnapshot } from "../../types/domain";
 import EmptyState from "./EmptyState";
 import FileTable from "./FileTable";
 import OutputCard from "./OutputCard";
@@ -10,10 +11,12 @@ import { useInput } from "./useInput";
 import "../../components/components.css";
 import "./FilesPage.css";
 
-const noticeTone: Record<NoticeLevel, "info" | "warn" | "error"> = { Info: "info", Warning: "warn", Error: "error" };
+interface FilesPageProps {
+  onOpenConfig?: () => void;
+}
 
 /** The Files screen: first-launch guidance when the list is empty, otherwise the list and where the output goes. */
-export default function FilesPage() {
+export default function FilesPage({ onOpenConfig }: FilesPageProps = {}) {
   const { input, failed, error, pick, clear, remove, setIncluded, reveal, openConfig, setOutput, pickFolder, pickSymbolMap, setSymbolMap } = useInput();
   const { state: run } = usePushedState<RunSnapshot>("run", "get", events.runChanged);
   // The run captured its inputs when it started; the list is not edited under it.
@@ -40,7 +43,7 @@ export default function FilesPage() {
       <>
         {problem}
         {notices}
-        <EmptyState onPick={() => void pick()} onLoadConfig={() => void openConfig()} />
+        <EmptyState onPick={() => void pick()} onLoadConfig={() => (onOpenConfig ? onOpenConfig() : void openConfig())} />
       </>
     );
   }

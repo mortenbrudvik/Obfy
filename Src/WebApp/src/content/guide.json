@@ -22,6 +22,7 @@
           "items": [
             { "label": "Add files", "keys": ["Ctrl", "O"], "note": "Not during a run." },
             { "label": "Save configuration", "keys": ["Ctrl", "S"], "note": "Saves to the file you opened or last saved. Asks where the first time." },
+            { "label": "Save configuration as", "keys": ["Ctrl", "Shift", "S"], "note": "Always asks where to save." },
             { "label": "Open configuration", "keys": ["Ctrl", "L"], "note": "Not during a run." },
             { "label": "Run", "keys": ["Ctrl", "Enter"], "note": "Only while no run is going, and when the run bar says the run can start." },
             { "label": "Cancel a run", "keys": ["Esc"], "note": "Only during a run." },

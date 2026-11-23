@@ -66,7 +66,6 @@ Obfy/
 │   ├── Obfy.WebView/       # WebView2 control + handler
 │   ├── Obfy.UI/            # WPF shell (ShellWindow) hosting WebView2
 │   ├── WebApp/             # React + Vite + TypeScript page (tests: npm run test:run)
-│   ├── Obfy.VisualStudio/  # Visual Studio 2022 extension (C#)
 │   ├── Obfy.VSCode/        # VS Code stub (schema + problem matcher)
 │   ├── Settings.Core/      # Configuration management
 │   └── Logging.Core/       # Logging infrastructure
@@ -77,7 +76,6 @@ Obfy/
 │   ├── Obfy.Interop.Tests/      # Bridge, registry, events, JSON + content contract tests
 │   ├── Obfy.UI.Tests/           # Shell wiring, startup command line
 │   ├── Obfy.ScenarioTests/      # SDK fixtures + platform (Blazor/AOT/MAUI/Unity)
-│   ├── Obfy.VisualStudio.Tests/ # VS helpers without a hive
 │   └── Obfy.UI.AutomationTests/ # Locator tests + Playwright-over-WebView2 e2e + one FlaUI smoke (Category=UI)
 ├── scripts/                # dev.ps1
 ├── docs/                   # Documentation
@@ -127,7 +125,7 @@ Examples:
 
 ### Testing
 
-We have eight .NET test projects plus the web app's Vitest suite:
+We have seven .NET test projects plus the web app's Vitest suite:
 
 | Project | Purpose | Tests |
 |---------|---------|-------|
@@ -137,7 +135,6 @@ We have eight .NET test projects plus the web app's Vitest suite:
 | `Obfy.Interop.Tests` | Bridge, registry, events, request JSON and technique-content contracts | see [docs/Testing.md](docs/Testing.md) |
 | `Obfy.UI.Tests` | Shell wiring, startup command line, host service | see [docs/Testing.md](docs/Testing.md) |
 | `Obfy.ScenarioTests` | SDK fixtures (examples, WPF, console, WinForms, MSBuild, Unity) + platform | see [docs/Testing.md](docs/Testing.md) |
-| `Obfy.VisualStudio.Tests` | VS JSON / CLI args / in-place copy / output path (no hive) | see [docs/Testing.md](docs/Testing.md) |
 | `Obfy.UI.AutomationTests` | Locator unit tests + Playwright-over-WebView2 e2e + one FlaUI smoke (`Category=UI`) | see [docs/Testing.md](docs/Testing.md) |
 | `Src/WebApp` (Vitest) | Page components, screens, interop client, content | `npm run test:run` |
 
@@ -155,7 +152,6 @@ dotnet test Tests/Obfy.App.Tests
 dotnet test Tests/Obfy.Interop.Tests
 dotnet test Tests/Obfy.UI.Tests
 dotnet test Tests/Obfy.ScenarioTests
-dotnet test Tests/Obfy.VisualStudio.Tests
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj -c Release --filter Category=UI   # build Src/Obfy.UI -c Release first
 
 # Web app tests and lint
@@ -173,7 +169,7 @@ When adding new features:
 - Page changes → Vitest tests next to the component (`Src/WebApp/src/**/__tests__`)
 - Core obfuscation → Add tests to `Obfy.Tests`
 
-See [docs/Testing.md](docs/Testing.md) for how to run tests. Scenario fixtures live in `Obfy.ScenarioTests`; remaining platform/IDE gaps are in [docs/Testing-Roadmap.md](docs/Testing-Roadmap.md).
+See [docs/Testing.md](docs/Testing.md) for how to run tests. Scenario fixtures live in `Obfy.ScenarioTests`; remaining platform gaps are in [docs/Testing-Roadmap.md](docs/Testing-Roadmap.md).
 
 ## Working on the Desktop UI
 

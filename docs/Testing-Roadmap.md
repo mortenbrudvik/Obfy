@@ -1,6 +1,6 @@
 # Testing improvements roadmap
 
-Technique coverage is strong; SDK and platform scenarios now exist (see Current position). Remaining: Unity Development Player, MAUI iOS/Android, VS hive. This is a testing plan, not a product-feature plan. Product items it unblocks are cited as `QT-*` / `PS-*` from [Roadmap.md](Roadmap.md).
+Technique coverage is strong; SDK and platform scenarios now exist (see Current position). Remaining: Unity Development Player, MAUI iOS/Android. This is a testing plan, not a product-feature plan. Product items it unblocks are cited as `QT-*` / `PS-*` from [Roadmap.md](Roadmap.md).
 
 How to run the current suite: [Testing.md](Testing.md).
 
@@ -19,7 +19,6 @@ Eight .NET test projects plus the `Src/WebApp` Vitest suite; layout and commands
 | Desktop UI end-to-end and FlaUI smoke | Windows CI job | `WebUiTests` drive the WebView2 page over a debug port (first launch, a Protection toggle, F1 and the Guide, an obfuscate run from startup arguments that shows Results); `FlaUiSmokeTests` checks the window and its title bar. Both are `Category=UI`, and `ci.yml` runs them with `--filter "Category=UI"`. |
 | SDK projects / solutions | Good | WPF, console+lib, WinForms, examples, satellites, MSBuild AfterBuild |
 | Platform recipes | Partial | Unity stub in default CI; Blazor WASM / NativeAOT / MAUI Windows are `Category=Platform` |
-| IDE extension | Partial | VS helpers tested without a hive; no VS hive tests |
 
 Phase 0 (`TR-01` / `TR-02`) filters the `Category=UI` tests (FlaUI, later also the Playwright tests) out of default `dotnet test` and the CI coverage step, and resolves `ObfyUI.exe` per configuration. The Windows CI job runs them in a step of their own. `TR-03` is ✅ Done (coverage report + 80% warning on GitHub Actions). Historical failure: [CI run 70](https://github.com/mortenbrudvik/Obfy/actions/runs/34748911530) — FlaUI looked for a Debug `ObfyUI.exe` after a Release build, so the coverage steps never ran. Later: [CI run 72](https://github.com/mortenbrudvik/Obfy/actions/runs/34750086309) — tests and coverage succeeded, then the sticky PR comment 403 (`Resource not accessible by integration`) skipped the summary and 80% warning.
 
@@ -46,7 +45,7 @@ The product roadmap already refuses first-class Unity / MAUI / Blazor / NativeAO
 | **P0** | CI is lying; fix before adding tests | Immediate |
 | **P1** | Smallest scenario harness that would have caught a WPF/solution break | Next testing slice |
 | **P2** | Fill adjacent SDK shapes and tighten existing “integration” tests | Following slice |
-| **P3** | Platform recipes → tested support; IDE tests | When claiming those platforms / after P1 |
+| **P3** | Platform recipes → tested support; tooling tests | When claiming those platforms / after P1 |
 
 Effort is relative to this repo (S ≤ 1 day, M a few days, L a week-plus including CI time).
 
@@ -145,7 +144,7 @@ These are the product `PS-*` items. Do not advertise first-class support until t
 
 | ID | Work | Effort | Value | Status |
 |----|------|--------|-------|--------|
-| TR-40 | Visual Studio: unit-test `ObfuscationServiceWrapper` / settings JSON / `GetOutputAssemblyPathAsync` without a VS hive. Optional vsix integration later. | M | Medium | ✅ Done (`Obfy.VisualStudio.Tests`: JSON, CLI args, `OutputAssemblyLocator`, `ObfyCliLocator`; wrapper process still needs a hive/CLI) |
+| TR-40 | Visual Studio: unit-test `ObfuscationServiceWrapper` / settings JSON / `GetOutputAssemblyPathAsync` without a VS hive. Optional vsix integration later. | M | Medium | Removed (the Visual Studio extension and its tests were dropped) |
 | TR-41 | Rider: JVM unit tests for settings + `AssemblyLocator`. | M | Low | Removed (the Rider plugin and its tests were dropped) |
 | TR-42 | FlaUI: one path that adds a built fixture DLL and clicks Obfuscate (needs TR-02). Still local-or-trait-filtered. | M | Low | ✅ Done for the old WPF UI (`ObfuscateFlowTests`, deleted with it). The hybrid UI's equivalent is `WebUiTests.Obfuscate_FromStartupArguments_WritesTheOutputAndShowsResults` (Playwright; `Category=UI`, run on the Windows CI job) |
 | TR-43 | Dedicated tests for `Settings.Core` validation if scenario work does not already hit it. | S | Low | ✅ Done (`SettingsValidatorTests`) |
@@ -208,7 +207,7 @@ dotnet test Obfy.sln -c Release --filter "Category!=UI&Category!=Platform"
 | 1 | At least one WPF solution and two examples compile → obfuscate → run on CI |
 | 2 | Console+lib and MSBuild AfterBuild on CI; merge success asserted |
 | 3 | Each claimed platform has one compile → obfuscate → run job (possibly nightly) |
-| 4 | VS wrapper / `GetOutputAssemblyPathAsync` covered without a VS instance |
+| 4 | Dropped with the Visual Studio and Rider extensions; the desktop UI path is TR-42 |
 | 5 | Virtualization skip/encode, `IncrementalCache.TryHit`, and two-file source rename all on the default CI filter |
 
 ---

@@ -579,11 +579,23 @@ public sealed class InputSession
         RaiseChanged();
     }
 
+    internal const string SymbolMapOffMessage = "Turn on the symbol map before choosing where it goes.";
+
+    /// <summary>Throws <c>output.symbolMapOff</c> when the symbol map switch is off.</summary>
+    public void EnsureSymbolMapEnabled()
+    {
+        lock (_gate)
+        {
+            if (!_writeSymbolMap)
+                throw new ObfyApiException("output.symbolMapOff", SymbolMapOffMessage);
+        }
+    }
+
     private static string ValidateSymbolMapPath(string path, bool mapEnabled)
     {
         var value = path.Trim();
         if (!mapEnabled)
-            throw new ObfyApiException("output.symbolMapOff", "Turn on the symbol map before choosing where it goes.");
+            throw new ObfyApiException("output.symbolMapOff", SymbolMapOffMessage);
         if (value.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
             throw new ObfyApiException("output.invalidPath", "The symbol map path contains characters a path cannot hold.");
         // Empty is the default, not a path: Path.GetFullPath("") throws.
@@ -988,11 +1000,48 @@ public sealed class InputSession
     public void Notify(NoticeLevel level, string title, string message) =>
         AddNotice(new InputNotice(level, title, message), publish: true);
 
-    private void AddNotice(InputNotice notice, bool publish)
+    /// <summary>Adds a notice to what the page shows for the last change.</summary>
+    public void AddNotice(NoticeLevel level, string title, string message, bool publish = true) =>
+        AddNotice(new InputNotice(level, title, message), publish);
+
+    public void AddNotice(InputNotice notice, bool publish = true)
     {
         lock (_gate)
         {
             _notices = [.. _notices, notice];
+            _revision++;
+        }
+
+        if (publish)
+            RaiseChanged();
+    }
+
+    /// <summary>
+    /// Replaces any notice whose message starts with <paramref name="prefix"/>, or clears matching notices
+    /// when <paramref name="message"/> is <c>null</c> or empty. Unrelated notices are preserved.
+    /// </summary>
+    public void ReplaceNoticeWithPrefix(
+        string prefix,
+        NoticeLevel level,
+        string title,
+        string? message,
+        bool publish = true)
+    {
+        bool changed;
+        lock (_gate)
+        {
+            var filtered = _notices
+                .Where(n => !n.Message.StartsWith(prefix, StringComparison.Ordinal))
+                .ToList();
+            var hadMatch = filtered.Count != _notices.Count;
+            if (!string.IsNullOrEmpty(message))
+                filtered.Add(new InputNotice(level, title, message));
+
+            changed = hadMatch || !string.IsNullOrEmpty(message);
+            if (!changed)
+                return;
+
+            _notices = filtered;
             _revision++;
         }
 

@@ -15,6 +15,9 @@ public class UpdateSettingsRequestHandler(ProtectionSession session, RunCoordina
 {
     public ValueTask<SettingsSnapshot> Handle(UpdateSettingsRequest request, CancellationToken cancellationToken)
     {
+        if (request.Patch is null)
+            throw new ObfyApiException("settings.invalidPatch", "Settings patch must be an object.");
+
         run.WhileIdle(() =>
         {
             var patch = new Dictionary<string, object?>(request.Patch.Count);

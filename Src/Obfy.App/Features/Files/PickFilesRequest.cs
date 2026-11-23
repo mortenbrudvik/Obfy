@@ -24,7 +24,7 @@ public class PickFilesRequestHandler(InputIntake intake, IFileDialogs dialogs, I
         run.EnsureNotRunning();
         var picked = await dialogs.PickFilesAsync("Select Assembly Files", Filter, multi: true).ConfigureAwait(false);
         if (picked.Length > 0)
-            await intake.AddPathsAsync(picked, cancellationToken);
+            await intake.AddPickedPathsAsync(picked, cancellationToken).ConfigureAwait(false);
 
         return session.GetSnapshot();
     }

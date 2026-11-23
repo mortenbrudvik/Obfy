@@ -26,6 +26,9 @@ public sealed class LogBuffer : IDisposable
     /// <summary>The line between two runs, as the WPF output panel wrote it.</summary>
     public const string RunSeparator = "———";
 
+    /// <summary>Default maximum number of lines retained in memory.</summary>
+    public const int DefaultMaxLines = 5000;
+
     private static readonly TimeSpan DefaultBatchInterval = TimeSpan.FromMilliseconds(100);
 
     private readonly object _gate = new();
@@ -34,6 +37,7 @@ public sealed class LogBuffer : IDisposable
     private readonly IEventPublisher? _events;
     private readonly ILogger<LogBuffer>? _logger;
     private readonly TimeSpan _interval;
+    private readonly int _maxLines;
     private readonly Timer _timer;
     private long _revision;
     private long _nextId = 1;
@@ -42,11 +46,21 @@ public sealed class LogBuffer : IDisposable
 
     /// <param name="events">Where <c>log.appended</c> and <c>log.cleared</c> go; null for a buffer nobody listens to.</param>
     /// <param name="batchInterval">How long lines wait to be sent together. Default 100 ms. Tests pass a very long one and call <see cref="Flush"/>.</param>
-    public LogBuffer(IEventPublisher? events = null, TimeSpan? batchInterval = null, ILogger<LogBuffer>? logger = null)
+    /// <param name="logger">Optional logger for background push errors.</param>
+    /// <param name="maxLines">Maximum number of lines kept in memory. Older Info/Debug lines are trimmed before warnings or errors.</param>
+    public LogBuffer(
+        IEventPublisher? events = null,
+        TimeSpan? batchInterval = null,
+        ILogger<LogBuffer>? logger = null,
+        int maxLines = DefaultMaxLines)
     {
+        if (maxLines < 1)
+            throw new ArgumentOutOfRangeException(nameof(maxLines), maxLines, "Max lines must be at least 1.");
+
         _events = events;
         _logger = logger;
         _interval = batchInterval ?? DefaultBatchInterval;
+        _maxLines = maxLines;
         _timer = new Timer(_ => OnTimer(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
@@ -81,7 +95,12 @@ public sealed class LogBuffer : IDisposable
             level,
             message);
         _lines.Add(line);
+        TrimToCap(_lines, _maxLines);
+        if (_lines.Count == 0 || !ReferenceEquals(_lines[^1], line))
+            return;
+
         _pending.Add(line);
+        TrimToCap(_pending, _maxLines);
         _revision++;
 
         if (!_armed)
@@ -89,6 +108,31 @@ public sealed class LogBuffer : IDisposable
             _armed = true;
             _timer.Change(_interval, Timeout.InfiniteTimeSpan);
         }
+    }
+
+    private static void TrimToCap(List<LogLine> lines, int maxLines)
+    {
+        while (lines.Count > maxLines)
+            lines.RemoveAt(FindEvictionIndex(lines));
+    }
+
+    private static int FindEvictionIndex(List<LogLine> lines)
+    {
+        var successIndex = -1;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            switch (lines[i].Level)
+            {
+                case LogLevel.Debug:
+                case LogLevel.Info:
+                    return i;
+                case LogLevel.Success when successIndex < 0:
+                    successIndex = i;
+                    break;
+            }
+        }
+
+        return successIndex >= 0 ? successIndex : 0;
     }
 
     /// <summary>A copy of every line, oldest first.</summary>

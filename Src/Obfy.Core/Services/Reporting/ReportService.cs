@@ -257,6 +257,16 @@ public class ReportService : IReportService
             ControlFlowEnabled = settings.ControlFlow.Enabled,
             SymbolRenamingEnabled = settings.SymbolRenaming.Enabled,
             AntiDebugEnabled = settings.Protection.AntiDebug,
+            AntiTamperEnabled = settings.Protection.AntiTamper.Enabled,
+            AntiDumpEnabled = settings.Protection.AntiDump,
+            AntiDecompilerEnabled = settings.Protection.AntiDecompiler.Enabled,
+            ReferenceProxyEnabled = settings.Protection.ReferenceProxy,
+            MethodEncryptionEnabled = settings.Protection.MethodEncryption,
+            DependencyEmbeddingEnabled = settings.DependencyEmbedding.Enabled,
+            VirtualizationEnabled = settings.Virtualization.Enabled,
+            PackingEnabled = settings.Packing.Enabled,
+            SigningEnabled = settings.Signing.Enabled,
+            WatermarkEnabled = settings.Watermark.Enabled,
             MetadataRemovalEnabled = settings.Metadata.RemoveDebugInfo,
             PreservePublicApi = settings.SymbolRenaming.PreservePublicApi
         };

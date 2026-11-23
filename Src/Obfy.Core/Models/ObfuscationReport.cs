@@ -188,6 +188,56 @@ public class SettingsSummary
     public bool AntiDebugEnabled { get; init; }
 
     /// <summary>
+    /// Whether anti-tamper protection was enabled.
+    /// </summary>
+    public bool AntiTamperEnabled { get; init; }
+
+    /// <summary>
+    /// Whether anti-dump protection was enabled.
+    /// </summary>
+    public bool AntiDumpEnabled { get; init; }
+
+    /// <summary>
+    /// Whether anti-decompiler protection was enabled.
+    /// </summary>
+    public bool AntiDecompilerEnabled { get; init; }
+
+    /// <summary>
+    /// Whether reference proxy obfuscation was enabled.
+    /// </summary>
+    public bool ReferenceProxyEnabled { get; init; }
+
+    /// <summary>
+    /// Whether method IL encryption was enabled.
+    /// </summary>
+    public bool MethodEncryptionEnabled { get; init; }
+
+    /// <summary>
+    /// Whether dependency embedding was enabled.
+    /// </summary>
+    public bool DependencyEmbeddingEnabled { get; init; }
+
+    /// <summary>
+    /// Whether bytecode virtualization was enabled.
+    /// </summary>
+    public bool VirtualizationEnabled { get; init; }
+
+    /// <summary>
+    /// Whether post-save packing was enabled.
+    /// </summary>
+    public bool PackingEnabled { get; init; }
+
+    /// <summary>
+    /// Whether strong-name signing was enabled.
+    /// </summary>
+    public bool SigningEnabled { get; init; }
+
+    /// <summary>
+    /// Whether watermarking was enabled.
+    /// </summary>
+    public bool WatermarkEnabled { get; init; }
+
+    /// <summary>
     /// Whether metadata removal was enabled.
     /// </summary>
     public bool MetadataRemovalEnabled { get; init; }

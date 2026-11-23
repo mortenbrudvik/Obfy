@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
 using dnlib.DotNet;
+using dnlib.DotNet.Writer;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
@@ -22,7 +24,9 @@ public static class ManagedLauncherPacker
         using System;
         using System.IO;
         using System.Reflection;
+        using System.Runtime.ExceptionServices;
         using System.Runtime.Loader;
+        using System.Threading;
         using System.Threading.Tasks;
 
         internal static class PackedHost
@@ -65,19 +69,32 @@ public static class ManagedLauncherPacker
                         return 1;
                     }
 
-                    object?[]? invokeArgs = entry.GetParameters().Length == 0 ? null : new object[] { args };
-                    var result = entry.Invoke(null, invokeArgs);
-
-                    if (result is Task<int> ti)
-                        return ti.GetAwaiter().GetResult();
-                    if (result is Task t)
+                    if (OperatingSystem.IsWindows()
+                        && entry.GetCustomAttributes(typeof(STAThreadAttribute), false).Length > 0
+                        && Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
                     {
-                        t.GetAwaiter().GetResult();
-                        return Environment.ExitCode;
+                        var exitCode = 1;
+                        Exception? failure = null;
+                        var thread = new Thread(() =>
+                        {
+                            try
+                            {
+                                exitCode = InvokeEntryPoint(entry, args);
+                            }
+                            catch (Exception ex)
+                            {
+                                failure = ex;
+                            }
+                        });
+                        thread.SetApartmentState(ApartmentState.STA);
+                        thread.Start();
+                        thread.Join();
+                        if (failure != null)
+                            ExceptionDispatchInfo.Capture(failure).Throw();
+                        return exitCode;
                     }
 
-                    // A void Main reports its status through Environment.ExitCode.
-                    return result is int code ? code : Environment.ExitCode;
+                    return InvokeEntryPoint(entry, args);
                 }
                 catch (TargetInvocationException ex)
                 {
@@ -86,9 +103,26 @@ public static class ManagedLauncherPacker
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine("Packed host failed: " + ex.Message);
+                    Console.Error.WriteLine("Packed host failed: " + ex);
                     return 1;
                 }
+            }
+
+            private static int InvokeEntryPoint(MethodInfo entry, string[] args)
+            {
+                object?[]? invokeArgs = entry.GetParameters().Length == 0 ? null : new object[] { args };
+                var result = entry.Invoke(null, invokeArgs);
+
+                if (result is Task<int> ti)
+                    return ti.GetAwaiter().GetResult();
+                if (result is Task t)
+                {
+                    t.GetAwaiter().GetResult();
+                    return Environment.ExitCode;
+                }
+
+                // A void Main reports its status through Environment.ExitCode.
+                return result is int code ? code : Environment.ExitCode;
             }
         }
         """;
@@ -124,7 +158,10 @@ public static class ManagedLauncherPacker
     /// Throws <see cref="InvalidOperationException"/> when the module has no entry point or emit fails.
     /// Partial output files are deleted on failure.
     /// </summary>
-    public static string Pack(string assemblyPath, string? inputPath = null)
+    public static string Pack(string assemblyPath, string? inputPath = null) =>
+        Pack(assemblyPath, inputPath, signingKey: null);
+
+    internal static string Pack(string assemblyPath, string? inputPath, StrongNameKey? signingKey)
     {
         if (string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath))
             throw new InvalidOperationException("Packing requires an existing assembly file.");
@@ -161,17 +198,17 @@ public static class ManagedLauncherPacker
         var resource = new ResourceDescription(ResourceName, () => File.OpenRead(assemblyPath), isPublic: true);
         try
         {
-            using (var output = File.Create(launcherPath))
+            if (signingKey is null)
             {
-                var emitted = compilation.Emit(output, manifestResources: ImmutableArray.Create(resource));
-                if (!emitted.Success)
-                {
-                    var errors = string.Join("; ", emitted.Diagnostics
-                        .Where(d => d.Severity == DiagnosticSeverity.Error)
-                        .Select(d => d.ToString())
-                        .DefaultIfEmpty("(no error diagnostics reported)"));
-                    throw new InvalidOperationException("Failed to compile packed launcher: " + errors);
-                }
+                using var output = File.Create(launcherPath);
+                EmitLauncher(compilation, resource, output);
+            }
+            else
+            {
+                using var ms = new MemoryStream();
+                EmitLauncher(compilation, resource, ms);
+                using var launcherModule = ModuleDefMD.Load(ms.ToArray());
+                launcherModule.Write(launcherPath, new ModuleWriterOptions(launcherModule) { StrongNameKey = signingKey });
             }
 
             var configSource = inputPath ?? assemblyPath;
@@ -185,6 +222,19 @@ public static class ManagedLauncherPacker
             TryDelete(launcherPath);
             TryDelete(runtimeConfigPath);
             throw;
+        }
+    }
+
+    private static void EmitLauncher(CSharpCompilation compilation, ResourceDescription resource, Stream output)
+    {
+        var emitted = compilation.Emit(output, manifestResources: ImmutableArray.Create(resource));
+        if (!emitted.Success)
+        {
+            var errors = string.Join("; ", emitted.Diagnostics
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .Select(d => d.ToString())
+                .DefaultIfEmpty("(no error diagnostics reported)"));
+            throw new InvalidOperationException("Failed to compile packed launcher: " + errors);
         }
     }
 
@@ -213,7 +263,7 @@ public static class ManagedLauncherPacker
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            System.Diagnostics.Trace.WriteLine($"ManagedLauncherPacker: failed to delete '{path}': {ex.Message}");
+            Trace.WriteLine($"ManagedLauncherPacker: failed to delete partial output ({ex.GetType().Name})");
         }
     }
 }

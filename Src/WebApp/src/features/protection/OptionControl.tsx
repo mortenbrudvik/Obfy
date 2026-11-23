@@ -91,9 +91,35 @@ interface NumberOptionProps {
   onChange: (value: number) => void;
 }
 
+/** Syncs a numeric control's local draft with external `value` changes while ignoring echoes of its own pending updates. */
+function useNumberSync<T>(value: number): [draft: T | null, setDraft: (next: T | null, sentValue?: number) => void] {
+  const [state, setState] = useState<{ seen: number; draft: T | null; sent: number[] }>({
+    seen: value,
+    draft: null,
+    sent: [],
+  });
+  if (!Object.is(state.seen, value)) {
+    const idx = state.sent.indexOf(value);
+    if (idx >= 0) {
+      const remaining = state.sent.slice(idx + 1);
+      setState({ seen: value, draft: remaining.length > 0 ? state.draft : null, sent: remaining });
+    } else {
+      setState({ seen: value, draft: null, sent: [] });
+    }
+  }
+  const setDraft = (next: T | null, sentValue?: number) => {
+    setState((prev) => ({
+      ...prev,
+      draft: next,
+      sent: next === null ? [] : sentValue !== undefined ? [...prev.sent, sentValue] : prev.sent,
+    }));
+  };
+  return [state.draft, setDraft];
+}
+
 /** A number box: what is typed is kept while the box has focus, and a number is sent as soon as there is one. */
 function NumberOption({ option, value, error, disabled, onChange }: NumberOptionProps) {
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useNumberSync<string>(value);
   return (
     <div className="opt">
       <Field label={option.label} help={option.help} error={error}>
@@ -109,8 +135,9 @@ function NumberOption({ option, value, error, disabled, onChange }: NumberOption
               disabled={disabled}
               onChange={(e) => {
                 const text = e.target.value;
-                setDraft(text);
-                if (text.trim() !== "" && Number.isFinite(Number(text))) onChange(Number(text));
+                const parsed = text.trim() !== "" && Number.isFinite(Number(text)) ? Number(text) : undefined;
+                setDraft(text, parsed);
+                if (parsed !== undefined) onChange(parsed);
               }}
               onBlur={() => setDraft(null)}
             />
@@ -124,7 +151,7 @@ function NumberOption({ option, value, error, disabled, onChange }: NumberOption
 
 /** A slider that keeps its own position while it is dragged, so the answers coming back never pull it around. */
 function RangeOption({ option, value, error, disabled, onChange }: NumberOptionProps) {
-  const [live, setLive] = useState<number | null>(null);
+  const [live, setLive] = useNumberSync<number>(value);
   return (
     <div className="opt" onBlur={() => setLive(null)}>
       <Field label={option.label} help={option.help} error={error}>
@@ -137,7 +164,7 @@ function RangeOption({ option, value, error, disabled, onChange }: NumberOptionP
               value={live ?? value}
               disabled={disabled}
               onChange={(next) => {
-                setLive(next);
+                setLive(next, next);
                 onChange(next);
               }}
             />

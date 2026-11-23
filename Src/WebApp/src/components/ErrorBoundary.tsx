@@ -5,6 +5,8 @@ import "./components.css";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
+  /** Which boundary caught the throw (a screen id or `"root"`), reported to the host log without details. */
+  screen?: string;
   /**
    * What to show once a child has thrown; `retry` draws the children again. A screen's boundary passes its own in-place
    * view. Without one this is the page's last resort: the full-page crash view, which also reveals the window.
@@ -31,6 +33,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error(error, info.componentStack);
+    void api.app.reportError?.(this.props.screen ?? "app", error?.name || "Error")?.catch(() => {});
   }
 
   private retry = () => this.setState({ failed: false });

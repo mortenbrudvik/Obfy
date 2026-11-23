@@ -19,38 +19,167 @@ namespace Obfy.Console;
 
 public class Program
 {
-    // Expose options and arguments as internal static for testing
-    internal static Argument<FileInfo[]> InputArgument { get; private set; } = null!;
-    internal static Option<DirectoryInfo?> OutputOption { get; private set; } = null!;
-    internal static Option<FileInfo?> ConfigOption { get; private set; } = null!;
-    internal static Option<string> LevelOption { get; private set; } = null!;
-    internal static Option<bool> StringEncryptOption { get; private set; } = null!;
-    internal static Option<bool> ControlFlowOption { get; private set; } = null!;
-    internal static Option<bool> RenameOption { get; private set; } = null!;
-    internal static Option<bool> AntiDebugOption { get; private set; } = null!;
-    internal static Option<bool> AntiTamperOption { get; private set; } = null!;
-    internal static Option<bool> AntiDecompilerOption { get; private set; } = null!;
-    internal static Option<bool> AntiDumpOption { get; private set; } = null!;
-    internal static Option<bool> ReferenceProxyOption { get; private set; } = null!;
-    internal static Option<bool> ProxyExternalOption { get; private set; } = null!;
-    internal static Option<bool> EncryptMethodsOption { get; private set; } = null!;
-    internal static Option<bool> NoStringEncryptOption { get; private set; } = null!;
-    internal static Option<bool> NoRenameOption { get; private set; } = null!;
-    internal static Option<bool> NoControlFlowOption { get; private set; } = null!;
-    internal static Option<bool> StripMetadataOption { get; private set; } = null!;
-    internal static Option<bool> EncryptResourcesOption { get; private set; } = null!;
-    internal static Option<bool> EncryptConstantsOption { get; private set; } = null!;
-    internal static Option<bool> PreservePublicOption { get; private set; } = null!;
-    internal static Option<FileInfo?> MapOption { get; private set; } = null!;
-    internal static Option<FileInfo?> ReportOption { get; private set; } = null!;
-    internal static Option<bool> DryRunOption { get; private set; } = null!;
-    internal static Option<bool> VerboseOption { get; private set; } = null!;
-    internal static Option<bool> NoLogoOption { get; private set; } = null!;
-    internal static Option<bool> MergeOption { get; private set; } = null!;
-    internal static Option<bool> InternalizeOption { get; private set; } = null!;
-    internal static Option<string?> WatermarkIdOption { get; private set; } = null!;
-    internal static Option<bool> VirtualizeOption { get; private set; } = null!;
-    internal static Option<bool> IncrementalOption { get; private set; } = null!;
+    private sealed record RootOptions(
+        Argument<FileInfo[]> InputArgument,
+        Option<DirectoryInfo?> OutputOption,
+        Option<FileInfo?> ConfigOption,
+        Option<string> LevelOption,
+        Option<bool> StringEncryptOption,
+        Option<bool> ControlFlowOption,
+        Option<bool> RenameOption,
+        Option<bool> AntiDebugOption,
+        Option<bool> AntiTamperOption,
+        Option<bool> AntiDecompilerOption,
+        Option<bool> AntiDumpOption,
+        Option<bool> ReferenceProxyOption,
+        Option<bool> ProxyExternalOption,
+        Option<bool> EncryptMethodsOption,
+        Option<bool> NoStringEncryptOption,
+        Option<bool> NoRenameOption,
+        Option<bool> NoControlFlowOption,
+        Option<bool> StripMetadataOption,
+        Option<bool> EncryptResourcesOption,
+        Option<bool> EncryptConstantsOption,
+        Option<bool> PreservePublicOption,
+        Option<FileInfo?> MapOption,
+        Option<FileInfo?> ReportOption,
+        Option<bool> DryRunOption,
+        Option<bool> VerboseOption,
+        Option<bool> NoLogoOption,
+        Option<bool> MergeOption,
+        Option<bool> InternalizeOption,
+        Option<string?> WatermarkIdOption,
+        Option<bool> VirtualizeOption,
+        Option<bool> IncrementalOption);
+
+    private static RootOptions CreateRootOptions() => new(
+        InputArgument: new Argument<FileInfo[]>("input")
+        {
+            Description = "Input files to obfuscate (DLL, EXE, .cs, .sln, .slnx, or project files)",
+            Arity = ArgumentArity.OneOrMore
+        },
+        OutputOption: new Option<DirectoryInfo?>("--output", "-o")
+        {
+            Description = "Output directory for obfuscated files"
+        },
+        ConfigOption: new Option<FileInfo?>("--config", "-c")
+        {
+            Description = "Path to JSON configuration file"
+        },
+        LevelOption: new Option<string>("--level", "-l")
+        {
+            Description = "Obfuscation level: minimal, standard, aggressive, or custom",
+            DefaultValueFactory = _ => "standard"
+        },
+        StringEncryptOption: new Option<bool>("--string-encrypt")
+        {
+            Description = "Enable string encryption"
+        },
+        ControlFlowOption: new Option<bool>("--control-flow")
+        {
+            Description = "Enable control flow obfuscation"
+        },
+        RenameOption: new Option<bool>("--rename")
+        {
+            Description = "Enable symbol renaming"
+        },
+        AntiDebugOption: new Option<bool>("--anti-debug")
+        {
+            Description = "Enable anti-debugging protection"
+        },
+        AntiTamperOption: new Option<bool>("--anti-tamper")
+        {
+            Description = "Enable anti-tamper protection"
+        },
+        AntiDecompilerOption: new Option<bool>("--anti-decompiler")
+        {
+            Description = "Enable anti-decompiler protection"
+        },
+        AntiDumpOption: new Option<bool>("--anti-dump")
+        {
+            Description = "Enable anti-dump protection"
+        },
+        ReferenceProxyOption: new Option<bool>("--reference-proxy")
+        {
+            Description = "Enable reference proxy"
+        },
+        ProxyExternalOption: new Option<bool>("--proxy-external")
+        {
+            Description = "Also proxy selected out-of-module calls (enables --reference-proxy). Skips compiler and interop types (including nested types), pointers, by-refs, generics, varargs and constructors. A known value-type instance call is proxied by reference; an unknown receiver or callvirt on a value type stays direct."
+        },
+        EncryptMethodsOption: new Option<bool>("--encrypt-methods")
+        {
+            Description = "Encrypt method IL in the PE image"
+        },
+        NoStringEncryptOption: new Option<bool>("--no-string-encryption")
+        {
+            Description = "Disable string encryption"
+        },
+        NoRenameOption: new Option<bool>("--no-symbol-renaming")
+        {
+            Description = "Disable symbol renaming"
+        },
+        NoControlFlowOption: new Option<bool>("--no-control-flow")
+        {
+            Description = "Disable control flow obfuscation"
+        },
+        StripMetadataOption: new Option<bool>("--strip-metadata")
+        {
+            Description = "Remove debug metadata"
+        },
+        EncryptResourcesOption: new Option<bool>("--encrypt-resources")
+        {
+            Description = "Enable resource encryption"
+        },
+        EncryptConstantsOption: new Option<bool>("--encrypt-constants")
+        {
+            Description = "Enable constant encryption"
+        },
+        PreservePublicOption: new Option<bool>("--preserve-public")
+        {
+            Description = "Preserve public API names"
+        },
+        MapOption: new Option<FileInfo?>("--map")
+        {
+            Description = "Output symbol mapping to file"
+        },
+        ReportOption: new Option<FileInfo?>("--report")
+        {
+            Description = "Generate obfuscation report (HTML or JSON based on extension)"
+        },
+        DryRunOption: new Option<bool>("--dry-run")
+        {
+            Description = "Analyze only, don't write output"
+        },
+        VerboseOption: new Option<bool>("--verbose", "-v")
+        {
+            Description = "Enable verbose output"
+        },
+        NoLogoOption: new Option<bool>("--no-logo")
+        {
+            Description = "Suppress the banner"
+        },
+        MergeOption: new Option<bool>("--merge")
+        {
+            Description = "Merge all input assemblies into one before obfuscating"
+        },
+        InternalizeOption: new Option<bool>("--internalize")
+        {
+            Description = "Make merged types internal (improves obfuscation)",
+            DefaultValueFactory = _ => true
+        },
+        WatermarkIdOption: new Option<string?>("--watermark-id")
+        {
+            Description = "Enable watermarking and set watermark.id (trimmed; whitespace-only is an error)"
+        },
+        VirtualizeOption: new Option<bool>("--virtualize")
+        {
+            Description = "Enable IL virtualization of eligible methods (no EH/generics/byref/custom structs/ctors; gated off NativeAOT / IL2CPP / Blazor WASM)"
+        },
+        IncrementalOption: new Option<bool>("--incremental")
+        {
+            Description = "Skip re-obfuscation when input and settings are unchanged"
+        });
 
     /// <summary>
     /// Creates the root command with all options and subcommands.
@@ -58,200 +187,42 @@ public class Program
     /// </summary>
     internal static RootCommand CreateRootCommand()
     {
-        // Input argument
-        InputArgument = new Argument<FileInfo[]>("input")
-        {
-            Description = "Input files to obfuscate (DLL, EXE, .cs, .sln, .slnx, or project files)",
-            Arity = ArgumentArity.OneOrMore
-        };
-
-        // Options
-        OutputOption = new Option<DirectoryInfo?>("--output", "-o")
-        {
-            Description = "Output directory for obfuscated files"
-        };
-
-        ConfigOption = new Option<FileInfo?>("--config", "-c")
-        {
-            Description = "Path to JSON configuration file"
-        };
-
-        LevelOption = new Option<string>("--level", "-l")
-        {
-            Description = "Obfuscation level: minimal, standard, aggressive, or custom",
-            DefaultValueFactory = _ => "standard"
-        };
-
-        StringEncryptOption = new Option<bool>("--string-encrypt")
-        {
-            Description = "Enable string encryption"
-        };
-
-        ControlFlowOption = new Option<bool>("--control-flow")
-        {
-            Description = "Enable control flow obfuscation"
-        };
-
-        RenameOption = new Option<bool>("--rename")
-        {
-            Description = "Enable symbol renaming"
-        };
-
-        AntiDebugOption = new Option<bool>("--anti-debug")
-        {
-            Description = "Enable anti-debugging protection"
-        };
-
-        AntiTamperOption = new Option<bool>("--anti-tamper")
-        {
-            Description = "Enable anti-tamper protection"
-        };
-
-        AntiDecompilerOption = new Option<bool>("--anti-decompiler")
-        {
-            Description = "Enable anti-decompiler protection"
-        };
-
-        AntiDumpOption = new Option<bool>("--anti-dump")
-        {
-            Description = "Enable anti-dump protection"
-        };
-
-        ReferenceProxyOption = new Option<bool>("--reference-proxy")
-        {
-            Description = "Enable reference proxy"
-        };
-
-        ProxyExternalOption = new Option<bool>("--proxy-external")
-        {
-            Description = "Also proxy selected out-of-module calls (enables --reference-proxy). Skips compiler and interop types (including nested types), pointers, by-refs, generics, varargs and constructors. A known value-type instance call is proxied by reference; an unknown receiver or callvirt on a value type stays direct."
-        };
-
-        EncryptMethodsOption = new Option<bool>("--encrypt-methods")
-        {
-            Description = "Encrypt method IL in the PE image"
-        };
-
-        NoStringEncryptOption = new Option<bool>("--no-string-encryption")
-        {
-            Description = "Disable string encryption"
-        };
-
-        NoRenameOption = new Option<bool>("--no-symbol-renaming")
-        {
-            Description = "Disable symbol renaming"
-        };
-
-        NoControlFlowOption = new Option<bool>("--no-control-flow")
-        {
-            Description = "Disable control flow obfuscation"
-        };
-
-        StripMetadataOption = new Option<bool>("--strip-metadata")
-        {
-            Description = "Remove debug metadata"
-        };
-
-        EncryptResourcesOption = new Option<bool>("--encrypt-resources")
-        {
-            Description = "Enable resource encryption"
-        };
-
-        EncryptConstantsOption = new Option<bool>("--encrypt-constants")
-        {
-            Description = "Enable constant encryption"
-        };
-
-        PreservePublicOption = new Option<bool>("--preserve-public")
-        {
-            Description = "Preserve public API names"
-        };
-
-        MapOption = new Option<FileInfo?>("--map")
-        {
-            Description = "Output symbol mapping to file"
-        };
-
-        ReportOption = new Option<FileInfo?>("--report")
-        {
-            Description = "Generate obfuscation report (HTML or JSON based on extension)"
-        };
-
-        DryRunOption = new Option<bool>("--dry-run")
-        {
-            Description = "Analyze only, don't write output"
-        };
-
-        VerboseOption = new Option<bool>("--verbose", "-v")
-        {
-            Description = "Enable verbose output"
-        };
-
-        NoLogoOption = new Option<bool>("--no-logo")
-        {
-            Description = "Suppress the banner"
-        };
-
-        MergeOption = new Option<bool>("--merge")
-        {
-            Description = "Merge all input assemblies into one before obfuscating"
-        };
-
-        InternalizeOption = new Option<bool>("--internalize")
-        {
-            Description = "Make merged types internal (improves obfuscation)",
-            DefaultValueFactory = _ => true
-        };
-
-        WatermarkIdOption = new Option<string?>("--watermark-id")
-        {
-            Description = "Enable watermarking and set watermark.id (trimmed; whitespace-only is an error)"
-        };
-
-        VirtualizeOption = new Option<bool>("--virtualize")
-        {
-            Description = "Enable IL virtualization of eligible methods (no EH/generics/byref/custom structs/ctors; gated off NativeAOT / IL2CPP / Blazor WASM)"
-        };
-
-        IncrementalOption = new Option<bool>("--incremental")
-        {
-            Description = "Skip re-obfuscation when input and settings are unchanged"
-        };
+        var options = CreateRootOptions();
 
         // Root command
         var rootCommand = new RootCommand("Obfy - C# Obfuscation Tool")
         {
-            InputArgument,
-            OutputOption,
-            ConfigOption,
-            LevelOption,
-            StringEncryptOption,
-            ControlFlowOption,
-            RenameOption,
-            AntiDebugOption,
-            AntiTamperOption,
-            AntiDecompilerOption,
-            AntiDumpOption,
-            ReferenceProxyOption,
-            ProxyExternalOption,
-            EncryptMethodsOption,
-            NoStringEncryptOption,
-            NoRenameOption,
-            NoControlFlowOption,
-            StripMetadataOption,
-            EncryptResourcesOption,
-            EncryptConstantsOption,
-            PreservePublicOption,
-            MapOption,
-            ReportOption,
-            DryRunOption,
-            VerboseOption,
-            NoLogoOption,
-            MergeOption,
-            InternalizeOption,
-            WatermarkIdOption,
-            VirtualizeOption,
-            IncrementalOption
+            options.InputArgument,
+            options.OutputOption,
+            options.ConfigOption,
+            options.LevelOption,
+            options.StringEncryptOption,
+            options.ControlFlowOption,
+            options.RenameOption,
+            options.AntiDebugOption,
+            options.AntiTamperOption,
+            options.AntiDecompilerOption,
+            options.AntiDumpOption,
+            options.ReferenceProxyOption,
+            options.ProxyExternalOption,
+            options.EncryptMethodsOption,
+            options.NoStringEncryptOption,
+            options.NoRenameOption,
+            options.NoControlFlowOption,
+            options.StripMetadataOption,
+            options.EncryptResourcesOption,
+            options.EncryptConstantsOption,
+            options.PreservePublicOption,
+            options.MapOption,
+            options.ReportOption,
+            options.DryRunOption,
+            options.VerboseOption,
+            options.NoLogoOption,
+            options.MergeOption,
+            options.InternalizeOption,
+            options.WatermarkIdOption,
+            options.VirtualizeOption,
+            options.IncrementalOption
         };
 
         // Config generate command
@@ -342,7 +313,8 @@ public class Program
 
         rootCommand.Subcommands.Add(configCommand);
 
-        rootCommand.SetAction(HandleRootCommandAsync);
+        rootCommand.SetAction((parseResult, cancellationToken) =>
+            HandleRootCommandAsync(parseResult, options, cancellationToken));
 
         return rootCommand;
     }
@@ -433,13 +405,14 @@ public class Program
             && Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<int> HandleRootCommandAsync(ParseResult parseResult, CancellationToken cancellationToken)
+    private static async Task<int> HandleRootCommandAsync(
+        ParseResult parseResult, RootOptions options, CancellationToken cancellationToken)
     {
-        var input = parseResult.GetValue(InputArgument);
-        var output = parseResult.GetValue(OutputOption);
-        var config = parseResult.GetValue(ConfigOption);
-        var level = parseResult.GetValue(LevelOption);
-        if (config != null && parseResult.GetResult(LevelOption) is { Implicit: false })
+        var input = parseResult.GetValue(options.InputArgument);
+        var output = parseResult.GetValue(options.OutputOption);
+        var config = parseResult.GetValue(options.ConfigOption);
+        var level = parseResult.GetValue(options.LevelOption);
+        if (config != null && parseResult.GetResult(options.LevelOption) is { Implicit: false })
         {
             const string ignored = "--level is ignored because --config was given. The config file sets the options.";
             if (!ReferenceEquals(parseResult.InvocationConfiguration.Output, System.Console.Out))
@@ -447,33 +420,33 @@ public class Program
             else
                 AnsiConsole.MarkupLine($"[yellow]{ignored}[/]");
         }
-        var stringEncrypt = parseResult.GetValue(StringEncryptOption);
-        var controlFlow = parseResult.GetValue(ControlFlowOption);
-        var rename = parseResult.GetValue(RenameOption);
-        var antiDebug = parseResult.GetValue(AntiDebugOption);
-        var antiTamper = parseResult.GetValue(AntiTamperOption);
-        var antiDecompiler = parseResult.GetValue(AntiDecompilerOption);
-        var antiDump = parseResult.GetValue(AntiDumpOption);
-        var referenceProxy = parseResult.GetValue(ReferenceProxyOption);
-        var proxyExternal = parseResult.GetValue(ProxyExternalOption);
-        var encryptMethods = parseResult.GetValue(EncryptMethodsOption);
-        var noStringEncrypt = parseResult.GetValue(NoStringEncryptOption);
-        var noRename = parseResult.GetValue(NoRenameOption);
-        var noControlFlow = parseResult.GetValue(NoControlFlowOption);
-        var stripMetadata = parseResult.GetValue(StripMetadataOption);
-        var encryptResources = parseResult.GetValue(EncryptResourcesOption);
-        var encryptConstants = parseResult.GetValue(EncryptConstantsOption);
-        var preservePublic = parseResult.GetValue(PreservePublicOption);
-        var map = parseResult.GetValue(MapOption);
-        var report = parseResult.GetValue(ReportOption);
-        var dryRun = parseResult.GetValue(DryRunOption);
-        var verbose = parseResult.GetValue(VerboseOption);
-        var noLogo = parseResult.GetValue(NoLogoOption);
-        var merge = parseResult.GetValue(MergeOption);
-        var internalize = parseResult.GetValue(InternalizeOption);
-        var watermarkId = parseResult.GetValue(WatermarkIdOption);
-        var virtualize = parseResult.GetValue(VirtualizeOption);
-        var incremental = parseResult.GetValue(IncrementalOption);
+        var stringEncrypt = parseResult.GetValue(options.StringEncryptOption);
+        var controlFlow = parseResult.GetValue(options.ControlFlowOption);
+        var rename = parseResult.GetValue(options.RenameOption);
+        var antiDebug = parseResult.GetValue(options.AntiDebugOption);
+        var antiTamper = parseResult.GetValue(options.AntiTamperOption);
+        var antiDecompiler = parseResult.GetValue(options.AntiDecompilerOption);
+        var antiDump = parseResult.GetValue(options.AntiDumpOption);
+        var referenceProxy = parseResult.GetValue(options.ReferenceProxyOption);
+        var proxyExternal = parseResult.GetValue(options.ProxyExternalOption);
+        var encryptMethods = parseResult.GetValue(options.EncryptMethodsOption);
+        var noStringEncrypt = parseResult.GetValue(options.NoStringEncryptOption);
+        var noRename = parseResult.GetValue(options.NoRenameOption);
+        var noControlFlow = parseResult.GetValue(options.NoControlFlowOption);
+        var stripMetadata = parseResult.GetValue(options.StripMetadataOption);
+        var encryptResources = parseResult.GetValue(options.EncryptResourcesOption);
+        var encryptConstants = parseResult.GetValue(options.EncryptConstantsOption);
+        var preservePublic = parseResult.GetValue(options.PreservePublicOption);
+        var map = parseResult.GetValue(options.MapOption);
+        var report = parseResult.GetValue(options.ReportOption);
+        var dryRun = parseResult.GetValue(options.DryRunOption);
+        var verbose = parseResult.GetValue(options.VerboseOption);
+        var noLogo = parseResult.GetValue(options.NoLogoOption);
+        var merge = parseResult.GetValue(options.MergeOption);
+        var internalize = parseResult.GetValue(options.InternalizeOption);
+        var watermarkId = parseResult.GetValue(options.WatermarkIdOption);
+        var virtualize = parseResult.GetValue(options.VirtualizeOption);
+        var incremental = parseResult.GetValue(options.IncrementalOption);
 
         if (!noLogo)
         {
@@ -494,11 +467,11 @@ public class Program
             // overrides assemblyMerge.internalize when it was typed: its default must not overwrite the config.
             if (merge)
                 settings.AssemblyMerge.Enabled = true;
-            if (parseResult.GetResult(InternalizeOption) is { Implicit: false })
+            if (parseResult.GetResult(options.InternalizeOption) is { Implicit: false })
                 settings.AssemblyMerge.Internalize = internalize;
 
             merge = settings.AssemblyMerge.Enabled;
-            if (merge && !parseResult.GetValue(MergeOption)
+            if (merge && !parseResult.GetValue(options.MergeOption)
                 && (input ?? []).Length < 2 && !(input ?? []).Any(static i => IsSolutionOrProject(i.FullName)))
             {
                 // A config shared across runs must not break a single-file run (the desktop app falls back the same way).

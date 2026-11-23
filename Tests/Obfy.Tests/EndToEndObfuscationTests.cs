@@ -2827,28 +2827,15 @@ public class EndToEndObfuscationTests
         try
         {
             var input = CompileToAssembly(source, dir, "FlowLib");
-            var bytes = File.ReadAllBytes(input);
-            ModuleDef? hit = null;
-            for (var attempt = 0; attempt < 40 && hit == null; attempt++)
+            using var chosen = ModuleDefMD.Load(File.ReadAllBytes(input));
+            var context = PipelineContext.ForAssembly(chosen, new ObfySettings
             {
-                var module = ModuleDefMD.Load(bytes);
-                var context = PipelineContext.ForAssembly(module, new ObfySettings
-                {
-                    Level = ObfuscationLevel.Custom,
-                    ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
-                });
-                (await new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object)
-                    .ObfuscateAsync(context)).Success.ShouldBeTrue();
+                Level = ObfuscationLevel.Custom,
+                ControlFlow = { Enabled = true, Mode = ControlFlowMode.Switch, Intensity = 100 }
+            });
+            (await new ControlFlowObfuscator(new Mock<ILogger<ControlFlowObfuscator>>().Object, new Random(22))
+                .ObfuscateAsync(context)).Success.ShouldBeTrue();
 
-                var get = module.Types.Single(t => t.Name == "Lib").Methods.Single(m => m.Name == "Get");
-                if (get.Body.Instructions.Any(i => i.Operand is IMethod called && called.Name == "get_TickCount64"))
-                    hit = module;
-                else
-                    module.Dispose();
-            }
-
-            hit.ShouldNotBeNull("TickCount64 predicate was not emitted");
-            using var chosen = hit!;
             var method = chosen.Types.Single(t => t.Name == "Lib").Methods.Single(m => m.Name == "Get");
             var body = method.Body.Instructions;
             var saw = false;

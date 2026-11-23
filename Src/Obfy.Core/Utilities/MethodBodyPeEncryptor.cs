@@ -32,12 +32,12 @@ internal static class MethodBodyPeEncryptor
             if (!TryReadMethodBodyLayout(bytes, fileOffset, out var headerSize, out var ilSize))
                 throw new InvalidOperationException($"Could not read method body layout for {item.Method.FullName}.");
 
-            var ilOffset = fileOffset + headerSize;
+            var ilOffset = (long)fileOffset + headerSize;
             if (ilOffset + ilSize > bytes.Length)
                 throw new InvalidOperationException($"Method body for {item.Method.FullName} exceeds the PE image.");
 
             for (var i = 0; i < ilSize; i++)
-                bytes[ilOffset + i] ^= item.Key;
+                bytes[(int)ilOffset + i] ^= item.Key;
 
             entries.Add((rva, headerSize, ilSize, item.Key));
         }
@@ -78,16 +78,18 @@ internal static class MethodBodyPeEncryptor
                 ilSize = first >> 2;
                 break;
             case 3: // Fat
-                if (fileOffset + 12 > pe.Length)
+                if ((long)fileOffset + 12 > pe.Length)
                     return false;
-                headerSize = 12;
+                headerSize = ((pe[fileOffset + 1] >> 4) & 0xF) * 4;
+                if (headerSize < 12 || (long)fileOffset + headerSize > pe.Length)
+                    return false;
                 ilSize = BinaryPrimitives.ReadInt32LittleEndian(pe.AsSpan(fileOffset + 4));
                 break;
             default:
                 return false;
         }
 
-        return ilSize > 0 && fileOffset + headerSize + ilSize <= pe.Length;
+        return ilSize > 0 && (long)fileOffset + headerSize + ilSize <= pe.Length;
     }
 
     private static int RvaToOffset(byte[] pe, uint rva)
@@ -95,27 +97,31 @@ internal static class MethodBodyPeEncryptor
         if (pe.Length < 0x40)
             return -1;
         var eLfanew = BinaryPrimitives.ReadInt32LittleEndian(pe.AsSpan(0x3C));
-        if (eLfanew < 0 || eLfanew + 24 + 2 + 2 + 16 > pe.Length)
+        if (eLfanew < 0 || (long)eLfanew + 24 > pe.Length)
             return -1;
 
         var peOff = eLfanew;
         var numberOfSections = BinaryPrimitives.ReadUInt16LittleEndian(pe.AsSpan(peOff + 6));
         var sizeOfOptional = BinaryPrimitives.ReadUInt16LittleEndian(pe.AsSpan(peOff + 20));
-        var sectionStart = peOff + 24 + sizeOfOptional;
+        var sectionStart = (long)peOff + 24 + sizeOfOptional;
+        if (sectionStart < 0 || sectionStart > pe.Length)
+            return -1;
         const int sectionSize = 40;
 
         for (var i = 0; i < numberOfSections; i++)
         {
-            var s = sectionStart + i * sectionSize;
-            if (s + 40 > pe.Length)
+            var sLong = sectionStart + (long)i * sectionSize;
+            if (sLong + sectionSize > pe.Length)
                 break;
+            var s = (int)sLong;
             var virtAddr = BinaryPrimitives.ReadUInt32LittleEndian(pe.AsSpan(s + 12));
             var rawSize = BinaryPrimitives.ReadUInt32LittleEndian(pe.AsSpan(s + 16));
             var rawPtr = BinaryPrimitives.ReadUInt32LittleEndian(pe.AsSpan(s + 20));
-            var virtSize = BinaryPrimitives.ReadUInt32LittleEndian(pe.AsSpan(s + 8));
-            var span = Math.Max(rawSize, virtSize);
-            if (rva >= virtAddr && rva < virtAddr + span)
-                return (int)(rawPtr + (rva - virtAddr));
+            if (rva >= virtAddr && (ulong)(rva - virtAddr) < rawSize)
+            {
+                var offset = (ulong)rawPtr + (ulong)(rva - virtAddr);
+                return offset < (ulong)pe.Length ? (int)offset : -1;
+            }
         }
 
         return -1;
@@ -124,39 +130,36 @@ internal static class MethodBodyPeEncryptor
     private static void PatchBlob(byte[] pe, List<(uint Rva, int HeaderSize, int IlSize, byte Key)> entries)
     {
         var magic = MethodEncryptionMetadata.Magic;
-        var max = pe.Length - (magic.Length + MethodEncryptionMetadata.HeaderBytes);
-        for (var i = 0; i <= max; i++)
+        var foundAt = -1;
+        for (var i = 0; i <= pe.Length - magic.Length; i++)
         {
-            var match = true;
-            for (var j = 0; j < magic.Length; j++)
-            {
-                if (pe[i + j] != magic[j])
-                {
-                    match = false;
-                    break;
-                }
-            }
-
-            if (!match)
+            if (!pe.AsSpan(i, magic.Length).SequenceEqual(magic))
                 continue;
 
-            var offset = i + magic.Length;
-            BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset), entries.Count);
-            offset += MethodEncryptionMetadata.HeaderBytes;
-            foreach (var (rva, header, size, key) in entries)
-            {
-                if (offset + MethodEncryptionMetadata.EntryBytes > pe.Length)
-                    throw new InvalidOperationException("Method-encryption blob is too small to store every entry.");
-                BinaryPrimitives.WriteUInt32LittleEndian(pe.AsSpan(offset), rva);
-                BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + 4), header);
-                BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + 8), size);
-                BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + MethodEncryptionMetadata.KeyOffset), key);
-                offset += MethodEncryptionMetadata.EntryBytes;
-            }
+            if (foundAt >= 0)
+                throw new InvalidOperationException("Method-encryption blob marker appeared more than once; cannot patch RVAs.");
 
-            return;
+            foundAt = i;
         }
 
-        throw new InvalidOperationException("Method-encryption blob was not found; cannot patch RVAs.");
+        if (foundAt < 0)
+            throw new InvalidOperationException("Method-encryption blob was not found; cannot patch RVAs.");
+
+        var headerOffset = (long)foundAt + magic.Length;
+        var requiredBytes = MethodEncryptionMetadata.HeaderBytes + (long)entries.Count * MethodEncryptionMetadata.EntryBytes;
+        if (headerOffset + requiredBytes > pe.Length)
+            throw new InvalidOperationException("Method-encryption blob is too small to store every entry.");
+
+        var offset = (int)headerOffset;
+        BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset), entries.Count);
+        offset += MethodEncryptionMetadata.HeaderBytes;
+        foreach (var (rva, header, size, key) in entries)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(pe.AsSpan(offset), rva);
+            BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + 4), header);
+            BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + 8), size);
+            BinaryPrimitives.WriteInt32LittleEndian(pe.AsSpan(offset + MethodEncryptionMetadata.KeyOffset), key);
+            offset += MethodEncryptionMetadata.EntryBytes;
+        }
     }
 }

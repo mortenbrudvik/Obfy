@@ -56,6 +56,13 @@ public static class OutputCollisions
     private static OutputCollision? FindSymbolMapHit(
         List<(string Path, string Key)> listed, OutputPlan plan, string symbolMapPath, PathResolver paths)
     {
+        if (HasAlternateStream(symbolMapPath))
+        {
+            return new OutputCollision(
+                symbolMapPath, symbolMapPath,
+                $"The symbol map cannot be '{symbolMapPath}': it names an alternate data stream (a colon after the drive), which is never a place for the symbol map. Choose another location for the symbol map.");
+        }
+
         var key = paths.ResolveFile(symbolMapPath);
 
         foreach (var (path, listedKey) in listed)
@@ -79,6 +86,28 @@ public static class OutputCollisions
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// True when the path names an NTFS alternate data stream on Windows: a colon after the drive or share.
+    /// </summary>
+    private static bool HasAlternateStream(string path)
+    {
+        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(path))
+            return false;
+
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is PathTooLongException or IOException or ArgumentException or NotSupportedException)
+        {
+            full = path;
+        }
+
+        var root = Path.GetPathRoot(full) ?? string.Empty;
+        return full.AsSpan(root.Length).Contains(':');
     }
 
     private static (string InputPath, string OutputPath)? FindHit(
@@ -212,8 +241,10 @@ public static class OutputCollisions
                 full = path;
             }
 
-            // \\?\C:\x and C:\x name the same file.
-            if (full.StartsWith(@"\\?\", StringComparison.Ordinal) && full.Length > 6 && full[5] == ':')
+            // \\?\UNC\server\share\x and \\server\share\x name the same file, and so do \\?\C:\x and C:\x.
+            if (full.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+                full = @"\\" + full[8..];
+            else if (full.StartsWith(@"\\?\", StringComparison.Ordinal) && full.Length > 6 && full[5] == ':')
                 full = full[4..];
 
             return Path.TrimEndingDirectorySeparator(full);

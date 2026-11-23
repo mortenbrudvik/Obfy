@@ -30,8 +30,10 @@ public class CentralPackageVersionTests : IDisposable
         versions.Values.ShouldAllBe(version => !string.IsNullOrWhiteSpace(version));
 
         var references = 0;
+        var discoveredNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var project in EnumerateOwnProjects(root))
         {
+            discoveredNames.Add(Path.GetFileName(project));
             foreach (var reference in XDocument.Load(project).Descendants("PackageReference"))
             {
                 references++;
@@ -43,6 +45,16 @@ public class CentralPackageVersionTests : IDisposable
         }
 
         references.ShouldBeGreaterThan(0);
+        string[] expectedProjects =
+        [
+            "Obfy.Core.csproj",
+            "Obfy.Console.csproj",
+            "Obfy.App.csproj",
+            "Obfy.UI.csproj",
+            "Obfy.Tests.csproj"
+        ];
+        foreach (var expected in expectedProjects)
+            discoveredNames.ShouldContain(expected);
     }
 
     [Theory]

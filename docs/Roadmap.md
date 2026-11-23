@@ -81,7 +81,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 
 | ID | Feature | Priority | Effort | Value | Status |
 |----|---------|----------|--------|-------|--------|
-| DX-01 | WPF desktop application | P1 | Medium | High | ✅ Done |
+| DX-01 | WebView2 + React hybrid desktop application | P1 | Medium | High | ✅ Done |
 | DX-02 | Visual Studio extension | P1 | Medium | High | ✅ Done |
 | DX-04 | JetBrains Rider plugin | P2 | Low | Medium | Removed (dropped for good; it was never published to a marketplace or attached to a release) |
 | DX-05 | Configuration wizard | P2 | Low | Medium | ✅ Done |
@@ -129,7 +129,7 @@ Source mode is a subset: strings, renaming, control flow only. `[Obfuscation]` i
 
 ### DX-03: VS Code beyond the stub
 
-`Src/Obfy.VSCode` validates `obfy.json` and matches CLI `Error:` / `⚠` lines. Remaining: a TaskProvider, marketplace listing, and docs in the README install path.
+`Src/Obfy.VSCode` validates `obfy.json` and matches CLI `path(line,column): error|warning: message` lines. Remaining: a TaskProvider, marketplace listing, and docs in the README install path.
 
 ### Testing: remaining coverage gaps
 

@@ -48,6 +48,7 @@ export const api = {
      * unknown or missing one opens the guide's start. The page never passes a URL: the host builds it.
      */
     openGuide: (topic?: string) => call<unknown>("app", "openGuide", { topic: topic ?? null }),
+    reportError: (screen: string, errorType: string) => call<unknown>("app", "reportError", { screen, errorType }),
   },
 
   settings: {

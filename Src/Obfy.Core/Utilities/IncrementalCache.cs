@@ -78,6 +78,129 @@ public static class IncrementalCache
         return Convert.ToHexString(hasher.GetHashAndReset());
     }
 
+    internal static string ComputeMergeKey(IReadOnlyList<string> inputPaths, ObfySettings settings) =>
+        ComputeMergeKey(inputPaths, settings, BuildIdentity);
+
+    internal static string ComputeMergeKey(
+        IReadOnlyList<string> inputPaths,
+        ObfySettings settings,
+        string buildIdentity)
+    {
+        var json = JsonSerializer.Serialize(settings, JsonOptions);
+        var stamp = Encoding.UTF8.GetBytes("obfy-merge-cache|" + buildIdentity + "|");
+        var jsonBytes = Encoding.UTF8.GetBytes(json);
+        using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hasher.AppendData(stamp);
+
+        var loadedInputs = new List<(string Path, byte[] Bytes)>(inputPaths.Count);
+        for (var i = 0; i < inputPaths.Count; i++)
+        {
+            var path = inputPaths[i];
+            var bytes = File.ReadAllBytes(path);
+            loadedInputs.Add((path, bytes));
+            hasher.AppendData(Encoding.UTF8.GetBytes($"|in|{i}|{Path.GetFileName(path)}|{bytes.Length}|"));
+            hasher.AppendData(bytes);
+        }
+
+        hasher.AppendData(jsonBytes);
+        AppendSigningKey(hasher, settings);
+        AppendMergeEmbeddedDependencies(hasher, loadedInputs, settings);
+        return Convert.ToHexString(hasher.GetHashAndReset());
+    }
+
+    internal static List<string> BuildMergeDependencySearchDirectories(
+        IEnumerable<string> inputPaths,
+        AssemblyMergeSettings mergeSettings)
+    {
+        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var seen = new HashSet<string>(comparer);
+        var dirs = new List<string>();
+
+        void TryAdd(string? dir)
+        {
+            if (string.IsNullOrWhiteSpace(dir))
+                return;
+            var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir));
+            if (Directory.Exists(full) && seen.Add(full))
+                dirs.Add(full);
+        }
+
+        foreach (var path in inputPaths)
+            TryAdd(Path.GetDirectoryName(Path.GetFullPath(path)));
+
+        if (mergeSettings.SearchDirectories is not null)
+        {
+            foreach (var dir in mergeSettings.SearchDirectories)
+                TryAdd(dir);
+        }
+
+        return dirs;
+    }
+
+    private static void AppendMergeEmbeddedDependencies(
+        IncrementalHash hasher,
+        List<(string Path, byte[] Bytes)> inputs,
+        ObfySettings settings)
+    {
+        if (!settings.DependencyEmbedding.Enabled ||
+            RuntimeProfileGating.BlocksAssemblyResolve(settings.RuntimeProfile))
+            return;
+
+        var mergedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var excludePatterns = settings.AssemblyMerge.ExcludePatterns ?? new List<string>();
+        foreach (var (path, _) in inputs)
+        {
+            var fileName = Path.GetFileName(path);
+            if (!excludePatterns.Any(p => WildcardMatcher.IsMatch(fileName, p)))
+                mergedNames.Add(Path.GetFileNameWithoutExtension(path));
+        }
+
+        var searchDirs = BuildMergeDependencySearchDirectories(inputs.Select(static x => x.Path), settings.AssemblyMerge);
+        if (searchDirs.Count == 0)
+            return;
+
+        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (_, bytes) in inputs)
+        {
+            try
+            {
+                foreach (var name in ReadAssemblyRefNames(bytes))
+                    referenced.Add(name);
+            }
+            catch (Exception ex) when (ex is BadImageFormatException or IOException or InvalidDataException)
+            {
+                // Best effort; the merge/load path surfaces bad PEs.
+            }
+        }
+
+        foreach (var simple in referenced.OrderBy(static name => name, StringComparer.Ordinal))
+        {
+            if (mergedNames.Contains(simple))
+                continue;
+
+            var fileName = simple + ".dll";
+            if (!IsEmbeddedDependency(fileName, settings.DependencyEmbedding))
+                continue;
+
+            string? path = null;
+            foreach (var dir in searchDirs)
+            {
+                var candidate = ResolveSibling(dir, fileName);
+                if (candidate is not null && File.Exists(candidate))
+                {
+                    path = candidate;
+                    break;
+                }
+            }
+
+            if (path is null)
+                continue;
+
+            hasher.AppendData(Encoding.UTF8.GetBytes("|dep|" + fileName + "|"));
+            hasher.AppendData(File.ReadAllBytes(path));
+        }
+    }
+
     private static void AppendSigningKey(IncrementalHash hasher, ObfySettings settings)
     {
         if (!settings.Signing.Enabled || string.IsNullOrWhiteSpace(settings.Signing.KeyFile))

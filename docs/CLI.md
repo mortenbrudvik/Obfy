@@ -160,6 +160,8 @@ obfy A.cs B.cs -o output/
 obfy *.dll -o output/
 ```
 
+**Note:** Separate single-assembly runs (`obfy App.dll` then `obfy Lib.dll`) restart sequential short names (`a`, `b`, `aa`, …) independently per invocation and do not rewrite cross-assembly references. When assemblies reference each other, protect them together as a closed set (`obfy App.dll Lib.dll`), pass a `.sln`/`.csproj`, or use `--merge` (or `--preserve-public` on the library).
+
 ### Assembly Merging
 
 ```bash

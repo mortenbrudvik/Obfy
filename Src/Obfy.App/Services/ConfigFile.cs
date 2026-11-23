@@ -3,8 +3,12 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Obfy.Common;
 using Obfy.Core.Models;
+using Obfy.Core.Utilities;
 
 namespace Obfy.App.Services;
+
+/// <summary>The loaded configuration settings and any unknown keys that were ignored.</summary>
+public sealed record ConfigLoadResult(ObfySettings Settings, IReadOnlyList<string> UnknownKeys);
 
 /// <summary>
 /// Reads and writes an <c>obfy.json</c> configuration the way the command line does: camelCase names, enums as names
@@ -47,7 +51,14 @@ public static class ConfigFile
     /// object) is refused, so the host never adopts, and later saves over, some other tool's file.
     /// </summary>
     /// <exception cref="ObfyApiException">The file is missing, unreadable or not a configuration.</exception>
-    public static async Task<ObfySettings> LoadAsync(string path, CancellationToken cancellationToken = default)
+    public static async Task<ObfySettings> LoadAsync(string path, CancellationToken cancellationToken = default) =>
+        (await LoadWithUnknownKeysAsync(path, cancellationToken).ConfigureAwait(false)).Settings;
+
+    /// <summary>
+    /// Reads a configuration along with any unknown JSON keys that the deserializer ignored, so callers can warn the user.
+    /// </summary>
+    /// <exception cref="ObfyApiException">The file is missing, unreadable or not a configuration.</exception>
+    public static async Task<ConfigLoadResult> LoadWithUnknownKeysAsync(string path, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(path))
             throw new ObfyApiException("settings.configNotFound", $"The configuration file was not found: {path}");
@@ -69,7 +80,8 @@ public static class ConfigFile
             if (settings.Level != ObfuscationLevel.Custom && !root.Any(static p => PresetSections.Contains(p.Key)))
                 settings.ApplyLevel();
 
-            return settings;
+            var unknownKeys = ConfigKeyValidator.FindUnknownKeys(json);
+            return new ConfigLoadResult(settings, unknownKeys);
         }
         catch (Exception ex) when (ex is JsonException or ArgumentException)
         {
@@ -81,6 +93,13 @@ public static class ConfigFile
             throw new ObfyApiException("settings.configUnreadable", $"The configuration could not be read: {ex.Message}");
         }
     }
+
+    /// <summary>Prefix shared by unknown-configuration-keys notices so callers can replace or clear them.</summary>
+    public const string UnknownKeysNoticePrefix = "Unknown configuration keys ignored:";
+
+    /// <summary>Formats ignored configuration keys as a notice message containing only key names.</summary>
+    public static string FormatUnknownKeysNotice(IReadOnlyList<string> unknownKeys) =>
+        $"{UnknownKeysNoticePrefix} {string.Join(", ", unknownKeys)}.";
 
     /// <summary>
     /// Writes the settings through a temporary file in the same folder and swaps it in, so a failed or interrupted save
@@ -112,7 +131,7 @@ public static class ConfigFile
                 File.Move(temp, full);
             temp = null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is PathTooLongException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             throw new ObfyApiException("settings.configNotSaved", $"The configuration could not be saved: {ex.Message}");
         }
@@ -138,9 +157,9 @@ public static class ConfigFile
                     fresh = existing;
                 }
             }
-            catch (JsonException)
+            catch (Exception ex) when (ex is JsonException or ArgumentException)
             {
-                // Not readable as JSON: there is nothing worth keeping, and the settings are written alone.
+                // Not readable as JSON (or duplicate object keys): there is nothing worth keeping, and the settings are written alone.
             }
         }
 

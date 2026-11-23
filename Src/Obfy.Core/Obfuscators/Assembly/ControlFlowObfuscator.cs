@@ -19,11 +19,17 @@ public class ControlFlowObfuscator : IObfuscator
     private const int OpaquePredicateStackHeadroom = 4;
 
     private readonly ILogger<ControlFlowObfuscator> _logger;
-    private readonly Random _random = new();
+    private readonly Random _random;
 
     public ControlFlowObfuscator(ILogger<ControlFlowObfuscator> logger)
+        : this(logger, new Random())
+    {
+    }
+
+    internal ControlFlowObfuscator(ILogger<ControlFlowObfuscator> logger, Random random)
     {
         _logger = logger;
+        _random = random ?? throw new ArgumentNullException(nameof(random));
     }
 
     /// <inheritdoc/>

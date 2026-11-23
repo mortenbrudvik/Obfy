@@ -18,6 +18,10 @@ public class ExportMapRequestHandler(ResultsStore results, IFileDialogs dialogs)
 
     public async ValueTask<ExportResult> Handle(ExportMapRequest request, CancellationToken cancellationToken)
     {
+        var map = results.GetSymbolMap();
+        if (map.Count == 0)
+            throw new ObfyApiException("results.noSymbolMap", "There is no symbol map to export yet.");
+
         var path = await dialogs.PickSaveAsync(
             "Export Symbol Map",
             "JSON Files (*.json)|*.json|Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
@@ -27,7 +31,7 @@ public class ExportMapRequestHandler(ResultsStore results, IFileDialogs dialogs)
 
         try
         {
-            var json = JsonSerializer.Serialize(results.GetSymbolMap(), Indented);
+            var json = JsonSerializer.Serialize(map, Indented);
             await File.WriteAllTextAsync(path, json, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

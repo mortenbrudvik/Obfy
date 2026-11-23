@@ -1,6 +1,7 @@
 /* The Protection screen, lifted from the approved mockup (Protection). Colours come from the tokens in index.css. */
 
 .protection-page { display: flex; flex-direction: column; }
+.protection-page > .note + .note, .protection-page > .info + .note { margin-top: 8px; }
 
 /* ---- Header ---- */
 .phead { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; margin-bottom: 14px; }

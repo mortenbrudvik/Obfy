@@ -90,6 +90,13 @@ export const strings = {
     unreachable: "Could not read the protection settings.",
     openConfig: "Open…",
     saveConfig: "Save",
+    saveConfigAs: "Save As…",
+    confirmOpenConfig: {
+      title: "Replace unsaved changes?",
+      body: "You have unsaved protection changes. Opening a configuration will replace them.",
+      confirm: "Replace changes",
+      cancel: "Cancel",
+    },
     configUnsavedChanges: "unsaved changes",
     configSaved: "saved",
     configNotSaved: "not saved yet",

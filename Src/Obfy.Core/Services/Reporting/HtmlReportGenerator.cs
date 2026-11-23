@@ -251,7 +251,7 @@ public class HtmlReportGenerator : IReportGenerator
             : Path.GetFileName(report.FileInfo.InputPath);
         sb.AppendLine($"        <tr><td>Input File</td><td>{Encode(inputLabel)}</td></tr>");
         sb.AppendLine($"        <tr><td>Obfuscation Level</td><td>{report.Metadata.Level}</td></tr>");
-        sb.AppendLine($"        <tr><td>Total Duration</td><td>{report.Metadata.TotalElapsedTime:mm\\:ss\\.fff}</td></tr>");
+        sb.AppendLine($"        <tr><td>Total Duration</td><td>{FormatElapsed(report.Metadata.TotalElapsedTime)}</td></tr>");
         sb.AppendLine($"        <tr><td>Total Transformations</td><td><strong>{report.Statistics.TotalTransformations:N0}</strong></td></tr>");
         sb.AppendLine("      </table>");
         sb.AppendLine("    </div>");
@@ -356,6 +356,16 @@ public class HtmlReportGenerator : IReportGenerator
         AddSettingRow(sb, "Control Flow Obfuscation", settings.ControlFlowEnabled);
         AddSettingRow(sb, "Symbol Renaming", settings.SymbolRenamingEnabled);
         AddSettingRow(sb, "Anti-Debug Protection", settings.AntiDebugEnabled);
+        AddSettingRow(sb, "Anti-Tamper Protection", settings.AntiTamperEnabled);
+        AddSettingRow(sb, "Anti-Dump Protection", settings.AntiDumpEnabled);
+        AddSettingRow(sb, "Anti-Decompiler Protection", settings.AntiDecompilerEnabled);
+        AddSettingRow(sb, "Reference Proxy", settings.ReferenceProxyEnabled);
+        AddSettingRow(sb, "Method Encryption", settings.MethodEncryptionEnabled);
+        AddSettingRow(sb, "Dependency Embedding", settings.DependencyEmbeddingEnabled);
+        AddSettingRow(sb, "Virtualization", settings.VirtualizationEnabled);
+        AddSettingRow(sb, "Packing", settings.PackingEnabled);
+        AddSettingRow(sb, "Strong-Name Signing", settings.SigningEnabled);
+        AddSettingRow(sb, "Watermark", settings.WatermarkEnabled);
         AddSettingRow(sb, "Metadata Removal", settings.MetadataRemovalEnabled);
         AddSettingRow(sb, "Preserve Public API", settings.PreservePublicApi);
 
@@ -423,9 +433,14 @@ public class HtmlReportGenerator : IReportGenerator
         sb.AppendLine("    </div>");
     }
 
+    private static string FormatElapsed(TimeSpan elapsed) =>
+        elapsed >= TimeSpan.FromHours(1)
+            ? $"{(int)elapsed.TotalHours:D2}:{elapsed:mm\\:ss\\.fff}"
+            : $"{elapsed:mm\\:ss\\.fff}";
+
     private static string FormatBytes(long bytes)
     {
-        var absBytes = Math.Abs(bytes);
+        var absBytes = bytes < 0 ? 0UL - (ulong)bytes : (ulong)bytes;
         string[] suffixes = { "B", "KB", "MB", "GB" };
         var suffixIndex = 0;
         var size = (double)absBytes;

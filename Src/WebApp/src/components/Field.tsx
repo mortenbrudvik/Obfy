@@ -4,7 +4,7 @@ import "./components.css";
 /** What a Field hands to its control so that the label, the help and the error belong to it. */
 export interface FieldControlProps {
   id: string;
-  "aria-describedby": string;
+  "aria-describedby"?: string;
   "aria-invalid"?: true;
 }
 
@@ -24,7 +24,7 @@ export default function Field({ label, help, error, required, children }: FieldP
   const id = useId();
   const helpId = `${id}-help`;
   const errorId = `${id}-error`;
-  const describedBy = [help ? helpId : null, error ? errorId : null].filter(Boolean).join(" ");
+  const describedBy = [help ? helpId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined;
 
   return (
     <div className="fl">

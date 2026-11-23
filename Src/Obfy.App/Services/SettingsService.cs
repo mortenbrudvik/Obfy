@@ -20,7 +20,7 @@ public class SettingsService : ISettingsService
     };
 
     private readonly ILogger<SettingsService> _logger;
-    private readonly object _preferencesLock = new();
+    private readonly SemaphoreSlim _preferencesGate = new(1, 1);
 
     public SettingsService(ILogger<SettingsService> logger)
         : this(logger, ResolvePreferencesPath())
@@ -73,33 +73,51 @@ public class SettingsService : ISettingsService
 
     public async Task SavePreferencesAsync()
     {
-        var directory = Path.GetDirectoryName(_preferencesPath);
-        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        var preferences = new UiPreferences
-        {
-            LastOutputDirectory = LastOutputDirectory,
-            GenerateSymbolMap = GenerateSymbolMap
-        };
-
-        var json = JsonSerializer.Serialize(preferences, _jsonOptions);
-        var tempPath = _preferencesPath + ".tmp";
-
+        string? tempPath = null;
+        await _preferencesGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await File.WriteAllTextAsync(tempPath, json);
-            lock (_preferencesLock)
+            var directory = Path.GetDirectoryName(_preferencesPath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
-                File.Move(tempPath, _preferencesPath, overwrite: true);
+                Directory.CreateDirectory(directory);
             }
+
+            var preferences = new UiPreferences
+            {
+                LastOutputDirectory = LastOutputDirectory,
+                GenerateSymbolMap = GenerateSymbolMap
+            };
+
+            var json = JsonSerializer.Serialize(preferences, _jsonOptions);
+            tempPath = $"{_preferencesPath}.{Guid.NewGuid():N}.tmp";
+
+            await File.WriteAllTextAsync(tempPath, json).ConfigureAwait(false);
+            File.Move(tempPath, _preferencesPath, overwrite: true);
+            tempPath = null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is PathTooLongException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             // Not the exception, not the path: the preferences path holds the Windows profile name, and the log keeps Debug and above.
             _logger.LogWarning("Failed to save UI preferences ({ExceptionType})", ex.GetType().Name);
+        }
+        finally
+        {
+            _preferencesGate.Release();
+            if (tempPath is not null)
+                TryDelete(tempPath);
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            // Best-effort cleanup of a leftover temporary file.
         }
     }
 

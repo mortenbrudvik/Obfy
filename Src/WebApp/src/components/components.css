@@ -73,6 +73,12 @@ input[type="range"] { accent-color: var(--accent); width: 100%; max-width: 320px
 
 kbd { font: 12px var(--font-ui); padding: 1px 7px; color: var(--strong); background: var(--keycap); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; white-space: nowrap; }
 
+.dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0, 0, 0, 0.45); }
+.dialog { width: 100%; max-width: 420px; padding: 18px 20px; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); display: flex; flex-direction: column; gap: 10px; }
+.dialog h2 { font-size: 16px; font-weight: 600; color: var(--strong); }
+.dialog p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
 @media (forced-colors: active) {
   .sw:checked::before, .chk:checked::after { forced-color-adjust: none; }
   .meter i s.on { background: var(--accent); }

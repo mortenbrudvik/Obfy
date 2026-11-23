@@ -50,12 +50,27 @@ public class ObfuscationService : IObfuscationService
         ObfuscateAsync(inputPath, outputPath, settings, ObfuscationRunOptions.Default, cancellationToken);
 
     /// <inheritdoc/>
-    public async Task<ObfuscationResult> ObfuscateAsync(
+    public Task<ObfuscationResult> ObfuscateAsync(
         string inputPath,
         string? outputPath,
         ObfySettings settings,
         ObfuscationRunOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ObfuscateCoreAsync(
+            inputPath,
+            outputPath,
+            settings,
+            options,
+            dependencySearchDirectories: null,
+            cancellationToken);
+
+    private async Task<ObfuscationResult> ObfuscateCoreAsync(
+        string inputPath,
+        string? outputPath,
+        ObfySettings settings,
+        ObfuscationRunOptions options,
+        IReadOnlyList<string>? dependencySearchDirectories,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -152,6 +167,8 @@ public class ObfuscationService : IObfuscationService
 
             context.InputPath = inputPath;
             context.OutputPath = effectiveOutput;
+            if (dependencySearchDirectories is { Count: > 0 })
+                context.DependencySearchDirectories.AddRange(dependencySearchDirectories);
             context.Warnings.AddRange(gatingWarnings);
             if (cacheNote is not null)
                 context.Warnings.Add(cacheNote);
@@ -464,33 +481,49 @@ public class ObfuscationService : IObfuscationService
         ObfySettings settings,
         CancellationToken cancellationToken = default)
     {
-        var slots = new List<(ObfuscationResult? Source, int AssemblyIndex)>();
-        var pendingSources = new List<string>();
+        var slots = new List<(BatchSlotKind Kind, int Index, ObfuscationResult? DirectResult)>();
+        var sources = new List<string>();
         var assemblies = new List<string>();
+        var sourceSlotAdded = false;
 
         foreach (var inputPath in inputPaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (IsCSharpFile(inputPath))
             {
-                pendingSources.Add(inputPath);
+                sources.Add(inputPath);
+                if (!sourceSlotAdded)
+                {
+                    slots.Add((BatchSlotKind.SourceGroup, 0, null));
+                    sourceSlotAdded = true;
+                }
                 continue;
             }
 
-            await FlushSourcesAsync().ConfigureAwait(false);
             if (IsAssemblyFile(inputPath))
             {
                 assemblies.Add(inputPath);
-                slots.Add((null, assemblies.Count - 1));
+                slots.Add((BatchSlotKind.Assembly, assemblies.Count - 1, null));
                 continue;
             }
 
             var outputPath = Path.Combine(outputDirectory, Path.GetFileName(TrimTrailingDirectorySeparators(inputPath)));
             var single = await ObfuscateAsync(inputPath, outputPath, settings, cancellationToken).ConfigureAwait(false);
-            slots.Add((single, -1));
+            slots.Add((BatchSlotKind.Other, -1, single));
         }
 
-        await FlushSourcesAsync().ConfigureAwait(false);
+        ObfuscationResult? sourceResult = null;
+        if (sources.Count == 1)
+        {
+            var single = sources[0];
+            var outputPath = Path.Combine(outputDirectory, Path.GetFileName(TrimTrailingDirectorySeparators(single)));
+            sourceResult = await ObfuscateAsync(single, outputPath, settings, cancellationToken).ConfigureAwait(false);
+        }
+        else if (sources.Count > 1)
+        {
+            sourceResult = await ObfuscateSourcesAsync(
+                sources.ToArray(), outputDirectory, settings, cancellationToken).ConfigureAwait(false);
+        }
 
         IReadOnlyList<ObfuscationResult> assemblyResults = [];
         if (assemblies.Count == 1)
@@ -525,32 +558,24 @@ public class ObfuscationService : IObfuscationService
         }
 
         var results = new List<ObfuscationResult>(slots.Count);
-        foreach (var (source, assemblyIndex) in slots)
-            results.Add(source ?? assemblyResults[assemblyIndex]);
+        foreach (var (kind, index, direct) in slots)
+        {
+            results.Add(kind switch
+            {
+                BatchSlotKind.SourceGroup => sourceResult!,
+                BatchSlotKind.Assembly => assemblyResults[index],
+                _ => direct!
+            });
+        }
 
         return results;
+    }
 
-        async Task FlushSourcesAsync()
-        {
-            if (pendingSources.Count == 0)
-                return;
-
-            if (pendingSources.Count == 1)
-            {
-                var single = pendingSources[0];
-                var outputPath = Path.Combine(outputDirectory, Path.GetFileName(TrimTrailingDirectorySeparators(single)));
-                var result = await ObfuscateAsync(single, outputPath, settings, cancellationToken).ConfigureAwait(false);
-                slots.Add((result, -1));
-            }
-            else
-            {
-                var result = await ObfuscateSourcesAsync(
-                    pendingSources.ToArray(), outputDirectory, settings, cancellationToken).ConfigureAwait(false);
-                slots.Add((result, -1));
-            }
-
-            pendingSources.Clear();
-        }
+    private enum BatchSlotKind
+    {
+        Other,
+        SourceGroup,
+        Assembly
     }
 
     /// <inheritdoc/>
@@ -696,6 +721,49 @@ public class ObfuscationService : IObfuscationService
 
         _logger.LogInformation("Starting merge-and-obfuscate of {Count} assemblies", inputList.Count);
 
+        var prepared = TryPrepareSettings(settings, out var settingsFailure);
+        if (prepared is null)
+            return settingsFailure!;
+
+        var gatedSettings = prepared.Clone();
+        var gatingWarnings = ApplyRuntimeProfileGating(gatedSettings, TargetType.Assembly);
+
+        string? mergeCacheKey = null;
+        ObfySettings? keySettings = null;
+        string? mergeCacheNote = null;
+        if (gatedSettings.Incremental.Enabled && inputList.Any(p => PathIdentity.SameFile(p, outputPath)))
+        {
+            mergeCacheNote = InPlaceCacheNote;
+            _logger.LogInformation("Incremental cache not used: the output replaces an input");
+        }
+        else if (gatedSettings.Incremental.Enabled)
+        {
+            keySettings = gatedSettings.Clone();
+            try
+            {
+                mergeCacheKey = IncrementalCache.ComputeMergeKey(inputList, keySettings);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning("Incremental cache key could not be computed ({ExceptionType})", ex.GetType().Name);
+            }
+        }
+
+        if (mergeCacheKey is not null)
+        {
+            var cached = IncrementalCache.TryReadHit(outputPath, keySettings!, mergeCacheKey);
+            if (cached is not null && WhyNotReused(options, cached) is { } declined)
+            {
+                _logger.LogInformation("Incremental cache hit not used: the caller needs more than a hit holds");
+                mergeCacheNote = declined;
+            }
+            else if (cached is not null)
+            {
+                _logger.LogInformation("Incremental cache hit");
+                return ReuseCachedOutput(inputList[0], outputPath, gatedSettings, gatingWarnings, cached);
+            }
+        }
+
         // Create temp file for merged assembly
         var tempDir = Path.Combine(Path.GetTempPath(), "obfy_merge_" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(tempDir);
@@ -707,7 +775,7 @@ public class ObfuscationService : IObfuscationService
             var mergeResult = await _assemblyMerger.MergeAsync(
                 inputList,
                 tempMergedPath,
-                settings.AssemblyMerge,
+                prepared.AssemblyMerge,
                 cancellationToken).ConfigureAwait(false);
 
             if (!mergeResult.Success)
@@ -721,12 +789,19 @@ public class ObfuscationService : IObfuscationService
                 mergeResult.MergedAssemblyCount,
                 mergeResult.Duration.TotalSeconds);
 
-            // Obfuscate the merged assembly
-            var obfuscationResult = await ObfuscateAsync(
+            // Obfuscate the merged assembly with incremental disabled on the inner temp-file pass
+            // so no bogus temp-path .obfycache is keyed or written.
+            var innerSettings = prepared.Clone();
+            innerSettings.Incremental.Enabled = false;
+            var dependencySearchDirs = IncrementalCache.BuildMergeDependencySearchDirectories(
+                inputList, prepared.AssemblyMerge);
+
+            var obfuscationResult = await ObfuscateCoreAsync(
                 tempMergedPath,
                 outputPath,
-                settings,
-                options,
+                innerSettings,
+                ObfuscationRunOptions.Default,
+                dependencySearchDirs,
                 cancellationToken).ConfigureAwait(false);
 
             // Add merge info to the result
@@ -742,6 +817,36 @@ public class ObfuscationService : IObfuscationService
                     obfuscationResult.Warnings.Add(
                         $"Not merged (excluded by assemblyMerge.excludePatterns): {string.Join(", ", left)}. " +
                         "They are not part of the output and must stay next to it.");
+                }
+
+                if (mergeCacheNote is not null)
+                    obfuscationResult.Warnings.Add(mergeCacheNote);
+
+                if (mergeCacheKey is not null)
+                {
+                    var packingWarnings = 0;
+                    if (gatedSettings.Packing.Enabled && obfuscationResult.PackedLauncherPath is not null)
+                    {
+                        packingWarnings = gatedSettings.Packing.IsPortable
+                            ? 1
+                            : (string.Equals(Path.GetExtension(outputPath), ".dll", StringComparison.OrdinalIgnoreCase) ? 2 : 1);
+                    }
+
+                    var runRecord = new CachedRun(
+                        obfuscationResult.Statistics,
+                        obfuscationResult.SymbolMap.Count,
+                        obfuscationResult.SkippedItems.Count,
+                        Math.Max(
+                            0,
+                            obfuscationResult.Warnings.Count - gatingWarnings.Count - packingWarnings
+                                - (mergeCacheNote is null ? 0 : 1)));
+                    WriteMergeIncrementalCache(
+                        inputList,
+                        outputPath,
+                        keySettings!,
+                        mergeCacheKey,
+                        runRecord,
+                        obfuscationResult.Warnings);
                 }
 
                 obfuscationResult = ObfuscationResult.Successful(
@@ -773,6 +878,41 @@ public class ObfuscationService : IObfuscationService
             {
                 _logger.LogWarning("Failed to clean up the merge temp directory ({ExceptionType})", ex.GetType().Name);
             }
+        }
+    }
+
+    private void WriteMergeIncrementalCache(
+        IReadOnlyList<string> inputPaths,
+        string output,
+        ObfySettings keySettings,
+        string cacheKey,
+        CachedRun run,
+        List<string> warnings)
+    {
+        string? current = null;
+        try
+        {
+            current = IncrementalCache.ComputeMergeKey(inputPaths, keySettings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning("Incremental cache key could not be re-checked ({ExceptionType})", ex.GetType().Name);
+        }
+
+        if (!string.Equals(current, cacheKey, StringComparison.Ordinal))
+        {
+            warnings.Add(
+                inputPaths.Any(p => InputIsNowTheOutput(p, output))
+                    ? InPlaceCacheNote
+                    : "Incremental cache not written: the input or one of its dependencies changed while the run was in progress.");
+            return;
+        }
+
+        if (!IncrementalCache.TryWrite(output, cacheKey, run, keySettings.Packing))
+        {
+            _logger.LogWarning("Could not write the incremental cache");
+            warnings.Add(
+                "Incremental cache could not be written next to the output, so the next run will not be skipped.");
         }
     }
 

@@ -89,4 +89,18 @@ describe("log model", () => {
     expect(cleared.trimmed).toBe(0);
     expect(appendBatch(cleared, { revision: 4, lines: [line(MAX_LOG_LINES + 6, "Info", "next")] }).lines).toHaveLength(1);
   });
+
+  it("keepsLateProblemLine_afterOutOfOrderInfoLineWasEvicted", () => {
+    const errors = Array.from({ length: MAX_LOG_LINES }, (_, i) => line(i + 1, "Error", `err ${i + 1}`));
+    const full = replaceLog(emptyLog, { revision: 1, lines: errors });
+
+    // Batch 2 arrives first with Info(6000), which is evicted immediately because the buffer is full of errors.
+    const afterInfo = appendBatch(full, { revision: 3, lines: [line(6000, "Info", "evicted info")] });
+    expect(afterInfo.lines).toHaveLength(MAX_LOG_LINES);
+
+    // Batch 1 arrives out of order with Error(5999): must not be dropped by Info(6000)'s trimmedId.
+    const afterError = appendBatch(afterInfo, { revision: 2, lines: [line(5999, "Error", "late error")] });
+    expect(afterError.lines).toHaveLength(MAX_LOG_LINES);
+    expect(afterError.lines[afterError.lines.length - 1]).toEqual(line(5999, "Error", "late error"));
+  });
 });

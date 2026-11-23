@@ -20,17 +20,19 @@ export default function App() {
   };
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary screen="root">
       <Shell screen={screen} onNavigate={navigate}>
-        {screen === "files" ? (
-          <FilesPage />
-        ) : screen === "protection" ? (
-          <ProtectionPage />
-        ) : screen === "results" ? (
-          <ResultsPage />
-        ) : (
-          <GuidePage topic={guideTopic} onTopicChange={setGuideTopic} />
-        )}
+        {({ onOpenConfig, notices }) =>
+          screen === "files" ? (
+            <FilesPage onOpenConfig={onOpenConfig} />
+          ) : screen === "protection" ? (
+            <ProtectionPage onOpenConfig={onOpenConfig} notices={notices} />
+          ) : screen === "results" ? (
+            <ResultsPage />
+          ) : (
+            <GuidePage topic={guideTopic} onTopicChange={setGuideTopic} />
+          )
+        }
       </Shell>
     </ErrorBoundary>
   );

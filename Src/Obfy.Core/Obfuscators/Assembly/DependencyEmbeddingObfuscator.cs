@@ -64,6 +64,7 @@ public class DependencyEmbeddingObfuscator : IObfuscator
             }
 
             var selfName = Path.GetFileNameWithoutExtension(inputPath);
+            var searchDirs = BuildSearchDirectories(inputDir, context.DependencySearchDirectories);
             var embedded = 0;
 
             foreach (var asmRef in module.GetAssemblyRefs())
@@ -74,9 +75,9 @@ public class DependencyEmbeddingObfuscator : IObfuscator
                     continue;
 
                 // The name comes from the (untrusted) input assembly: only a plain file name that resolves
-                // to a file directly inside the input folder may be embedded.
+                // to a file directly inside a searched folder may be embedded.
                 var fileName = simple + ".dll";
-                if (!TryResolveSibling(inputDir, simple, fileName, out var path))
+                if (!TryResolveSibling(inputDir, simple, fileName, out _))
                 {
                     context.Warnings.Add(
                         "Dependency embedding: an assembly reference name is not a plain file name and was not packed.");
@@ -86,7 +87,8 @@ public class DependencyEmbeddingObfuscator : IObfuscator
                 if (!IsIncluded(fileName, settings))
                     continue;
 
-                if (!File.Exists(path))
+                var path = FindSiblingInDirectories(searchDirs, simple, fileName);
+                if (path is null)
                 {
                     if (!IsFrameworkAssembly(simple))
                     {
@@ -128,6 +130,39 @@ public class DependencyEmbeddingObfuscator : IObfuscator
             _logger.LogError("Dependency embedding failed ({ExceptionType})", ex.GetType().Name);
             return Task.FromResult(ObfuscationResult.Failed($"Dependency embedding failed: {ex.Message}", ex));
         }
+    }
+
+    private static List<string> BuildSearchDirectories(string inputDir, IEnumerable<string> additionalDirs)
+    {
+        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var seen = new HashSet<string>(comparer);
+        var result = new List<string>();
+
+        void TryAdd(string? dir)
+        {
+            if (string.IsNullOrWhiteSpace(dir))
+                return;
+            var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir));
+            if (Directory.Exists(full) && seen.Add(full))
+                result.Add(full);
+        }
+
+        TryAdd(inputDir);
+        foreach (var extra in additionalDirs)
+            TryAdd(extra);
+
+        return result;
+    }
+
+    private static string? FindSiblingInDirectories(List<string> searchDirs, string simpleName, string fileName)
+    {
+        foreach (var dir in searchDirs)
+        {
+            if (TryResolveSibling(dir, simpleName, fileName, out var candidate) && File.Exists(candidate))
+                return candidate;
+        }
+
+        return null;
     }
 
     /// <summary>

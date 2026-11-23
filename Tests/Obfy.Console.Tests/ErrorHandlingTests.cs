@@ -30,7 +30,7 @@ public class ErrorHandlingTests
         // as additional file arguments (since the argument has OneOrMore arity)
         var parseResult = _rootCommand.Parse("input.dll --unknown-option");
 
-        var files = parseResult.GetRequiredValue(Program.InputArgument);
+        var files = parseResult.ArgumentValue<FileInfo[]>("input");
         files.ShouldNotBeNull();
         files.Length.ShouldBe(2); // input.dll and --unknown-option
     }
@@ -40,7 +40,7 @@ public class ErrorHandlingTests
     {
         var parseResult = _rootCommand.Parse("input.dll ---triple-dash");
 
-        var files = parseResult.GetRequiredValue(Program.InputArgument);
+        var files = parseResult.ArgumentValue<FileInfo[]>("input");
         files.ShouldNotBeNull();
         files.Length.ShouldBe(2);
     }
@@ -132,7 +132,7 @@ public class ErrorHandlingTests
     {
         var parseResult = _rootCommand.Parse("input.dll -v --verbose");
 
-        var verbose = parseResult.GetValue(Program.VerboseOption);
+        var verbose = parseResult.OptionValue<bool>("--verbose");
         verbose.ShouldBeTrue();
     }
 }

@@ -20,6 +20,7 @@ export interface UseProtection {
   setRuntimeProfile: (profile: string) => Promise<boolean>;
   openConfig: () => Promise<boolean>;
   saveConfig: () => Promise<boolean>;
+  saveConfigAs: () => Promise<boolean>;
   pickSigningKey: () => Promise<boolean>;
 }
 
@@ -56,6 +57,13 @@ export function useProtection(): UseProtection {
     createPatchQueue((patch: SettingsPatch) => act(strings.protection.failed.update, () => api.settings.update(patch))()),
   );
 
+  // What is typed in a box is saved too, not only what the host last heard.
+  const save = (saveAs: boolean) =>
+    act(strings.protection.failed.save, async () => {
+      if ((await flushPendingEdits()) === "failed") throw new Error(strings.protection.failed.pending);
+      return api.settings.saveConfig(saveAs);
+    });
+
   return {
     settings,
     failed,
@@ -64,11 +72,8 @@ export function useProtection(): UseProtection {
     applyLevel: (level) => act(strings.protection.failed.level, () => api.settings.applyLevel(level))(),
     setRuntimeProfile: (profile) => update({ runtimeProfile: profile }),
     openConfig: act(strings.protection.failed.config, () => api.settings.openConfig()),
-    // What is typed in a box is saved too, not only what the host last heard.
-    saveConfig: act(strings.protection.failed.save, async () => {
-      if ((await flushPendingEdits()) === "failed") throw new Error(strings.protection.failed.pending);
-      return api.settings.saveConfig();
-    }),
+    saveConfig: save(false),
+    saveConfigAs: save(true),
     pickSigningKey: act(strings.protection.failed.key, () => api.settings.pickSigningKey()),
   };
 }

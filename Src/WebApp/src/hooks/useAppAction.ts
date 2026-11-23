@@ -1,5 +1,50 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { failure } from "../interop/errorMessage";
+
+/**
+ * Shared runner for host calls that share one error slot: running any action clears the previous error, and a late
+ * rejection after `resetOn` changed or after a newer action started does not overwrite state with a stale error.
+ */
+export function useActionRunner(
+  resetOn?: unknown,
+): [run: (label: string, action: () => Promise<void>) => Promise<boolean>, error: string | null] {
+  const [error, setError] = useState<string | null>(null);
+
+  // Derived while rendering (React's way to adjust state to a value that changed): a new `resetOn` drops the old error.
+  const [seen, setSeen] = useState(resetOn);
+  if (!Object.is(seen, resetOn)) {
+    setSeen(resetOn);
+    setError(null);
+  }
+
+  const resetVersion = useRef(0);
+  const lastResetOn = useRef(resetOn);
+  useLayoutEffect(() => {
+    if (!Object.is(lastResetOn.current, resetOn)) {
+      lastResetOn.current = resetOn;
+      resetVersion.current++;
+    }
+  }, [resetOn]);
+
+  const callSeq = useRef(0);
+
+  const run = useCallback(async (label: string, action: () => Promise<void>) => {
+    const startResetVersion = resetVersion.current;
+    const seq = ++callSeq.current;
+    setError(null);
+    try {
+      await action();
+      return true;
+    } catch (err) {
+      if (resetVersion.current === startResetVersion && callSeq.current === seq) {
+        setError(failure(label, err));
+      }
+      return false;
+    }
+  }, []);
+
+  return [run, error];
+}
 
 /**
  * A button's call to the host whose failure is shown next to it: `run` clears
@@ -12,31 +57,18 @@ export function useAppAction<A extends unknown[]>(
   label: string,
   resetOn?: unknown,
 ): [run: (...args: A) => Promise<boolean>, error: string | null] {
-  const [error, setError] = useState<string | null>(null);
-
-  // Derived while rendering (React's way to adjust state to a value that changed): a new `resetOn` drops the old error.
-  const [seen, setSeen] = useState(resetOn);
-  if (!Object.is(seen, resetOn)) {
-    setSeen(resetOn);
-    setError(null);
-  }
+  const [runAction, error] = useActionRunner(resetOn);
 
   // The latest action and label, so that `run` stays the same function while callers pass them inline.
   const latest = useRef({ action, label });
-  useEffect(() => {
+  useLayoutEffect(() => {
     latest.current = { action, label };
   });
 
-  const run = useCallback(async (...args: A) => {
-    setError(null);
-    try {
-      await latest.current.action(...args);
-      return true;
-    } catch (err) {
-      setError(failure(latest.current.label, err));
-      return false;
-    }
-  }, []);
+  const run = useCallback(
+    (...args: A) => runAction(latest.current.label, () => latest.current.action(...args)),
+    [runAction],
+  );
 
   return [run, error];
 }

@@ -18,7 +18,7 @@ public class PickSigningKeyRequestHandler(ProtectionSession session, IFileDialog
         run.EnsureNotRunning();
         var path = await dialogs.PickKeyAsync().ConfigureAwait(false);
         if (!string.IsNullOrEmpty(path))
-            session.UpdateSetting("signing.keyFile", path);
+            run.WhileIdle(() => session.UpdateSetting("signing.keyFile", path));
 
         return session.GetSnapshot();
     }

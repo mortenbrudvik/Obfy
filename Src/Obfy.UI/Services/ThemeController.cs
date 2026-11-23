@@ -154,14 +154,14 @@ public sealed class ThemeController : IDisposable
         if (_showsDark is not { } dark)
             return;
 
-        _webView.DefaultBackgroundColor = GroundOf(dark);
-
         try
         {
+            _webView.DefaultBackgroundColor = GroundOf(dark);
+
             if (_webView.CoreWebView2 is { } core)
                 core.Profile.PreferredColorScheme = dark ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Light;
         }
-        catch (Exception ex) when (ex is NotImplementedException or InvalidCastException or COMException or InvalidOperationException)
+        catch (Exception ex) when (ex is NotImplementedException or InvalidCastException or COMException or ObjectDisposedException or InvalidOperationException)
         {
             // A runtime too old for the setting, or a WebView2 that has gone away: the page follows Windows instead.
             _logger.LogWarning("Could not set the page's colour scheme ({ExceptionType})", ex.GetType().Name);

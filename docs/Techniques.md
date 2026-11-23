@@ -460,6 +460,8 @@ Compiler-generated types (async state machines, display classes, lambdas) are **
 
 **References follow a rename** in a single assembly, a merge and a closed set. That covers the member references C# writes for a member of a closed generic type the module defines (`Box<int>.Item`, a method, an accessor, a closure over `T`), a reference whose parent is a derived type (the member is found on that type or up its base chain, with the base type's generic arguments substituted; when that substitution makes two methods share a signature, a virtual method is preferred and otherwise the last method in metadata order, which is the method the runtime calls), and the type and member names stored in custom attributes: the named arguments of `[Info(Note = "x")]`, and the type names inside `typeof` and enum arguments, arrays of them included. A member that is excluded, or kept because the public API is preserved, keeps its name in all of these.
 
+**Reflection lookups by string name.** String-based reflection (`Type.GetType("MyApp.Service")`, `typeof(Target).GetMethod("Secret")`, `GetField`, `GetProperty`, or `nameof(...)` compiled before obfuscation into a string literal) is **not** rewritten to track new symbol names. If your code looks up private, internal, or unpreserved public members by string name, exclude them with `[Obfuscation(Feature = "renaming", Exclude = true)]` or `exclusions`; token-based reflection (`typeof(...)`, `MethodBase.GetCurrentMethod()`) continues to work without exclusion.
+
 **What stays readable in the output.** The assembly is written with new string, user-string and blob heaps, and without the original MemberRef and MethodSpec rows, so a name that was renamed or a literal that was encrypted is not carried along beside its replacement. Names the renamer keeps are still in the bytes: virtual methods, a preserved public API, framework members, and the parameter names of constructors and accessors. String and constant literals are plaintext unless that encryption is on. The row ids of TypeDef, Field, Method, Param, Event and Property are kept, so a metadata token of one of those that is written into code still resolves; a MemberRef or MethodSpec token is renumbered.
 
 **Settings:**
@@ -794,6 +796,7 @@ Renames identifiers using Roslyn semantic symbols (`ISymbol`), including attribu
 - Preserves compilation correctness
 - Handles overloads and generics
 - Maintains references across files
+- Rewrites `nameof(...)` operands alongside the declarations they reference, so `nameof(MySymbol)` evaluates to the obfuscated name at runtime (unless the target symbol is excluded or preserved)
 - Honors `[Obfuscation]` for `renaming`, plus the `inclusions`, `exclusions` (including the default exclusion attributes such as `[Serializable]`) and `preserveXaml` settings
 
 ### Source Control Flow

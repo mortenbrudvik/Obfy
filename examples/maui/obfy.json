@@ -8,6 +8,6 @@
   },
   "stringEncryption": { "enabled": true },
   "exclusions": {
-    "namespaces": ["Microsoft.Maui.*", "Microsoft.Extensions.*"]
+    "namespaces": ["Microsoft.Maui", "Microsoft.Maui.*", "Microsoft.Extensions", "Microsoft.Extensions.*"]
   }
 }

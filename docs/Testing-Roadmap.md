@@ -8,14 +8,14 @@ How to run the current suite: [Testing.md](Testing.md).
 
 ## Current position (2026-09)
 
-Six projects; counts live in [Testing.md](Testing.md). That volume is real. What it proves is narrower than a raw count implies.
+Eight .NET test projects plus the `Src/WebApp` Vitest suite; layout and commands live in [Testing.md](Testing.md). That volume is real. What it proves is narrower than a raw count implies.
 
 | Layer | Quality | What it actually proves |
 |-------|---------|-------------------------|
 | Per-technique unit tests | Strong | Obfuscators rewrite IL on synthetic dnlib modules and tiny Roslyn snippets |
 | Compile → obfuscate → run | Good | `EndToEndObfuscationTests` (Roslyn snippets) plus `Obfy.ScenarioTests` SDK fixtures |
 | CLI parse / wizard defaults | Strong | Flags and use-case presets map to settings |
-| WPF product UI (ViewModels) | Strong | Commands and bindings of *Obfy itself*, not of customer apps |
+| Desktop UI (`Obfy.App` sessions, interop bridge, and WebView2/React page) | Strong | Sessions, bridge contracts, and React screen behavior of *Obfy itself*, not of customer apps |
 | Desktop UI end-to-end and FlaUI smoke | Windows CI job | `WebUiTests` drive the WebView2 page over a debug port (first launch, a Protection toggle, F1 and the Guide, an obfuscate run from startup arguments that shows Results); `FlaUiSmokeTests` checks the window and its title bar. Both are `Category=UI`, and `ci.yml` runs them with `--filter "Category=UI"`. |
 | SDK projects / solutions | Good | WPF, console+lib, WinForms, examples, satellites, MSBuild AfterBuild |
 | Platform recipes | Partial | Unity stub in default CI; Blazor WASM / NativeAOT / MAUI Windows are `Category=Platform` |

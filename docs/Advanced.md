@@ -90,6 +90,8 @@ Exclude specific methods by name.
 
 Type-level attributes such as `Serializable` skip the type for renaming, strings, constants, and control flow. Member-level attributes (`JsonPropertyName`, `JsonProperty`, `XmlElement`, `XmlAttribute`) currently skip **symbol renaming** of that member only.
 
+> **Important:** Specifying `exclusions.attributes` **replaces** the 7-item default list below (it does not merge). Include the defaults alongside any custom attributes you add.
+
 ```json
 {
   "exclusions": {
@@ -97,14 +99,16 @@ Type-level attributes such as `Serializable` skip the type for renaming, strings
       "SerializableAttribute",
       "DataContractAttribute",
       "DataMemberAttribute",
+      "JsonPropertyNameAttribute",
       "JsonPropertyAttribute",
-      "XmlElementAttribute"
+      "XmlElementAttribute",
+      "XmlAttributeAttribute"
     ]
   }
 }
 ```
 
-**Default Excluded Attributes:**
+**Default Excluded Attributes (all 7):**
 - `SerializableAttribute` - Binary serialization
 - `DataContractAttribute` / `DataMemberAttribute` - WCF serialization
 - `JsonPropertyNameAttribute` - System.Text.Json
@@ -113,7 +117,7 @@ Type-level attributes such as `Serializable` skip the type for renaming, strings
 
 `ComVisible(true)` types, methods, fields, properties, and events are never renamed. Only an explicit `[ComVisible(true)]` is checked (assembly-level COM visibility is not inferred).
 
-Set `symbolRenaming.preserveXaml` (the Protection screen of the desktop app, or the config file) to keep public instance properties on types that look XAML-bindable: name ends with `ViewModel` or `View`, implements `INotifyPropertyChanged`, declares `DependencyProperty` fields, or has a resolvable base whose name contains `DependencyObject`. Framework WPF bases often fail to resolve, so prefer the `*ViewModel` suffix.
+Set `symbolRenaming.preserveXaml` (the Protection screen of the desktop app, or the config file) to keep public instance properties on types that look XAML-bindable: name ends with `ViewModel` or `View`, implements `INotifyPropertyChanged`, declares `DependencyProperty` fields, or has a resolvable base whose name contains `DependencyObject`. Framework WPF bases often fail to resolve, so prefer the `*ViewModel` suffix. Note that `preserveXaml` protects those public properties only — it does **not** scan compiled XAML/BAML, so types referenced by XAML `x:Class` (for example `MainWindow` or `App`) still need manual `exclusions.types` entries.
 
 **Common Additions:**
 - `ProtoMemberAttribute` - protobuf-net
@@ -206,13 +210,22 @@ obfy MyApp.dll -l aggressive -o output/
 
 ### 3. Exclude Serialized Types
 
-Any type that gets serialized/deserialized needs member names preserved:
+Any type that gets serialized/deserialized needs member names preserved (`JsonPropertyNameAttribute`, `JsonPropertyAttribute`, `DataContractAttribute`, `DataMemberAttribute`, `SerializableAttribute`, `XmlElementAttribute`, and `XmlAttributeAttribute` are excluded by default; if you set `exclusions.attributes`, include those defaults plus any extras because the array replaces them):
 
 ```json
 {
   "exclusions": {
     "types": ["*Dto", "*Model", "*Request", "*Response"],
-    "attributes": ["JsonPropertyAttribute", "DataMemberAttribute"]
+    "attributes": [
+      "SerializableAttribute",
+      "DataContractAttribute",
+      "DataMemberAttribute",
+      "JsonPropertyNameAttribute",
+      "JsonPropertyAttribute",
+      "XmlElementAttribute",
+      "XmlAttributeAttribute",
+      "ProtoMemberAttribute"
+    ]
   }
 }
 ```
@@ -232,13 +245,23 @@ Code accessed via reflection needs exclusions:
 
 ### 5. Handle Dependency Injection
 
-DI frameworks often use reflection. Preserve:
+DI frameworks often use reflection. Preserve (keeping the 7 default serialization attributes if your app also serializes models):
 
 ```json
 {
   "exclusions": {
     "types": ["*Service", "*Repository", "*Factory"],
-    "attributes": ["InjectAttribute", "ServiceAttribute"]
+    "attributes": [
+      "SerializableAttribute",
+      "DataContractAttribute",
+      "DataMemberAttribute",
+      "JsonPropertyNameAttribute",
+      "JsonPropertyAttribute",
+      "XmlElementAttribute",
+      "XmlAttributeAttribute",
+      "InjectAttribute",
+      "ServiceAttribute"
+    ]
   }
 }
 ```
@@ -443,11 +466,16 @@ A cancelled run is a warning in the Obfy pane of the Output window, not an error
 - uses: actions/setup-dotnet@v4
   with:
     dotnet-version: '10.x'
-- name: Obfuscate
+- name: Build and Obfuscate
   run: |
+    dotnet build -c Release
     dotnet tool install --global Obfy
-    obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
+    mkdir -p dist
+    cp -r bin/Release/net10.0/* dist/
+    obfy dist/MyApp.dll -l standard -o dist/
 ```
+
+Obfy writes only the protected assembly (plus a `.runtimeconfig.json` when `packing.enabled` is set), so keep sidecar `.runtimeconfig.json`, `.deps.json`, and dependency files alongside the output (as shown above, or copy them after `-o dist/`). Use `-l standard` on Linux (or disable `methodEncryption` and `antiDump` in `obfy.json`), because `-l aggressive` enables Windows-only `kernel32` protections whose encrypted method bodies stay undecrypted off Windows.
 
 ### Azure DevOps
 

@@ -12,6 +12,10 @@ Three members depend on the target, and each is left out or replaced where the t
 
 The test suite builds and starts a protected SDK app on net10.0 to net5.0, netcoreapp3.1, net48 and net461, each where its runtime and reference assemblies are installed, and skips the others with a reason in the test output (`ProtectedConsoleStartupTests`; see [Testing.md](Testing.md)). Method encryption and anti-dump need Windows. The platform profiles below add their own restrictions.
 
+### Trimming (`PublishTrimmed`)
+
+Injected runtime helpers may synthesize framework assembly references that the input assembly did not reference directly — for example `System.Runtime.InteropServices` (`Marshal`, `DllNotFoundException`), `System.Security.Cryptography` / `System.Security.Cryptography.Algorithms` / `System.Security.Cryptography.Primitives` (`SHA256`, `Aes`, `ICryptoTransform`), or `System.IO.FileSystem` and `System.Runtime.Extensions` on older targets. Obfuscating **after** `PublishTrimmed=true` can fail at run time if the IL trimmer already stripped framework types or assemblies that Obfy's injected helpers reference. Obfuscate **before** trimming when possible (so the trimmer sees the added references) and test trimmed output carefully.
+
 ## Unity
 
 See [Unity.md](Unity.md). Use `runtimeProfile: UnityIl2Cpp` for IL2CPP players.
@@ -21,6 +25,12 @@ See [Unity.md](Unity.md). Use `runtimeProfile: UnityIl2Cpp` for IL2CPP players.
 Use `runtimeProfile: BlazorWasm` (wizard preset). Method encryption, anti-dump, AssemblyResolve embedding, virtualization, and native packing are disabled. Anti-debug still runs; kernel32 P/Invoke is omitted and a report warning is emitted. Obfuscate the published managed DLLs (`_framework/*.dll`) **before** they are served. Publish with `WasmEnableWebcil=false` if you need DLLs rather than webcil `.wasm`. Trimming and linker XML often need extra rename exclusions.
 
 Example: `examples/blazor/obfy.json`. **Tested:** `BlazorWasmTests` publishes a fixture, obfuscates `_framework/BlazorWasmApp*.dll`, and invokes a probe type (`Category=Platform`).
+
+## WPF
+
+Turn on `symbolRenaming.preserveXaml` so public instance properties on ViewModels, Views, `INotifyPropertyChanged`, and `DependencyObject` types keep their binding names. Because `preserveXaml` does not inspect compiled XAML/BAML, types referenced by XAML `x:Class` (such as `MainWindow` or `App`) still require manual `exclusions.types` entries alongside `preserveXaml: true`.
+
+Example: `Tests/Obfy.ScenarioTests/Fixtures/WpfApp/obfy.json`. **Tested:** `WpfAppTests` and `WpfSolutionTests` obfuscate with `preserveXaml: true` and `MainWindow` excluded, and run the smoke window.
 
 ## MAUI
 

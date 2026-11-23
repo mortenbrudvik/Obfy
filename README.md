@@ -119,7 +119,7 @@ The window has a sidebar with four screens: **Files** (drop or add inputs, choos
 **Features:**
 - Drag and drop assemblies, source files, a solution or project, or a `.json` configuration onto the window. A solution or project expands into included outputs and skipped rows
 - Closed-set protection when two or more *included* assemblies are listed, or when files came from a solution/project session (the Merge toggle still wins)
-- An empty Output Directory writes one file next to the input as `*.obfuscated.*`, two or more C# files compiled together to an `obfy-src` folder next to the first, a closed set to an `obfy-out` folder next to the first included assembly, and a merge next to the first input as `*.obfuscated.*`.. With an Output Directory set, each file keeps its name there. (The command line differs: a merge without `-o` is `{name}.merged{ext}`, and a solution's `obfy-out` goes next to the solution file. See the [CLI Reference](docs/CLI.md))
+- An empty Output Directory writes one file next to the input as `*.obfuscated.*`, two or more C# files compiled together to an `obfy-src` folder next to the first, a closed set to an `obfy-out` folder next to the first included assembly, and a merge next to the first input as `*.obfuscated.*`. With an Output Directory set, each file keeps its name there. (The command line differs: a merge without `-o` is `{name}.merged{ext}`, and a solution's `obfy-out` goes next to the solution file. See the [CLI Reference](docs/CLI.md))
 - Level presets (Minimal, Standard, Aggressive, Custom). Choosing Custom again restores the switches from before the preset
 - Runtime profiles disable protections that profile cannot use and keep the stored values
 - An in-app quick-start Guide (F1) with a button to the full guide online ([brudvik.com/obfy/guide](https://brudvik.com/obfy/guide), opened in your browser), and a description and options for every technique on the Protection screen, each with a **Read more online** link to its section of the online guide
@@ -152,7 +152,7 @@ Then in Visual Studio: Extensions → Manage Extensions → Install from VSIX, a
 
 ### Visual Studio Code (stub)
 
-`Src/Obfy.VSCode` contributes JSON schema validation for `obfy.json` and a problem matcher for CLI `Error:` / `⚠` lines. There is no TaskProvider; add a shell task that runs `obfy` on PATH. See `Src/Obfy.VSCode/README.md`.
+`Src/Obfy.VSCode` contributes JSON schema validation for `obfy.json` and a problem matcher for CLI lines of the form `path(line,column): error|warning: message`. There is no TaskProvider; add a shell task that runs `obfy` on PATH. See `Src/Obfy.VSCode/README.md`.
 
 ## Before & After
 
@@ -313,11 +313,16 @@ Check out the [examples](examples/) folder:
 - uses: actions/setup-dotnet@v4
   with:
     dotnet-version: '10.x'
-- name: Obfuscate
+- name: Build and Obfuscate
   run: |
+    dotnet build -c Release
     dotnet tool install --global Obfy
-    obfy bin/Release/net10.0/MyApp.dll -l aggressive -o dist/
+    mkdir -p dist
+    cp -r bin/Release/net10.0/* dist/
+    obfy dist/MyApp.dll -l standard -o dist/
 ```
+
+Obfy writes only the protected assembly (plus a `.runtimeconfig.json` when `packing.enabled` is set), so keep sidecar `.runtimeconfig.json`, `.deps.json`, and dependency files alongside the output (as shown above, or copy them after `-o dist/`). Use `-l standard` on Linux (or disable `methodEncryption` and `antiDump` in `obfy.json`), as `-l aggressive` enables Windows-only `kernel32` protections whose encrypted method bodies stay undecrypted off Windows.
 
 ## Contributing
 

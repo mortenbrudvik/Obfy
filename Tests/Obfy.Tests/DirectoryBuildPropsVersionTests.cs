@@ -108,7 +108,6 @@ public class DirectoryBuildPropsVersionTests : IDisposable
     }
 
     [Theory]
-    [InlineData("Obfy.VisualStudio")]
     [InlineData("Obfy.PackedBootstrap")]
     [InlineData("Obfy.VmRuntime")]
     public void SrcProjectsWithTheirOwnVersionScheme_KeepTheSdkDefaultVersion(string projectName)

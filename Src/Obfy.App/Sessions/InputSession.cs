@@ -331,10 +331,13 @@ public sealed class InputSession
             }
 
             AddSkipNotice(notices, NoticeLevel.Info, "Already in the list", duplicates, "already in the list.");
-            changed = added > 0 || notices.Count > 0 || _notices.Count > 0;
-            _notices = notices;
+            changed = added > 0 || notices.Count > 0;
             if (changed)
+            {
+                // Preserve existing notices when a drop adds no files and produces no notices (e.g. a config-only drop).
+                _notices = notices;
                 _revision++;
+            }
         }
 
         var skipped = unsupported.Count + missing.Count + notConfigurations.Count + duplicates.Count;
@@ -1017,7 +1020,7 @@ public sealed class InputSession
     }
 
     /// <summary>
-    /// Replaces any notice whose message starts with <paramref name="prefix"/>, or clears matching notices
+    /// Replaces any notice whose title or message starts with <paramref name="prefix"/>, or clears matching notices
     /// when <paramref name="message"/> is <c>null</c> or empty. Unrelated notices are preserved.
     /// </summary>
     public void ReplaceNoticeWithPrefix(
@@ -1027,11 +1030,14 @@ public sealed class InputSession
         string? message,
         bool publish = true)
     {
+        ArgumentException.ThrowIfNullOrEmpty(prefix);
+
         bool changed;
         lock (_gate)
         {
             var filtered = _notices
-                .Where(n => !n.Message.StartsWith(prefix, StringComparison.Ordinal))
+                .Where(n => !n.Message.StartsWith(prefix, StringComparison.Ordinal)
+                    && !n.Title.StartsWith(prefix, StringComparison.Ordinal))
                 .ToList();
             var hadMatch = filtered.Count != _notices.Count;
             if (!string.IsNullOrEmpty(message))

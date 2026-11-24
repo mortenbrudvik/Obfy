@@ -43,6 +43,8 @@ public class ApiRegistrationsTests
         { "settings", "applyLevel", typeof(ApplyLevelRequest) },
         { "settings", "openConfig", typeof(OpenConfigRequest) },
         { "settings", "saveConfig", typeof(SaveConfigRequest) },
+        { "settings", "confirmConfigDrop", typeof(ConfirmConfigDropRequest) },
+        { "settings", "cancelConfigDrop", typeof(CancelConfigDropRequest) },
         { "settings", "pickSigningKey", typeof(PickSigningKeyRequest) },
 
         { "files", "get", typeof(GetFilesRequest) },

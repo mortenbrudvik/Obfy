@@ -51,6 +51,7 @@ public sealed class ProtectionSession
     private ObfuscationLevel _basePreset = ObfuscationLevel.Standard;
     private string? _configPath;
     private bool _dirty;
+    private PendingConfigDropState? _pendingConfigDrop;
     private long _revision;
     private readonly IEventPublisher? _events;
     private readonly Func<string, bool> _fileExists;
@@ -208,22 +209,89 @@ public sealed class ProtectionSession
     {
         lock (_gate)
         {
-            var loaded = settings.Clone();
-            Normalize(loaded);
-            var preset = loaded.Level;
+            ApplyLoadedLocked(settings, configPath);
+            _pendingConfigDrop = null;
+            _revision++;
+        }
 
-            // The engine re-applies a non-Custom level on every run, overwriting every preset-governed option (packing,
-            // incremental cache and virtualization included, which no preset turns on). A file whose options are not
-            // exactly its preset's would run as the preset while the screen showed the file's options, so it is Custom,
-            // as if the user had edited the options here. The command line treats a configuration file the same way.
-            if (preset != ObfuscationLevel.Custom && DiffersFromPreset(loaded, preset))
-                loaded.Level = ObfuscationLevel.Custom;
+        RaiseChanged();
+    }
 
-            _settings = loaded;
-            _customSnapshot = loaded.Level == ObfuscationLevel.Custom ? loaded.Clone() : null;
-            _basePreset = preset == ObfuscationLevel.Custom ? ObfuscationLevel.Standard : preset;
-            _configPath = configPath;
-            _dirty = false;
+    /// <summary>
+    /// Stages a validated dropped configuration while the current settings have unsaved changes, awaiting user
+    /// confirmation via <see cref="ConfirmPendingConfigDrop"/> or <see cref="CancelPendingConfigDrop"/>.
+    /// </summary>
+    public void StagePendingConfigDrop(ObfySettings settings, string path, IReadOnlyList<string> unknownKeys)
+    {
+        lock (_gate)
+        {
+            _pendingConfigDrop = new PendingConfigDropState(settings.Clone(), path, unknownKeys.ToArray());
+            _revision++;
+        }
+
+        RaiseChanged();
+    }
+
+    /// <summary>
+    /// Atomically applies a dropped configuration when the session has no unsaved changes, or stages it for user
+    /// confirmation when dirty. Returns <c>true</c> if applied immediately, <c>false</c> if staged.
+    /// </summary>
+    public bool ApplyOrStageConfigDrop(ObfySettings settings, string path, IReadOnlyList<string> unknownKeys)
+    {
+        bool applied;
+        lock (_gate)
+        {
+            if (_dirty)
+            {
+                _pendingConfigDrop = new PendingConfigDropState(settings.Clone(), path, unknownKeys.ToArray());
+                applied = false;
+            }
+            else
+            {
+                ApplyLoadedLocked(settings, path);
+                _pendingConfigDrop = null;
+                applied = true;
+            }
+
+            _revision++;
+        }
+
+        RaiseChanged();
+        return applied;
+    }
+
+    /// <summary>
+    /// Applies the staged dropped configuration and clears the pending prompt. Returns the unknown keys from that
+    /// configuration, or <c>null</c> when nothing was staged.
+    /// </summary>
+    public IReadOnlyList<string>? ConfirmPendingConfigDrop()
+    {
+        IReadOnlyList<string> unknownKeys;
+        lock (_gate)
+        {
+            if (_pendingConfigDrop is null)
+                return null;
+
+            var pending = _pendingConfigDrop;
+            _pendingConfigDrop = null;
+            ApplyLoadedLocked(pending.Settings, pending.Path);
+            unknownKeys = pending.UnknownKeys;
+            _revision++;
+        }
+
+        RaiseChanged();
+        return unknownKeys;
+    }
+
+    /// <summary>Discards any staged dropped configuration without modifying the current settings.</summary>
+    public void CancelPendingConfigDrop()
+    {
+        lock (_gate)
+        {
+            if (_pendingConfigDrop is null)
+                return;
+
+            _pendingConfigDrop = null;
             _revision++;
         }
 
@@ -237,10 +305,31 @@ public sealed class ProtectionSession
         {
             _configPath = configPath;
             _dirty = false;
+            _pendingConfigDrop = null;
             _revision++;
         }
 
         RaiseChanged();
+    }
+
+    private void ApplyLoadedLocked(ObfySettings settings, string? configPath)
+    {
+        var loaded = settings.Clone();
+        Normalize(loaded);
+        var preset = loaded.Level;
+
+        // The engine re-applies a non-Custom level on every run, overwriting every preset-governed option (packing,
+        // incremental cache and virtualization included, which no preset turns on). A file whose options are not
+        // exactly its preset's would run as the preset while the screen showed the file's options, so it is Custom,
+        // as if the user had edited the options here. The command line treats a configuration file the same way.
+        if (preset != ObfuscationLevel.Custom && DiffersFromPreset(loaded, preset))
+            loaded.Level = ObfuscationLevel.Custom;
+
+        _settings = loaded;
+        _customSnapshot = loaded.Level == ObfuscationLevel.Custom ? loaded.Clone() : null;
+        _basePreset = preset == ObfuscationLevel.Custom ? ObfuscationLevel.Standard : preset;
+        _configPath = configPath;
+        _dirty = false;
     }
 
     /// <summary>
@@ -306,7 +395,8 @@ public sealed class ProtectionSession
                 Enum.GetNames<ControlFlowMode>(),
                 Enum.GetNames<NamingMode>(),
                 Enum.GetNames<RuntimeProfile>(),
-                PackingRids));
+                PackingRids),
+            _pendingConfigDrop is not null);
     }
 
     private static readonly string[] PackingRids = ["win-x64", "portable"];
@@ -509,4 +599,9 @@ public sealed class ProtectionSession
     };
 
     private sealed record TechniqueDef(string Id, bool GatedByProfile = false);
+
+    private sealed record PendingConfigDropState(
+        ObfySettings Settings,
+        string Path,
+        IReadOnlyList<string> UnknownKeys);
 }

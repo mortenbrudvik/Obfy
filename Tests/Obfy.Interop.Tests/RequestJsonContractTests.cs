@@ -47,6 +47,8 @@ public class RequestJsonContractTests
     [InlineData(typeof(Obfy.App.Features.App.ReadyRequest))]
     [InlineData(typeof(GetSettingsRequest))]
     [InlineData(typeof(OpenConfigRequest))]
+    [InlineData(typeof(ConfirmConfigDropRequest))]
+    [InlineData(typeof(CancelConfigDropRequest))]
     [InlineData(typeof(PickSigningKeyRequest))]
     [InlineData(typeof(GetFilesRequest))]
     [InlineData(typeof(PickFilesRequest))]
@@ -165,12 +167,13 @@ public class RequestJsonContractTests
             [new ValidationError("watermark.id", "required")],
             "C:\\obfy.json", true, "NativeAot",
             new NameLists(["N"], ["T"], ["M"]), new NameLists([], [], []),
-            new SettingsChoices(["Minimal"], ["Xor"], ["Flat"], ["Short"], ["Default"], ["win-x64"]));
+            new SettingsChoices(["Minimal"], ["Xor"], ["Flat"], ["Short"], ["Default"], ["win-x64"]),
+            PendingConfigDrop: true);
 
         var json = Json(snapshot);
 
         ShouldHaveKeys(json, "revision", "level", "levelSummary", "techniques", "errors", "configPath", "dirty",
-            "runtimeProfile", "exclusions", "inclusions", "choices");
+            "runtimeProfile", "exclusions", "inclusions", "choices", "pendingConfigDrop");
         ShouldHaveKeys(json.GetProperty("techniques")[0], "id", "enabled", "available", "unavailableReason", "differsFromLevel", "options");
         json.GetProperty("techniques")[0].GetProperty("options").GetProperty("algorithm").GetString().ShouldBe("Aes");
         ShouldHaveKeys(json.GetProperty("errors")[0], "field", "message");
@@ -337,7 +340,7 @@ public class RequestJsonContractTests
         var cases = new (string Event, object Payload, string[] DataKeys)[]
         {
             (AppEvents.SettingsChanged, settings, ["revision", "level", "levelSummary", "techniques", "errors", "configPath", "dirty",
-                "runtimeProfile", "exclusions", "inclusions", "choices"]),
+                "runtimeProfile", "exclusions", "inclusions", "choices", "pendingConfigDrop"]),
             (AppEvents.FilesChanged, input, ["revision", "files", "hasIncludedFiles", "outputFolder", "outputHint", "mergeOutputHint",
                 "outputWarning", "writeSymbolMap", "symbolMapPath", "resolvedSymbolMapPath", "notices"]),
             (AppEvents.LogAppended, new LogAppended(1, lines), ["revision", "lines"]),

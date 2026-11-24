@@ -49,6 +49,7 @@ export interface SnapshotOptions {
   revision?: number;
   runtimeProfile?: string;
   dirty?: boolean;
+  pendingConfigDrop?: boolean;
   configPath?: string | null;
   /** Ids switched on in addition to what the level gives. */
   on?: string[];
@@ -99,5 +100,6 @@ export function protectionSnapshot(opts: SnapshotOptions = {}): SettingsSnapshot
       runtimeProfiles: ["Default", "NativeAot", "UnityIl2Cpp", "BlazorWasm"],
       packingRids: ["win-x64", "portable"],
     },
+    pendingConfigDrop: opts.pendingConfigDrop ?? false,
   };
 }

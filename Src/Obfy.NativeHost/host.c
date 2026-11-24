@@ -7,6 +7,7 @@
 #include <bcrypt.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
 #include <nethost.h>
@@ -232,19 +233,36 @@ static int exe_directory(wchar_t *buf, size_t buf_cch)
     return 1;
 }
 
+static void free_path_buffers(
+    char_t **hostfxr_path,
+    wchar_t **host_path,
+    wchar_t **app_base,
+    wchar_t **cfg)
+{
+    free(*hostfxr_path);
+    *hostfxr_path = NULL;
+    free(*host_path);
+    *host_path = NULL;
+    free(*app_base);
+    *app_base = NULL;
+    free(*cfg);
+    *cfg = NULL;
+}
+
 static int load_and_run(uint8_t *plain, int32_t plain_len)
 {
-    char_t hostfxr_path[OBFY_PATH_CCH];
+    char_t *hostfxr_path = NULL;
     size_t path_size = OBFY_PATH_CCH;
     HMODULE hostfxr;
     hostfxr_initialize_for_runtime_config_fn init_fn;
     hostfxr_get_runtime_delegate_fn get_delegate_fn;
-    hostfxr_close_fn close_fn;
+    hostfxr_close_fn close_fn = NULL;
     hostfxr_set_runtime_property_value_fn set_prop_fn;
     struct hostfxr_initialize_parameters params;
-    wchar_t host_path[OBFY_PATH_CCH];
-    wchar_t app_base[OBFY_PATH_CCH];
-    wchar_t cfg[OBFY_PATH_CCH];
+    wchar_t *host_path = NULL;
+    wchar_t *app_base = NULL;
+    wchar_t *cfg = NULL;
+    DWORD n;
     hostfxr_handle ctx = NULL;
     load_assembly_bytes_fn load_bytes = NULL;
     get_function_pointer_fn get_fn = NULL;
@@ -256,13 +274,30 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
     obfy_packed_run_fn run = NULL;
     int32_t rc;
     int32_t result;
+    int exit_code = 1;
+
+    hostfxr_path = (char_t *)calloc(OBFY_PATH_CCH, sizeof(char_t));
+    host_path = (wchar_t *)calloc(OBFY_PATH_CCH, sizeof(wchar_t));
+    app_base = (wchar_t *)calloc(OBFY_PATH_CCH, sizeof(wchar_t));
+    cfg = (wchar_t *)calloc(OBFY_PATH_CCH, sizeof(wchar_t));
+    if (!hostfxr_path || !host_path || !app_base || !cfg)
+    {
+        host_failed("Packed host failed: out of memory.");
+        goto cleanup;
+    }
 
     if (get_hostfxr_path(hostfxr_path, &path_size, NULL) != 0)
-        return host_failed("Packed host failed: runtime not found.");
+    {
+        host_failed("Packed host failed: runtime not found.");
+        goto cleanup;
+    }
 
     hostfxr = LoadLibraryW(hostfxr_path);
     if (!hostfxr)
-        return host_failed("Packed host failed: runtime not found.");
+    {
+        host_failed("Packed host failed: runtime not found.");
+        goto cleanup;
+    }
 
     init_fn = (hostfxr_initialize_for_runtime_config_fn)GetProcAddress(
         hostfxr, "hostfxr_initialize_for_runtime_config");
@@ -272,16 +307,32 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
     set_prop_fn = (hostfxr_set_runtime_property_value_fn)GetProcAddress(
         hostfxr, "hostfxr_set_runtime_property_value");
     if (!init_fn || !get_delegate_fn || !close_fn || !set_prop_fn)
-        return host_failed("Packed host failed: runtime not found.");
+    {
+        host_failed("Packed host failed: runtime not found.");
+        goto cleanup;
+    }
 
     if (!runtimeconfig_path(cfg, OBFY_PATH_CCH))
-        return host_failed("Packed host failed: could not resolve sibling .runtimeconfig.json.");
+    {
+        host_failed("Packed host failed: could not resolve sibling .runtimeconfig.json.");
+        goto cleanup;
+    }
     if (GetFileAttributesW(cfg) == INVALID_FILE_ATTRIBUTES)
-        return host_failed("Packed host failed: sibling .runtimeconfig.json is missing. Copy it next to the EXE.");
-    if (!GetModuleFileNameW(NULL, host_path, OBFY_PATH_CCH))
-        return host_failed("Packed host failed: runtime not found.");
+    {
+        host_failed("Packed host failed: sibling .runtimeconfig.json is missing. Copy it next to the EXE.");
+        goto cleanup;
+    }
+    n = GetModuleFileNameW(NULL, host_path, OBFY_PATH_CCH);
+    if (n == 0 || n >= OBFY_PATH_CCH)
+    {
+        host_failed("Packed host failed: runtime not found.");
+        goto cleanup;
+    }
     if (!exe_directory(app_base, OBFY_PATH_CCH))
-        return host_failed("Packed host failed: runtime not found.");
+    {
+        host_failed("Packed host failed: runtime not found.");
+        goto cleanup;
+    }
 
     params.size = sizeof(params);
     params.host_path = host_path;
@@ -290,34 +341,36 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
     rc = init_fn(cfg, &params, &ctx);
     if (rc < 0 || ctx == NULL)
     {
-        if (ctx != NULL)
-            close_fn(ctx);
-        return host_failed_rc(
+        host_failed_rc(
             "Packed host failed: could not initialize runtime (hostfxr rc=%d). Install Microsoft.NETCore.App.",
             rc);
+        goto cleanup;
     }
 
     /* Component hosting does not set the app base to the EXE directory. */
     if (set_prop_fn(ctx, L"APP_CONTEXT_BASE_DIRECTORY", app_base) != 0)
     {
-        close_fn(ctx);
-        return host_failed("Packed host failed: could not set APP_CONTEXT_BASE_DIRECTORY.");
+        host_failed("Packed host failed: could not set APP_CONTEXT_BASE_DIRECTORY.");
+        goto cleanup;
     }
+
+    /* Release path buffers before running the managed payload so it gets full stack/heap headroom. */
+    free_path_buffers(&hostfxr_path, &host_path, &app_base, &cfg);
 
     if (get_delegate_fn(ctx, hdt_load_assembly_bytes, (void **)&load_bytes) != 0 ||
         get_delegate_fn(ctx, hdt_get_function_pointer, (void **)&get_fn) != 0 ||
         !load_bytes || !get_fn)
     {
-        close_fn(ctx);
-        return host_failed("Packed host failed: could not obtain hostfxr delegates.");
+        host_failed("Packed host failed: could not obtain hostfxr delegates.");
+        goto cleanup;
     }
 
     self = GetModuleHandleW(NULL);
     res = FindResourceW(self, L"BOOTSTRAP", RT_RCDATA);
     if (!res)
     {
-        close_fn(ctx);
-        return host_failed("Packed host failed: bootstrap missing.");
+        host_failed("Packed host failed: bootstrap missing.");
+        goto cleanup;
     }
 
     glob = LoadResource(self, res);
@@ -325,14 +378,14 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
     res_ptr = LockResource(glob);
     if (!glob || !res_ptr || res_size == 0)
     {
-        close_fn(ctx);
-        return host_failed("Packed host failed: bootstrap missing.");
+        host_failed("Packed host failed: bootstrap missing.");
+        goto cleanup;
     }
 
     if (load_bytes(res_ptr, (size_t)res_size, NULL, 0, NULL, NULL) != 0)
     {
-        close_fn(ctx);
-        return host_failed("Packed host failed: bootstrap missing.");
+        host_failed("Packed host failed: bootstrap missing.");
+        goto cleanup;
     }
 
     if (get_fn(
@@ -344,18 +397,24 @@ static int load_and_run(uint8_t *plain, int32_t plain_len)
             (void **)&run) != 0 ||
         !run)
     {
-        close_fn(ctx);
-        return host_failed("Packed host failed: bootstrap missing.");
+        host_failed("Packed host failed: bootstrap missing.");
+        goto cleanup;
     }
 
     result = run(plain, plain_len);
-    close_fn(ctx);
-    return (int)result;
+    exit_code = (int)result;
+
+cleanup:
+    free_path_buffers(&hostfxr_path, &host_path, &app_base, &cfg);
+    if (ctx != NULL && close_fn != NULL)
+        close_fn(ctx);
+    return exit_code;
 }
 
 int wmain(int argc, wchar_t **argv)
 {
-    wchar_t exe_path[OBFY_PATH_CCH];
+    wchar_t *exe_path = NULL;
+    DWORD n;
     HANDLE file;
     LARGE_INTEGER li;
     uint64_t size;
@@ -371,8 +430,16 @@ int wmain(int argc, wchar_t **argv)
     (void)argc;
     (void)argv;
 
-    if (!GetModuleFileNameW(NULL, exe_path, OBFY_PATH_CCH))
+    exe_path = (wchar_t *)calloc(OBFY_PATH_CCH, sizeof(wchar_t));
+    if (!exe_path)
         return invalid_payload();
+
+    n = GetModuleFileNameW(NULL, exe_path, OBFY_PATH_CCH);
+    if (n == 0 || n >= OBFY_PATH_CCH)
+    {
+        free(exe_path);
+        return invalid_payload();
+    }
 
     file = CreateFileW(
         exe_path,
@@ -382,6 +449,8 @@ int wmain(int argc, wchar_t **argv)
         OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL,
         NULL);
+    free(exe_path);
+    exe_path = NULL;
     if (file == INVALID_HANDLE_VALUE)
         return invalid_payload();
 

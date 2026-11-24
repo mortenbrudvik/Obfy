@@ -54,6 +54,7 @@ export const standardSettings: SettingsSnapshot = {
   exclusions: { namespaces: [], types: [], methods: [] },
   inclusions: { namespaces: [], types: [], methods: [] },
   choices: { levels: [], algorithms: [], controlFlowModes: [], namingModes: [], runtimeProfiles: [], packingRids: [] },
+  pendingConfigDrop: false,
 };
 
 export const notRunResults: ResultsSnapshot = {

@@ -10,7 +10,7 @@
     <PackageVersion Include="dnlib" Version="4.5.0" />
     <PackageVersion Include="FlaUI.Core" Version="5.0.0" />
     <PackageVersion Include="FlaUI.UIA3" Version="5.0.0" />
-    <PackageVersion Include="ICSharpCode.Decompiler" Version="11.0.0.9375" />
+    <PackageVersion Include="ICSharpCode.Decompiler" Version="11.2.0.10050" />
     <PackageVersion Include="ILRepack.Lib" Version="2.0.48" />
     <PackageVersion Include="Mediator.Abstractions" Version="3.0.2" />
     <PackageVersion Include="Mediator.SourceGenerator" Version="3.0.2" />

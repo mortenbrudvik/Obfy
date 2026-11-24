@@ -1233,7 +1233,7 @@ public class ProtectionSessionTests
 
         var snapshot = session.GetSnapshot();
         snapshot.Level.ShouldBe("Aggressive");
-        foreach (var id in new[] { "methodEncryption", "antiDump", "dependencyEmbedding", "virtualization" })
+        foreach (var id in new[] { "methodEncryption", "antiDump", "antiTamper", "dependencyEmbedding", "virtualization" })
         {
             var technique = snapshot.Techniques.Single(t => t.Id == id);
             technique.Available.ShouldBeFalse(id);
@@ -1241,12 +1241,15 @@ public class ProtectionSessionTests
         }
 
         snapshot.Techniques.Single(t => t.Id == "methodEncryption").Enabled.ShouldBeTrue(); // stored value kept
+        snapshot.Techniques.Single(t => t.Id == "antiTamper").Enabled.ShouldBeTrue(); // stored value kept
         var antiDebug = snapshot.Techniques.Single(t => t.Id == "antiDebug");
         antiDebug.Available.ShouldBeTrue();
         antiDebug.UnavailableReason.ShouldBeNull();
 
         session.UpdateSetting("runtimeProfile", "Default");
-        session.GetSnapshot().Techniques.Single(t => t.Id == "antiDump").Available.ShouldBeTrue();
+        var restored = session.GetSnapshot();
+        restored.Techniques.Single(t => t.Id == "antiDump").Available.ShouldBeTrue();
+        restored.Techniques.Single(t => t.Id == "antiTamper").Available.ShouldBeTrue();
     }
 
     [Theory]
@@ -1281,10 +1284,15 @@ public class ProtectionSessionTests
     {
         // The techniques the page greys out for a runtime are the ones RuntimeProfileGating.Apply disables there.
         var session = new ProtectionSession();
-        session.UpdateSetting("runtimeProfile", "NativeAot");
+        foreach (var profile in new[] { "NativeAot", "UnityIl2Cpp", "BlazorWasm" })
+        {
+            session.UpdateSetting("runtimeProfile", profile);
 
-        session.GetSnapshot().Techniques.Where(t => !t.Available).Select(t => t.Id).ShouldBe(
-            new[] { "dependencyEmbedding", "antiDump", "virtualization", "methodEncryption", "packing" }, ignoreOrder: true);
+            session.GetSnapshot().Techniques.Where(t => !t.Available).Select(t => t.Id).ShouldBe(
+                new[] { "dependencyEmbedding", "antiDump", "antiTamper", "virtualization", "methodEncryption", "packing" },
+                ignoreOrder: true,
+                profile);
+        }
     }
 
     [Fact]

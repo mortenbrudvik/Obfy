@@ -98,6 +98,7 @@
         "methodEncryption": { "type": "boolean", "default": false },
         "antiTamper": {
           "type": "object",
+          "description": "Verify assembly integrity at runtime against a SHA-256 hash of the PE on disk. Gated off NativeAot / UnityIl2Cpp / BlazorWasm.",
           "additionalProperties": false,
           "properties": {
             "$comment": { "type": "string" },
@@ -318,7 +319,7 @@
     },
     "runtimeProfile": {
       "type": "string",
-      "description": "Target runtime. NativeAot, UnityIl2Cpp, and BlazorWasm disable method encryption, anti-dump, dependency embedding, packing, and virtualization. Anti-debug stays on but omits kernel32 P/Invoke.",
+      "description": "Target runtime. NativeAot, UnityIl2Cpp, and BlazorWasm disable methodEncryption, antiDump, antiTamper, dependencyEmbedding, packing, and virtualization. Anti-debug stays on but omits kernel32 P/Invoke.",
       "enum": [
         "Default",
         "default",

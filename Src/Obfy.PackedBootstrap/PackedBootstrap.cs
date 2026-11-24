@@ -51,6 +51,10 @@ public static class PackedBootstrap
             var args = all.Length <= 1 ? Array.Empty<string>() : all[1..];
             return InvokeEntryPoint(entry, args);
         }
+        // Keep catching Main exceptions here and returning 1 rather than letting them escape
+        // [UnmanagedCallersOnly] or crashing a dedicated thread via CoreCLR (0xE0434352 / WER).
+        // That preserves the ExitCode == 1 + stderr trace contract shared with ManagedLauncherPacker;
+        // uncaught exceptions on secondary threads still reach AppDomain.CurrentDomain.UnhandledException.
         catch (TargetInvocationException ex)
         {
             Console.Error.WriteLine(ex.InnerException ?? ex);

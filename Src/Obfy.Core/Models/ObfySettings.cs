@@ -100,9 +100,11 @@ public class ObfySettings
     public bool PostBuildEnabled { get; set; } = false;
 
     /// <summary>
-    /// Target runtime. NativeAOT, Unity IL2CPP, and Blazor WASM disable method IL encryption,
-    /// anti-dump, and dependency embedding (PE / kernel32 / AssemblyResolve). Anti-debug stays
-    /// on but omits kernel32 P/Invoke. The pipeline emits report warnings when it turns features off.
+    /// Target runtime. NativeAOT, Unity IL2CPP, and Blazor WASM disable method IL encryption
+    /// (<c>methodEncryption</c>), anti-dump (<c>antiDump</c>), anti-tamper (<c>antiTamper</c>),
+    /// dependency embedding (<c>dependencyEmbedding</c>), native packing (<c>packing</c>), and
+    /// virtualization (<c>virtualization</c>). Anti-debug stays on but omits kernel32 P/Invoke.
+    /// The pipeline emits report warnings when it turns features off.
     /// </summary>
     public RuntimeProfile RuntimeProfile { get; set; } = RuntimeProfile.Default;
 
@@ -580,7 +582,8 @@ public class ProtectionSettings
 }
 
 /// <summary>
-/// Settings for anti-tamper detection.
+/// Settings for anti-tamper detection. Gated off for NativeAOT / Unity IL2CPP / Blazor WASM
+/// because runtime integrity checking cannot hash an IL DLL on disk on those runtimes.
 /// </summary>
 public class AntiTamperSettings
 {
@@ -716,8 +719,10 @@ public class InclusionRules
 
 /// <summary>
 /// Runtime the obfuscated assembly will run on. NativeAOT, Unity IL2CPP, and Blazor WASM
-/// disable method encryption, anti-dump, and AssemblyResolve embedding; anti-debug stays
-/// on without kernel32 P/Invoke.
+/// disable method encryption (<c>methodEncryption</c>), anti-dump (<c>antiDump</c>),
+/// anti-tamper (<c>antiTamper</c>), dependency embedding (<c>dependencyEmbedding</c>),
+/// native packing (<c>packing</c>), and virtualization (<c>virtualization</c>); anti-debug
+/// stays on without kernel32 P/Invoke.
 /// </summary>
 public enum RuntimeProfile
 {

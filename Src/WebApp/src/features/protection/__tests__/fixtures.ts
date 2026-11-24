@@ -8,7 +8,7 @@ export const hostTechniqueIds = [
 ];
 
 /** The techniques that the runtime profile rules out (GatedByProfile in ProtectionSession). */
-export const gatedIds = ["dependencyEmbedding", "antiDump", "virtualization", "methodEncryption"];
+export const gatedIds = ["dependencyEmbedding", "antiDump", "antiTamper", "virtualization", "methodEncryption", "packing"];
 
 const levelOn: Record<string, string[]> = {
   Minimal: ["symbolRenaming", "metadataRemoval"],

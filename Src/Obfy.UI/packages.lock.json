@@ -353,7 +353,7 @@
         "type": "Project",
         "dependencies": {
           "Autofac": "[9.3.2, )",
-          "ICSharpCode.Decompiler": "[11.0.0.9375, )",
+          "ICSharpCode.Decompiler": "[11.2.0.10050, )",
           "ILRepack.Lib": "[2.0.48, )",
           "Microsoft.CodeAnalysis.CSharp": "[5.9.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
@@ -385,9 +385,9 @@
       },
       "ICSharpCode.Decompiler": {
         "type": "CentralTransitive",
-        "requested": "[11.0.0.9375, )",
-        "resolved": "11.0.0.9375",
-        "contentHash": "zjdmwehqkqtGHz/ItQJ3nSMFX65c0UW2wYBOiHWkP5WtY9Zm0f5Yz+Yh0UbKX+JiNtG57YbHPxh64VC08IZKMg=="
+        "requested": "[11.2.0.10050, )",
+        "resolved": "11.2.0.10050",
+        "contentHash": "H8cD1Sast2Zkex1RxdUiZvCmc1ZZ8Fkf+Mfs9WYzlPq74zW6xqMmZgip9l0rt5z9akh1fnSUg72hIGtClEI4zw=="
       },
       "ILRepack.Lib": {
         "type": "CentralTransitive",

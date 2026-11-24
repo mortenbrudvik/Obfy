@@ -323,7 +323,9 @@ var DONE = [
   { id: "D-96", title: "Verified PublishTrimmed=true and self-contained apps with injected FrameworkReferences in Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs and documented trimming guidance in docs/Platforms.md", tag: "B-76 · main (Wave 3)" },
   { id: "D-97", title: "Completed installer XAML binding checks: UI closed-set warning (333584c), CLI preserveXaml: false override, and Assert-ProtectedUiXamlBindings (MetadataReader check for all 7 ShellWindow.xaml properties on protected ObfyUI.dll in build/build-installer.ps1)", tag: "B-84 · main (Wave 3)" },
   { id: "D-98", title: "Completed [STAThread] support across both portable (ManagedLauncherPacker.cs) and win-x64 native (PackedBootstrap.cs + rebuilt Obfy.NativeHost.exe + sources.sha256) packed hosts", tag: "B-105 · main (Wave 3)" },
-  { id: "D-99", title: "Completed VM & Native Host hardening: VmMemberTables, VmEncoder, MethodBodyPeEncryptor, heap-allocated host.c path buffers (freed before run()) + GetModuleFileNameW truncation checks, and traversal-safe PackedBootstrap ResolvingUnmanagedDll", tag: "B-112 · main (Wave 3)" }
+  { id: "D-99", title: "Completed VM & Native Host hardening: VmMemberTables, VmEncoder, MethodBodyPeEncryptor, heap-allocated host.c path buffers (freed before run()) + GetModuleFileNameW truncation checks, and traversal-safe PackedBootstrap ResolvingUnmanagedDll", tag: "B-112 · main (Wave 3)" },
+  { id: "D-100", title: "Closed without building: the Visual Studio extension was removed from the repo on 2026-11-24, so there is no .vsix to build, package or test", tag: "B-70 · removed 2026-11-24" },
+  { id: "D-101", title: "Closed without a decision: the Visual Studio extension was removed from the repo on 2026-11-24, so there is nothing to publish", tag: "B-14 · removed 2026-11-24" }
 ];
 
 var ITEMS = [
@@ -336,17 +338,13 @@ var ITEMS = [
     next: "The page is live. Set the policy URL in Partner Center and check which version the listing carries.",
     refs: ["package/store-identity.json", "PRIVACY.md"] },
   { id: "B-10", pri: "p2", area: "Docs", kind: "Verify", title: "Test the remaining guide behaviours (PublishSingleFile & short-name scenario tests added)",
-    why: "Wave 2 updated docs/Advanced.md and docs/Platforms.md for exclusions.attributes, BAML x:Class exclusions, the GitHub Actions snippet, and short-name reuse across runs; Wave 3 added end-to-end PublishSingleFile=true (AntiTamper) and separate-vs-closed-set short-name scenario tests in Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs. Remaining: AntiTamper on NativeAOT/IL2CPP, benchmarked technique costs, and live Visual Studio extension run.",
-    next: "Run runtime tests for AntiTamper on NativeAOT/IL2CPP, benchmark technique costs, and verify the Visual Studio extension live (coordinate with B-70), then update the guide and product page with what holds.",
+    why: "Wave 2 updated docs/Advanced.md and docs/Platforms.md for exclusions.attributes, BAML x:Class exclusions, the GitHub Actions snippet, and short-name reuse across runs; Wave 3 added end-to-end PublishSingleFile=true (AntiTamper) and separate-vs-closed-set short-name scenario tests in Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs. Remaining: AntiTamper on NativeAOT/IL2CPP and benchmarked technique costs.",
+    next: "Run runtime tests for AntiTamper on NativeAOT/IL2CPP and benchmark technique costs, then update the guide and product page with what holds.",
     refs: ["public/obfy/guide/index.html", "docs/Advanced.md", "docs/Platforms.md", "docs/Testing.md", "Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs"] },
   { id: "B-11", pri: "p2", area: "Privacy", kind: "Verify", title: "Confirm remaining external privacy statements (output network-reference scan test added)",
     why: "Wave 2 added an automated output-assembly network-reference scan test in Tests/Obfy.Tests/ReviewFixesWave2CoreTests.cs. Still not verifiable from repo code alone: Windows moving AppData into the Store package folder, the WebView2 bootstrapper’s download, the Microsoft Store’s own data collection, and Windows crash reporting.",
     next: "Verify each external Microsoft Store, WebView2 bootstrapper, and Windows crash reporting statement against Microsoft’s documentation or a test install.",
     refs: ["PRIVACY.md", "Tests/Obfy.Tests/ReviewFixesWave2CoreTests.cs", "public/obfy/privacy/index.html"] },
-  { id: "B-14", pri: "p3", area: "Release", kind: "Decide", title: "Decide whether to publish the Visual Studio extension",
-    why: "The Visual Studio extension is not on the Visual Studio Marketplace and not in a release. The pages say it is built from source.",
-    next: "Publish it, or keep it source-only and leave the wording as it is.",
-    refs: ["Src/Obfy.VisualStudio"] },
   { id: "B-17", pri: "p3", area: "App", kind: "Decide", title: "Use one output rule in the desktop app and the CLI",
     why: "--merge without -o writes {name}.merged{ext} in the CLI and *.obfuscated.* in the app. For a solution the CLI writes obfy-out next to the solution file, while the app writes it next to the first included assembly, usually inside bin. The docs now say which tool each rule is about.",
     next: "Pick one rule for each case and change the other tool to match.",
@@ -423,10 +421,6 @@ var ITEMS = [
     why: "C:\\localhost has already been deleted. All commits in the two remaining worktrees under .worktrees — closed-set-followups (e2e9dfd) and fix-ci-flaui (branch fix/ci-flaui-filter, f75c0f5) — are already on or superseded by main.",
     next: "Remove both remaining worktrees and delete their local branches.",
     refs: [".worktrees"] },
-  { id: "B-70", pri: "p2", area: "IDE", kind: "Fix", title: "Make the Visual Studio extension build, package and run its commands",
-    why: "Command GUIDs and LICENSE.txt are fixed and pinned by tests. Still open: Obfy.VisualStudio.csproj never imports Microsoft.VsSDK.targets, so no .vsix is produced; source.extension.vsixmanifest still hardcodes 1.3.0; README instructions for the VSIX are broken; and live testing inside Visual Studio (the four commands, options page, and cancel paths) has not been run. Related to B-14.",
-    next: "Import Microsoft.VsSDK.targets to produce a .vsix, build it in CI, align or clarify the 1.3.0 manifest version, fix the README instructions, and test the extension live in Visual Studio.",
-    refs: ["Src/Obfy.VisualStudio/Obfy.VisualStudio.csproj", "Src/Obfy.VisualStudio/source.extension.vsixmanifest", "Src/Obfy.VisualStudio/ObfyVsixCommandTable.vsct", "README.md"] },
   { id: "B-74", pri: "p3", area: "Core", kind: "Decide", title: "Decide what a cancelled CLI run prints and returns",
     why: "Ctrl+C now stops every kind of run, but a cancelled run prints nothing and exits with code 1, the same as a failure. Nothing in the CLI catches the cancellation.",
     next: "Print Cancelled and choose an exit code (130 is the convention), then update the exit-code table in docs/CLI.md. Or leave it and say so there.",

@@ -422,36 +422,6 @@ The obfuscated code gets bundled into the single-file output.
 
 ## Integration with Build Systems
 
-### Visual Studio Extension
-
-For Visual Studio 2022 users, the Obfy extension provides the easiest integration:
-
-1. **Install the extension** from the VSIX file
-2. **Right-click your project** in Solution Explorer
-3. **Enable Post-Build Obfuscation** to automatically protect on every build
-4. **Configure settings** via the Obfy Settings dialog
-
-**Extension Features:**
-- Right-click → **Obfuscate** for on-demand protection
-- Right-click → **Enable Post-Build Obfuscation** for automatic builds
-- Right-click → **Obfy Settings...** to configure level and protections
-- Right-click → **Cancel Obfuscation** stops every run that is going, manual or post-build, not only the project you right-clicked. The command is on the project menu, and it is shown only while a run is active
-- **Tools → Options → Obfy** for global defaults
-- Per-project settings stored in `obfy.json`
-- The Obfy pane of the Output window shows progress and statistics
-
-**Release-Only Obfuscation:**
-
-By default, the extension only runs obfuscation for Release builds. Configure this in Tools → Options → Obfy → "Release Only".
-
-**Cancelling and the time limit:**
-
-A run the extension starts ends when the CLI exits, when you choose **Cancel Obfuscation**, or when the time limit passes. The limit is 30 minutes. Change it under Tools → Options → Obfy → General → **Run Timeout (minutes)**: a value below 1 counts as 30, and a value above 1440 (one day) counts as 1440. The option keeps the number you typed; only the run's limit changes. There is no CLI flag and no `obfy.json` setting for this limit. It applies only to runs the extension starts, and the extension does not pass it on the `obfy` command line.
-
-**Cancel Obfuscation** stops every run that is in flight. A run is also cancelled when the solution closes, when the extension is unloaded, and when the same project is built, rebuilt or deployed again. A Clean does not cancel it. Cancelling or timing out ends the CLI and every process it started. The CLI is in a job that ends that process tree when Visual Studio exits.
-
-A cancelled run is a warning in the Obfy pane of the Output window, not an error dialog. A manual run says "Obfuscation was cancelled." A post-build run says "Post-build obfuscation cancelled for <project>". A timeout is an error that names the limit that was applied and where to change it. With the default it reads: "Obfuscation timed out after 30 minutes and the Obfy CLI was stopped. The time limit is under Tools > Options > Obfy > General > Run Timeout (minutes)." A manual timeout also opens that text in a message box. A post-build timeout is only the Output window line, prefixed with the project name ("Post-build obfuscation of <project>: ..."). If the CLI does not exit when it is stopped, the pane also records an error, "The Obfy CLI process did not exit after it was asked to stop.", and a manual cancel or a timeout says the process may still be running.
-
 ### MSBuild
 
 ```xml

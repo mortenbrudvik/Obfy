@@ -25,7 +25,6 @@ These techniques raise the cost of casual reverse engineering. They are **not** 
 - **Configurable** - From minimal to aggressive protection levels, plus an interactive `config wizard`
 - **Modern** - Built for .NET 10; CLI runs cross-platform, the desktop UI is Windows
 - **Extensible** - JSON configuration for fine-grained control
-- **IDE Integration** - A Visual Studio 2022 extension with right-click obfuscation
 - **Fast** - Efficient obfuscation with minimal overhead
 
 ## Installation
@@ -130,25 +129,6 @@ The window has a sidebar with four screens: **Files** (drop or add inputs, choos
 ![Obfuscation results and symbol map](docs/images/ui-results.png)
 
 *The Results screen after a run, on the Summary tab. Symbols, Preview and Log are the other tabs.*
-
-### Visual Studio Extension
-
-For Visual Studio 2022 users, Obfy provides IDE integration from source (not on Marketplace or GitHub Releases yet):
-
-```bash
-dotnet build Src/Obfy.VisualStudio/Obfy.VisualStudio.csproj -c Release
-```
-
-Then in Visual Studio: Extensions → Manage Extensions → Install from VSIX, and pick the `.vsix` under `Src/Obfy.VisualStudio/bin/Release/`.
-
-**Features:**
-- Right-click project → **Obfuscate** to protect your output assembly
-- **Enable / Disable Post-Build Obfuscation** for automatic protection on each build
-- **Cancel Obfuscation** (project menu, shown only while a run is active) stops every run the extension has started. A run longer than **Run Timeout (minutes)** is stopped: 30 minutes unless you change it under Tools → Options → Obfy → General (below 1 counts as 30, above 1440 counts as 1440). There is no CLI flag and no `obfy.json` key for that limit. A cancel is a warning; a timeout is an error. Details are in [Advanced Usage](docs/Advanced.md#visual-studio-extension)
-- **Obfy Settings** dialog with level presets (Minimal/Standard/Aggressive/Custom)
-- Per-project configuration stored in `obfy.json`
-- Output window integration for real-time progress
-- Tools → Options → Obfy for global defaults, including **Generate Symbol Map** (off by default; writes `{name}.map.json` beside the assembly)
 
 ### Visual Studio Code (stub)
 

@@ -3,10 +3,10 @@
 **App name:** Obfy  
 **Publisher:** Morten Brudvik  
 **Microsoft Store product ID:** 9NNLPK835QM4  
-**Last updated:** 21 November 2026  
+**Last updated:** 23 November 2026  
 **Web version:** [https://brudvik.com/obfy/privacy](https://brudvik.com/obfy/privacy)
 
-This privacy policy applies to the **Obfy** desktop application distributed through the Microsoft Store (a native WPF shell that shows its window with Microsoft Edge WebView2, and the bundled `obfy` command-line tool). It also covers the command-line tool from NuGet, the installer on GitHub, and the Visual Studio 2022 extension. It describes what information Obfy processes and how that information is handled, and it describes version 2.0.0.
+This privacy policy applies to the **Obfy** desktop application distributed through the Microsoft Store (a native WPF shell that shows its window with Microsoft Edge WebView2, and the bundled `obfy` command-line tool). It also covers the command-line tool from NuGet, and the installer on GitHub. It describes what information Obfy processes and how that information is handled, and it describes version 2.0.0.
 
 Obfy is a local .NET obfuscation tool. It does **not** create accounts, does **not** include advertising, and does **not** send telemetry, analytics, crash reports, or usage data to Morten Brudvik or to any third party. It makes no network requests of its own, and it has no update check and no license check.
 
@@ -58,11 +58,9 @@ The Guide screen in the desktop app has an **Open the full guide online** button
 
 Once the guide is open, it is a page on brudvik.com like any other. Like any visit to a web page, it shows your IP address to the site, and what the site receives is between your browser and the site, not Obfy.
 
-## Command line and IDE extensions
+## Command line
 
 `obfy` does the same work as the app, without a window. It reads the files and the configuration you name on its command line, writes where you tell it (`-o`, `--map`, `--report`), prints to its console, and writes the same kind of log files. `obfy config generate` writes a `$schema` line that names a file on raw.githubusercontent.com (GitHub). Obfy never fetches it, but an editor that supports JSON schemas may.
-
-The Visual Studio 2022 extension runs the `obfy` tool installed on your PC and shows its output in the IDE. It keeps its options in the IDE's own settings and a per-project `obfy.json` in the project folder, and it makes no network requests of its own. When you run Obfuscate, it replaces the project's built output with the protected copy, and it does the same after every build if you switch on post-build obfuscation for a project (it is off until you do).
 
 ## Network
 

@@ -31,7 +31,7 @@ Build, package, and distribute Obfy for release.
    - `version.json`: the `major`, `minor` and `patch` integers. This is the only place the product version is written. `Directory.Build.props` gives it to every project under `Src` (assembly, file and package version of the CLI, Core and the desktop app), `build-installer.ps1` passes it to Inno Setup, `build-msix.ps1` stamps the MSIX identity from it, and `publish.yml` checks the release tag against it. Do not edit a `<Version>` in a project file or `build/ObfySetup.iss` (it has no version of its own, and a test fails on a hard-coded one)
    - `package/AppxManifest.xml`: the `Identity Version` snapshot, `major.minor.patch.0`. It is the one copy kept by hand; a test fails until it matches `version.json` (`build-msix.ps1` re-stamps the packed manifest from `version.json` anyway)
 
-   Not bumped here: the Visual Studio extension has its own version in `Src/Obfy.VisualStudio/source.extension.vsixmanifest`. `Obfy.PackedBootstrap` and `Obfy.VmRuntime` are not versioned from `version.json` either (`Directory.Build.props` skips all three). `version.json` must be exactly the three integer keys (0 to 65535, no leading zeros, no other keys); anything else fails the build with a message that names the file.
+   Not bumped here: `Obfy.PackedBootstrap` and `Obfy.VmRuntime` are not versioned from `version.json` (`Directory.Build.props` skips both). `version.json` must be exactly the three integer keys (0 to 65535, no leading zeros, no other keys); anything else fails the build with a message that names the file.
 
 3. Update CHANGELOG.md:
    - Move Unreleased to new version section

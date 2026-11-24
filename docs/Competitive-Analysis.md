@@ -23,11 +23,11 @@ GitHub stars and last-push dates were rechecked on 15 September 2026. Shop price
 
 ## Executive Summary
 
-Obfy is a new (first public commit 31 December 2025), MIT-licensed .NET obfuscator with a CLI, WebView2 + React hybrid desktop UI, Visual Studio 2022 extension, Microsoft Store listing, and a dual pipeline: **dnlib assembly obfuscation** plus **Roslyn source obfuscation**. Among free tools it is the broadest protection stack (rename, strings, constants, resources, control flow, anti-debug/dump/tamper/decompiler, method-IL XOR, merge, closed-set / solution rename, embed, watermark, reports, a managed IL virtualizer, and a **win-x64 FDD native packing stub**). It has a **managed-VM** (Babel-class interpreter, not Babel Ultimate coverage). Native packing is a framework-dependent CLR-host stub (not Pre-JIT, not self-contained, not ARM64). Closed-set / solution runs pack each entry-point output. It is not a licensing/RASP product.
+Obfy is a new (first public commit 31 December 2025), MIT-licensed .NET obfuscator with a CLI, WebView2 + React hybrid desktop UI, Microsoft Store listing, and a dual pipeline: **dnlib assembly obfuscation** plus **Roslyn source obfuscation**. Among free tools it is the broadest protection stack (rename, strings, constants, resources, control flow, anti-debug/dump/tamper/decompiler, method-IL XOR, merge, closed-set / solution rename, embed, watermark, reports, a managed IL virtualizer, and a **win-x64 FDD native packing stub**). It has a **managed-VM** (Babel-class interpreter, not Babel Ultimate coverage). Native packing is a framework-dependent CLR-host stub (not Pre-JIT, not self-contained, not ARM64). Closed-set / solution runs pack each entry-point output. It is not a licensing/RASP product.
 
 **Positioning that still holds**
 
-- **Vs free tools:** Broader technique set than Obfuscar (rename-first) and LoGiC.NET (archived). Different trade than BitMono (anti-decompiler / Unity / plugins vs Obfy’s control-flow + constants + resources + source mode + closed-set + desktop/IDE / Store UX).
+- **Vs free tools:** Broader technique set than Obfuscar (rename-first) and LoGiC.NET (archived). Different trade than BitMono (anti-decompiler / Unity / plugins vs Obfy’s control-flow + constants + resources + source mode + closed-set + desktop / Store UX).
 - **Vs budget commercial ($249–$499):** Matches the *everyday* layer (rename, strings, CF, anti-debug/tamper) and offers a managed IL virtualizer (see limits; **Partial**, not Babel Ultimate EH/generics/byref). Native packing is a win-x64 FDD CLR-host stub, not Pre-JIT. Does **not** match .NET Reactor or ArmDot on unique generated VMs or built-in licensing. Do not treat this as covering Reactor.
 - **Vs enterprise (Dotfuscator, SmartAssembly):** Covers static obfuscation needs; lacks RASP, crash analytics, quote-based support SLAs, and (for Dotfuscator) Overload Induction / configurable runtime response.
 
@@ -175,7 +175,7 @@ Babel documents extra algorithms (`goto`, `if`, `switch`, `case`, `call`, `value
 
 Obfy Unity / Blazor / MAUI / NativeAOT support is `runtimeProfile` gating plus example `obfy.json` files and scenario tests — **not** an Editor plugin, NuGet SDK, or first-class SKU. Do not claim first-class Unity/MAUI/Blazor until a Unity Development Player job and MAUI iOS/Android jobs exist (see [Roadmap.md](Roadmap.md) and [Testing-Roadmap.md](Testing-Roadmap.md)).
 
-Obfy Linux/macOS is **Partial**: the CLI is a `net10.0` global tool and `Obfy.Console.Tests` runs on Ubuntu every PR (`linux-cli`). GUI, VS, method-IL encryption, and the native packer are Windows. Do not advertise a Linux GUI or a non-Windows packer.
+Obfy Linux/macOS is **Partial**: the CLI is a `net10.0` global tool and `Obfy.Console.Tests` runs on Ubuntu every PR (`linux-cli`). GUI, method-IL encryption, and the native packer are Windows. Do not advertise a Linux GUI or a non-Windows packer.
 
 SmartAssembly does not support UWP. Its “What Can I Obfuscate?” index still listed .NET 5–9 after 8.4.0’s release notes added .NET 10. .NET 8 support arrived a full year after .NET 8 shipped (Nov 2024); .NET 9 and 10 followed much faster.
 
@@ -188,7 +188,7 @@ SmartAssembly does not support UWP. Its “What Can I Obfuscate?” index still 
 | **CLI** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | **GUI** | Yes (WebView2 + React) | Yes | Yes | Yes | Windows | Yes | Yes | — | Web (bitmono.dev) |
 | **MSBuild** | Partial | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **Visual Studio** | Yes (2022) | Yes | Yes | Yes | Yes | Yes (2005–2022) | — | — | — |
+| **Visual Studio** | — | Yes | Yes | Yes | Yes | Yes (2005–2022) | — | — | — |
 | **Rider** | — | — | — | Yes | — | Yes (2019.1+) | — | — | — |
 | **VS Code** | Stub (schema + matcher) | — | — | — | — | — | — | — | — |
 | **NuGet / `dotnet tool`** | Yes (`Obfy`) | Private pkg | Yes | Some pkgs | Ultimate | Yes (smoothest) | Yes | Yes | Yes |
@@ -238,7 +238,7 @@ Reactor’s **$249 single-developer license excludes build servers**. CI needs t
 - Native win-x64 FDD packing stub (`packing.enabled`; `portable` keeps the managed launcher). Closed-set / solution runs pack each entry-point output
 - `runtimeProfile` gating so NativeAOT / Unity IL2CPP / Blazor WASM do not get `VirtualProtect` / AssemblyResolve helpers they cannot run
 - Incremental cache (SHA-256 of Obfy build + input bytes + settings, plus the cached run's statistics and a fingerprint of the output)
-- WebView2 + React hybrid desktop UI, VS 2022 extension, CLI wizard, Microsoft Store listing, MSIX, and Setup.exe
+- WebView2 + React hybrid desktop UI, CLI wizard, Microsoft Store listing, MSIX, and Setup.exe
 - Honest docs: encryption is obfuscation, not confidentiality
 
 **Weaknesses**
@@ -246,11 +246,11 @@ Reactor’s **$249 single-developer license excludes build servers**. CI needs t
 - Virtualization skips EH, generic methods/types/calls, byref, custom structs/`Nullable<T>`, switch, constructors, typeof (`ldtoken`), interpolators that allocate `DefaultInterpolatedStringHandler`, and `using` / enumerator-struct foreach; gated off NativeAOT / IL2CPP / Blazor WASM; per-build encoding, not a unique generated VM. Native packing is a win-x64 FDD stub, not Pre-JIT or self-contained. No licensing/DRM/RASP
 - Unity / MAUI / Blazor / NativeAOT are recipes, not first-class plugins
 - No MSBuild PackageReference — CI uses `dotnet tool install` / `Exec`, not a build task that cannot be skipped
-- GUI, VS extension, method-IL encryption, and native packing are Windows-centric. CLI is CI-tested on Ubuntu
+- GUI, method-IL encryption, and native packing are Windows-centric. CLI is CI-tested on Ubuntu
 - Tiny public community (1 star, 0 forks). Unproven on third-party commercial codebases
 - Source mode is a subset: strings, renaming, control flow only
 
-**Best for:** Modern .NET teams that want a free, documented, IDE-friendly obfuscator with more than renaming, and that accept “raise the cost of casual ILSpy/dnSpy” rather than “defeat a motivated reverse engineer.”
+**Best for:** Modern .NET teams that want a free, documented obfuscator with more than renaming, and that accept “raise the cost of casual ILSpy/dnSpy” rather than “defeat a motivated reverse engineer.”
 
 ---
 
@@ -499,7 +499,7 @@ The most *aggressive* maintained OSS protector. AsmResolver (not dnlib). Started
 
 **Distribution that Obfy lacks:** `BitMono.Integration` MSBuild package, official GitHub Action, Unity `.unitypackage` (2018–19) and UPM `.tgz` (2020+), in-browser obfuscator at [bitmono.dev](https://bitmono.dev). Obfy already ships `dotnet tool install --global Obfy`.
 
-**Gaps vs Obfy:** no control-flow flattening, no constant/resource encryption as first-class peers, no Roslyn source mode, no desktop/VS product UX. Some protections are Mono/Unity-specific and will no-op or warn elsewhere.
+**Gaps vs Obfy:** no control-flow flattening, no constant/resource encryption as first-class peers, no Roslyn source mode, no desktop product UX. Some protections are Mono/Unity-specific and will no-op or warn elsewhere.
 
 **Best for:** Unity/Mono, people who want decompilers to *crash*, and teams that want a plugin engine. Pair with Obfy’s CF/constants only if you are willing to run two tools — they are not designed as a pipeline.
 
@@ -529,7 +529,7 @@ Last push 23 August 2023, repository archived, 516 stars. Rename, strings, CF, i
 | **Most decompiler-breaking tricks** | BitMono | PE/loader attacks, UnmanagedString, Unity packs |
 | **Most used / most stable rename** | Obfuscar | 3.2k stars, millions of NuGet installs, v3 rewrite |
 | **Best Unity story (OSS)** | BitMono | UPM + unitypackage. Obfy is a recipe. |
-| **Best IDE / desktop UX (OSS)** | Obfy | WebView2 + React desktop UI + VS 2022 + Store. BitMono is CLI/web. |
+| **Best desktop UX (OSS)** | Obfy | WebView2 + React desktop UI + Store. BitMono is CLI/web. |
 | **Best `dotnet tool` / NuGet** | Obfuscar / BitMono / Obfy | Obfy is `dotnet tool install -g Obfy`; Obfuscar has more installs |
 | **Best docs for beginners** | Obfuscar (community) and Obfy (product docs) | ConfuserEx wiki is stale |
 | **Do not use on new .NET 10** | ConfuserEx lineage, LoGiC.NET | Framework-era or archived |
@@ -538,7 +538,7 @@ Last push 23 August 2023, repository archived, 516 stars. Rename, strings, CF, i
 
 | Scenario | Recommended | Why |
 |----------|-------------|-----|
-| **Modern .NET, more than renaming, free** | Obfy | Broadest conventional stack + closed-set + UI/IDE |
+| **Modern .NET, more than renaming, free** | Obfy | Broadest conventional stack + closed-set + UI |
 | **Rename only, Linux CI, maximum installs** | Obfuscar | Global tool, v3, huge community |
 | **Unity / break dnSpy** | BitMono | UPM + anti-decompiler protections |
 | **Source files, not assemblies** | Obfy | Only Roslyn source mode in this set |
@@ -583,7 +583,7 @@ Reactor company license is $549 (needed for CI). Eazfuscator site license is $1,
 |---------|------------|-------|------------|-------|
 | **Pre-JIT / other RIDs / self-contained packing** | Very high | Medium | Reactor (native EXE + Pre-JIT), ArmDot (BoxedApp), DNGuard | PF-09 v1 is a win-x64 FDD CLR-host stub. Remaining native-code generation stays Future. |
 | **First-class Unity Editor / UPM** | Medium | Medium | BitMono (UPM), Eazfuscator, Reactor, ArmDot | Recipe + `UnityIl2Cpp` profile exist. |
-| **Linux/macOS as a supported host** | Medium | Medium | Obfuscar, BitMono, ArmDot, Babel Ultimate, Eazfuscator 2026, Dotfuscator CLI | CLI is CI-tested on Ubuntu. GUI, VS, method-IL, and the native packer are Windows. Remaining gap is a first-class advertised Linux host, not the job. |
+| **Linux/macOS as a supported host** | Medium | Medium | Obfuscar, BitMono, ArmDot, Babel Ultimate, Eazfuscator 2026, Dotfuscator CLI | CLI is CI-tested on Ubuntu. GUI, method-IL, and the native packer are Windows. Remaining gap is a first-class advertised Linux host, not the job. |
 | **XAML-aware renaming (WPF/MAUI)** | Medium | Medium | Dotfuscator, Eazfuscator | Obfy has `preserveXaml` defaults, not a XAML rewriter. |
 
 ### Low priority / out of scope
@@ -603,7 +603,7 @@ Aligned with [Roadmap.md](Roadmap.md). Competitive pressure, not a commitment.
 ### Near term (adoption, not protection ceiling)
 
 1. **MSBuild PackageReference** — `dotnet tool install` covers CI; an in-graph obfuscate task (Eazfuscator-style) is still missing.
-2. **Keep Linux CLI honest** — Ubuntu `linux-cli` already runs `Obfy.Console.Tests`. Do not claim GUI, VS, method-IL, or native packing on Linux/macOS.
+2. **Keep Linux CLI honest** — Ubuntu `linux-cli` already runs `Obfy.Console.Tests`. Do not claim GUI, method-IL, or native packing on Linux/macOS.
 3. **VS Code beyond the stub** (TaskProvider + marketplace), already on the roadmap as DX-03.
 
 ### Medium term (platform)
@@ -650,7 +650,7 @@ The 2026 .NET obfuscator market has three honest tiers:
 
 Obfy now ships a native win-x64 FDD packing stub (closed-set entry points included) and a **managed-VM** (Babel-class) for eligible methods. Packing is Yes; virtualization is Partial with the skip-set footnote. Still not licensing/RASP, Pre-JIT, or a unique generated VM. Do not write that it covers Reactor.
 
-**Use Obfy** when you want MIT-licensed, documented, modern-.NET obfuscation with a UI and IDE plugins, and your threat model is casual reverse engineering.
+**Use Obfy** when you want MIT-licensed, documented, modern-.NET obfuscation with a desktop UI, and your threat model is casual reverse engineering.
 
 **Do not use Obfy (alone)** when you need Pre-JIT or self-contained packing, ISV licensing, RASP, a unique generated VM, EH/generics/byref virtualization, or a Unity Editor workflow — buy Reactor/ArmDot/Eazfuscator or add BitMono for Unity.
 

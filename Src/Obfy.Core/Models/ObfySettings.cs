@@ -94,7 +94,8 @@ public class ObfySettings
     public InclusionRules Inclusions { get; init; } = new();
 
     /// <summary>
-    /// Whether post-build obfuscation is enabled (used by VS extension).
+    /// Whether post-build obfuscation is enabled. Nothing in Obfy reads this value; it stays so that existing
+    /// configuration files that set it still load.
     /// </summary>
     public bool PostBuildEnabled { get; set; } = false;
 

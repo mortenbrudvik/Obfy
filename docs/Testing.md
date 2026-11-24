@@ -17,7 +17,6 @@ This page gives no test counts, because they change with almost every commit. Ea
 | Obfy.UI.Tests | Shell wiring (`HybridWiringTests`), the shutdown coordinator and the window's close path (`ShutdownCoordinatorTests`, `ShellClosingTests`), host service, startup command line | `dotnet test Tests/Obfy.UI.Tests` |
 | Obfy.UI.AutomationTests | Locator unit tests (default CI), plus `Category=UI` tests: Playwright-over-WebView2 end-to-end (`WebUiTests`) and one FlaUI window smoke (`FlaUiSmokeTests`) | `dotnet test Tests/Obfy.UI.AutomationTests` for the locator tests; `--filter Category=UI` for the end-to-end cases (see below) |
 | Obfy.ScenarioTests | SDK fixtures and checks (Unity stub, merge, WPF, WinForms, console, examples), a protected console app started on each target framework, the installer's self-protection settings, plus `Category=Platform` tests (Blazor, NativeAOT, MAUI Windows) | `dotnet test Tests/Obfy.ScenarioTests` (default job); `--filter Category=Platform` for the platform tests |
-| Obfy.VisualStudio.Tests | VS settings JSON, settings dialog ViewModel, CLI argv, in-place copy, output-assembly locator, CLI path locator, the CLI process runner (cancel, time limit, whole-tree kill), the run tracker, the command table (no VS hive) | `dotnet test Tests/Obfy.VisualStudio.Tests` |
 | Web app (Vitest, `Src/WebApp`) | The page: shell and run bar, the per-screen error boundary, text drafts (`useDraft`), Files, Protection (including the Read more online calls), Results, the in-app Guide quick-start and its online-guide button, shared components, interop client and the `api.app.openGuide` wrapper, content | `npm run test:run` in `Src/WebApp` |
 
 The default CI filter is `Category!=UI&Category!=Platform`, so the `Category=UI` and `Category=Platform` tests are not part of a plain `dotnet test`. Counts are xUnit cases (`[Theory]` expansions included), so a project's total is not its number of methods.
@@ -51,7 +50,6 @@ dotnet test Tests/Obfy.App.Tests
 dotnet test Tests/Obfy.Interop.Tests
 dotnet test Tests/Obfy.UI.Tests
 dotnet test Tests/Obfy.ScenarioTests
-dotnet test Tests/Obfy.VisualStudio.Tests
 dotnet test Tests/Obfy.UI.AutomationTests/Obfy.UI.AutomationTests.csproj
 ```
 
@@ -202,21 +200,6 @@ Location: `Tests/Obfy.UI.AutomationTests/`
 ### Web app (`Src/WebApp`)
 
 Vitest tests for the page: shell and run bar, Files, Protection, Results, the Guide quick-start (including the button that opens the online guide through `app.openGuide`), shared components, the interop client and content. See [Web app (Vitest)](#web-app-vitest).
-
-### Obfy.VisualStudio.Tests
-
-Hive-free tests of the VS extension helpers (`ObfySettingsJson`, `CliArgumentBuilder`, `OutputAssemblyLocator`, `ObfyCliLocator`, `SettingsDialogViewModel`, `OutputServiceExtensions`). Linked from `Src/Obfy.VisualStudio` (the files with no Visual Studio dependency, see the test project) so CI does not load the VSIX SDK. A new file that needs a test has to be linked there.
-
-| Test | What it proves |
-|------|----------------|
-| `CliProcessRunnerTests`, `CliProcessRunnerTimeoutTests`, `CliRunResultTests` | The runner against real child processes (a copy of `cmd.exe` and of `ping.exe`): cancel and the time limit end a long child and its children promptly, output before the kill is kept, a normal run is unaffected, a helper the CLI leaves running survives a normal run, and how a stopped run is reported. Windows only (`WindowsFactAttribute`); the limit tests run everywhere |
-| `ProcessJobTests` | The job object: terminate, kill on close, disarmed close |
-| `ObfuscationRunTrackerTests` | Which events cancel which runs |
-| `CommandTableTests` | Every command class is registered under a command-set GUID and id that the `.vsct` defines as a button, and every button has a command class. Reads the `.vsct` and the sources, since the commands need the Visual Studio SDK |
-
-Command registration is covered (`CommandTableTests`). The commands' behaviour, the event wiring in `BuildEvents` and the options page only run inside Visual Studio and are not covered.
-
-Location: `Tests/Obfy.VisualStudio.Tests/`
 
 ### Obfy.ScenarioTests (SDK fixtures)
 

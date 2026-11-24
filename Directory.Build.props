@@ -9,10 +9,9 @@
     A command-line -p:Version=... still wins, because a global property cannot be overwritten here. The publish
     workflow passes the release tag that way, so a prerelease suffix (2.1.0-beta.1) is possible there.
 
-    These projects keep their own version and are skipped: Obfy.VisualStudio (the VSIX has its own version in
-    source.extension.vsixmanifest), Obfy.PackedBootstrap (embedded in the native host stub, whose source stamp
-    covers its project file) and Obfy.VmRuntime (embedded into protected assemblies). Tests and examples are
-    outside Src\ and are not touched.
+    These projects keep their own version and are skipped: Obfy.PackedBootstrap (embedded in the native host stub,
+    whose source stamp covers its project file) and Obfy.VmRuntime (embedded into protected assemblies). Tests and
+    examples are outside Src\ and are not touched.
   -->
   <PropertyGroup>
     <ObfyVersionFile>$(MSBuildThisFileDirectory)version.json</ObfyVersionFile>
@@ -32,7 +31,7 @@
     <ObfySrcDirectory>$([MSBuild]::EnsureTrailingSlash('$(MSBuildThisFileDirectory)Src'))</ObfySrcDirectory>
   </PropertyGroup>
   <!-- Case-insensitive: Windows keeps the case a path was typed in, and a miss here would silently build 1.0.0. -->
-  <PropertyGroup Condition="$(MSBuildProjectFullPath.StartsWith('$(ObfySrcDirectory)', System.StringComparison.OrdinalIgnoreCase)) and '$(MSBuildProjectName)' != 'Obfy.VisualStudio' and '$(MSBuildProjectName)' != 'Obfy.PackedBootstrap' and '$(MSBuildProjectName)' != 'Obfy.VmRuntime'">
+  <PropertyGroup Condition="$(MSBuildProjectFullPath.StartsWith('$(ObfySrcDirectory)', System.StringComparison.OrdinalIgnoreCase)) and '$(MSBuildProjectName)' != 'Obfy.PackedBootstrap' and '$(MSBuildProjectName)' != 'Obfy.VmRuntime'">
     <ObfyUsesProductVersion>true</ObfyUsesProductVersion>
     <Version Condition="'$(Version)' == ''">$(ObfyProductVersion)</Version>
   </PropertyGroup>
@@ -46,7 +45,7 @@
   <PropertyGroup Condition="'$(TargetFramework)' != 'net48'">
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
-  <PropertyGroup Condition="!$(MSBuildProjectName.Contains('Tests')) and '$(MSBuildProjectName)' != 'Obfy.VisualStudio'">
+  <PropertyGroup Condition="!$(MSBuildProjectName.Contains('Tests'))">
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <!-- FlaUI (Category=UI) and future platform jobs stay opt-in. Pass filter Category=UI to run them. -->

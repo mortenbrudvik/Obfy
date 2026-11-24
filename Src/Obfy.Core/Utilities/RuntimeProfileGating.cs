@@ -4,7 +4,7 @@ using Obfy.Core.Pipeline;
 namespace Obfy.Core.Utilities;
 
 /// <summary>
-/// Disables PE/kernel32 protections (method IL encryption, anti-dump), AssemblyResolve
+/// Disables PE/kernel32 protections (method IL encryption, anti-dump), anti-tamper, AssemblyResolve
 /// embedding, native packing, and the managed VM on NativeAOT, Unity IL2CPP, and Blazor WASM.
 /// Anti-debug stays enabled but omits kernel32 P/Invoke (see <c>AntiDebugObfuscator</c>).
 /// <see cref="Apply"/> mutates the working clone of <see cref="ObfySettings"/> (callers are
@@ -13,6 +13,9 @@ namespace Obfy.Core.Utilities;
 public static class RuntimeProfileGating
 {
     public static bool AllowsPeMutation(RuntimeProfile profile) =>
+        profile is RuntimeProfile.Default;
+
+    public static bool AllowsAntiTamper(RuntimeProfile profile) =>
         profile is RuntimeProfile.Default;
 
     public static bool AllowsManagedVm(RuntimeProfile profile) =>
@@ -58,6 +61,13 @@ public static class RuntimeProfileGating
                 context.Warnings.Add(
                     $"Anti-dump disabled for {label}: PE wipe and MiniDumpWriteDump patch via kernel32/dbghelp are not safe on this runtime.");
             }
+        }
+
+        if (!AllowsAntiTamper(settings.RuntimeProfile) && settings.Protection.AntiTamper.Enabled)
+        {
+            settings.Protection.AntiTamper.Enabled = false;
+            context.Warnings.Add(
+                $"Anti-tamper disabled for {label}: runtime integrity checking cannot hash an IL DLL on disk on this runtime.");
         }
 
         if (BlocksAssemblyResolve(settings.RuntimeProfile) && settings.DependencyEmbedding.Enabled)

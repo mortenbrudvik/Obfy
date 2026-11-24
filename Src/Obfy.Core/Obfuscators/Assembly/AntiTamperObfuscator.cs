@@ -30,7 +30,8 @@ public class AntiTamperObfuscator : IObfuscator
     public bool SupportsTargetType(TargetType targetType) => targetType == TargetType.Assembly;
 
     /// <inheritdoc/>
-    public bool IsEnabled(ObfySettings settings) => settings.Protection.AntiTamper.Enabled;
+    public bool IsEnabled(ObfySettings settings) =>
+        settings.Protection.AntiTamper.Enabled && RuntimeProfileGating.AllowsAntiTamper(settings.RuntimeProfile);
 
     /// <inheritdoc/>
     public Task<ObfuscationResult> ObfuscateAsync(PipelineContext context, CancellationToken cancellationToken = default)

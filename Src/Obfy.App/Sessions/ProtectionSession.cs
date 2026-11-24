@@ -31,7 +31,7 @@ public sealed class ProtectionSession
         new("antiDump", GatedByProfile: true),
         new("antiDecompiler"),
         new("watermark"),
-        new("antiTamper"),
+        new("antiTamper", GatedByProfile: true),
         new("virtualization", GatedByProfile: true),
         new("methodEncryption", GatedByProfile: true),
         new("controlFlow"),

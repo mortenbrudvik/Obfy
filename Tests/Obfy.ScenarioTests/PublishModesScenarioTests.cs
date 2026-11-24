@@ -25,7 +25,8 @@ public sealed class PublishModesScenarioTests
             var rid = PlatformWorkloads.CurrentWindowsRid();
             ScenarioHarness.DotnetBuild(
                 csproj,
-                extraArgs: $"-r {rid} -p:SelfContained=false -p:PublishSingleFile=true");
+                extraArgs: $"-r {rid} -p:SelfContained=false -p:PublishSingleFile=true",
+                timeoutMs: 90_000);
 
             var intermediateDll = Path.Combine(copy, "obj", "Release", "net10.0", rid, "HelloConsole.dll");
             File.Exists(intermediateDll).ShouldBeTrue(intermediateDll);
@@ -55,7 +56,8 @@ public sealed class PublishModesScenarioTests
 
             var publish = ScenarioHarness.DotnetPublish(
                 csproj,
-                $"-c Release -r {rid} -p:PublishSingleFile=true -p:SelfContained=false --no-build");
+                $"-c Release -r {rid} -p:PublishSingleFile=true -p:SelfContained=false --no-build",
+                timeoutMs: 120_000);
             publish.ExitCode.ShouldBe(0, publish.StdOut + publish.StdErr);
 
             var publishDir = Path.Combine(copy, "bin", "Release", "net10.0", rid, "publish");
@@ -84,7 +86,8 @@ public sealed class PublishModesScenarioTests
             var rid = PlatformWorkloads.CurrentWindowsRid();
             ScenarioHarness.DotnetBuild(
                 csproj,
-                extraArgs: $"-r {rid} -p:SelfContained=true -p:PublishTrimmed=true -p:DebugType=none");
+                extraArgs: $"-r {rid} -p:SelfContained=true -p:PublishTrimmed=true -p:DebugType=none",
+                timeoutMs: 90_000);
 
             var intermediateDll = Path.Combine(copy, "obj", "Release", "net10.0", rid, "HelloConsole.dll");
             File.Exists(intermediateDll).ShouldBeTrue(intermediateDll);
@@ -109,7 +112,8 @@ public sealed class PublishModesScenarioTests
 
             var publish = ScenarioHarness.DotnetPublish(
                 csproj,
-                $"-c Release -r {rid} -p:SelfContained=true -p:PublishTrimmed=true -p:DebugType=none --no-build");
+                $"-c Release -r {rid} -p:SelfContained=true -p:PublishTrimmed=true -p:DebugType=none --no-build",
+                timeoutMs: 120_000);
             publish.ExitCode.ShouldBe(0, publish.StdOut + publish.StdErr);
 
             var publishDir = Path.Combine(copy, "bin", "Release", "net10.0", rid, "publish");

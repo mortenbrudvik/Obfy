@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using Obfy.Core.Utilities;
 using Shouldly;
 
 namespace Obfy.ScenarioTests;
@@ -7,7 +8,14 @@ namespace Obfy.ScenarioTests;
 public class NativeAotTests
 {
     [PlatformFact]
-    public async Task ObfuscateBeforePublishAot_NativeExeRuns()
+    public Task ObfuscateBeforePublishAot_NativeExeRuns() =>
+        RunNativeAotPublishAsync(enableAntiTamper: false);
+
+    [PlatformFact]
+    public Task ObfuscateBeforePublishAot_WithAntiTamperRequested_GatesAntiTamperAndNativeExeRuns() =>
+        RunNativeAotPublishAsync(enableAntiTamper: true);
+
+    private static async Task RunNativeAotPublishAsync(bool enableAntiTamper)
     {
         var fixture = Path.Combine(ScenarioHarness.FindRepoRoot(), "Tests", "Obfy.ScenarioTests", "Fixtures", "NativeAotApp");
         var copy = ScenarioHarness.CopyToTemp(fixture);
@@ -25,9 +33,23 @@ public class NativeAotTests
 
             var settings = ScenarioHarness.LoadSettings(Path.Combine(copy, "obfy.json"));
             settings.RuntimeProfile.ShouldBe(Obfy.Core.Models.RuntimeProfile.NativeAot);
-            await ScenarioHarness.ObfuscateAsync(builtDll, builtDll, settings);
+            if (enableAntiTamper)
+                settings.Protection.AntiTamper.Enabled = true;
 
-            using (var module = ModuleDefMD.Load(File.ReadAllBytes(builtDll)))
+            var result = await ScenarioHarness.ObfuscateAsync(builtDll, builtDll, settings);
+            if (enableAntiTamper)
+            {
+                result.Warnings.ShouldContain(w =>
+                    w.Contains("Anti-tamper disabled", StringComparison.OrdinalIgnoreCase) &&
+                    w.Contains("NativeAOT"));
+                settings.Protection.AntiTamper.Enabled.ShouldBeTrue();
+            }
+
+            var builtBytes = File.ReadAllBytes(builtDll);
+            if (enableAntiTamper)
+                AssemblyHashComputer.FindHashOffset(builtBytes).ShouldBe(-1);
+
+            using (var module = ModuleDefMD.Load(builtBytes))
             {
                 var il = string.Join(" ", module.Types.SelectMany(t => t.Methods)
                     .Where(m => m.HasBody)

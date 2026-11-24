@@ -16,7 +16,7 @@ Obfy applies techniques in a specific order (priority):
 | 19 | Anti-Dump | Wipe PE headers; in-process MiniDumpWriteDump `0xC3` on x86/x64 |
 | 20 | Anti-Decompiler | Junk types, SuppressIldasm, decoy ConfusedBy/Dotfuscator attributes |
 | 21 | Watermark | Assembly-level pinned WatermarkAttribute |
-| 22 | Anti-Tamper | Verify assembly integrity |
+| 22 | Anti-Tamper | Verify assembly integrity (gated off NativeAOT / IL2CPP / Blazor WASM) |
 | 24 | Virtualization | Replace eligible methods with a bytecode interpreter (gated off NativeAOT / IL2CPP / Blazor WASM; no EH/generics/byref/custom structs/ctors) |
 | 25 | Method Encryption | XOR method IL in the PE (Windows) |
 | 30 | Control Flow | Flatten control flow |
@@ -723,6 +723,7 @@ static void Verify()
 | `checkModuleInitializer` | true | Inject verification in module initializer |
 
 **Limitations:**
+- Automatically disabled (with a report warning) when `runtimeProfile` is `NativeAot`, `UnityIl2Cpp`, or `BlazorWasm`, because runtime integrity checking cannot hash an IL DLL on disk on those runtimes
 - Requires file system access at runtime (cannot verify in-memory loaded assemblies)
 - Single-file published apps: Uses `Environment.ProcessPath` fallback (.NET 6+)
 - Assemblies loaded from byte arrays skip verification gracefully

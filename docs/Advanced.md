@@ -292,29 +292,64 @@ obfy bin/Release/net10.0/MyApp.dll -o dist/
 
 ## Performance Considerations
 
+Obfuscation passes trade runtime CPU/memory or output size for reverse-engineering cost in very different ways. The table below summarizes relative runtime and size impact across all techniques, followed by technique-specific tuning notes.
+
+| Technique | Startup / Load Cost | Per-Call / Steady-State Cost | Output Size Impact | Main Tuning Levers |
+|-----------|---------------------|------------------------------|--------------------|--------------------|
+| **Symbol Renaming** | None | None | Neutral to tiny (`Sequential` shrinks `#Strings`; `Unreadable`/`Hash`/`Random` grow it slightly) | `mode` |
+| **Metadata Removal** | None | None | Shrinks output (drops PDB info, 9 compiler/debugger attributes, XML docs) | `removeDebugInfo`, `removeAttributes`, `stripDocumentation` |
+| **Watermark** | None | None | Negligible (one attribute type + assembly attribute) | — |
+| **String Encryption** | Low–moderate (`.cctor` populates encrypted `byte[][]` table) | Low (decrypted once per literal, then read from static `string[]` cache) | Small–moderate (`<StringDecryptor>` + encrypted payloads) | `algorithm` (`Xor` vs `Aes256`), `minStringLength` |
+| **Constant Encryption** | Low (`.cctor` populates encrypted `byte[][]` table) | Moderate–high on hot paths (**uncached**: decrypts and allocates `byte[]` on every access) | Moderate (`<ConstantDecryptor>` + per-constant array init in `.cctor`) | `algorithm` (`Xor` default), `integerThreshold`, `longThreshold`, `skipCommonFloats`, `skipCommonDoubles` |
+| **Resource Encryption** | None at module load | Low–high per load (buffers into `MemoryStream` and decrypts full resource on each call; uncached) | Small (AES-256 IV/padding + `<ResourceDecryptor>`) | `algorithm`, `includePatterns` / `excludePatterns` |
+| **Method IL Encryption** | Low–moderate one-time (`.cctor` calls `VirtualProtect` + XOR-decrypts bodies in memory) | None once decrypted and JIT-compiled | Small (`<MethodCrypt>` + per-method table) | Not sensitive to hot paths once loaded; Windows-only (`Default` profile) |
+| **Control Flow** | None (longer JIT time on large/flattened methods) | Low–high (`Switch` dispatcher breaks straight-line flow/inlining; `OpaquePredicate` adds branches and runtime property checks) | Moderate–high IL growth (runtime helpers are transformed at intensity `100` whenever enabled) | `mode` (`OpaquePredicate` < `Switch` < `Combined`), `intensity` (`0–100`) |
+| **Reference Proxy** | None | Low (one extra static `call` + `ldftn`/`calli` trampoline per proxied site; can inhibit JIT inlining) | Low–moderate (trampoline methods + nested proxy types for non-public targets) | `proxyExternalCalls` (`false` leaves BCL/third-party calls direct) |
+| **Virtualization** | Low (interpreter `Init`) | **Highest** (managed bytecode loop, heap-backed VM frames, boxing, `MethodBase.Invoke` reflection) | Moderate fixed VM runtime + XOR-encoded bytecode blob | Keep `maxMethods` small (default `32`, max `256`) and target cold, sensitive methods only |
+| **Anti-Debug** | Low (`.cctor` check) | Moderate–high on call-heavy code (`<AntiDebug>.Check` injected into most non-empty methods: `Debugger` + `TickCount` + `kernel32` P/Invoke on `Default` profile) | Small (`<AntiDebug>` + one `call` per instrumented method) | Exclude tight inner-loop types/methods via `[Obfuscation]` or `exclusions` |
+| **Anti-Dump** | Very low one-time (`.cctor` wipes PE header fields and patches in-process `MiniDumpWriteDump` on Windows x86/x64) | None | Negligible (`<AntiDump>`) | Disabled on non-`Default` `runtimeProfile` |
+| **Anti-Tamper** | Low–moderate one-time (reads assembly from disk via `File.ReadAllBytes` and computes SHA-256; latency scales with file size) | None (`_v` guard runs check once; skipped on empty-location / packed `LoadFromStream` loads) | Negligible (`<AntiTamper>` + 32-byte hash slot) | `checkEntryPoint`, `checkModuleInitializer`; disabled on non-`Default` `runtimeProfile` |
+| **Anti-Decompiler** | None | None (dead junk code + passive attributes) | Small–moderate (scales with `junkTypeCount * junkMethodsPerType`) | `injectJunkTypes`, `junkTypeCount` (`1–50`), `junkMethodsPerType` (`1–20`) |
+| **Dependency Embedding** | None at module load | Low one-time per embedded DLL on first `AssemblyResolve` (`Assembly.Load(byte[])`) | Adds full uncompressed size of all embedded `Obfy.Embedded.*.dll` resources | `includePatterns` / `excludePatterns` |
+| **Packing** | Moderate one-time (AES-256-CBC decrypts payload and loads via `AssemblyLoadContext.LoadFromStream`) | None after load | `win-x64` replaces managed PE with native host stub + encrypted overlay; `portable` adds `{name}.launcher.exe` sidecar | `rid` (`win-x64` vs `portable`) |
+
 ### String Encryption
 
 | Setting | Impact |
 |---------|--------|
-| AES-256 | Slower startup, higher security |
-| XOR | Faster startup, lower security |
-| Higher `minStringLength` | Fewer strings encrypted, faster |
+| `Aes256` | Slower first-access decryption and larger encrypted payloads, higher resistance |
+| `Xor` | Much faster first-access decryption, lower resistance |
+| Higher `minStringLength` | Skips short literals, smaller table and faster startup |
+
+### Constant Encryption
+
+| Setting | Impact |
+|---------|--------|
+| `Xor` (default) | Recommended for numeric constants because decryption is **uncached** and runs on every access |
+| `Aes256` | High per-access CPU/allocation cost; avoid in loops or math-heavy methods |
+| Thresholds (`integerThreshold`, `longThreshold`, `skipCommonFloats`, `skipCommonDoubles`) | Skipping `-1`, `0`, `1` prevents heavy overhead on loop counters and conditionals |
 
 ### Control Flow
 
 | Setting | Impact |
 |---------|--------|
-| Higher `intensity` | Slower execution, better protection |
-| `Combined` mode | Most overhead, maximum obfuscation |
-| `Switch` mode | Moderate overhead |
+| `OpaquePredicate` | Lowest runtime overhead (adds non-constant runtime checks without a dispatcher loop) |
+| `Switch` | Moderate–high overhead; state-machine loop hinders JIT optimizations and increases IL size |
+| `Combined` | Highest runtime and size cost |
+| Higher `intensity` (`0–100`) | More blocks transformed, larger IL and slower execution; runtime helpers always use `100` when enabled |
+
+### Virtualization and Anti-Debug Hot-Path Guidance
+
+- **Virtualization:** Reserve virtualization for a small number of sensitive methods (`maxMethods` defaults to `32`) that are not inside performance-critical loops. Each virtualized invocation runs inside `Obfy.Runtime.Vm.Run`, using heap-allocated VM frames and `MethodBase.Invoke`.
+- **Anti-Debug:** Because `<AntiDebug>.Check` is inserted at the start of most non-empty user methods (and on the `Default` profile performs `kernel32` P/Invoke calls in addition to `Debugger.IsAttached`/`IsLogging`/`TickCount`), call-intensive helper methods or tight inner loops can see measurable slowdown; exclude hot paths with `[Obfuscation(Exclude = true)]` or `exclusions`.
 
 ### Symbol Renaming
 
 | Setting | Impact |
 |---------|--------|
-| Any mode | No runtime impact (compile-time only) |
-| `Unreadable` | Slightly larger metadata |
-| `Sequential` | Smallest metadata |
+| Any mode | No runtime impact (metadata-only at obfuscation time) |
+| `Unreadable` | Slightly larger `#Strings` metadata heap (multi-byte UTF-8 characters) |
+| `Sequential` | Smallest metadata (`a`, `b`, `aa`, ...) |
 
 ## Troubleshooting
 

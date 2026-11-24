@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Security;
 using System.Xml.Linq;
 using Shouldly;
 
@@ -7,6 +8,21 @@ namespace Obfy.Console.Tests;
 
 public class DotnetToolPackTests : IDisposable
 {
+    private static readonly HashSet<string> DotnetInheritedMsBuildEnvVars = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "MSBUILD_EXE_PATH",
+        "MSBuildSDKsPath",
+        "MSBuildExtensionsPath",
+        "MSBuildUserExtensionsPath",
+        "MSBuildLoadMicrosoftTargetsReadOnly",
+        "MSBuildLoadReadOnly",
+        "DOTNET_HOST_PATH",
+        "DOTNET_MSBUILD_SDK_RESOLVER_CLI_DIR",
+        "DOTNET_MSBUILD_SDK_RESOLVER_SDKS_DIR",
+        "DOTNET_MSBUILD_SDK_RESOLVER_ENABLE_LOG",
+        "DOTNET_STARTUP_HOOKS"
+    };
+
     private readonly string _tempDirectory = Path.Combine(Path.GetTempPath(), $"ObfyToolPack_{Guid.NewGuid():N}");
 
     public DotnetToolPackTests() => Directory.CreateDirectory(_tempDirectory);
@@ -57,10 +73,23 @@ public class DotnetToolPackTests : IDisposable
         var toolPath = Path.Combine(_tempDirectory, "tool");
         Directory.CreateDirectory(toolPath);
 
-        var install = RunDotnet(solutionDir, [
+        var tempNugetConfig = Path.Combine(_tempDirectory, "nuget.config");
+        var escapedPackOut = SecurityElement.Escape(packOut)
+            ?? throw new InvalidOperationException($"Failed to XML-escape path: {packOut}");
+        File.WriteAllText(tempNugetConfig, $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="local-pack" value="{escapedPackOut}" />
+              </packageSources>
+            </configuration>
+            """);
+
+        var install = RunDotnet(_tempDirectory, [
             "tool", "install", "Obfy",
             "--tool-path", toolPath,
-            "--add-source", packOut,
+            "--configfile", tempNugetConfig,
             "--version", version
         ]);
         install.ExitCode.ShouldBe(0, install.Output);
@@ -98,18 +127,32 @@ public class DotnetToolPackTests : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
+            CreateNoWindow = true,
         };
-        // A reusable MSBuild node that `dotnet pack` starts outlives it and inherits the redirected pipes, so
-        // ReadToEnd below would wait for the node's idle timeout (about 15 minutes) on a machine with no idle node.
+        // Disable reusable MSBuild nodes and the MSBuild server so child processes do not outlive the command
+        // and hold redirected pipes open.
         start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         start.Environment["DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER"] = "1";
+        if (Path.GetFileNameWithoutExtension(fileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var key in start.Environment.Keys.Where(DotnetInheritedMsBuildEnvVars.Contains).ToArray())
+                start.Environment.Remove(key);
+        }
+
         foreach (var arg in args)
             start.ArgumentList.Add(arg);
 
         using var process = Process.Start(start) ?? throw new InvalidOperationException($"Failed to start {fileName}");
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit(120_000).ShouldBeTrue($"{fileName} timed out");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(120_000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
+            throw new TimeoutException($"{fileName} timed out");
+        }
+
+        var stdout = stdoutTask.GetAwaiter().GetResult();
+        var stderr = stderrTask.GetAwaiter().GetResult();
         return (process.ExitCode, stdout + stderr);
     }
 }

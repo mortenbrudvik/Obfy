@@ -288,6 +288,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   color: var(--done);
 }
 
+.banner-row code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
 .banner-actions {
   display: flex;
   gap: 8px;
@@ -1023,8 +1031,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   <header class="topbar">
     <div class="title-block">
       <h1>Obfy — Prioritized Backlog &amp; Decisions</h1>
-      <p class="lede">All 28 remaining open items from the backlog organized into an execution sequence for v2.0.0 release, open product decisions, verification/housekeeping, and deferred work.</p>
-      <p class="asof" id="asof">Updated 2026-11-24 · main @ 2e5eb67 (Waves 1–3 pushed · 3,273 .NET + 304 WebApp tests passing · 99/127 historical items done)</p>
+      <p class="lede">All 19 remaining open items from the backlog organized into an execution sequence for v2.0.0 release, open product decisions, and remaining external, manual, or optional follow-ups.</p>
+      <p class="asof" id="asof">Updated 2026-11-24 · main @ 4a71c10 + Wave 4 · 0 warnings · 3,174 .NET + 304 WebApp tests · 19 active items (6 decisions, 13 backlog) · 108/127 historical items done</p>
     </div>
     <div class="header-actions">
       <button type="button" class="btn primary" id="copy-md-btn">Copy Summary (Markdown)</button>
@@ -1033,6 +1041,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
       <button type="button" class="btn" id="theme-toggle" aria-label="Toggle color theme">Theme: Auto</button>
     </div>
   </header>
+
+  <div class="banner-row success" role="note" aria-label="Closed in 4a71c10 and Wave 4">
+    <span><strong>9 items closed in 4a71c10 + Wave 4:</strong> removed Visual Studio extension items (<code>B-70</code>, <code>B-14</code> in <code>4a71c10</code>) and completed Wave 4 items (<code>B-83</code>, <code>B-115</code>, <code>B-62</code>, <code>B-10</code>, <code>B-29</code>, <code>B-33</code>, <code>B-34</code>) — moved to <code>DONE</code> in <code>backlog.html</code> (108/127 done).</span>
+  </div>
 
   <div id="status-banner" class="banner-row" hidden role="status" aria-live="polite">
     <span id="status-banner-msg"></span>
@@ -1053,33 +1065,33 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   <section class="kpi-grid" aria-label="Summary KPIs">
     <div class="kpi-card" data-kpi="active">
       <span class="kpi-label">Total Active Items</span>
-      <span class="kpi-val" id="kpi-active">28</span>
-      <span class="kpi-sub" id="kpi-active-sub">21 backlog · 7 decisions</span>
+      <span class="kpi-val" id="kpi-active">19</span>
+      <span class="kpi-sub" id="kpi-active-sub">13 backlog · 6 decisions</span>
     </div>
     <div class="kpi-card k-dec" data-kpi="decisions">
       <span class="kpi-label">Decisions Needed</span>
-      <span class="kpi-val" id="kpi-decisions">7</span>
-      <span class="kpi-sub" id="kpi-decisions-sub">of 7 Decide items</span>
+      <span class="kpi-val" id="kpi-decisions">6</span>
+      <span class="kpi-sub" id="kpi-decisions-sub">of 6 Decide items</span>
     </div>
     <div class="kpi-card k-p1" data-kpi="p1">
       <span class="kpi-label">P1 — Release 2.0.0</span>
-      <span class="kpi-val" id="kpi-p1">5</span>
-      <span class="kpi-sub" id="kpi-p1-sub">of 5 P1 items</span>
+      <span class="kpi-val" id="kpi-p1">4</span>
+      <span class="kpi-sub" id="kpi-p1-sub">of 4 P1 items</span>
     </div>
     <div class="kpi-card k-p2" data-kpi="p2">
       <span class="kpi-label">P2 — Next Up</span>
-      <span class="kpi-val" id="kpi-p2">16</span>
-      <span class="kpi-sub" id="kpi-p2-sub">of 16 P2 items</span>
+      <span class="kpi-val" id="kpi-p2">9</span>
+      <span class="kpi-sub" id="kpi-p2-sub">of 9 P2 items</span>
     </div>
     <div class="kpi-card k-p3" data-kpi="p3">
-      <span class="kpi-label">P3 — Later / Deferred</span>
-      <span class="kpi-val" id="kpi-p3">7</span>
-      <span class="kpi-sub" id="kpi-p3-sub">of 7 P3 items</span>
+      <span class="kpi-label">P3 — Later / Optional</span>
+      <span class="kpi-val" id="kpi-p3">6</span>
+      <span class="kpi-sub" id="kpi-p3-sub">of 6 P3 items</span>
     </div>
     <div class="kpi-card k-done" data-kpi="done">
       <span class="kpi-label">Done (this session)</span>
       <span class="kpi-val" id="kpi-done">0</span>
-      <span class="kpi-sub" id="kpi-done-sub">99 historical done</span>
+      <span class="kpi-sub" id="kpi-done-sub">108 historical done</span>
     </div>
   </section>
 
@@ -1097,9 +1109,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   <section class="controls-card" aria-label="View and Filters">
     <div class="tabs-row">
       <div class="tabs" role="tablist" aria-label="Item categories">
-        <button type="button" class="tab-btn" role="tab" id="tab-all" data-view="all" aria-selected="true">All Items (28)</button>
-        <button type="button" class="tab-btn" role="tab" id="tab-decisions" data-view="decisions" aria-selected="false">Decisions Only (7)</button>
-        <button type="button" class="tab-btn" role="tab" id="tab-backlog" data-view="backlog" aria-selected="false">Backlog Only (21)</button>
+        <button type="button" class="tab-btn" role="tab" id="tab-all" data-view="all" aria-selected="true">All Items (19)</button>
+        <button type="button" class="tab-btn" role="tab" id="tab-decisions" data-view="decisions" aria-selected="false">Decisions Only (6)</button>
+        <button type="button" class="tab-btn" role="tab" id="tab-backlog" data-view="backlog" aria-selected="false">Backlog Only (13)</button>
       </div>
       <div class="banner-actions">
         <button type="button" class="btn sm" id="expand-all-btn">Collapse All</button>
@@ -1139,7 +1151,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   </section>
 
   <div class="results-bar">
-    <span class="results-count" id="results-count" aria-live="polite">Showing 28 of 28 items</span>
+    <span class="results-count" id="results-count" aria-live="polite">Showing 19 of 19 items</span>
     <span>Edits save automatically to <code>localStorage</code> (<code>obfy.backlogDecisions.v1</code>)</span>
   </div>
 
@@ -1174,7 +1186,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   </section>
 
   <footer class="foot-note">
-    <span>Source baseline: <code>backlog.html</code> (99/127 historical items done, 28 remaining open).</span>
+    <span>Source baseline: <code>backlog.html</code> (108/127 historical items done, 19 remaining open).</span>
     <span>Offline-ready single file · zero external JS frameworks.</span>
   </footer>
 </div>
@@ -1200,28 +1212,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
   var PRIORITY_META = {
     P1: { label: "P1 — Release 2.0.0 & Immediate Gates", desc: "Execute in order before and immediately around tagging v2.0.0" },
-    P2: { label: "P2 — Decisions Needed & High-Value Verification / Cleanup", desc: "Product decisions first, followed by local housekeeping and runtime/CI verification" },
-    P3: { label: "P3 — Nice-to-Have, Homepage & Deferred", desc: "Follow-up polish, external homepage repo chores, and explicitly deferred VSIX work" }
+    P2: { label: "P2 — Decisions Needed & Remaining Verification / Optional", desc: "Product decisions first, followed by remaining local/external checks and optional lockfiles" },
+    P3: { label: "P3 — Nice-to-Have & Homepage", desc: "Follow-up polish and external homepage repo chores" }
   };
 
-  /* All 28 remaining open items from C:\code\projects\Obfy\backlog.html in prioritized execution order */
+  /* All 19 remaining open items from C:\code\projects\Obfy\backlog.html in prioritized execution order */
   var ITEMS = [
     /* === P1 — Release 2.0.0 & Immediate Gates === */
-    {
-      id: "B-83",
-      priority: "P1",
-      category: "Backlog",
-      area: "Release",
-      kind: "Chore",
-      owner: "Repo",
-      initialStatus: "Verify CI",
-      statusNote: "GitHub Actions @ 2e5eb67",
-      summary: "Confirm package.yml installer WebView2 start-check & macos-cli pass on 2e5eb67",
-      title: "Verify installer start check on GitHub Actions package.yml (CloseAsync & HKLM cleanup fixed)",
-      why: "Fixed in build-installer.ps1: added CloseAsync timeout, fixed HKLM policy cleanup logic, and added RegistryKey.Dispose() in Assert-ProcessedUi. Remaining: verify on a real GitHub Actions package.yml run.",
-      next: "Run and confirm the first package.yml workflow run passes on a real GitHub Actions runner.",
-      refs: [".github/workflows/package.yml", "build/build-installer.ps1"]
-    },
     {
       id: "B-31",
       priority: "P1",
@@ -1400,58 +1397,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
       next: "Leave them, or add a note that they predate the web UI.",
       refs: ["CHANGELOG.md", "docs/superpowers"]
     },
-    {
-      id: "B-14",
-      priority: "P2",
-      category: "Decision",
-      area: "Release",
-      kind: "Decide",
-      owner: "Repo",
-      initialStatus: "Needs Decision",
-      statusNote: "Linked to deferred B-70",
-      summary: "Publish Visual Studio extension to Marketplace vs keep source-only",
-      options: [
-        "Keep source-only and leave wording unchanged while B-70 is deferred",
-        "Publish VSIX to Visual Studio Marketplace (requires completing B-70 first)"
-      ],
-      recommendation: "Keep source-only while B-70 is deferred",
-      title: "Decide whether to publish the Visual Studio extension",
-      why: "The Visual Studio extension is not on the Visual Studio Marketplace and not in a release. The pages say it is built from source.",
-      next: "Publish it, or keep it source-only and leave the wording as it is.",
-      refs: ["Src/Obfy.VisualStudio"]
-    },
 
-    /* === P2 — Local Housekeeping & High-Value Verification / Cleanup === */
-    {
-      id: "B-115",
-      priority: "P2",
-      category: "Backlog",
-      area: "Docs",
-      kind: "Chore",
-      owner: "Local Manual",
-      initialStatus: "Partial",
-      statusNote: "Local Manual · Wave 1–2 fixed repo files",
-      summary: "Delete stray 0-byte \\\\?\\C:\\code\\projects\\Obfy\\nul",
-      title: "Delete stray 0-byte nul file at repo root outside sandbox (docs, MAUI example & xUnit1031 warning fixed)",
-      why: "Fixed across Wave 1 & Wave 2: build-msix.ps1 version delegation, OutputWriteTests.cs xUnit1031 warning (0 C# compiler warnings), examples/maui/obfy.json, docs/Testing-Roadmap.md, docs/Competitive-Analysis.md, docs/Roadmap.md, and README.md. Remaining: only deleting the stray 0-byte C:\\code\\projects\\Obfy\\nul file outside the sandbox.",
-      next: "Delete C:\\code\\projects\\Obfy\\nul outside the sandbox (using \\\\?\\C:\\code\\projects\\Obfy\\nul).",
-      refs: ["nul", "Tests/Obfy.Tests/OutputWriteTests.cs", "examples/maui/obfy.json", "docs/Testing-Roadmap.md", "docs/Competitive-Analysis.md", "docs/Roadmap.md", "README.md"]
-    },
-    {
-      id: "B-62",
-      priority: "P2",
-      category: "Backlog",
-      area: "Housekeeping",
-      kind: "Chore",
-      owner: "Local Manual",
-      initialStatus: "Partial",
-      statusNote: "Local Manual · C:\\localhost deleted",
-      summary: "Remove two superseded .worktrees/ (closed-set-followups, fix-ci-flaui)",
-      title: "Clean up the two superseded worktrees under .worktrees",
-      why: "C:\\localhost has already been deleted. All commits in the two remaining worktrees under .worktrees — closed-set-followups (e2e9dfd) and fix-ci-flaui (branch fix/ci-flaui-filter, f75c0f5) — are already on or superseded by main.",
-      next: "Remove both remaining worktrees and delete their local branches.",
-      refs: [".worktrees"]
-    },
+    /* === P2 — Local Housekeeping & Remaining Verification / Optional === */
     {
       id: "B-26",
       priority: "P2",
@@ -1466,21 +1413,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
       why: "The screenshot run created C:\\Projects\\MyApp\\out\\MyApp.dll. The automated delete was blocked because C:\\Projects is a protected path.",
       next: "Delete C:\\Projects\\MyApp by hand if you do not use it.",
       refs: ["C:\\Projects\\MyApp\\out\\MyApp.dll"]
-    },
-    {
-      id: "B-33",
-      priority: "P2",
-      category: "Backlog",
-      area: "Release",
-      kind: "Verify",
-      owner: "Repo",
-      initialStatus: "Ready",
-      statusNote: "Local MSIX test + manifest",
-      summary: "Install MSIX & verify AppData write redirection",
-      title: "Check where the Store (MSIX) app writes its files",
-      why: "A packaged app’s writes under %LOCALAPPDATA% and %APPDATA% are likely redirected into its package folder. If so, the Open log folder button and PRIVACY.md point at a path the app never wrote to. Not tested on an installed package. Related to B-11.",
-      next: "Install the MSIX and see where the logs, ui-preferences.json and the WebView2 profile land. If they are redirected, set desktop6:FileSystemWriteVirtualization to disabled in the manifest (it needs the unvirtualizedResources capability), or point the docs at the package path.",
-      refs: ["package/AppxManifest.xml", "PRIVACY.md", "build/build-msix.ps1"]
     },
     {
       id: "B-11",
@@ -1498,36 +1430,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
       refs: ["PRIVACY.md", "Tests/Obfy.Tests/ReviewFixesWave2CoreTests.cs", "public/obfy/privacy/index.html"]
     },
     {
-      id: "B-10",
-      priority: "P2",
-      category: "Backlog",
-      area: "Docs",
-      kind: "Verify",
-      owner: "Repo",
-      initialStatus: "Partial",
-      statusNote: "Wave 2–3 docs & PublishModes tests added",
-      summary: "Remaining guide verification (AntiTamper on NativeAOT/IL2CPP, technique cost benchmarks)",
-      title: "Test the remaining guide behaviours (PublishSingleFile & short-name scenario tests added)",
-      why: "Wave 2 updated docs/Advanced.md and docs/Platforms.md for exclusions.attributes, BAML x:Class exclusions, the GitHub Actions snippet, and short-name reuse across runs; Wave 3 added end-to-end PublishSingleFile=true (AntiTamper) and separate-vs-closed-set short-name scenario tests in Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs. Remaining: AntiTamper on NativeAOT/IL2CPP, benchmarked technique costs, and live Visual Studio extension run.",
-      next: "Run runtime tests for AntiTamper on NativeAOT/IL2CPP, benchmark technique costs, and verify the Visual Studio extension live (coordinate with B-70), then update the guide and product page with what holds.",
-      refs: ["public/obfy/guide/index.html", "docs/Advanced.md", "docs/Platforms.md", "docs/Testing.md", "Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs"]
-    },
-    {
-      id: "B-29",
-      priority: "P2",
-      category: "Backlog",
-      area: "Release",
-      kind: "Chore",
-      owner: "Repo",
-      initialStatus: "Partial",
-      statusNote: "Wave 3 bumped 4 actions",
-      summary: "Upgrade remaining actions/setup-node to Node 24 SHA (and ilammy/msvc-dev-cmd when upstream releases)",
-      title: "Update remaining GitHub Actions still targeting Node 20 (checkout, setup-dotnet, upload-artifact & sticky-pull-request-comment updated)",
-      why: "Wave 3 bumped actions/checkout (v7.0.1), actions/setup-dotnet (v6.1.0), actions/upload-artifact (v7.0.2), and marocchino/sticky-pull-request-comment (v3.0.5) to verified Node 24 SHAs across all 4 workflows (ci.yml, package.yml, platform.yml, publish.yml). Remaining: actions/setup-node (v4 -> Node 24 SHA) and ilammy/msvc-dev-cmd (awaiting upstream Node 24 release).",
-      next: "Bump actions/setup-node from v4 to a verified Node 24 SHA and update ilammy/msvc-dev-cmd once an upstream Node 24 release ships.",
-      refs: [".github/workflows/ci.yml", ".github/workflows/package.yml", ".github/workflows/platform.yml", ".github/workflows/publish.yml", "Tests/Obfy.Tests/ReviewFixesWave3WorkflowTests.cs"]
-    },
-    {
       id: "B-61",
       priority: "P2",
       category: "Backlog",
@@ -1542,23 +1444,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
       next: "Generate packages.lock.json lock files and restore in locked mode across all TFMs/RIDs.",
       refs: ["global.json", "nuget.config", "Directory.Packages.props", ".github/dependabot.yml"]
     },
-    {
-      id: "B-34",
-      priority: "P2",
-      category: "Backlog",
-      area: "Core",
-      kind: "Fix",
-      owner: "Repo",
-      initialStatus: "Partial",
-      statusNote: "Wave 3 fixed traces, [STAThread], ResolvingUnmanagedDll",
-      summary: "Native component-hosting foreground threads & AppDomain.UnhandledException",
-      title: "Close remaining packed-app gaps (stack traces, [STAThread] & ResolvingUnmanagedDll fixed)",
-      why: "Wave 3 preserved full sync/async Task Main exception stack traces on stderr and added [STAThread] support plus traversal-safe ResolvingUnmanagedDll (with rebuilt Obfy.NativeHost.exe). Remaining: component-hosting foreground-thread join and AppDomain.UnhandledException on Main (Assembly.GetEntryAssembly() stays null by design because AntiTamper treats a null entry assembly with an empty Location as packed).",
-      next: "Join non-background foreground threads before wmain exits and let unhandled Main exceptions reach AppDomain.UnhandledException while preserving AntiTamper's null GetEntryAssembly() behavior; regenerate sources.sha256 and rebuild Obfy.NativeHost.exe after any host/bootstrap edit.",
-      refs: ["Src/Obfy.PackedBootstrap/PackedBootstrap.cs", "Src/Obfy.NativeHost/host.c", "Src/Obfy.NativeHost/dist/sources.sha256", "Src/Obfy.Core/Utilities/ManagedLauncherPacker.cs"]
-    },
 
-    /* === P3 — Nice-to-Have, Homepage & Deferred === */
+    /* === P3 — Nice-to-Have & Homepage === */
     {
       id: "B-19",
       priority: "P3",
@@ -1643,21 +1530,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
       why: "scripts/build-sitemap.mjs needs WAVEUI_DIR, a checkout of the WaveUI repo, and there is none here. The Obfy sitemap entries were edited by hand, and the lastmod unit test caught the one date that was missed (the home page).",
       next: "Clone the WaveUI repo, set WAVEUI_DIR, and run the script after page changes instead of editing dates by hand.",
       refs: ["scripts/build-sitemap.mjs", "tests/unit/sitemap.test.js"]
-    },
-    {
-      id: "B-70",
-      priority: "P3",
-      category: "Backlog",
-      area: "IDE",
-      kind: "Fix",
-      owner: "Repo",
-      initialStatus: "Deferred",
-      statusNote: "Explicitly deferred · linked to B-14",
-      summary: "Visual Studio extension .vsix packaging & live VS verification (explicitly deferred)",
-      title: "Make the Visual Studio extension build, package and run its commands",
-      why: "Command GUIDs and LICENSE.txt are fixed and pinned by tests. Still open: Obfy.VisualStudio.csproj never imports Microsoft.VsSDK.targets, so no .vsix is produced; source.extension.vsixmanifest still hardcodes 1.3.0; README instructions for the VSIX are broken; and live testing inside Visual Studio (the four commands, options page, and cancel paths) has not been run. Related to B-14.",
-      next: "Import Microsoft.VsSDK.targets to produce a .vsix, build it in CI, align or clarify the 1.3.0 manifest version, fix the README instructions, and test the extension live in Visual Studio.",
-      refs: ["Src/Obfy.VisualStudio/Obfy.VisualStudio.csproj", "Src/Obfy.VisualStudio/source.extension.vsixmanifest", "Src/Obfy.VisualStudio/ObfyVsixCommandTable.vsct", "README.md"]
     }
   ];
 
@@ -1858,8 +1730,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     document.getElementById("kpi-done").textContent = String(m.doneCount);
     document.getElementById("kpi-done-sub").textContent =
       m.wontCount > 0
-        ? m.wontCount + " Won't Do · 99 historical"
-        : "99 historical done";
+        ? m.wontCount + " Won't Do · 108 historical"
+        : "108 historical done";
 
     /* Progress strip */
     var closed = m.doneCount + m.wontCount;
@@ -1871,8 +1743,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     document.getElementById("seg-p2").style.width = ((m.pOpen.P2 * 100) / m.total) + "%";
     document.getElementById("seg-p3").style.width = ((m.pOpen.P3 * 100) / m.total) + "%";
 
-    var totalAllTime = 99 + m.total;
-    var doneAllTime = 99 + m.doneCount;
+    var totalAllTime = 108 + m.total;
+    var doneAllTime = 108 + m.doneCount;
     document.getElementById("prog-overall").textContent =
       "Overall historical: " + doneAllTime + " / " + totalAllTime + " (" + Math.round((doneAllTime * 100) / totalAllTime) + "%)";
   }
@@ -2236,7 +2108,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     var m = computeMetrics();
     var lines = [];
     lines.push("# Obfy — Backlog & Decisions Summary");
-    lines.push("- **Repo State:** main @ `2e5eb67` (Waves 1–3 pushed · 99/127 historical done)");
+    lines.push("- **Repo State:** main @ `4a71c10` + Wave 4 (108/127 historical done)");
     lines.push("- **Snapshot:** " + new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC");
     lines.push("- **Active:** " + m.active + " / " + m.total + " · **Decisions Needed:** " + m.decisionsNeeded + " / " + m.decisionsTotal + " · **Done (this session):** " + m.doneCount);
     lines.push("");
@@ -2290,7 +2162,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     var m = computeMetrics();
     return {
       generatedAt: new Date().toISOString(),
-      repoState: "main @ 2e5eb67",
+      repoState: "main @ 4a71c10 + Wave 4",
       metrics: m,
       items: ITEMS.map(function (it) {
         return {
@@ -2502,7 +2374,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
         a.click();
         document.body.removeChild(a);
         setTimeout(function () { window.URL.revokeObjectURL(url); }, 1000);
-        showBanner("Exported JSON snapshot (28 items).", "success", false);
+        showBanner("Exported JSON snapshot (" + ITEMS.length + " items).", "success", false);
         return;
       }
     } catch (e) {

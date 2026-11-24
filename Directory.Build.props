@@ -29,11 +29,19 @@
     <ObfyProductVersion Condition="'$(ObfyVersionIsValid)' == 'True'">$(ObfyVersionMajor).$(ObfyVersionMinor).$(ObfyVersionPatch)</ObfyProductVersion>
     <!-- The folder separator is part of the prefix, so a sibling folder such as SrcGen is not taken for Src. -->
     <ObfySrcDirectory>$([MSBuild]::EnsureTrailingSlash('$(MSBuildThisFileDirectory)Src'))</ObfySrcDirectory>
+    <ObfyTestsDirectory>$([MSBuild]::EnsureTrailingSlash('$(MSBuildThisFileDirectory)Tests'))</ObfyTestsDirectory>
+    <ObfyFixturesDirectory>$([MSBuild]::EnsureTrailingSlash('$(ObfyTestsDirectory)Obfy.ScenarioTests$([System.IO.Path]::DirectorySeparatorChar)Fixtures'))</ObfyFixturesDirectory>
   </PropertyGroup>
   <!-- Case-insensitive: Windows keeps the case a path was typed in, and a miss here would silently build 1.0.0. -->
   <PropertyGroup Condition="$(MSBuildProjectFullPath.StartsWith('$(ObfySrcDirectory)', System.StringComparison.OrdinalIgnoreCase)) and '$(MSBuildProjectName)' != 'Obfy.PackedBootstrap' and '$(MSBuildProjectName)' != 'Obfy.VmRuntime'">
     <ObfyUsesProductVersion>true</ObfyUsesProductVersion>
     <Version Condition="'$(Version)' == ''">$(ObfyProductVersion)</Version>
+  </PropertyGroup>
+  <!-- Lock NuGet restore graphs strictly for solution projects under Src and Tests (excluding Fixtures and examples). -->
+  <PropertyGroup Condition="($(MSBuildProjectFullPath.StartsWith('$(ObfySrcDirectory)', System.StringComparison.OrdinalIgnoreCase)) or $(MSBuildProjectFullPath.StartsWith('$(ObfyTestsDirectory)', System.StringComparison.OrdinalIgnoreCase))) and !$(MSBuildProjectFullPath.StartsWith('$(ObfyFixturesDirectory)', System.StringComparison.OrdinalIgnoreCase))">
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true' or '$(CI)' == 'true'">true</RestoreLockedMode>
+    <NuGetLockFilePath Condition="'$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifiers)' == 'win-x64'">packages.win-x64.lock.json</NuGetLockFilePath>
   </PropertyGroup>
   <Target Name="ObfyRequireProductVersion" Condition="'$(ObfyUsesProductVersion)' == 'true' and '$(ObfyProductVersion)' == ''">
     <Error Text="$(MSBuildProjectName) takes its version from $(ObfyVersionFile), which is missing or is not exactly the three integer keys major, minor and patch (0..65535, no leading zeros, no other keys)." />

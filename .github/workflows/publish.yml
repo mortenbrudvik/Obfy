@@ -67,7 +67,7 @@ jobs:
         cache-dependency-path: Src/WebApp/package-lock.json
 
     - name: Restore
-      run: dotnet restore Obfy.sln
+      run: dotnet restore Obfy.sln --locked-mode
 
     - name: Build
       run: dotnet build Obfy.sln --no-restore -c Release -p:Version=${{ steps.version.outputs.version }}

@@ -111,8 +111,19 @@ internal static class ScenarioHarness
         return result;
     }
 
-    public static async Task ObfuscateClosedSetAsync(
+    public static Task ObfuscateClosedSetAsync(
         IReadOnlyList<string> assemblyPaths,
+        string outputDirectory,
+        ObfySettings settings,
+        bool forcePreservePublic = false) =>
+        ObfuscateClosedSetAsync(
+            assemblyPaths.Select(path => ClosedSetInput.From(path)).ToList(),
+            outputDirectory,
+            settings,
+            forcePreservePublic);
+
+    public static async Task<ClosedSetResult> ObfuscateClosedSetAsync(
+        IReadOnlyList<ClosedSetInput> inputs,
         string outputDirectory,
         ObfySettings settings,
         bool forcePreservePublic = false)
@@ -123,9 +134,9 @@ internal static class ScenarioHarness
         builder.RegisterModule<ObfuscationModule>();
         await using var container = builder.Build();
         var service = container.Resolve<IObfuscationService>();
-        var inputs = assemblyPaths.Select(path => ClosedSetInput.From(path)).ToList();
         var result = await service.ObfuscateClosedSetAsync(inputs, outputDirectory, settings, forcePreservePublic);
         result.Success.ShouldBeTrue(result.ErrorMessage);
+        return result;
     }
 
     public static string StageBuildOutput(string buildOutputDirectory, string assemblyFileName)

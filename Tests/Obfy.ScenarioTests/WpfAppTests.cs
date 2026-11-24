@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using Obfy.Core.Models;
 using Shouldly;
 
 namespace Obfy.ScenarioTests;
@@ -6,7 +7,18 @@ namespace Obfy.ScenarioTests;
 public class WpfAppTests
 {
     [Fact]
-    public async Task WpfApp_PreserveXaml_WindowConstructsAndBindingSurvives()
+    public Task WpfApp_PreserveXaml_WindowConstructsAndBindingSurvives() =>
+        RunWpfAppScenarioAsync();
+
+    [Fact]
+    public Task WpfApp_PreserveXaml_WithoutManualMainWindowExclusion_PreservesMainWindowAndRuns() =>
+        RunWpfAppScenarioAsync(settings =>
+        {
+            settings.Exclusions.Types.Clear();
+            settings.SymbolRenaming.PreserveXaml.ShouldBeTrue();
+        });
+
+    private static async Task RunWpfAppScenarioAsync(Action<ObfySettings>? configureSettings = null)
     {
         var fixture = Path.Combine(ScenarioHarness.FindRepoRoot(), "Tests", "Obfy.ScenarioTests", "Fixtures", "WpfApp");
         var copy = ScenarioHarness.CopyToTemp(fixture);
@@ -18,14 +30,18 @@ public class WpfAppTests
             var builtDir = Path.Combine(copy, "bin", "Release", "net10.0-windows");
             var staged = ScenarioHarness.StageBuildOutput(builtDir, "WpfApp.dll");
             var settings = ScenarioHarness.LoadSettings(Path.Combine(copy, "obfy.json"));
+            configureSettings?.Invoke(settings);
+
             var obfDir = Path.Combine(Path.GetDirectoryName(staged)!, "obf");
             var output = Path.Combine(obfDir, "WpfApp.dll");
             CopySidecars(Path.GetDirectoryName(staged)!, obfDir, "WpfApp.dll");
-            await ScenarioHarness.ObfuscateAsync(staged, output, settings);
+            var result = await ScenarioHarness.ObfuscateAsync(staged, output, settings);
+            result.Warnings.ShouldNotContain(w => w.Contains("preserveXaml", StringComparison.Ordinal));
 
             using (var module = ModuleDefMD.Load(File.ReadAllBytes(output)))
             {
-                module.Types.ShouldContain(t => t.Name == "MainWindow");
+                module.Types.ShouldContain(t => t.Name == "MainWindow" && t.Namespace == "WpfApp");
+                module.Types.ShouldContain(t => t.Name == "App" && t.Namespace == "WpfApp");
                 module.Types.ShouldContain(t => t.Properties.Any(p => p.Name == "Title"));
                 module.Types.ShouldNotContain(t => t.Name == "DashboardModel");
             }

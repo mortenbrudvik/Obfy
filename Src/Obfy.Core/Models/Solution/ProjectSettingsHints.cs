@@ -29,4 +29,9 @@ public sealed class ProjectSettingsHints
     /// Apply ASP.NET MVC-oriented exclude rules.
     /// </summary>
     public bool AddAspNetMvcExcludes { get; init; }
+
+    /// <summary>
+    /// Full CLR type names extracted from project XAML files.
+    /// </summary>
+    public IReadOnlyList<string> XamlTypes { get; init; } = [];
 }

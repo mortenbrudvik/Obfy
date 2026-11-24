@@ -1,3 +1,4 @@
+using System.Buffers;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Obfy.Core.Models;
@@ -9,7 +10,41 @@ namespace Obfy.Core.Utilities;
 /// </summary>
 public static class ObfuscatorHelpers
 {
+    private static readonly SearchValues<char> FullNameSeparators = SearchValues.Create("./+");
+
     public static bool MatchesPattern(string? value, string pattern) => WildcardMatcher.IsMatch(value, pattern);
+
+    internal static bool HasFullNameSeparator(string pattern) =>
+        pattern.AsSpan().IndexOfAny(FullNameSeparators) >= 0;
+
+    /// <summary>
+    /// Matches a type against an exclusion pattern. Patterns without separators
+    /// (<c>.</c>, <c>/</c>, <c>+</c>) match <see cref="TypeDef.Name"/> only; patterns with a
+    /// separator also match <see cref="TypeDef.FullName"/> (normalizing dnlib nested <c>/</c>
+    /// to <c>.</c> and <c>+</c>).
+    /// </summary>
+    public static bool MatchesTypePattern(TypeDef type, string pattern)
+    {
+        if (MatchesPattern(type.Name, pattern))
+            return true;
+
+        if (!HasFullNameSeparator(pattern))
+            return false;
+
+        var fullName = type.FullName;
+        if (MatchesPattern(fullName, pattern))
+            return true;
+
+        if (fullName.IndexOf('/') >= 0)
+        {
+            if (MatchesPattern(fullName.Replace('/', '.'), pattern))
+                return true;
+            if (MatchesPattern(fullName.Replace('/', '+'), pattern))
+                return true;
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Matches an attribute type against an exclusion pattern.
@@ -97,26 +132,15 @@ public static class ObfuscatorHelpers
                ns == PinnedAttributeNames.WatermarkNamespace;
     }
 
-    public static bool IsRuntimeOrExcluded(TypeDef type, ExclusionRules exclusions)
-    {
-        if (IsRuntimeHelper(type))
-            return true;
-
-        if (exclusions.Namespaces.Any(n => MatchesPattern(type.Namespace, n)))
-            return true;
-
-        if (exclusions.Types.Any(t => MatchesPattern(type.Name, t)))
-            return true;
-
-        return HasExcludedAttribute(type, exclusions);
-    }
+    public static bool IsRuntimeOrExcluded(TypeDef type, ExclusionRules exclusions) =>
+        IsRuntimeHelper(type) || IsExcluded(type, exclusions);
 
     public static bool IsExcluded(TypeDef type, ExclusionRules exclusions)
     {
         if (exclusions.Namespaces.Any(n => MatchesPattern(type.Namespace, n)))
             return true;
 
-        if (exclusions.Types.Any(t => MatchesPattern(type.Name, t)))
+        if (exclusions.Types.Any(t => MatchesTypePattern(type, t)))
             return true;
 
         return HasExcludedAttribute(type, exclusions);

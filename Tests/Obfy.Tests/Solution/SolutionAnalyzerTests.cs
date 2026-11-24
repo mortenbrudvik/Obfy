@@ -380,6 +380,78 @@ public class SolutionAnalyzerTests
         entry.OutputPath.ShouldBe(dll);
     }
 
+    [Fact]
+    public void Analyze_WpfAndMaui_PopulatesXamlTypes_AndLeavesPlainLibraryEmpty()
+    {
+        using var fixture = new TempDir();
+        var sln = WriteSln(fixture, "Desktop.sln",
+            ("WpfApp", @"WpfApp\WpfApp.csproj"),
+            ("MauiApp", @"MauiApp\MauiApp.csproj"),
+            ("PlainLib", @"PlainLib\PlainLib.csproj"));
+
+        WriteProject(fixture, @"WpfApp\WpfApp.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>WinExe</OutputType>
+                <TargetFramework>net10.0-windows</TargetFramework>
+                <UseWPF>true</UseWPF>
+              </PropertyGroup>
+            </Project>
+            """);
+        fixture.Write(@"WpfApp\MainWindow.xaml", """
+            <Window x:Class="WpfApp.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:c="clr-namespace:WpfApp.Controls">
+                <c:Badge />
+            </Window>
+            """);
+        fixture.Write(@"WpfApp\bin\Release\net10.0-windows\Ignored.xaml", """
+            <Window x:Class="WpfApp.Ignored"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" />
+            """);
+        fixture.WriteEmpty(@"WpfApp\bin\Release\net10.0-windows\WpfApp.dll");
+
+        WriteProject(fixture, @"MauiApp\MauiApp.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0-windows</TargetFramework>
+                <UseMaui>true</UseMaui>
+              </PropertyGroup>
+            </Project>
+            """);
+        fixture.Write(@"MauiApp\MainPage.xaml", """
+            <ContentPage x:Class="MauiApp.MainPage"
+                         xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                         xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml" />
+            """);
+        fixture.WriteEmpty(@"MauiApp\bin\Release\net10.0-windows\MauiApp.dll");
+
+        WriteLibrary(fixture, @"PlainLib\PlainLib.csproj");
+        fixture.Write(@"PlainLib\Template.xaml", """
+            <Window x:Class="PlainLib.NotUsed"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" />
+            """);
+        fixture.WriteEmpty(@"PlainLib\bin\Release\net10.0\PlainLib.dll");
+
+        var session = new SolutionAnalyzer().Analyze(sln);
+
+        var wpf = session.Entries.Single(e => e.ProjectName == "WpfApp");
+        wpf.Hints.PreserveXaml.ShouldBeTrue();
+        wpf.Hints.XamlTypes.ShouldBe(["WpfApp.Controls.Badge", "WpfApp.MainWindow"]);
+
+        var maui = session.Entries.Single(e => e.ProjectName == "MauiApp");
+        maui.Hints.PreserveXaml.ShouldBeTrue();
+        maui.Hints.XamlTypes.ShouldBe(["MauiApp.MainPage"]);
+
+        var plain = session.Entries.Single(e => e.ProjectName == "PlainLib");
+        plain.Hints.PreserveXaml.ShouldBeFalse();
+        plain.Hints.XamlTypes.ShouldBeEmpty();
+    }
+
     private static string WriteSln(TempDir fixture, string fileName, params (string Name, string RelativePath)[] projects)
     {
         var lines = new List<string>
@@ -456,6 +528,48 @@ public class SolutionHintApplierTests
 
         settings.RuntimeProfile.ShouldBe(RuntimeProfile.NativeAot);
         settings.SymbolRenaming.PreservePublicApi.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Overlay_MergesXamlTypesWithoutMutatingCallerSettings_WhenPreserveXamlIsEffective()
+    {
+        var source = new ObfySettings
+        {
+            SymbolRenaming = { PreserveXaml = false },
+            Exclusions = { Types = ["ExistingType", "WpfApp.MainWindow"] }
+        };
+        var hints = new ProjectSettingsHints
+        {
+            PreserveXaml = true,
+            XamlTypes = ["WpfApp.MainWindow", "WpfApp.App"]
+        };
+
+        var overlaid = SolutionHintApplier.Overlay(source, hints, forcePreservePublic: false);
+
+        source.SymbolRenaming.PreserveXaml.ShouldBeFalse();
+        source.Exclusions.Types.ShouldBe(["ExistingType", "WpfApp.MainWindow"]);
+
+        overlaid.SymbolRenaming.PreserveXaml.ShouldBeTrue();
+        overlaid.Exclusions.Types.ShouldBe(["ExistingType", "WpfApp.MainWindow", "WpfApp.App"]);
+    }
+
+    [Fact]
+    public void Overlay_RespectsCallerPreserveXamlTrue_AndSkipsXamlTypesWhenPreserveXamlFalse()
+    {
+        var hints = new ProjectSettingsHints
+        {
+            PreserveXaml = false,
+            XamlTypes = ["WpfApp.MainWindow"]
+        };
+
+        var callerDisabled = new ObfySettings { SymbolRenaming = { PreserveXaml = false } };
+        var overlaidDisabled = SolutionHintApplier.Overlay(callerDisabled, hints, forcePreservePublic: false);
+        overlaidDisabled.Exclusions.Types.ShouldBeEmpty();
+
+        var callerEnabled = new ObfySettings { SymbolRenaming = { PreserveXaml = true } };
+        var overlaidEnabled = SolutionHintApplier.Overlay(callerEnabled, hints, forcePreservePublic: false);
+        overlaidEnabled.Exclusions.Types.ShouldBe(["WpfApp.MainWindow"]);
+        callerEnabled.Exclusions.Types.ShouldBeEmpty();
     }
 }
 

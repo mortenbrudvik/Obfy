@@ -78,18 +78,40 @@ public class SymbolRenamingObfuscator : IObfuscator
             var parameterRenameMethods = new List<MethodDef>();
 
             var preservedNamespaces = CollectPreservedNamespaces(module, settings);
+            var xamlReferencedTypes = settings.PreserveXaml
+                ? XamlAssemblyInspector.CollectReferencedTypes(module)
+                : null;
+            var preservedEnclosingTypes = CollectPreservedEnclosingTypes(
+                module,
+                context.Settings.Exclusions,
+                xamlReferencedTypes,
+                closedSetBamlTypes: null);
 
             foreach (var type in module.GetTypes())
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (ShouldSkipType(type, context, context.Settings.Exclusions, context.Settings.Inclusions, context.Warnings))
-                    continue;
-
-                if (settings.PreserveXaml && ObfuscatorHelpers.LooksLikeXamlBindable(type))
+                if (settings.PreserveXaml &&
+                    !type.IsGlobalModuleType &&
+                    RuntimeInjection.ShouldRename(context, type) &&
+                    (IsXamlReferencedType(type, xamlReferencedTypes) ||
+                     ObfuscatorHelpers.LooksLikeXamlBindable(type)))
+                {
                     xamlBindableSeen++;
+                }
 
-                var canRenameType = CanRenameType(type, settings, context.Settings.Inclusions);
+                if (ShouldSkipType(
+                        type,
+                        context,
+                        context.Settings.Exclusions,
+                        context.Settings.Inclusions,
+                        context.Warnings,
+                        xamlReferencedTypes))
+                {
+                    continue;
+                }
+
+                var canRenameType = CanRenameType(type, settings, context.Settings.Inclusions, preservedEnclosingTypes);
 
                 // Rename type
                 if (settings.RenameTypes && canRenameType)
@@ -295,6 +317,20 @@ public class SymbolRenamingObfuscator : IObfuscator
         var plans = new List<(ModuleDef Module, ObfySettings Settings, ClosedSetRenamePlan Plan)>(modules.Count);
         var stats = new ObfuscationStatistics();
 
+        HashSet<string>? closedSetBamlTypes = null;
+        foreach (var (module, settings) in modules)
+        {
+            if (!settings.SymbolRenaming.PreserveXaml)
+                continue;
+
+            var bamlTypes = XamlAssemblyInspector.CollectBamlReferencedTypes(module);
+            if (bamlTypes.Count > 0)
+            {
+                closedSetBamlTypes ??= new HashSet<string>(StringComparer.Ordinal);
+                closedSetBamlTypes.UnionWith(bamlTypes);
+            }
+        }
+
         foreach (var (module, settings) in modules)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -302,7 +338,8 @@ public class SymbolRenamingObfuscator : IObfuscator
                 module, settings, sharedContext.Warnings);
 
             var plan = new ClosedSetRenamePlan();
-            CollectClosedSetRenames(module, settings, sharedContext, plan, namespaceRenames, cancellationToken);
+            CollectClosedSetRenames(
+                module, settings, sharedContext, plan, namespaceRenames, closedSetBamlTypes, cancellationToken);
             plans.Add((module, settings, plan));
         }
 
@@ -347,22 +384,47 @@ public class SymbolRenamingObfuscator : IObfuscator
         PipelineContext sharedContext,
         ClosedSetRenamePlan plan,
         Dictionary<string, string> namespaceRenames,
+        IReadOnlySet<string>? closedSetBamlTypes,
         CancellationToken cancellationToken)
     {
         var settings = moduleSettings.SymbolRenaming;
         var preservedNamespaces = CollectPreservedNamespaces(module, settings);
+        var moduleXamlTypes = settings.PreserveXaml
+            ? XamlAssemblyInspector.CollectConnectorTypes(module)
+            : null;
+        var preservedEnclosingTypes = CollectPreservedEnclosingTypes(
+            module,
+            moduleSettings.Exclusions,
+            moduleXamlTypes,
+            closedSetBamlTypes);
 
         foreach (var type in module.GetTypes())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (ShouldSkipType(type, sharedContext, moduleSettings.Exclusions, moduleSettings.Inclusions, sharedContext.Warnings))
-                continue;
-
-            if (settings.PreserveXaml && ObfuscatorHelpers.LooksLikeXamlBindable(type))
+            if (settings.PreserveXaml &&
+                !type.IsGlobalModuleType &&
+                RuntimeInjection.ShouldRename(sharedContext, type) &&
+                (IsXamlReferencedType(type, moduleXamlTypes) ||
+                 IsXamlReferencedType(type, closedSetBamlTypes) ||
+                 ObfuscatorHelpers.LooksLikeXamlBindable(type)))
+            {
                 plan.XamlBindableSeen++;
+            }
 
-            var canRenameType = CanRenameType(type, settings, moduleSettings.Inclusions);
+            if (ShouldSkipType(
+                    type,
+                    sharedContext,
+                    moduleSettings.Exclusions,
+                    moduleSettings.Inclusions,
+                    sharedContext.Warnings,
+                    moduleXamlTypes,
+                    closedSetBamlTypes))
+            {
+                continue;
+            }
+
+            var canRenameType = CanRenameType(type, settings, moduleSettings.Inclusions, preservedEnclosingTypes);
 
             if (settings.RenameTypes && canRenameType)
             {
@@ -1456,7 +1518,9 @@ public class SymbolRenamingObfuscator : IObfuscator
         PipelineContext context,
         ExclusionRules exclusions,
         InclusionRules inclusions,
-        ICollection<string> warnings)
+        ICollection<string> warnings,
+        IReadOnlySet<string>? xamlReferencedTypes = null,
+        IReadOnlySet<string>? closedSetBamlTypes = null)
     {
         if (!RuntimeInjection.ShouldRename(context, type))
             return true;
@@ -1469,8 +1533,14 @@ public class SymbolRenamingObfuscator : IObfuscator
             if (exclusions.Namespaces.Any(n => MatchesPattern(current.Namespace, n)))
                 return true;
 
-            if (exclusions.Types.Any(t => MatchesPattern(current.Name, t)))
+            if (exclusions.Types.Any(t => ObfuscatorHelpers.MatchesTypePattern(current, t)))
                 return true;
+
+            if (IsXamlReferencedType(current, xamlReferencedTypes) ||
+                IsXamlReferencedType(current, closedSetBamlTypes))
+            {
+                return true;
+            }
 
             if (ObfuscatorHelpers.HasExcludedAttribute(current, exclusions))
                 return true;
@@ -1489,8 +1559,73 @@ public class SymbolRenamingObfuscator : IObfuscator
         return false;
     }
 
-    private bool CanRenameType(TypeDef type, SymbolRenamingSettings settings, InclusionRules inclusions)
+    private static HashSet<TypeDef>? CollectPreservedEnclosingTypes(
+        ModuleDef module,
+        ExclusionRules exclusions,
+        IReadOnlySet<string>? xamlReferencedTypes,
+        IReadOnlySet<string>? closedSetBamlTypes)
     {
+        var hasFullNameExclusions = exclusions.Types.Any(ObfuscatorHelpers.HasFullNameSeparator);
+        var hasModuleXaml = xamlReferencedTypes is { Count: > 0 };
+        var hasClosedSetBaml = closedSetBamlTypes is { Count: > 0 };
+
+        if (!hasFullNameExclusions && !hasModuleXaml && !hasClosedSetBaml)
+            return null;
+
+        HashSet<TypeDef>? preserved = null;
+        foreach (var type in module.GetTypes())
+        {
+            if (type.DeclaringType is null)
+                continue;
+
+            var matched =
+                (hasModuleXaml && IsXamlReferencedType(type, xamlReferencedTypes)) ||
+                (hasClosedSetBaml && IsXamlReferencedType(type, closedSetBamlTypes)) ||
+                (hasFullNameExclusions && exclusions.Types.Any(t =>
+                    ObfuscatorHelpers.HasFullNameSeparator(t) &&
+                    ObfuscatorHelpers.MatchesTypePattern(type, t)));
+
+            if (!matched)
+                continue;
+
+            preserved ??= new HashSet<TypeDef>();
+            for (var enclosing = type.DeclaringType; enclosing != null; enclosing = enclosing.DeclaringType)
+                preserved.Add(enclosing);
+        }
+
+        return preserved;
+    }
+
+    private static bool IsXamlReferencedType(TypeDef type, IReadOnlySet<string>? xamlTypes)
+    {
+        if (xamlTypes is null || xamlTypes.Count == 0)
+            return false;
+
+        var fullName = type.FullName;
+        if (xamlTypes.Contains(fullName))
+            return true;
+
+        if (fullName.IndexOf('/') >= 0)
+        {
+            if (xamlTypes.Contains(fullName.Replace('/', '.')) ||
+                xamlTypes.Contains(fullName.Replace('/', '+')))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool CanRenameType(
+        TypeDef type,
+        SymbolRenamingSettings settings,
+        InclusionRules inclusions,
+        IReadOnlySet<TypeDef>? preservedEnclosingTypes = null)
+    {
+        if (preservedEnclosingTypes is not null && preservedEnclosingTypes.Contains(type))
+            return false;
+
         if (type.Module.EntryPoint?.DeclaringType == type)
             return false;
 

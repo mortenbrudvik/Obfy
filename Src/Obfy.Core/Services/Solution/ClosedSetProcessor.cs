@@ -128,6 +128,9 @@ public class ClosedSetProcessor : IClosedSetProcessor
             var sessionContext = PipelineContext.ForAssembly(loaded[0].Module, baseSettings.Clone());
             sessionContext.InputPath = loaded[0].Input.AssemblyPath;
 
+            var staging = new List<(LoadedModule Item, ObfySettings Settings, List<string> GatingWarnings)>(loaded.Count);
+            HashSet<string>? closedSetXamlTypes = null;
+
             for (var i = 0; i < loaded.Count; i++)
             {
                 var item = loaded[i];
@@ -141,11 +144,32 @@ public class ClosedSetProcessor : IClosedSetProcessor
                 foreach (var warning in gatingContext.Warnings)
                     _logger.LogWarning("{Warning}", warning);
 
+                if (settings.SymbolRenaming.PreserveXaml && item.Input.Hints.XamlTypes is { Count: > 0 })
+                {
+                    closedSetXamlTypes ??= new HashSet<string>(StringComparer.Ordinal);
+                    closedSetXamlTypes.UnionWith(item.Input.Hints.XamlTypes);
+                }
+
+                staging.Add((item, settings, [.. gatingContext.Warnings]));
+            }
+
+            if (closedSetXamlTypes is { Count: > 0 })
+            {
+                foreach (var (_, settings, _) in staging)
+                {
+                    settings.Exclusions.Types ??= new List<string>();
+                    SolutionHintApplier.AddUnique(settings.Exclusions.Types, closedSetXamlTypes);
+                }
+            }
+
+            for (var i = 0; i < staging.Count; i++)
+            {
+                var (item, settings, gatingWarnings) = staging[i];
                 renamePairs.Add((item.Module, settings));
 
                 var pipelineSettings = settings.Clone();
                 pipelineSettings.SymbolRenaming.Enabled = false;
-                jobs.Add(new ModuleJob(item, pipelineSettings, relativeOutputs[i], [.. gatingContext.Warnings]));
+                jobs.Add(new ModuleJob(item, pipelineSettings, relativeOutputs[i], gatingWarnings));
             }
 
             if (baseSettings.SymbolRenaming.Enabled)

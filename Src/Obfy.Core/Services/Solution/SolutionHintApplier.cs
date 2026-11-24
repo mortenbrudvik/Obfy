@@ -45,14 +45,21 @@ public static class SolutionHintApplier
         if (hints.AddAspNetMvcExcludes)
             AddUnique(settings.Exclusions.Attributes, PlatformExclusions.AspNetMvcAttributes);
 
+        if (settings.SymbolRenaming.PreserveXaml && hints.XamlTypes is { Count: > 0 })
+        {
+            settings.Exclusions.Types ??= new List<string>();
+            AddUnique(settings.Exclusions.Types, hints.XamlTypes);
+        }
+
         settings.SymbolRenaming.PreservePublicApi = forcePreservePublic || hints.PreservePublicApi;
     }
 
-    private static void AddUnique(List<string> target, IReadOnlyList<string> items)
+    internal static void AddUnique(List<string> target, IEnumerable<string> items)
     {
+        var seen = new HashSet<string>(target, StringComparer.Ordinal);
         foreach (var item in items)
         {
-            if (!target.Contains(item, StringComparer.Ordinal))
+            if (seen.Add(item))
                 target.Add(item);
         }
     }

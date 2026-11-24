@@ -560,6 +560,100 @@ public class ClosedSetProcessorTests
             .ShouldBe(1);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_MauiAppXamlTypes_PreservesReferencedLibraryTypeInClosedSet()
+    {
+        const string mauiLibSource = """
+            namespace MauiLib.Controls
+            {
+                public sealed class FancyCard
+                {
+                    public string BadgeText() => "card";
+                }
+            }
+            namespace MauiLib.Internal
+            {
+                public sealed class SecretHelper
+                {
+                    public string Hidden() => "secret";
+                }
+            }
+            """;
+        const string mauiAppSource = """
+            using MauiLib.Controls;
+            namespace MauiApp
+            {
+                public sealed class MainPage
+                {
+                    public string Render() => new FancyCard().BadgeText();
+                }
+            }
+            namespace MauiApp.Internal
+            {
+                public sealed class InternalLogic
+                {
+                    public string Compute() => "internal";
+                }
+            }
+            public static class Program
+            {
+                public static void Main() { }
+                public static string Run() => new MauiApp.MainPage().Render() + ":" + new MauiApp.Internal.InternalLogic().Compute();
+            }
+            """;
+
+        using var fixture = new ClosedSetEmit();
+        var libPath = fixture.CompileSource(mauiLibSource, "MauiLib", OutputKind.DynamicallyLinkedLibrary);
+        var appPath = fixture.CompileSource(mauiAppSource, "MauiApp", OutputKind.ConsoleApplication, libPath);
+        var outputDir = Path.Combine(fixture.Root, "maui-xaml-types");
+
+        var settings = ClosedSetRenameSettings(preservePublicApi: false);
+        settings.SymbolRenaming.RenameNamespaces = true;
+        settings.SymbolRenaming.PreserveXaml = false;
+
+        var result = await CreateProcessor().ExecuteAsync(
+            [
+                new ClosedSetInput
+                {
+                    AssemblyPath = libPath,
+                    Hints = new ProjectSettingsHints { PreserveXaml = false, XamlTypes = [] }
+                },
+                new ClosedSetInput
+                {
+                    AssemblyPath = appPath,
+                    Hints = new ProjectSettingsHints
+                    {
+                        PreserveXaml = true,
+                        XamlTypes = ["MauiApp.MainPage", "MauiLib.Controls.FancyCard"]
+                    }
+                }
+            ],
+            outputDir,
+            settings);
+
+        result.Success.ShouldBeTrue(result.ErrorMessage);
+
+        var outLib = Path.Combine(outputDir, "MauiLib.dll");
+        var outApp = Path.Combine(outputDir, "MauiApp.exe");
+
+        using var lib = ModuleDefMD.Load(await File.ReadAllBytesAsync(outLib));
+        var fancyCard = lib.GetTypes().SingleOrDefault(t => t.Name == "FancyCard");
+        fancyCard.ShouldNotBeNull();
+        fancyCard.Namespace.String.ShouldBe("MauiLib.Controls");
+        fancyCard.Methods.ShouldContain(m => m.Name == "BadgeText");
+        lib.GetTypes().ShouldNotContain(t => t.Name == "SecretHelper");
+        lib.GetTypes().ShouldNotContain(t => t.Namespace == "MauiLib.Internal");
+
+        using var app = ModuleDefMD.Load(await File.ReadAllBytesAsync(outApp));
+        var mainPage = app.GetTypes().SingleOrDefault(t => t.Name == "MainPage");
+        mainPage.ShouldNotBeNull();
+        mainPage.Namespace.String.ShouldBe("MauiApp");
+        app.GetTypes().ShouldNotContain(t => t.Name == "InternalLogic");
+        app.GetTypes().ShouldNotContain(t => t.Namespace == "MauiApp.Internal");
+
+        InvokeProgramRun(outApp, outLib).ShouldBe("card:internal");
+    }
+
     /// <summary>
     /// The names a XAML binding reads off the data context. The type itself may be renamed;
     /// <c>preserveXaml</c> keeps the public instance properties.

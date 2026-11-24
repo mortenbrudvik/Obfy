@@ -237,13 +237,21 @@ public class SolutionAnalyzer : ISolutionAnalyzer
         if (info.ReferencesUnity)
             runtimeProfile = RuntimeProfile.UnityIl2Cpp;
 
+        var projectDirectory = Path.GetDirectoryName(project.ProjectPath);
+        var xamlTypes = (info.UseWpf || info.UseMaui) &&
+                        !string.IsNullOrEmpty(projectDirectory) &&
+                        Directory.Exists(projectDirectory)
+            ? XamlTypeCollector.CollectFromProjectDirectory(projectDirectory)
+            : [];
+
         return new ProjectSettingsHints
         {
             PreserveXaml = info.UseWpf || info.UseWinForms || info.UseMaui,
             PreservePublicApi = preservePublicApi,
             RuntimeProfile = runtimeProfile,
             AddUnityExcludes = info.ReferencesUnity,
-            AddAspNetMvcExcludes = info.IsAspNetWeb && !info.IsBlazorWasm
+            AddAspNetMvcExcludes = info.IsAspNetWeb && !info.IsBlazorWasm,
+            XamlTypes = xamlTypes
         };
     }
 

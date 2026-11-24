@@ -1158,16 +1158,19 @@ public sealed class InputSessionTests : IDisposable
     [Fact]
     public async Task PreferenceSaves_AreDebounced()
     {
-        var session = Create(delay: TimeSpan.FromMilliseconds(80));
+        var session = Create(delay: TimeSpan.FromMilliseconds(500));
 
         session.SetOutputFolder(@"C:\One");
         session.SetOutputFolder(@"C:\Two");
         session.SetWriteSymbolMap(true);
 
-        _settings.Saves.ShouldBe(0);
-        await Task.Delay(500);
-        _settings.Saves.ShouldBe(1);
+        Volatile.Read(ref _settings.Saves).ShouldBe(0);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        while (Volatile.Read(ref _settings.Saves) == 0 && elapsed.Elapsed < TimeSpan.FromSeconds(5))
+            await Task.Delay(25);
+        Volatile.Read(ref _settings.Saves).ShouldBe(1);
         _settings.LastOutputDirectory.ShouldBe(@"C:\Two");
+        _settings.GenerateSymbolMap.ShouldBeTrue();
     }
 
     [Fact]

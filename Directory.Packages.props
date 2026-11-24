@@ -20,7 +20,7 @@
       17.14 brings in transitively (2.5.192, twelve advisories: GHSA-hv8m-jj95-wg3x, GHSA-vh6j-jc39-fggf, ...).
       2.5.303 is the first 2.5.x that fixes all of them. Remove both once the 17.x SDK asks for 2.5.303 or later.
     -->
-    <PackageVersion Include="MessagePack" Version="2.5.303" />
+    <PackageVersion Include="MessagePack" Version="2.5.305" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
@@ -28,8 +28,8 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
     <PackageVersion Include="Microsoft.Playwright" Version="1.52.0" />
-    <PackageVersion Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" />
-    <PackageVersion Include="Microsoft.VisualStudio.SDK.Analyzers" Version="17.7.113" />
+    <PackageVersion Include="Microsoft.VisualStudio.SDK" Version="18.12.1606" />
+    <PackageVersion Include="Microsoft.VisualStudio.SDK.Analyzers" Version="17.7.179" />
     <PackageVersion Include="Microsoft.VSSDK.BuildTools" Version="17.14.2142" />
     <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageVersion Include="Moq" Version="4.20.72" />

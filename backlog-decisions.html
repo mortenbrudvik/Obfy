@@ -1,0 +1,2554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Obfy — Prioritized Backlog &amp; Decisions</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-alt: #f9fbfd;
+  --ink: #14202e;
+  --muted: #566475;
+  --line: #dce2ea;
+  --accent: #1f5fae;
+  --accent-bg: #e5edf8;
+  --done: #1b7a47;
+  --done-bg: #e3f3ea;
+  --p1: #a82d24;
+  --p1-bg: #fbe9e7;
+  --p2: #8a5700;
+  --p2-bg: #fbf0d9;
+  --p3: #445468;
+  --p3-bg: #e9edf2;
+  /* Status tokens */
+  --st-ready: #1f5fae;
+  --st-ready-bg: #e5edf8;
+  --st-prog: #0e6b74;
+  --st-prog-bg: #dff3f5;
+  --st-part: #8a5700;
+  --st-part-bg: #fbf0d9;
+  --st-dec: #6938a8;
+  --st-dec-bg: #efe8fb;
+  --st-ci: #0f628c;
+  --st-ci-bg: #e0f1fa;
+  --st-ext: #475569;
+  --st-ext-bg: #e9eef5;
+  --st-def: #5b6472;
+  --st-def-bg: #eceff3;
+  --st-wont: #7f3f4a;
+  --st-wont-bg: #f5e6e9;
+  --shadow: 0 1px 2px rgba(20, 32, 46, 0.04);
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e151e;
+    --surface: #151e2a;
+    --surface-alt: #111923;
+    --ink: #e5ebf2;
+    --muted: #93a1b2;
+    --line: #26323f;
+    --accent: #84b5f2;
+    --accent-bg: #172a42;
+    --done: #6fcf97;
+    --done-bg: #14301f;
+    --p1: #ff9288;
+    --p1-bg: #3a1c1a;
+    --p2: #f0bb52;
+    --p2-bg: #36290f;
+    --p3: #a3b3c6;
+    --p3-bg: #1e2937;
+    --st-ready: #84b5f2;
+    --st-ready-bg: #172a42;
+    --st-prog: #5ed0dc;
+    --st-prog-bg: #123138;
+    --st-part: #f0bb52;
+    --st-part-bg: #36290f;
+    --st-dec: #c4a0f8;
+    --st-dec-bg: #2a1d42;
+    --st-ci: #70c4ee;
+    --st-ci-bg: #142d3d;
+    --st-ext: #b2c0d1;
+    --st-ext-bg: #202b38;
+    --st-def: #9aa7b8;
+    --st-def-bg: #1e2733;
+    --st-wont: #e29ca8;
+    --st-wont-bg: #361d24;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0e151e;
+  --surface: #151e2a;
+  --surface-alt: #111923;
+  --ink: #e5ebf2;
+  --muted: #93a1b2;
+  --line: #26323f;
+  --accent: #84b5f2;
+  --accent-bg: #172a42;
+  --done: #6fcf97;
+  --done-bg: #14301f;
+  --p1: #ff9288;
+  --p1-bg: #3a1c1a;
+  --p2: #f0bb52;
+  --p2-bg: #36290f;
+  --p3: #a3b3c6;
+  --p3-bg: #1e2937;
+  --st-ready: #84b5f2;
+  --st-ready-bg: #172a42;
+  --st-prog: #5ed0dc;
+  --st-prog-bg: #123138;
+  --st-part: #f0bb52;
+  --st-part-bg: #36290f;
+  --st-dec: #c4a0f8;
+  --st-dec-bg: #2a1d42;
+  --st-ci: #70c4ee;
+  --st-ci-bg: #142d3d;
+  --st-ext: #b2c0d1;
+  --st-ext-bg: #202b38;
+  --st-def: #9aa7b8;
+  --st-def-bg: #1e2733;
+  --st-wont: #e29ca8;
+  --st-wont-bg: #361d24;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  line-height: 1.55;
+  padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  margin: 0;
+  text-wrap: balance;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Header */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.title-block {
+  flex: 1 1 540px;
+  min-width: 0;
+}
+
+.title-block h1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.lede {
+  color: var(--muted);
+  margin: 6px 0 0;
+  max-width: 72ch;
+}
+
+.asof {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 10px 0 0;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+}
+
+.btn:hover {
+  border-color: var(--muted);
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+:root[data-theme="dark"] .btn.primary {
+  color: #0b131e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn.primary {
+    color: #0b131e;
+  }
+}
+
+.btn.primary:hover {
+  filter: brightness(1.06);
+}
+
+.btn.danger {
+  color: var(--p1);
+}
+
+.btn.sm {
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+
+/* Confirmation & Toast Banner */
+.banner-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.banner-row.warn {
+  border-color: var(--p1);
+  background: var(--p1-bg);
+  color: var(--p1);
+}
+
+.banner-row.success {
+  border-color: var(--done);
+  background: var(--done-bg);
+  color: var(--done);
+}
+
+.banner-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* KPI Grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 13px 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kpi-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+}
+
+.kpi-val {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-card.k-dec .kpi-val { color: var(--st-dec); }
+.kpi-card.k-p1 .kpi-val { color: var(--p1); }
+.kpi-card.k-p2 .kpi-val { color: var(--p2); }
+.kpi-card.k-p3 .kpi-val { color: var(--p3); }
+.kpi-card.k-done .kpi-val { color: var(--done); }
+
+/* Overall Progress Bar Strip */
+.prog-strip {
+  margin-top: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 11px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.prog-meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.prog-meta strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.prog-bar {
+  flex: 1 1 220px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--p3-bg);
+  overflow: hidden;
+  display: flex;
+}
+
+.prog-seg {
+  height: 100%;
+  transition: width 0.25s ease;
+}
+
+.prog-seg.s-done { background: var(--done); }
+.prog-seg.s-p1 { background: var(--p1); opacity: 0.8; }
+.prog-seg.s-p2 { background: var(--p2); opacity: 0.8; }
+.prog-seg.s-p3 { background: var(--p3); opacity: 0.65; }
+
+/* View Tabs + Filter Toolbar */
+.controls-card {
+  margin-top: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tabs-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tab-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab-btn:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.tab-btn[aria-selected="true"] {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+}
+
+.filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.pri-pills {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.pri-chip {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.pri-chip:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.pri-chip[aria-pressed="true"] {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.filter-select, .search-input {
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 13px;
+  min-height: 32px;
+}
+
+.search-wrap {
+  flex: 1 1 220px;
+  min-width: 180px;
+  display: flex;
+  gap: 8px;
+}
+
+.search-input {
+  width: 100%;
+}
+
+.search-input::placeholder {
+  color: var(--muted);
+}
+
+.results-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.results-count {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Main Prioritized Table */
+.table-card {
+  margin-top: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.items-table thead th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.group-row th {
+  padding: 10px 14px;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+
+.items-table tbody tr.group-row:first-child th {
+  border-top: none;
+}
+
+.group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.group-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.group-sub {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.item-row td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.item-row.is-decision {
+  box-shadow: inset 3px 0 0 var(--st-dec);
+}
+
+.item-row.is-done {
+  opacity: 0.72;
+}
+
+.item-row.is-done .item-title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.item-row.expanded td {
+  border-bottom-color: transparent;
+}
+
+.expand-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.expand-btn:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.pill.p1 { color: var(--p1); background: var(--p1-bg); }
+.pill.p2 { color: var(--p2); background: var(--p2-bg); }
+.pill.p3 { color: var(--p3); background: var(--p3-bg); }
+
+.item-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.title-cell {
+  min-width: 240px;
+}
+
+.item-title {
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.item-brief {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.badges-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.cat-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.cat-badge.decision {
+  color: var(--st-dec);
+  background: var(--st-dec-bg);
+}
+
+.cat-badge.backlog {
+  color: var(--muted);
+  background: var(--p3-bg);
+}
+
+.note-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 6px;
+}
+
+.meta-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.meta-area {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.meta-kind {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.owner-pill {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Status Select Pill */
+.status-select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 4px 24px 4px 10px;
+  cursor: pointer;
+  min-width: 132px;
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 10px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='currentColor' opacity='0.7' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+}
+
+.status-select[data-status="Ready"] { color: var(--st-ready); background-color: var(--st-ready-bg); border-color: color-mix(in srgb, var(--st-ready) 28%, transparent); }
+.status-select[data-status="In Progress"] { color: var(--st-prog); background-color: var(--st-prog-bg); border-color: color-mix(in srgb, var(--st-prog) 28%, transparent); }
+.status-select[data-status="Partial"] { color: var(--st-part); background-color: var(--st-part-bg); border-color: color-mix(in srgb, var(--st-part) 28%, transparent); }
+.status-select[data-status="Needs Decision"] { color: var(--st-dec); background-color: var(--st-dec-bg); border-color: color-mix(in srgb, var(--st-dec) 30%, transparent); }
+.status-select[data-status="Verify CI"] { color: var(--st-ci); background-color: var(--st-ci-bg); border-color: color-mix(in srgb, var(--st-ci) 28%, transparent); }
+.status-select[data-status="External"] { color: var(--st-ext); background-color: var(--st-ext-bg); border-color: color-mix(in srgb, var(--st-ext) 28%, transparent); }
+.status-select[data-status="Deferred"] { color: var(--st-def); background-color: var(--st-def-bg); border-color: color-mix(in srgb, var(--st-def) 28%, transparent); }
+.status-select[data-status="Done"] { color: var(--done); background-color: var(--done-bg); border-color: color-mix(in srgb, var(--done) 30%, transparent); }
+.status-select[data-status="Won't Do"] { color: var(--st-wont); background-color: var(--st-wont-bg); border-color: color-mix(in srgb, var(--st-wont) 28%, transparent); }
+
+/* Detail Panel Row */
+.detail-row td {
+  padding: 0 14px 16px 50px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.detail-row.is-decision td {
+  box-shadow: inset 3px 0 0 var(--st-dec);
+}
+
+.detail-box {
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+}
+
+.detail-field {
+  min-width: 0;
+}
+
+.field-lab {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.detail-field p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Decision Highlight Box */
+.decision-panel {
+  border: 1px solid color-mix(in srgb, var(--st-dec) 35%, var(--line));
+  background: color-mix(in srgb, var(--st-dec-bg) 42%, var(--surface));
+  border-radius: 7px;
+  padding: 11px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.decision-top {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+
+.options-list {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.options-list li + li {
+  margin-top: 2px;
+}
+
+.rec-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.decision-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(200px, 1fr);
+  gap: 10px;
+  align-items: end;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+}
+
+.notes-only-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.control-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.decision-select, .notes-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 13px;
+  min-height: 32px;
+}
+
+.notes-input::placeholder {
+  color: var(--muted);
+}
+
+.refs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+  align-items: center;
+}
+
+.ref-chip {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--p3-bg);
+  border-radius: 4px;
+  padding: 2px 7px;
+  overflow-wrap: anywhere;
+}
+
+.empty-state {
+  padding: 36px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Markdown Preview Drawer */
+.md-drawer {
+  margin-top: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 14px 16px;
+}
+
+.md-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.md-drawer-head h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.md-textarea {
+  width: 100%;
+  min-height: 220px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  resize: vertical;
+}
+
+/* Footer reference */
+.foot-note {
+  margin-top: 24px;
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.foot-note code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--p3-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* Responsive table to cards on mobile */
+@media (max-width: 960px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .detail-grid, .decision-top, .decision-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 740px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .items-table thead {
+    display: none;
+  }
+  .items-table, .items-table tbody, .items-table tr, .items-table td, .items-table th {
+    display: block;
+    width: 100%;
+  }
+  .item-row {
+    padding: 12px 12px 8px;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+  }
+  .item-row.expanded {
+    border-bottom: none;
+  }
+  .item-row td {
+    border-bottom: none;
+    padding: 3px 0;
+  }
+  .item-row td.col-expand {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    width: auto;
+  }
+  .item-row td.col-pri, .item-row td.col-id, .item-row td.col-cat, .item-row td.col-area, .item-row td.col-owner {
+    display: inline-block;
+    width: auto;
+    margin-right: 8px;
+  }
+  .detail-row td {
+    padding: 0 12px 14px 12px;
+  }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="title-block">
+      <h1>Obfy — Prioritized Backlog &amp; Decisions</h1>
+      <p class="lede">All 28 remaining open items from the backlog organized into an execution sequence for v2.0.0 release, open product decisions, verification/housekeeping, and deferred work.</p>
+      <p class="asof" id="asof">Updated 2026-11-24 · main @ 2e5eb67 (Waves 1–3 pushed · 3,273 .NET + 304 WebApp tests passing · 99/127 historical items done)</p>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn primary" id="copy-md-btn">Copy Summary (Markdown)</button>
+      <button type="button" class="btn" id="export-json-btn">Export JSON</button>
+      <button type="button" class="btn danger" id="reset-btn">Reset Edits</button>
+      <button type="button" class="btn" id="theme-toggle" aria-label="Toggle color theme">Theme: Auto</button>
+    </div>
+  </header>
+
+  <div id="status-banner" class="banner-row" hidden role="status" aria-live="polite">
+    <span id="status-banner-msg"></span>
+    <div class="banner-actions">
+      <button type="button" class="btn sm" id="toggle-md-preview-btn" hidden>Show Markdown</button>
+      <button type="button" class="btn sm" id="dismiss-banner-btn">Dismiss</button>
+    </div>
+  </div>
+
+  <div id="reset-confirm-banner" class="banner-row warn" hidden role="alertdialog" aria-label="Confirm reset edits">
+    <span>Reset all locally saved status changes, decision selections, and notes back to defaults?</span>
+    <div class="banner-actions">
+      <button type="button" class="btn sm danger" id="confirm-reset-btn">Confirm Reset</button>
+      <button type="button" class="btn sm" id="cancel-reset-btn">Cancel</button>
+    </div>
+  </div>
+
+  <section class="kpi-grid" aria-label="Summary KPIs">
+    <div class="kpi-card" data-kpi="active">
+      <span class="kpi-label">Total Active Items</span>
+      <span class="kpi-val" id="kpi-active">28</span>
+      <span class="kpi-sub" id="kpi-active-sub">21 backlog · 7 decisions</span>
+    </div>
+    <div class="kpi-card k-dec" data-kpi="decisions">
+      <span class="kpi-label">Decisions Needed</span>
+      <span class="kpi-val" id="kpi-decisions">7</span>
+      <span class="kpi-sub" id="kpi-decisions-sub">of 7 Decide items</span>
+    </div>
+    <div class="kpi-card k-p1" data-kpi="p1">
+      <span class="kpi-label">P1 — Release 2.0.0</span>
+      <span class="kpi-val" id="kpi-p1">5</span>
+      <span class="kpi-sub" id="kpi-p1-sub">of 5 P1 items</span>
+    </div>
+    <div class="kpi-card k-p2" data-kpi="p2">
+      <span class="kpi-label">P2 — Next Up</span>
+      <span class="kpi-val" id="kpi-p2">16</span>
+      <span class="kpi-sub" id="kpi-p2-sub">of 16 P2 items</span>
+    </div>
+    <div class="kpi-card k-p3" data-kpi="p3">
+      <span class="kpi-label">P3 — Later / Deferred</span>
+      <span class="kpi-val" id="kpi-p3">7</span>
+      <span class="kpi-sub" id="kpi-p3-sub">of 7 P3 items</span>
+    </div>
+    <div class="kpi-card k-done" data-kpi="done">
+      <span class="kpi-label">Done (this session)</span>
+      <span class="kpi-val" id="kpi-done">0</span>
+      <span class="kpi-sub" id="kpi-done-sub">99 historical done</span>
+    </div>
+  </section>
+
+  <section class="prog-strip" aria-label="Session progress">
+    <span class="prog-meta" id="prog-text"></span>
+    <div class="prog-bar" aria-hidden="true">
+      <span class="prog-seg s-done" id="seg-done"></span>
+      <span class="prog-seg s-p1" id="seg-p1"></span>
+      <span class="prog-seg s-p2" id="seg-p2"></span>
+      <span class="prog-seg s-p3" id="seg-p3"></span>
+    </div>
+    <span class="prog-meta" id="prog-overall"></span>
+  </section>
+
+  <section class="controls-card" aria-label="View and Filters">
+    <div class="tabs-row">
+      <div class="tabs" role="tablist" aria-label="Item categories">
+        <button type="button" class="tab-btn" role="tab" id="tab-all" data-view="all" aria-selected="true">All Items (28)</button>
+        <button type="button" class="tab-btn" role="tab" id="tab-decisions" data-view="decisions" aria-selected="false">Decisions Only (7)</button>
+        <button type="button" class="tab-btn" role="tab" id="tab-backlog" data-view="backlog" aria-selected="false">Backlog Only (21)</button>
+      </div>
+      <div class="banner-actions">
+        <button type="button" class="btn sm" id="expand-all-btn">Collapse All</button>
+        <button type="button" class="btn sm" id="clear-filters-btn" hidden>Clear Filters</button>
+      </div>
+    </div>
+
+    <div class="filters-row">
+      <div class="filter-group">
+        <span class="filter-label">Priority</span>
+        <div class="pri-pills" id="pri-pills" role="group" aria-label="Filter by priority">
+          <button type="button" class="pri-chip" data-pri="All" aria-pressed="true">All</button>
+          <button type="button" class="pri-chip" data-pri="P1" aria-pressed="false">P1</button>
+          <button type="button" class="pri-chip" data-pri="P2" aria-pressed="false">P2</button>
+          <button type="button" class="pri-chip" data-pri="P3" aria-pressed="false">P3</button>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="status-filter">Status</label>
+        <select id="status-filter" class="filter-select">
+          <option value="All">All statuses</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="area-filter">Area</label>
+        <select id="area-filter" class="filter-select">
+          <option value="All">All areas</option>
+        </select>
+      </div>
+
+      <div class="search-wrap">
+        <input id="search-input" class="search-input" type="search" placeholder="Search ID, title, decision, why, next, refs..." aria-label="Search backlog and decisions" autocomplete="off">
+      </div>
+    </div>
+  </section>
+
+  <div class="results-bar">
+    <span class="results-count" id="results-count" aria-live="polite">Showing 28 of 28 items</span>
+    <span>Edits save automatically to <code>localStorage</code> (<code>obfy.backlogDecisions.v1</code>)</span>
+  </div>
+
+  <main class="table-card">
+    <table class="items-table" aria-label="Prioritized open backlog items and decisions">
+      <thead>
+        <tr>
+          <th style="width: 38px;"><span class="sr-only">Details</span></th>
+          <th style="width: 62px;">Pri</th>
+          <th style="width: 72px;">ID</th>
+          <th>Title &amp; Summary</th>
+          <th style="width: 98px;">Category</th>
+          <th style="width: 118px;">Area / Kind</th>
+          <th style="width: 122px;">Owner / Scope</th>
+          <th style="width: 158px;">Status</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+    <div id="empty-state" class="empty-state" hidden>No items match the current tab, filters, or search query.</div>
+  </main>
+
+  <section id="md-drawer" class="md-drawer" hidden aria-label="Generated Markdown summary">
+    <div class="md-drawer-head">
+      <h2>Markdown Summary (ready to paste)</h2>
+      <div class="banner-actions">
+        <button type="button" class="btn sm" id="copy-drawer-btn">Copy Text</button>
+        <button type="button" class="btn sm" id="close-drawer-btn">Close</button>
+      </div>
+    </div>
+    <textarea id="md-textarea" class="md-textarea" readonly aria-label="Generated Markdown summary text"></textarea>
+  </section>
+
+  <footer class="foot-note">
+    <span>Source baseline: <code>backlog.html</code> (99/127 historical items done, 28 remaining open).</span>
+    <span>Offline-ready single file · zero external JS frameworks.</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORAGE_KEY = "obfy.backlogDecisions.v1";
+  var THEME_KEY = "obfy.backlogDecisions.theme.v1";
+
+  var STATUSES = [
+    "Ready",
+    "In Progress",
+    "Partial",
+    "Needs Decision",
+    "Verify CI",
+    "External",
+    "Deferred",
+    "Done",
+    "Won't Do"
+  ];
+
+  var PRIORITY_META = {
+    P1: { label: "P1 — Release 2.0.0 & Immediate Gates", desc: "Execute in order before and immediately around tagging v2.0.0" },
+    P2: { label: "P2 — Decisions Needed & High-Value Verification / Cleanup", desc: "Product decisions first, followed by local housekeeping and runtime/CI verification" },
+    P3: { label: "P3 — Nice-to-Have, Homepage & Deferred", desc: "Follow-up polish, external homepage repo chores, and explicitly deferred VSIX work" }
+  };
+
+  /* All 28 remaining open items from C:\code\projects\Obfy\backlog.html in prioritized execution order */
+  var ITEMS = [
+    /* === P1 — Release 2.0.0 & Immediate Gates === */
+    {
+      id: "B-83",
+      priority: "P1",
+      category: "Backlog",
+      area: "Release",
+      kind: "Chore",
+      owner: "Repo",
+      initialStatus: "Verify CI",
+      statusNote: "GitHub Actions @ 2e5eb67",
+      summary: "Confirm package.yml installer WebView2 start-check & macos-cli pass on 2e5eb67",
+      title: "Verify installer start check on GitHub Actions package.yml (CloseAsync & HKLM cleanup fixed)",
+      why: "Fixed in build-installer.ps1: added CloseAsync timeout, fixed HKLM policy cleanup logic, and added RegistryKey.Dispose() in Assert-ProcessedUi. Remaining: verify on a real GitHub Actions package.yml run.",
+      next: "Run and confirm the first package.yml workflow run passes on a real GitHub Actions runner.",
+      refs: [".github/workflows/package.yml", "build/build-installer.ps1"]
+    },
+    {
+      id: "B-31",
+      priority: "P1",
+      category: "Backlog",
+      area: "Release",
+      kind: "Chore",
+      owner: "GitHub/Store",
+      initialStatus: "Ready",
+      statusNote: "GitHub Settings",
+      summary: "Gate NuGet publish behind a nuget-publish GitHub Environment (recommended right before tagging 2.0.0)",
+      title: "Gate the NuGet publish behind a GitHub Environment",
+      why: "The publish job in publish.yml has no environment, so a release, or a manual run from main or a tag, publishes to nuget.org with no human approval. An approval gate needs repository settings, which a code change cannot create. Left open by the code review.",
+      next: "Create a GitHub Environment (for example nuget-publish) with required reviewers and deployment limited to main and tags. Add environment: nuget-publish to the publish job, and bind the nuget.org trusted-publishing policy to that environment.",
+      refs: [".github/workflows/publish.yml"]
+    },
+    {
+      id: "B-01",
+      priority: "P1",
+      category: "Backlog",
+      area: "Release",
+      kind: "Release",
+      owner: "Repo",
+      initialStatus: "Ready",
+      statusNote: "Release milestone",
+      summary: "Fold Unreleased into 2.0.0, tag v2.0.0, publish, update README link & remove homepage release notes",
+      title: "Publish 2.0.0, then remove the release notes",
+      why: "NuGet and GitHub releases are at 1.3.0 while the code says 2.0.0. The product page, the guide and the privacy page are live and each carries a release note about this, with a test marked for removal. The README still links the 1.3.0 installer.",
+      next: "Tag and publish 2.0.0. The tag must now match version.json (v2.0.0, 2.0.0 or a prerelease such as 2.0.0-rc.1), or the publish workflow stops before building. Then delete the three notes and their tests, and update the README installer link and its “1.3.0 product” line. CHANGELOG.md has a dated [2.0.0] section and an Unreleased section but no v2.0.0 tag yet; decide at release whether the Unreleased entries fold into 2.0.0 or ship under their own heading.",
+      refs: ["version.json", "CHANGELOG.md", "README.md", "public/obfy/index.html", "public/obfy/guide/index.html", "public/obfy/privacy/index.html"]
+    },
+    {
+      id: "B-02",
+      priority: "P1",
+      category: "Backlog",
+      area: "Release",
+      kind: "Release",
+      owner: "GitHub/Store",
+      initialStatus: "External",
+      statusNote: "Partner Center",
+      summary: "Point Microsoft Store privacy URL at brudvik.com/obfy/privacy & verify shipped version",
+      title: "Point the Store privacy URL at the web page",
+      why: "The Store listing uses the GitHub PRIVACY.md as its privacy policy. The new page at brudvik.com/obfy/privacy says the same things and is easier to find. The Store page also shows no version, so it is not confirmed that 2.0.0 is what ships.",
+      next: "The page is live. Set the policy URL in Partner Center and check which version the listing carries.",
+      refs: ["package/store-identity.json", "PRIVACY.md"]
+    },
+    {
+      id: "B-30",
+      priority: "P1",
+      category: "Backlog",
+      area: "Privacy",
+      kind: "Fix",
+      owner: "Homepage Repo",
+      initialStatus: "External",
+      statusNote: "Partial · Wave 2 repo side done",
+      summary: "Update & redeploy /obfy/privacy in homepage repo to match updated PRIVACY.md",
+      title: "Update /obfy/privacy in external homepage repo (PRIVACY.md, CLAUDE.md & packer Trace.WriteLine scrubbed)",
+      why: "Wave 2 updated PRIVACY.md and CLAUDE.md in the Obfy repo and scrubbed packer Trace.WriteLine paths in NativePacker.cs and ManagedLauncherPacker.cs. Updating and redeploying /obfy/privacy in the external homepage repo to match remains.",
+      next: "Update /obfy/privacy in the external homepage repo and redeploy brudvik.com/obfy/privacy.",
+      refs: ["PRIVACY.md", "CLAUDE.md", "Src/Obfy.Core/Utilities/NativePacker.cs", "Src/Obfy.Core/Utilities/ManagedLauncherPacker.cs", "public/obfy/privacy/index.html (homepage repo)"]
+    },
+
+    /* === P2 — Decisions Needed === */
+    {
+      id: "B-74",
+      priority: "P2",
+      category: "Decision",
+      area: "Core",
+      kind: "Decide",
+      owner: "Repo",
+      initialStatus: "Needs Decision",
+      summary: "CLI Ctrl+C output & exit code (130 + \"Cancelled\" vs keep 1)",
+      options: [
+        "Print \"Cancelled\" and exit with code 130; document in docs/CLI.md",
+        "Keep current behavior (print nothing, exit with code 1) and document in docs/CLI.md"
+      ],
+      recommendation: "Print Cancelled and exit 130, document in docs/CLI.md",
+      title: "Decide what a cancelled CLI run prints and returns",
+      why: "Ctrl+C now stops every kind of run, but a cancelled run prints nothing and exits with code 1, the same as a failure. Nothing in the CLI catches the cancellation.",
+      next: "Print Cancelled and choose an exit code (130 is the convention), then update the exit-code table in docs/CLI.md. Or leave it and say so there.",
+      refs: ["Src/Obfy.Console/Program.cs", "docs/CLI.md"]
+    },
+    {
+      id: "B-20",
+      priority: "P2",
+      category: "Decision",
+      area: "Privacy",
+      kind: "Decide",
+      owner: "Repo",
+      initialStatus: "Needs Decision",
+      summary: "Keep logging watermark.id (already documented in PRIVACY.md) vs stop logging it",
+      options: [
+        "Keep logging watermark.id & confirm coverage on /obfy/privacy (already documented in PRIVACY.md)",
+        "Stop logging watermark.id in WatermarkObfuscator warnings"
+      ],
+      recommendation: "Keep & confirm in /obfy/privacy (already done in PRIVACY.md) or scrub if strict privacy preferred",
+      title: "Decide whether the watermark id may be logged",
+      why: "The watermark obfuscator logs the watermark id in some warnings. The privacy page does not claim the id is never logged.",
+      next: "Stop logging the id, or keep logging it and say so on the page.",
+      refs: ["Src/Obfy.Core/Obfuscators/Assembly/WatermarkObfuscator.cs"]
+    },
+    {
+      id: "B-28",
+      priority: "P2",
+      category: "Decision",
+      area: "Core",
+      kind: "Decide",
+      owner: "Repo",
+      initialStatus: "Needs Decision",
+      summary: "CLI -o overwriting an input outside MSBuild",
+      options: [
+        "Keep atomic in-place default (needed for MSBuild post-build) and add targeted tests",
+        "Warn or require --force when -o targets an input's own folder outside MSBuild"
+      ],
+      recommendation: "Keep atomic in-place default (needed for MSBuild post-build) or add --force warning",
+      title: "Decide whether the CLI should warn before writing over an input",
+      why: "The desktop app refuses a run that would replace an input. The CLI still writes over the original when -o is the input's folder. That is the documented MSBuild post-build step, and the write is atomic, so a failed run no longer truncates the original. A successful run still replaces it, by design. The CLI now does refuse a --map or --report path that would replace an input or an output.",
+      next: "Decide whether -o into an input's own folder, outside the post-build case, should warn or need a flag. Add tests either way.",
+      refs: ["Src/Obfy.Console/Program.cs", "Src/Obfy.App/Sessions/OutputCollisions.cs"]
+    },
+    {
+      id: "B-17",
+      priority: "P2",
+      category: "Decision",
+      area: "App",
+      kind: "Decide",
+      owner: "Repo",
+      initialStatus: "Needs Decision",
+      summary: "Unify CLI vs Desktop default output rules (*.merged.* vs *.obfuscated.*, solution obfy-out location)",
+      options: [
+        "Align both CLI and Desktop to CLI rules (*.merged.* and obfy-out next to .sln)",
+        "Align both CLI and Desktop to Desktop rules (*.obfuscated.* and obfy-out next to first assembly)",
+        "Keep distinct per-tool defaults as currently documented in docs/CLI.md"
+      ],
+      recommendation: "Align both to CLI rules (*.merged.* & next to .sln)",
+      title: "Use one output rule in the desktop app and the CLI",
+      why: "--merge without -o writes {name}.merged{ext} in the CLI and *.obfuscated.* in the app. For a solution the CLI writes obfy-out next to the solution file, while the app writes it next to the first included assembly, usually inside bin. The docs now say which tool each rule is about.",
+      next: "Pick one rule for each case and change the other tool to match.",
+      refs: ["Src/Obfy.Console/Program.cs", "Src/Obfy.App/Sessions/InputSession.cs", "docs/CLI.md"]
+    },
+    {
+      id: "B-59",
+      priority: "P2",
+      category: "Decision",
+      area: "Core",
+      kind: "Decide",
+      owner: "Repo",
+      initialStatus: "Needs Decision",
+      summary: "Reproducible output (--seed option vs document non-reproducibility)",
+      options: [
+        "Document non-reproducibility in docs now; defer --seed unless users request it",
+        "Add an explicit --seed / Seed setting across ControlFlowObfuscator and NameGenerator"
+      ],
+      recommendation: "Document non-reproducibility now; add --seed only if requested",
+      title: "Decide whether output should be reproducible",
+      why: "Control flow uses an unseeded Random, and name generation uses Random.Shared with a random salt. Two runs on the same input differ, and no setting offers a seed.",
+      next: "Add a seed setting, or say in the docs that output is not reproducible.",
+      refs: ["Src/Obfy.Core/Obfuscators/Assembly/ControlFlowObfuscator.cs", "Src/Obfy.Core/Utilities/NameGenerator.cs"]
+    },
+    {
+      id: "B-25",
+      priority: "P2",
+      category: "Decision",
+      area: "Docs",
+      kind: "Decide",
+      owner: "Repo",
+      initialStatus: "Needs Decision",
+      summary: "Historical WPF wording in CHANGELOG.md & docs/superpowers",
+      options: [
+        "Leave as historical record with a 1-line note explaining they predate the WebView2 UI",
+        "Leave untouched as-is",
+        "Rewrite historical entries to remove WPF wording"
+      ],
+      recommendation: "Leave as history with a 1-line note",
+      title: "Leave or footnote the old WPF wording in history",
+      why: "A past CHANGELOG entry under 2.0.0 and the plans and specs in docs/superpowers still describe the WPF window. They were left as history on purpose.",
+      next: "Leave them, or add a note that they predate the web UI.",
+      refs: ["CHANGELOG.md", "docs/superpowers"]
+    },
+    {
+      id: "B-14",
+      priority: "P2",
+      category: "Decision",
+      area: "Release",
+      kind: "Decide",
+      owner: "Repo",
+      initialStatus: "Needs Decision",
+      statusNote: "Linked to deferred B-70",
+      summary: "Publish Visual Studio extension to Marketplace vs keep source-only",
+      options: [
+        "Keep source-only and leave wording unchanged while B-70 is deferred",
+        "Publish VSIX to Visual Studio Marketplace (requires completing B-70 first)"
+      ],
+      recommendation: "Keep source-only while B-70 is deferred",
+      title: "Decide whether to publish the Visual Studio extension",
+      why: "The Visual Studio extension is not on the Visual Studio Marketplace and not in a release. The pages say it is built from source.",
+      next: "Publish it, or keep it source-only and leave the wording as it is.",
+      refs: ["Src/Obfy.VisualStudio"]
+    },
+
+    /* === P2 — Local Housekeeping & High-Value Verification / Cleanup === */
+    {
+      id: "B-115",
+      priority: "P2",
+      category: "Backlog",
+      area: "Docs",
+      kind: "Chore",
+      owner: "Local Manual",
+      initialStatus: "Partial",
+      statusNote: "Local Manual · Wave 1–2 fixed repo files",
+      summary: "Delete stray 0-byte \\\\?\\C:\\code\\projects\\Obfy\\nul",
+      title: "Delete stray 0-byte nul file at repo root outside sandbox (docs, MAUI example & xUnit1031 warning fixed)",
+      why: "Fixed across Wave 1 & Wave 2: build-msix.ps1 version delegation, OutputWriteTests.cs xUnit1031 warning (0 C# compiler warnings), examples/maui/obfy.json, docs/Testing-Roadmap.md, docs/Competitive-Analysis.md, docs/Roadmap.md, and README.md. Remaining: only deleting the stray 0-byte C:\\code\\projects\\Obfy\\nul file outside the sandbox.",
+      next: "Delete C:\\code\\projects\\Obfy\\nul outside the sandbox (using \\\\?\\C:\\code\\projects\\Obfy\\nul).",
+      refs: ["nul", "Tests/Obfy.Tests/OutputWriteTests.cs", "examples/maui/obfy.json", "docs/Testing-Roadmap.md", "docs/Competitive-Analysis.md", "docs/Roadmap.md", "README.md"]
+    },
+    {
+      id: "B-62",
+      priority: "P2",
+      category: "Backlog",
+      area: "Housekeeping",
+      kind: "Chore",
+      owner: "Local Manual",
+      initialStatus: "Partial",
+      statusNote: "Local Manual · C:\\localhost deleted",
+      summary: "Remove two superseded .worktrees/ (closed-set-followups, fix-ci-flaui)",
+      title: "Clean up the two superseded worktrees under .worktrees",
+      why: "C:\\localhost has already been deleted. All commits in the two remaining worktrees under .worktrees — closed-set-followups (e2e9dfd) and fix-ci-flaui (branch fix/ci-flaui-filter, f75c0f5) — are already on or superseded by main.",
+      next: "Remove both remaining worktrees and delete their local branches.",
+      refs: [".worktrees"]
+    },
+    {
+      id: "B-26",
+      priority: "P2",
+      category: "Backlog",
+      area: "Housekeeping",
+      kind: "Chore",
+      owner: "Local Manual",
+      initialStatus: "Ready",
+      statusNote: "Local Manual",
+      summary: "Delete leftover C:\\Projects\\MyApp if unused",
+      title: "Delete the leftover sample output",
+      why: "The screenshot run created C:\\Projects\\MyApp\\out\\MyApp.dll. The automated delete was blocked because C:\\Projects is a protected path.",
+      next: "Delete C:\\Projects\\MyApp by hand if you do not use it.",
+      refs: ["C:\\Projects\\MyApp\\out\\MyApp.dll"]
+    },
+    {
+      id: "B-33",
+      priority: "P2",
+      category: "Backlog",
+      area: "Release",
+      kind: "Verify",
+      owner: "Repo",
+      initialStatus: "Ready",
+      statusNote: "Local MSIX test + manifest",
+      summary: "Install MSIX & verify AppData write redirection",
+      title: "Check where the Store (MSIX) app writes its files",
+      why: "A packaged app’s writes under %LOCALAPPDATA% and %APPDATA% are likely redirected into its package folder. If so, the Open log folder button and PRIVACY.md point at a path the app never wrote to. Not tested on an installed package. Related to B-11.",
+      next: "Install the MSIX and see where the logs, ui-preferences.json and the WebView2 profile land. If they are redirected, set desktop6:FileSystemWriteVirtualization to disabled in the manifest (it needs the unvirtualizedResources capability), or point the docs at the package path.",
+      refs: ["package/AppxManifest.xml", "PRIVACY.md", "build/build-msix.ps1"]
+    },
+    {
+      id: "B-11",
+      priority: "P2",
+      category: "Backlog",
+      area: "Privacy",
+      kind: "Verify",
+      owner: "Repo",
+      initialStatus: "Partial",
+      statusNote: "Wave 2 added network-scan test",
+      summary: "Verify Microsoft Store / WebView2 / crash-reporting privacy statements",
+      title: "Confirm remaining external privacy statements (output network-reference scan test added)",
+      why: "Wave 2 added an automated output-assembly network-reference scan test in Tests/Obfy.Tests/ReviewFixesWave2CoreTests.cs. Still not verifiable from repo code alone: Windows moving AppData into the Store package folder, the WebView2 bootstrapper’s download, the Microsoft Store’s own data collection, and Windows crash reporting.",
+      next: "Verify each external Microsoft Store, WebView2 bootstrapper, and Windows crash reporting statement against Microsoft’s documentation or a test install.",
+      refs: ["PRIVACY.md", "Tests/Obfy.Tests/ReviewFixesWave2CoreTests.cs", "public/obfy/privacy/index.html"]
+    },
+    {
+      id: "B-10",
+      priority: "P2",
+      category: "Backlog",
+      area: "Docs",
+      kind: "Verify",
+      owner: "Repo",
+      initialStatus: "Partial",
+      statusNote: "Wave 2–3 docs & PublishModes tests added",
+      summary: "Remaining guide verification (AntiTamper on NativeAOT/IL2CPP, technique cost benchmarks)",
+      title: "Test the remaining guide behaviours (PublishSingleFile & short-name scenario tests added)",
+      why: "Wave 2 updated docs/Advanced.md and docs/Platforms.md for exclusions.attributes, BAML x:Class exclusions, the GitHub Actions snippet, and short-name reuse across runs; Wave 3 added end-to-end PublishSingleFile=true (AntiTamper) and separate-vs-closed-set short-name scenario tests in Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs. Remaining: AntiTamper on NativeAOT/IL2CPP, benchmarked technique costs, and live Visual Studio extension run.",
+      next: "Run runtime tests for AntiTamper on NativeAOT/IL2CPP, benchmark technique costs, and verify the Visual Studio extension live (coordinate with B-70), then update the guide and product page with what holds.",
+      refs: ["public/obfy/guide/index.html", "docs/Advanced.md", "docs/Platforms.md", "docs/Testing.md", "Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs"]
+    },
+    {
+      id: "B-29",
+      priority: "P2",
+      category: "Backlog",
+      area: "Release",
+      kind: "Chore",
+      owner: "Repo",
+      initialStatus: "Partial",
+      statusNote: "Wave 3 bumped 4 actions",
+      summary: "Upgrade remaining actions/setup-node to Node 24 SHA (and ilammy/msvc-dev-cmd when upstream releases)",
+      title: "Update remaining GitHub Actions still targeting Node 20 (checkout, setup-dotnet, upload-artifact & sticky-pull-request-comment updated)",
+      why: "Wave 3 bumped actions/checkout (v7.0.1), actions/setup-dotnet (v6.1.0), actions/upload-artifact (v7.0.2), and marocchino/sticky-pull-request-comment (v3.0.5) to verified Node 24 SHAs across all 4 workflows (ci.yml, package.yml, platform.yml, publish.yml). Remaining: actions/setup-node (v4 -> Node 24 SHA) and ilammy/msvc-dev-cmd (awaiting upstream Node 24 release).",
+      next: "Bump actions/setup-node from v4 to a verified Node 24 SHA and update ilammy/msvc-dev-cmd once an upstream Node 24 release ships.",
+      refs: [".github/workflows/ci.yml", ".github/workflows/package.yml", ".github/workflows/platform.yml", ".github/workflows/publish.yml", "Tests/Obfy.Tests/ReviewFixesWave3WorkflowTests.cs"]
+    },
+    {
+      id: "B-61",
+      priority: "P2",
+      category: "Backlog",
+      area: "Release",
+      kind: "Chore",
+      owner: "Repo",
+      initialStatus: "Partial",
+      statusNote: "Wave 3 added global.json & nuget.config",
+      summary: "Optional packages.lock.json locked-mode restore across TFMs/RIDs",
+      title: "Add NuGet packages.lock.json locked-mode restore (global.json, nuget.config & Dependabot ecosystems added)",
+      why: "Wave 3 added global.json (10.0.100, latestFeature), nuget.config (<clear /> + <packageSourceMapping>), and nuget/npm ecosystems in .github/dependabot.yml. Remaining: generating NuGet packages.lock.json lock files and enabling locked-mode restore across all TFMs/RIDs.",
+      next: "Generate packages.lock.json lock files and restore in locked mode across all TFMs/RIDs.",
+      refs: ["global.json", "nuget.config", "Directory.Packages.props", ".github/dependabot.yml"]
+    },
+    {
+      id: "B-34",
+      priority: "P2",
+      category: "Backlog",
+      area: "Core",
+      kind: "Fix",
+      owner: "Repo",
+      initialStatus: "Partial",
+      statusNote: "Wave 3 fixed traces, [STAThread], ResolvingUnmanagedDll",
+      summary: "Native component-hosting foreground threads & AppDomain.UnhandledException",
+      title: "Close remaining packed-app gaps (stack traces, [STAThread] & ResolvingUnmanagedDll fixed)",
+      why: "Wave 3 preserved full sync/async Task Main exception stack traces on stderr and added [STAThread] support plus traversal-safe ResolvingUnmanagedDll (with rebuilt Obfy.NativeHost.exe). Remaining: component-hosting foreground-thread join and AppDomain.UnhandledException on Main (Assembly.GetEntryAssembly() stays null by design because AntiTamper treats a null entry assembly with an empty Location as packed).",
+      next: "Join non-background foreground threads before wmain exits and let unhandled Main exceptions reach AppDomain.UnhandledException while preserving AntiTamper's null GetEntryAssembly() behavior; regenerate sources.sha256 and rebuild Obfy.NativeHost.exe after any host/bootstrap edit.",
+      refs: ["Src/Obfy.PackedBootstrap/PackedBootstrap.cs", "Src/Obfy.NativeHost/host.c", "Src/Obfy.NativeHost/dist/sources.sha256", "Src/Obfy.Core/Utilities/ManagedLauncherPacker.cs"]
+    },
+
+    /* === P3 — Nice-to-Have, Homepage & Deferred === */
+    {
+      id: "B-19",
+      priority: "P3",
+      category: "Backlog",
+      area: "Core",
+      kind: "Idea",
+      owner: "Repo",
+      initialStatus: "Ready",
+      summary: "Auto-collect XAML-referenced type names",
+      title: "Keep the types that XAML names, automatically",
+      why: "Preserve XAML keeps only public properties of types that look bindable. A window or control named in XAML still needs a manual exclusion. How compiled XAML is handled is unverified.",
+      next: "Collect type names from XAML files in a project run and exclude them. Check it with the WPF fixture.",
+      refs: ["Src/Obfy.Core/Obfuscators/Assembly/SymbolRenamingObfuscator.cs", "Tests/Obfy.ScenarioTests"]
+    },
+    {
+      id: "B-55",
+      priority: "P3",
+      category: "Backlog",
+      area: "App",
+      kind: "Fix",
+      owner: "Repo",
+      initialStatus: "Partial",
+      statusNote: "Cloak/closed-window guards fixed",
+      summary: "WebView2 host-object origin restriction (top-level CoreWebView2 has no origin-list API; relies on navigation guards)",
+      title: "Handle CoreWebView2 origin guard (cloak-refused timer & closed-window guard fixed)",
+      why: "Fixed in ShellWindow.xaml.cs: cloak-refused path now publishes app.revealed and stops/disposes _revealTimer, and closed-window guard prevents late timer ticks from revealing a closed window (alongside earlier run-bar and failed-cancel fixes). Remaining: top-level CoreWebView2 has no AddHostObjectToScriptWithOrigins API (only CoreWebView2Frame does), so the bridge relies on the navigation guards alone.",
+      next: "Harden or document the CoreWebView2 navigation/origin guard without relying on AddHostObjectToScriptWithOrigins.",
+      refs: ["Src/Obfy.UI/Views/ShellWindow.xaml.cs", "Src/Obfy.WebView/WebViewHandler.cs"]
+    },
+    {
+      id: "B-22",
+      priority: "P3",
+      category: "Backlog",
+      area: "Homepage",
+      kind: "Verify",
+      owner: "Homepage Repo",
+      initialStatus: "External",
+      summary: "Investigate intermittent ignis-demo e2e spec flake in homepage repo",
+      title: "Look at the ignis-demo e2e flake",
+      why: "Different ignis-demo tests failed and then passed on retry in several full runs, including the one before the deploy. Run alone, the spec passed 22 of 22. It is unrelated to the Obfy pages.",
+      next: "Check the timing in the ignis-demo spec.",
+      refs: ["tests/e2e/ignis-demo.spec.js"]
+    },
+    {
+      id: "B-23",
+      priority: "P3",
+      category: "Backlog",
+      area: "Homepage",
+      kind: "Idea",
+      owner: "Homepage Repo",
+      initialStatus: "External",
+      summary: "Capture and add Protection screen screenshot to product page",
+      title: "Add a Protection screenshot to the product page",
+      why: "The page shows the Start, Files and Results screens. The Protection screen, where levels and techniques are chosen, has none.",
+      next: "Capture it the way the others were (the Release shell driven over CDP) and add it to the page.",
+      refs: ["public/obfy/index.html"]
+    },
+    {
+      id: "B-24",
+      priority: "P3",
+      category: "Backlog",
+      area: "Homepage",
+      kind: "Idea",
+      owner: "Homepage Repo",
+      initialStatus: "External",
+      summary: "Add subsection entries and scroll highlight to online guide rail",
+      title: "Show subsections in the guide’s contents",
+      why: "The rail lists the 11 sections only. The 22 subsections are reachable by anchor but not from the rail, and nothing marks the section you are reading.",
+      next: "Add nested entries and a scroll highlight if the guide grows.",
+      refs: ["public/obfy/guide/index.html"]
+    },
+    {
+      id: "B-27",
+      priority: "P3",
+      category: "Backlog",
+      area: "Homepage",
+      kind: "Chore",
+      owner: "Homepage Repo",
+      initialStatus: "External",
+      summary: "Set up WaveUI checkout / WAVEUI_DIR so sitemap generator runs locally",
+      title: "Make the sitemap script runnable on this machine",
+      why: "scripts/build-sitemap.mjs needs WAVEUI_DIR, a checkout of the WaveUI repo, and there is none here. The Obfy sitemap entries were edited by hand, and the lastmod unit test caught the one date that was missed (the home page).",
+      next: "Clone the WaveUI repo, set WAVEUI_DIR, and run the script after page changes instead of editing dates by hand.",
+      refs: ["scripts/build-sitemap.mjs", "tests/unit/sitemap.test.js"]
+    },
+    {
+      id: "B-70",
+      priority: "P3",
+      category: "Backlog",
+      area: "IDE",
+      kind: "Fix",
+      owner: "Repo",
+      initialStatus: "Deferred",
+      statusNote: "Explicitly deferred · linked to B-14",
+      summary: "Visual Studio extension .vsix packaging & live VS verification (explicitly deferred)",
+      title: "Make the Visual Studio extension build, package and run its commands",
+      why: "Command GUIDs and LICENSE.txt are fixed and pinned by tests. Still open: Obfy.VisualStudio.csproj never imports Microsoft.VsSDK.targets, so no .vsix is produced; source.extension.vsixmanifest still hardcodes 1.3.0; README instructions for the VSIX are broken; and live testing inside Visual Studio (the four commands, options page, and cancel paths) has not been run. Related to B-14.",
+      next: "Import Microsoft.VsSDK.targets to produce a .vsix, build it in CI, align or clarify the 1.3.0 manifest version, fix the README instructions, and test the extension live in Visual Studio.",
+      refs: ["Src/Obfy.VisualStudio/Obfy.VisualStudio.csproj", "Src/Obfy.VisualStudio/source.extension.vsixmanifest", "Src/Obfy.VisualStudio/ObfyVsixCommandTable.vsct", "README.md"]
+    }
+  ];
+
+  var DEFAULT_EXPANDED = true;
+
+  var uiState = {
+    view: "all",
+    priority: "All",
+    status: "All",
+    area: "All",
+    q: "",
+    allExpanded: DEFAULT_EXPANDED,
+    expandedMap: {},
+    lastMarkdown: ""
+  };
+
+  var edits = loadEdits();
+
+  ITEMS.forEach(function (it) {
+    uiState.expandedMap[it.id] = DEFAULT_EXPANDED;
+  });
+
+  function storageGet(key) {
+    try {
+      return window.localStorage ? window.localStorage.getItem(key) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function storageSet(key, val) {
+    try {
+      if (window.localStorage) window.localStorage.setItem(key, val);
+    } catch (e) {
+      /* ignore restricted storage */
+    }
+  }
+
+  function storageRemove(key) {
+    try {
+      if (window.localStorage) window.localStorage.removeItem(key);
+    } catch (e) {
+      /* ignore restricted storage */
+    }
+  }
+
+  function loadEdits() {
+    var base = { statuses: {}, decisions: {}, notes: {} };
+    var raw = storageGet(STORAGE_KEY);
+    if (!raw) return base;
+    try {
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        if (parsed.statuses && typeof parsed.statuses === "object") base.statuses = parsed.statuses;
+        if (parsed.decisions && typeof parsed.decisions === "object") base.decisions = parsed.decisions;
+        if (parsed.notes && typeof parsed.notes === "object") base.notes = parsed.notes;
+      }
+    } catch (e) {
+      return base;
+    }
+    return base;
+  }
+
+  function saveEdits() {
+    var payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      statuses: edits.statuses,
+      decisions: edits.decisions,
+      notes: edits.notes
+    };
+    storageSet(STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  function getStatus(it) {
+    var s = edits.statuses[it.id];
+    return STATUSES.indexOf(s) !== -1 ? s : it.initialStatus;
+  }
+
+  function setStatus(id, value) {
+    var item = findItem(id);
+    if (!item) return;
+    if (value === item.initialStatus) {
+      delete edits.statuses[id];
+    } else {
+      edits.statuses[id] = value;
+    }
+    saveEdits();
+  }
+
+  function getDecisionChoice(id) {
+    return edits.decisions[id] || "";
+  }
+
+  function setDecisionChoice(id, value) {
+    if (!value) {
+      delete edits.decisions[id];
+    } else {
+      edits.decisions[id] = value;
+    }
+    saveEdits();
+  }
+
+  function getNote(id) {
+    return edits.notes[id] || "";
+  }
+
+  function setNote(id, value) {
+    var trimmed = value;
+    if (!trimmed || !trimmed.trim()) {
+      delete edits.notes[id];
+    } else {
+      edits.notes[id] = trimmed;
+    }
+    saveEdits();
+  }
+
+  function findItem(id) {
+    for (var i = 0; i < ITEMS.length; i++) {
+      if (ITEMS[i].id === id) return ITEMS[i];
+    }
+    return null;
+  }
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function isClosedStatus(st) {
+    return st === "Done" || st === "Won't Do";
+  }
+
+  function computeMetrics() {
+    var total = ITEMS.length;
+    var active = 0;
+    var doneCount = 0;
+    var wontCount = 0;
+    var decisionsTotal = 0;
+    var decisionsNeeded = 0;
+    var pTotal = { P1: 0, P2: 0, P3: 0 };
+    var pOpen = { P1: 0, P2: 0, P3: 0 };
+
+    ITEMS.forEach(function (it) {
+      var st = getStatus(it);
+      pTotal[it.priority]++;
+      if (it.category === "Decision") {
+        decisionsTotal++;
+        if (st === "Needs Decision") decisionsNeeded++;
+      }
+      if (st === "Done") doneCount++;
+      else if (st === "Won't Do") wontCount++;
+      else pOpen[it.priority]++;
+
+      if (!isClosedStatus(st)) active++;
+    });
+
+    return {
+      total: total,
+      active: active,
+      doneCount: doneCount,
+      wontCount: wontCount,
+      decisionsTotal: decisionsTotal,
+      decisionsNeeded: decisionsNeeded,
+      pTotal: pTotal,
+      pOpen: pOpen
+    };
+  }
+
+  function renderKpis() {
+    var m = computeMetrics();
+    var decCount = m.decisionsTotal;
+    var backlogCount = m.total - decCount;
+
+    document.getElementById("kpi-active").textContent = String(m.active);
+    document.getElementById("kpi-active-sub").textContent =
+      m.active === m.total
+        ? backlogCount + " backlog · " + decCount + " decisions"
+        : "of " + m.total + " listed (" + (m.total - m.active) + " closed)";
+
+    document.getElementById("kpi-decisions").textContent = String(m.decisionsNeeded);
+    document.getElementById("kpi-decisions-sub").textContent =
+      m.decisionsNeeded === m.decisionsTotal
+        ? "of " + m.decisionsTotal + " Decide items"
+        : (m.decisionsTotal - m.decisionsNeeded) + " resolved of " + m.decisionsTotal;
+
+    document.getElementById("kpi-p1").textContent = String(m.pOpen.P1);
+    document.getElementById("kpi-p1-sub").textContent = "of " + m.pTotal.P1 + " P1 items";
+
+    document.getElementById("kpi-p2").textContent = String(m.pOpen.P2);
+    document.getElementById("kpi-p2-sub").textContent = "of " + m.pTotal.P2 + " P2 items";
+
+    document.getElementById("kpi-p3").textContent = String(m.pOpen.P3);
+    document.getElementById("kpi-p3-sub").textContent = "of " + m.pTotal.P3 + " P3 items";
+
+    document.getElementById("kpi-done").textContent = String(m.doneCount);
+    document.getElementById("kpi-done-sub").textContent =
+      m.wontCount > 0
+        ? m.wontCount + " Won't Do · 99 historical"
+        : "99 historical done";
+
+    /* Progress strip */
+    var closed = m.doneCount + m.wontCount;
+    var pct = Math.round((closed * 100) / m.total);
+    document.getElementById("prog-text").textContent =
+      "Session queue: " + closed + " closed (" + pct + "%) · " + m.active + " active";
+    document.getElementById("seg-done").style.width = ((closed * 100) / m.total) + "%";
+    document.getElementById("seg-p1").style.width = ((m.pOpen.P1 * 100) / m.total) + "%";
+    document.getElementById("seg-p2").style.width = ((m.pOpen.P2 * 100) / m.total) + "%";
+    document.getElementById("seg-p3").style.width = ((m.pOpen.P3 * 100) / m.total) + "%";
+
+    var totalAllTime = 99 + m.total;
+    var doneAllTime = 99 + m.doneCount;
+    document.getElementById("prog-overall").textContent =
+      "Overall historical: " + doneAllTime + " / " + totalAllTime + " (" + Math.round((doneAllTime * 100) / totalAllTime) + "%)";
+  }
+
+  function populateFilterDropdowns() {
+    var statusSelect = document.getElementById("status-filter");
+    STATUSES.forEach(function (st) {
+      var opt = el("option", null, st);
+      opt.value = st;
+      statusSelect.appendChild(opt);
+    });
+
+    var areas = [];
+    ITEMS.forEach(function (it) {
+      if (areas.indexOf(it.area) === -1) areas.push(it.area);
+    });
+    var areaSelect = document.getElementById("area-filter");
+    areas.forEach(function (area) {
+      var opt = el("option", null, area);
+      opt.value = area;
+      areaSelect.appendChild(opt);
+    });
+  }
+
+  function itemMatchesFilters(it) {
+    if (uiState.view === "decisions" && it.category !== "Decision") return false;
+    if (uiState.view === "backlog" && it.category !== "Backlog") return false;
+    if (uiState.priority !== "All" && it.priority !== uiState.priority) return false;
+    var currentStatus = getStatus(it);
+    if (uiState.status !== "All" && currentStatus !== uiState.status) return false;
+    if (uiState.area !== "All" && it.area !== uiState.area) return false;
+
+    if (uiState.q) {
+      var parts = [
+        it.id,
+        it.priority,
+        it.category,
+        it.area,
+        it.kind,
+        it.owner,
+        currentStatus,
+        it.statusNote || "",
+        it.summary || "",
+        it.title,
+        it.why,
+        it.next,
+        it.recommendation || "",
+        (it.options || []).join(" "),
+        getDecisionChoice(it.id),
+        getNote(it.id),
+        it.refs.join(" ")
+      ];
+      var hay = parts.join(" ").toLowerCase();
+      if (hay.indexOf(uiState.q) === -1) return false;
+    }
+    return true;
+  }
+
+  function updateClearFilterButton() {
+    var hasFilter =
+      uiState.priority !== "All" ||
+      uiState.status !== "All" ||
+      uiState.area !== "All" ||
+      uiState.q !== "";
+    document.getElementById("clear-filters-btn").hidden = !hasFilter;
+  }
+
+  function updateExpandAllButton() {
+    var btn = document.getElementById("expand-all-btn");
+    btn.textContent = uiState.allExpanded ? "Collapse All" : "Expand All";
+  }
+
+  function buildStatusSelect(it, currentStatus) {
+    var sel = el("select", "status-select");
+    sel.setAttribute("aria-label", "Status for " + it.id);
+    sel.dataset.statusFor = it.id;
+    sel.dataset.status = currentStatus;
+
+    STATUSES.forEach(function (st) {
+      var opt = el("option", null, st);
+      opt.value = st;
+      if (st === currentStatus) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    sel.addEventListener("change", function (e) {
+      var nextStatus = e.target.value;
+      setStatus(it.id, nextStatus);
+      e.target.dataset.status = nextStatus;
+
+      var row = document.querySelector('tr.item-row[data-id="' + it.id + '"]');
+      if (row) {
+        row.classList.toggle("is-done", isClosedStatus(nextStatus));
+      }
+
+      renderKpis();
+
+      if (uiState.status !== "All" || uiState.q) {
+        renderTable();
+      }
+    });
+
+    return sel;
+  }
+
+  function buildDetailRow(it, isExpanded) {
+    var tr = el("tr", "detail-row" + (it.category === "Decision" ? " is-decision" : ""));
+    tr.dataset.detailFor = it.id;
+    tr.hidden = !isExpanded;
+
+    var td = document.createElement("td");
+    td.colSpan = 8;
+
+    var box = el("div", "detail-box");
+
+    if (it.category === "Decision") {
+      var decPanel = el("div", "decision-panel");
+
+      var decTop = el("div", "decision-top");
+      var optCol = el("div");
+      optCol.appendChild(el("span", "field-lab", "Options"));
+      var ul = el("ul", "options-list");
+      (it.options || []).forEach(function (o) {
+        ul.appendChild(el("li", null, o));
+      });
+      optCol.appendChild(ul);
+      decTop.appendChild(optCol);
+
+      var recCol = el("div");
+      recCol.appendChild(el("span", "field-lab", "Recommendation"));
+      recCol.appendChild(el("p", "rec-text", it.recommendation || ""));
+      decTop.appendChild(recCol);
+
+      decPanel.appendChild(decTop);
+
+      var controls = el("div", "decision-controls");
+
+      var choiceCol = el("div", "control-col");
+      var choiceId = "dec-choice-" + it.id;
+      var choiceLbl = el("label", "field-lab", "Selected Decision");
+      choiceLbl.htmlFor = choiceId;
+      choiceCol.appendChild(choiceLbl);
+
+      var choiceSel = el("select", "decision-select");
+      choiceSel.id = choiceId;
+      choiceSel.dataset.decisionFor = it.id;
+      var savedChoice = getDecisionChoice(it.id);
+
+      var optUndecided = el("option", null, "Undecided (awaiting choice)");
+      optUndecided.value = "";
+      choiceSel.appendChild(optUndecided);
+
+      var optRec = el("option", null, "Use Recommended: " + it.recommendation);
+      optRec.value = "Recommended: " + it.recommendation;
+      choiceSel.appendChild(optRec);
+
+      (it.options || []).forEach(function (o, idx) {
+        var opt = el("option", null, "Option " + (idx + 1) + ": " + o);
+        opt.value = o;
+        choiceSel.appendChild(opt);
+      });
+
+      var optCustom = el("option", null, "Custom (see notes)");
+      optCustom.value = "Custom (see notes)";
+      choiceSel.appendChild(optCustom);
+
+      choiceSel.value = savedChoice;
+      choiceSel.addEventListener("change", function (e) {
+        setDecisionChoice(it.id, e.target.value);
+      });
+      choiceCol.appendChild(choiceSel);
+      controls.appendChild(choiceCol);
+
+      var noteCol = el("div", "control-col");
+      var noteId = "note-" + it.id;
+      var noteLbl = el("label", "field-lab", "Decision Notes");
+      noteLbl.htmlFor = noteId;
+      noteCol.appendChild(noteLbl);
+
+      var noteInput = el("input", "notes-input");
+      noteInput.type = "text";
+      noteInput.id = noteId;
+      noteInput.dataset.notesFor = it.id;
+      noteInput.placeholder = "Add rationale, follow-up owner, or target version...";
+      noteInput.value = getNote(it.id);
+      noteInput.addEventListener("input", function (e) {
+        setNote(it.id, e.target.value);
+      });
+      noteCol.appendChild(noteInput);
+      controls.appendChild(noteCol);
+
+      decPanel.appendChild(controls);
+      box.appendChild(decPanel);
+    }
+
+    var grid = el("div", "detail-grid");
+    var whyCol = el("div", "detail-field");
+    whyCol.appendChild(el("span", "field-lab", "Why open"));
+    whyCol.appendChild(el("p", null, it.why));
+    grid.appendChild(whyCol);
+
+    var nextCol = el("div", "detail-field");
+    nextCol.appendChild(el("span", "field-lab", "Next"));
+    nextCol.appendChild(el("p", null, it.next));
+    grid.appendChild(nextCol);
+    box.appendChild(grid);
+
+    if (it.category !== "Decision") {
+      var noteRow = el("div", "notes-only-row");
+      var bNoteCol = el("div", "control-col");
+      var bNoteId = "note-" + it.id;
+      var bNoteLbl = el("label", "field-lab", "Session Notes");
+      bNoteLbl.htmlFor = bNoteId;
+      bNoteCol.appendChild(bNoteLbl);
+
+      var bNoteInput = el("input", "notes-input");
+      bNoteInput.type = "text";
+      bNoteInput.id = bNoteId;
+      bNoteInput.dataset.notesFor = it.id;
+      bNoteInput.placeholder = "Add verification link, CI run URL, or follow-up note...";
+      bNoteInput.value = getNote(it.id);
+      bNoteInput.addEventListener("input", function (e) {
+        setNote(it.id, e.target.value);
+      });
+      bNoteCol.appendChild(bNoteInput);
+      noteRow.appendChild(bNoteCol);
+      box.appendChild(noteRow);
+    }
+
+    if (it.refs && it.refs.length) {
+      var refsRow = el("div", "refs-row");
+      refsRow.appendChild(el("span", "field-lab", "Refs"));
+      it.refs.forEach(function (r) {
+        refsRow.appendChild(el("span", "ref-chip", r));
+      });
+      box.appendChild(refsRow);
+    }
+
+    td.appendChild(box);
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function renderTable() {
+    var tbody = document.getElementById("table-body");
+    tbody.textContent = "";
+
+    var matched = ITEMS.filter(itemMatchesFilters);
+    document.getElementById("results-count").textContent =
+      "Showing " + matched.length + " of " + ITEMS.length + " items";
+    updateClearFilterButton();
+
+    var emptyEl = document.getElementById("empty-state");
+    if (!matched.length) {
+      emptyEl.hidden = false;
+      return;
+    }
+    emptyEl.hidden = true;
+
+    ["P1", "P2", "P3"].forEach(function (pri) {
+      var groupItems = matched.filter(function (it) { return it.priority === pri; });
+      if (!groupItems.length) return;
+
+      var groupTr = el("tr", "group-row");
+      var groupTh = document.createElement("th");
+      groupTh.colSpan = 8;
+      var gHead = el("div", "group-head");
+      gHead.appendChild(el("span", "pill " + pri.toLowerCase(), pri));
+      gHead.appendChild(el("span", "group-title", PRIORITY_META[pri].label));
+      gHead.appendChild(el("span", "group-sub", groupItems.length + " shown · " + PRIORITY_META[pri].desc));
+      groupTh.appendChild(gHead);
+      groupTr.appendChild(groupTh);
+      tbody.appendChild(groupTr);
+
+      groupItems.forEach(function (it) {
+        var currentStatus = getStatus(it);
+        var isExpanded = uiState.expandedMap[it.id] !== false;
+
+        var tr = el("tr", "item-row" +
+          (it.category === "Decision" ? " is-decision" : "") +
+          (isClosedStatus(currentStatus) ? " is-done" : "") +
+          (isExpanded ? " expanded" : ""));
+        tr.dataset.id = it.id;
+
+        /* 1. Expand button */
+        var tdExp = el("td", "col-expand");
+        var expBtn = el("button", "expand-btn", isExpanded ? "▾" : "▸");
+        expBtn.type = "button";
+        expBtn.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+        expBtn.setAttribute("aria-label", "Toggle details for " + it.id);
+        expBtn.addEventListener("click", function () {
+          var next = !(uiState.expandedMap[it.id] !== false);
+          uiState.expandedMap[it.id] = next;
+          expBtn.textContent = next ? "▾" : "▸";
+          expBtn.setAttribute("aria-expanded", next ? "true" : "false");
+          tr.classList.toggle("expanded", next);
+          var detail = document.querySelector('tr.detail-row[data-detail-for="' + it.id + '"]');
+          if (detail) detail.hidden = !next;
+        });
+        tdExp.appendChild(expBtn);
+        tr.appendChild(tdExp);
+
+        /* 2. Priority */
+        var tdPri = el("td", "col-pri");
+        tdPri.appendChild(el("span", "pill " + it.priority.toLowerCase(), it.priority));
+        tr.appendChild(tdPri);
+
+        /* 3. ID */
+        var tdId = el("td", "col-id");
+        tdId.appendChild(el("span", "item-id", it.id));
+        tr.appendChild(tdId);
+
+        /* 4. Title & Summary */
+        var tdTitle = el("td", "title-cell");
+        tdTitle.appendChild(el("div", "item-title", it.title));
+        if (it.summary) {
+          tdTitle.appendChild(el("div", "item-brief", it.summary));
+        }
+        if (it.statusNote || it.category === "Decision") {
+          var badges = el("div", "badges-inline");
+          if (it.category === "Decision" && it.recommendation) {
+            badges.appendChild(el("span", "note-badge", "Rec: " + it.recommendation));
+          }
+          if (it.statusNote) {
+            badges.appendChild(el("span", "note-badge", it.statusNote));
+          }
+          tdTitle.appendChild(badges);
+        }
+        tr.appendChild(tdTitle);
+
+        /* 5. Category */
+        var tdCat = el("td", "col-cat");
+        tdCat.appendChild(el("span", "cat-badge " + it.category.toLowerCase(), it.category));
+        tr.appendChild(tdCat);
+
+        /* 6. Area / Kind */
+        var tdArea = el("td", "col-area");
+        var stack = el("div", "meta-stack");
+        stack.appendChild(el("span", "meta-area", it.area));
+        stack.appendChild(el("span", "meta-kind", it.kind));
+        tdArea.appendChild(stack);
+        tr.appendChild(tdArea);
+
+        /* 7. Owner / Scope */
+        var tdOwner = el("td", "col-owner");
+        tdOwner.appendChild(el("span", "owner-pill", it.owner));
+        tr.appendChild(tdOwner);
+
+        /* 8. Status */
+        var tdStatus = el("td", "col-status");
+        tdStatus.appendChild(buildStatusSelect(it, currentStatus));
+        tr.appendChild(tdStatus);
+
+        tbody.appendChild(tr);
+        tbody.appendChild(buildDetailRow(it, isExpanded));
+      });
+    });
+  }
+
+  function buildMarkdownSummary() {
+    var m = computeMetrics();
+    var lines = [];
+    lines.push("# Obfy — Backlog & Decisions Summary");
+    lines.push("- **Repo State:** main @ `2e5eb67` (Waves 1–3 pushed · 99/127 historical done)");
+    lines.push("- **Snapshot:** " + new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC");
+    lines.push("- **Active:** " + m.active + " / " + m.total + " · **Decisions Needed:** " + m.decisionsNeeded + " / " + m.decisionsTotal + " · **Done (this session):** " + m.doneCount);
+    lines.push("");
+
+    lines.push("## Decisions (" + m.decisionsTotal + ")");
+    ITEMS.filter(function (it) { return it.category === "Decision"; }).forEach(function (it) {
+      var st = getStatus(it);
+      var choice = getDecisionChoice(it.id);
+      var note = getNote(it.id);
+      var choiceText = choice ? choice : "Undecided (Rec: " + it.recommendation + ")";
+      var line = "- **" + it.id + "** [" + it.priority + " · " + st + "] " + it.title + " → **" + choiceText + "**";
+      if (note && note.trim()) line += " _(Note: " + note.trim() + ")_";
+      lines.push(line);
+    });
+    lines.push("");
+
+    var changed = ITEMS.filter(function (it) {
+      return getStatus(it) !== it.initialStatus || Boolean(getNote(it.id).trim()) || Boolean(getDecisionChoice(it.id));
+    });
+    if (changed.length) {
+      lines.push("## Changes & Notes This Session (" + changed.length + ")");
+      changed.forEach(function (it) {
+        var st = getStatus(it);
+        var parts = [];
+        if (st !== it.initialStatus) parts.push("Status: " + it.initialStatus + " → " + st);
+        var ch = getDecisionChoice(it.id);
+        if (ch) parts.push("Choice: " + ch);
+        var nt = getNote(it.id).trim();
+        if (nt) parts.push("Note: " + nt);
+        lines.push("- **" + it.id + "** (" + it.priority + "): " + it.title + " — " + parts.join(" | "));
+      });
+      lines.push("");
+    }
+
+    ["P1", "P2", "P3"].forEach(function (pri) {
+      lines.push("## " + PRIORITY_META[pri].label);
+      ITEMS.filter(function (it) { return it.priority === pri; }).forEach(function (it) {
+        var st = getStatus(it);
+        var note = getNote(it.id).trim();
+        var line = "- **" + it.id + "** [" + st + " · " + it.area + "/" + it.kind + " · " + it.owner + "] " + it.title;
+        if (note) line += " _(Note: " + note + ")_";
+        lines.push(line);
+      });
+      lines.push("");
+    });
+
+    return lines.join("\n").trim();
+  }
+
+  function buildJsonExport() {
+    var m = computeMetrics();
+    return {
+      generatedAt: new Date().toISOString(),
+      repoState: "main @ 2e5eb67",
+      metrics: m,
+      items: ITEMS.map(function (it) {
+        return {
+          id: it.id,
+          priority: it.priority,
+          category: it.category,
+          area: it.area,
+          kind: it.kind,
+          owner: it.owner,
+          initialStatus: it.initialStatus,
+          status: getStatus(it),
+          title: it.title,
+          summary: it.summary || null,
+          decision: it.category === "Decision" ? {
+            options: it.options,
+            recommendation: it.recommendation,
+            selectedChoice: getDecisionChoice(it.id) || null
+          } : null,
+          notes: getNote(it.id).trim() || null,
+          refs: it.refs
+        };
+      })
+    };
+  }
+
+  function showBanner(msg, kind, showMdPreviewBtn) {
+    var banner = document.getElementById("status-banner");
+    banner.className = "banner-row" + (kind ? " " + kind : "");
+    document.getElementById("status-banner-msg").textContent = msg;
+    document.getElementById("toggle-md-preview-btn").hidden = !showMdPreviewBtn;
+    banner.hidden = false;
+  }
+
+  function hideBanner() {
+    document.getElementById("status-banner").hidden = true;
+  }
+
+  function copyTextToClipboard(text, onDone) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(text).then(function () {
+        onDone(true);
+      }, function () {
+        onDone(fallbackExecCopy(text));
+      });
+      return;
+    }
+    onDone(fallbackExecCopy(text));
+  }
+
+  function fallbackExecCopy(text) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = typeof document.execCommand === "function" && document.execCommand("copy");
+      document.body.removeChild(ta);
+      return Boolean(ok);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /* Theme Handling */
+  function getSystemPrefersDark() {
+    return typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  function applyTheme(pref) {
+    var root = document.documentElement;
+    var btn = document.getElementById("theme-toggle");
+    if (pref === "dark" || pref === "light") {
+      root.setAttribute("data-theme", pref);
+      btn.textContent = pref === "dark" ? "Theme: Dark" : "Theme: Light";
+    } else {
+      root.removeAttribute("data-theme");
+      btn.textContent = "Theme: Auto";
+    }
+  }
+
+  function cycleTheme() {
+    var currentAttr = document.documentElement.getAttribute("data-theme");
+    var next;
+    if (!currentAttr) {
+      next = getSystemPrefersDark() ? "light" : "dark";
+    } else if (currentAttr === "dark") {
+      next = "light";
+    } else {
+      next = "auto";
+    }
+    if (next === "auto") {
+      storageRemove(THEME_KEY);
+      applyTheme(null);
+    } else {
+      storageSet(THEME_KEY, next);
+      applyTheme(next);
+    }
+  }
+
+  /* Wire Controls */
+  Array.prototype.forEach.call(document.querySelectorAll(".tab-btn"), function (btn) {
+    btn.addEventListener("click", function () {
+      uiState.view = btn.dataset.view;
+      Array.prototype.forEach.call(document.querySelectorAll(".tab-btn"), function (b) {
+        b.setAttribute("aria-selected", b === btn ? "true" : "false");
+      });
+      renderTable();
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll(".pri-chip"), function (btn) {
+    btn.addEventListener("click", function () {
+      uiState.priority = btn.dataset.pri;
+      Array.prototype.forEach.call(document.querySelectorAll(".pri-chip"), function (b) {
+        b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+      });
+      renderTable();
+    });
+  });
+
+  document.getElementById("status-filter").addEventListener("change", function (e) {
+    uiState.status = e.target.value;
+    renderTable();
+  });
+
+  document.getElementById("area-filter").addEventListener("change", function (e) {
+    uiState.area = e.target.value;
+    renderTable();
+  });
+
+  document.getElementById("search-input").addEventListener("input", function (e) {
+    uiState.q = e.target.value.trim().toLowerCase();
+    renderTable();
+  });
+
+  document.getElementById("clear-filters-btn").addEventListener("click", function () {
+    uiState.priority = "All";
+    uiState.status = "All";
+    uiState.area = "All";
+    uiState.q = "";
+    Array.prototype.forEach.call(document.querySelectorAll(".pri-chip"), function (b) {
+      b.setAttribute("aria-pressed", b.dataset.pri === "All" ? "true" : "false");
+    });
+    document.getElementById("status-filter").value = "All";
+    document.getElementById("area-filter").value = "All";
+    document.getElementById("search-input").value = "";
+    renderTable();
+  });
+
+  document.getElementById("expand-all-btn").addEventListener("click", function () {
+    uiState.allExpanded = !uiState.allExpanded;
+    ITEMS.forEach(function (it) {
+      uiState.expandedMap[it.id] = uiState.allExpanded;
+    });
+    updateExpandAllButton();
+    renderTable();
+  });
+
+  document.getElementById("copy-md-btn").addEventListener("click", function () {
+    var md = buildMarkdownSummary();
+    uiState.lastMarkdown = md;
+    document.getElementById("md-textarea").value = md;
+    copyTextToClipboard(md, function (copied) {
+      if (copied) {
+        showBanner("Markdown summary copied to clipboard (" + md.split("\n").length + " lines).", "success", true);
+      } else {
+        document.getElementById("md-drawer").hidden = false;
+        showBanner("Clipboard unavailable in this context — Markdown summary opened below for manual copy.", "", true);
+      }
+    });
+  });
+
+  document.getElementById("toggle-md-preview-btn").addEventListener("click", function () {
+    var drawer = document.getElementById("md-drawer");
+    if (!uiState.lastMarkdown) {
+      uiState.lastMarkdown = buildMarkdownSummary();
+      document.getElementById("md-textarea").value = uiState.lastMarkdown;
+    }
+    drawer.hidden = !drawer.hidden;
+    document.getElementById("toggle-md-preview-btn").textContent = drawer.hidden ? "Show Markdown" : "Hide Markdown";
+  });
+
+  document.getElementById("copy-drawer-btn").addEventListener("click", function () {
+    var ta = document.getElementById("md-textarea");
+    copyTextToClipboard(ta.value, function (copied) {
+      showBanner(copied ? "Markdown summary copied to clipboard." : "Select text in the box below and copy manually.", copied ? "success" : "", true);
+    });
+  });
+
+  document.getElementById("close-drawer-btn").addEventListener("click", function () {
+    document.getElementById("md-drawer").hidden = true;
+    document.getElementById("toggle-md-preview-btn").textContent = "Show Markdown";
+  });
+
+  document.getElementById("export-json-btn").addEventListener("click", function () {
+    var jsonStr = JSON.stringify(buildJsonExport(), null, 2);
+    try {
+      if (typeof Blob === "function" && window.URL && typeof window.URL.createObjectURL === "function") {
+        var blob = new Blob([jsonStr], { type: "application/json" });
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "obfy-backlog-decisions-2026-11-24.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { window.URL.revokeObjectURL(url); }, 1000);
+        showBanner("Exported JSON snapshot (28 items).", "success", false);
+        return;
+      }
+    } catch (e) {
+      /* fallback below */
+    }
+    uiState.lastMarkdown = jsonStr;
+    document.getElementById("md-textarea").value = jsonStr;
+    document.getElementById("md-drawer").hidden = false;
+    showBanner("Download unavailable — JSON snapshot displayed below.", "", false);
+  });
+
+  document.getElementById("reset-btn").addEventListener("click", function () {
+    document.getElementById("reset-confirm-banner").hidden = false;
+  });
+
+  document.getElementById("cancel-reset-btn").addEventListener("click", function () {
+    document.getElementById("reset-confirm-banner").hidden = true;
+  });
+
+  document.getElementById("confirm-reset-btn").addEventListener("click", function () {
+    edits = { statuses: {}, decisions: {}, notes: {} };
+    storageRemove(STORAGE_KEY);
+    document.getElementById("reset-confirm-banner").hidden = true;
+    renderKpis();
+    renderTable();
+    showBanner("All session edits reset to defaults.", "success", false);
+  });
+
+  document.getElementById("dismiss-banner-btn").addEventListener("click", hideBanner);
+  document.getElementById("theme-toggle").addEventListener("click", cycleTheme);
+
+  /* Expose lightweight inspection hook for verification */
+  window.__obfyBacklogApp = {
+    getItems: function () { return ITEMS.slice(); },
+    buildMarkdownSummary: buildMarkdownSummary,
+    buildJsonExport: buildJsonExport,
+    computeMetrics: computeMetrics
+  };
+
+  /* Initial boot */
+  applyTheme(storageGet(THEME_KEY));
+  populateFilterDropdowns();
+  updateExpandAllButton();
+  renderKpis();
+  renderTable();
+})();
+</script>
+</body>
+</html>

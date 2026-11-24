@@ -45,7 +45,16 @@ internal static class ScenarioHarness
         Directory.Exists(sourceDirectory).ShouldBeTrue(sourceDirectory);
         var dest = Path.Combine(Path.GetTempPath(), "obfy-scen-" + Guid.NewGuid().ToString("N"));
         CopyDirectory(sourceDirectory, dest);
+        CopyRepoGlobalJsonIfMissing(dest);
         return dest;
+    }
+
+    private static void CopyRepoGlobalJsonIfMissing(string dest)
+    {
+        var repoGlobalJson = Path.Combine(FindRepoRoot(), "global.json");
+        var destGlobalJson = Path.Combine(dest, "global.json");
+        if (File.Exists(repoGlobalJson) && !File.Exists(destGlobalJson))
+            File.Copy(repoGlobalJson, destGlobalJson);
     }
 
     internal const int DefaultBuildTimeoutMs = 180_000;
@@ -59,18 +68,21 @@ internal static class ScenarioHarness
         string extraArgs = "",
         int timeoutMs = DefaultBuildTimeoutMs)
     {
-        var args = $"build \"{projectOrSln}\" -c {configuration} --nologo";
-        if (!string.IsNullOrWhiteSpace(extraArgs))
-            args += " " + extraArgs;
+        var args = BuildMsBuildArgs($"build \"{projectOrSln}\" -c {configuration} --nologo", extraArgs);
         var result = RunProcess("dotnet", args, Path.GetDirectoryName(projectOrSln)!, timeoutMs);
         result.ExitCode.ShouldBe(0, result.StdOut + Environment.NewLine + result.StdErr);
     }
 
     public static ProcessResult DotnetPublish(string project, string extraArgs = "", int timeoutMs = DefaultPublishTimeoutMs)
     {
-        var args = $"publish \"{project}\" --nologo {extraArgs}".Trim();
+        var args = BuildMsBuildArgs($"publish \"{project}\" --nologo", extraArgs);
         return RunProcess("dotnet", args, Path.GetDirectoryName(project)!, timeoutMs);
     }
+
+    private static string BuildMsBuildArgs(string baseArgs, string extraArgs) =>
+        string.IsNullOrWhiteSpace(extraArgs)
+            ? $"{baseArgs} -p:UseSharedCompilation=false"
+            : $"{baseArgs} {extraArgs.Trim()} -p:UseSharedCompilation=false";
 
     public static ObfySettings LoadSettings(string jsonPath)
     {
@@ -133,6 +145,9 @@ internal static class ScenarioHarness
         return RunProcess("dotnet", args, Path.GetDirectoryName(assemblyPath)!, timeoutMs);
     }
 
+    private static readonly TimeSpan StreamDrainTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan StreamDrainAfterKillTimeout = TimeSpan.FromSeconds(5);
+
     public static ProcessResult RunProcess(string fileName, string arguments, string workingDirectory, int timeoutMs)
     {
         var start = new ProcessStartInfo(fileName, arguments)
@@ -144,12 +159,7 @@ internal static class ScenarioHarness
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
-        start.Environment["DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER"] = "1";
-        // vcvars sets Platform=x64, and an SDK-style project then writes to bin/x64/Release.
-        // Drop that inherited value only for dotnet when the command does not set Platform itself.
-        if (ShouldStripInheritedPlatform(fileName, arguments))
-            start.Environment.Remove("Platform");
+        SanitizeChildEnvironment(start.Environment, fileName, arguments);
         timeoutMs = ScaleTimeout(timeoutMs);
 
         using var process = Process.Start(start);
@@ -158,13 +168,59 @@ internal static class ScenarioHarness
         var stderrTask = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(timeoutMs))
         {
-            try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
+            TryKillTree(process);
+            ObserveFault(stdoutTask);
+            ObserveFault(stderrTask);
             throw new TimeoutException($"Timed out: {fileName} {arguments}");
         }
 
-        var stdout = stdoutTask.GetAwaiter().GetResult();
-        var stderr = stderrTask.GetAwaiter().GetResult();
+        // Wait up to 15s for stdout/stderr EOF; if a lingering child process still holds an
+        // inherited pipe handle after the main process exits, kill the tree and drain for 5s.
+        var drainTask = Task.WhenAll(stdoutTask, stderrTask);
+        if (!WaitForTask(drainTask, StreamDrainTimeout))
+        {
+            TryKillTree(process);
+            WaitForTask(drainTask, StreamDrainAfterKillTimeout);
+        }
+
+        ObserveFault(stdoutTask);
+        ObserveFault(stderrTask);
+        var stdout = stdoutTask.IsCompletedSuccessfully ? stdoutTask.GetAwaiter().GetResult() : string.Empty;
+        var stderr = stderrTask.IsCompletedSuccessfully ? stderrTask.GetAwaiter().GetResult() : string.Empty;
         return new ProcessResult(process.ExitCode, stdout, stderr);
+    }
+
+    private static void TryKillTree(Process process)
+    {
+        try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
+    }
+
+    private static bool WaitForTask(Task task, TimeSpan timeout)
+    {
+        try
+        {
+            return task.Wait(timeout);
+        }
+        catch (AggregateException)
+        {
+            return true;
+        }
+    }
+
+    private static void ObserveFault(Task task)
+    {
+        if (task.IsFaulted)
+        {
+            _ = task.Exception;
+        }
+        else if (!task.IsCompleted)
+        {
+            _ = task.ContinueWith(
+                static t => _ = t.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
     }
 
     /// <summary>
@@ -184,13 +240,59 @@ internal static class ScenarioHarness
         return scaled > int.MaxValue ? int.MaxValue : (int)scaled;
     }
 
-    internal static bool ShouldStripInheritedPlatform(string fileName, string arguments)
+    private static readonly HashSet<string> DotnetParentMsBuildEnvVars = new(StringComparer.OrdinalIgnoreCase)
     {
-        var name = Path.GetFileNameWithoutExtension(fileName);
-        if (!name.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            return false;
-        return !PlatformProperty.IsMatch(arguments);
+        "MSBUILD_EXE_PATH",
+        "MSBuildSDKsPath",
+        "MSBuildExtensionsPath",
+        "MSBuildUserExtensionsPath",
+        "MSBuildLoadMicrosoftTargetsReadOnly",
+        "MSBuildLoadReadOnly",
+        "MSBUILDFAILONDRIVEENUMERATINGWILDCARD",
+        "MSBUILDUSESERVER",
+        "DOTNET_HOST_PATH",
+        "DOTNET_MSBUILD_SDK_RESOLVER_CLI_DIR",
+        "DOTNET_MSBUILD_SDK_RESOLVER_SDKS_DIR",
+        "DOTNET_MSBUILD_SDK_RESOLVER_ENABLE_LOG",
+        "DOTNET_STARTUP_HOOKS"
+    };
+
+    /// <summary>
+    /// Isolates child <c>dotnet</c> invocations from MSBuild and SDK-resolver variables inherited from a
+    /// parent <c>dotnet test</c> host while keeping SDK root, NuGet cache, and toolchain variables intact.
+    /// </summary>
+    internal static void SanitizeChildEnvironment(
+        IDictionary<string, string?> environment,
+        string fileName,
+        string arguments)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+
+        environment["MSBUILDDISABLENODEREUSE"] = "1";
+        environment["DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER"] = "1";
+
+        // vcvars sets Platform=x64, and an SDK-style project then writes to bin/x64/Release.
+        // Drop that inherited value only for dotnet when the command does not set Platform itself.
+        if (ShouldStripInheritedPlatform(fileName, arguments))
+            RemoveEnvironmentKeysCaseInsensitive(environment, key => key.Equals("Platform", StringComparison.OrdinalIgnoreCase));
+
+        if (IsDotnetExecutable(fileName))
+            RemoveEnvironmentKeysCaseInsensitive(environment, DotnetParentMsBuildEnvVars.Contains);
     }
+
+    private static void RemoveEnvironmentKeysCaseInsensitive(
+        IDictionary<string, string?> environment,
+        Func<string, bool> shouldRemove)
+    {
+        foreach (var key in environment.Keys.Where(shouldRemove).ToArray())
+            environment.Remove(key);
+    }
+
+    private static bool IsDotnetExecutable(string fileName) =>
+        Path.GetFileNameWithoutExtension(fileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool ShouldStripInheritedPlatform(string fileName, string arguments) =>
+        IsDotnetExecutable(fileName) && !PlatformProperty.IsMatch(arguments);
 
     private static readonly Regex PlatformProperty = new(
         @"(?:^|\s)(?:--property:|-p:|/p:)Platform(?:=|\s|$)",

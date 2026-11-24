@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Obfy.App.Features.Settings;
 using Obfy.App.Models;
 using Obfy.App.Sessions;
 
@@ -84,7 +85,11 @@ public sealed class InputIntake(InputSession input, ProtectionSession protection
         catch (ObfyApiException ex)
         {
             logger.LogWarning("Could not load a configuration ({Code})", ex.Code);
-            input.Notify(NoticeLevel.Error, "Could not load configuration", ex.Message);
+            input.ReplaceNoticeWithPrefix(
+                ConfigFile.ConfigLoadErrorNoticePrefix,
+                NoticeLevel.Error,
+                ConfigFile.ConfigLoadErrorNoticePrefix,
+                ex.Message);
             return;
         }
 
@@ -92,12 +97,11 @@ public sealed class InputIntake(InputSession input, ProtectionSession protection
         {
             run.WhileIdle(() =>
             {
-                protection.FromObfySettings(loaded.Settings, path);
-                input.ReplaceNoticeWithPrefix(
-                    ConfigFile.UnknownKeysNoticePrefix,
-                    NoticeLevel.Warning,
-                    "Unknown configuration keys",
-                    loaded.UnknownKeys.Count > 0 ? ConfigFile.FormatUnknownKeysNotice(loaded.UnknownKeys) : null);
+                if (protection.ApplyOrStageConfigDrop(loaded.Settings, path, loaded.UnknownKeys))
+                {
+                    OpenConfigRequestHandler.ClearConfigLoadErrorNotice(input);
+                    OpenConfigRequestHandler.ApplyUnknownKeysNotice(input, loaded.UnknownKeys);
+                }
             });
         }
         catch (ObfyApiException ex) when (!throwIfRunning && ex.Code == "run.blocked")

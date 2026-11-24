@@ -14,6 +14,7 @@ namespace Obfy.App.Models;
 /// <param name="Dirty">Whether the settings changed since the configuration was loaded or saved.</param>
 /// <param name="RuntimeProfile">Default, NativeAot, UnityIl2Cpp or BlazorWasm.</param>
 /// <param name="Choices">The values each dropdown offers.</param>
+/// <param name="PendingConfigDrop">True when a valid dropped <c>.json</c> configuration awaits confirmation before replacing unsaved changes.</param>
 public record SettingsSnapshot(
     long Revision,
     string Level,
@@ -25,7 +26,8 @@ public record SettingsSnapshot(
     string RuntimeProfile,
     NameLists Exclusions,
     NameLists Inclusions,
-    SettingsChoices Choices);
+    SettingsChoices Choices,
+    bool PendingConfigDrop = false);
 
 /// <summary>
 /// One technique (or output option such as signing or packing).

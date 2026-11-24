@@ -97,6 +97,9 @@ public static class ConfigFile
     /// <summary>Prefix shared by unknown-configuration-keys notices so callers can replace or clear them.</summary>
     public const string UnknownKeysNoticePrefix = "Unknown configuration keys ignored:";
 
+    /// <summary>Prefix shared by configuration-load error notices so callers can replace or clear them.</summary>
+    public const string ConfigLoadErrorNoticePrefix = "Could not load configuration";
+
     /// <summary>Formats ignored configuration keys as a notice message containing only key names.</summary>
     public static string FormatUnknownKeysNotice(IReadOnlyList<string> unknownKeys) =>
         $"{UnknownKeysNoticePrefix} {string.Join(", ", unknownKeys)}.";

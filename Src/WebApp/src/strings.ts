@@ -25,6 +25,7 @@ export const strings = {
     addFilesFailed: "Could not add files",
     saveConfigFailed: "Could not save the configuration",
     openConfigFailed: "Could not open the configuration",
+    cancelConfigDropFailed: "Could not dismiss the dropped configuration.",
     dropOverlay: "Drop files to add them",
     dropOverlayRunning: "Files can't be added while a run is in progress",
   },
@@ -94,6 +95,12 @@ export const strings = {
     confirmOpenConfig: {
       title: "Replace unsaved changes?",
       body: "You have unsaved protection changes. Opening a configuration will replace them.",
+      confirm: "Replace changes",
+      cancel: "Cancel",
+    },
+    confirmDropConfig: {
+      title: "Replace unsaved changes?",
+      body: "You have unsaved protection changes. Loading the dropped configuration will replace them.",
       confirm: "Replace changes",
       cancel: "Cancel",
     },

@@ -24,6 +24,8 @@ public static class ApiRegistrations
         registry.Register<ApplyLevelRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsApplyLevel);
         registry.Register<OpenConfigRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsOpenConfig);
         registry.Register<SaveConfigRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsSaveConfig);
+        registry.Register<ConfirmConfigDropRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsConfirmConfigDrop);
+        registry.Register<CancelConfigDropRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsCancelConfigDrop);
         registry.Register<PickSigningKeyRequest>(IpcNames.Services.Settings, IpcNames.Methods.SettingsPickSigningKey);
 
         // files.dropPaths is not here: the window's native drop sends DropPathsRequest, the page never calls it.

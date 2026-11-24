@@ -58,6 +58,8 @@ export const api = {
     applyLevel: (level: string) => call<SettingsSnapshot>("settings", "applyLevel", { level }),
     openConfig: () => call<SettingsSnapshot>("settings", "openConfig", {}, forUser),
     saveConfig: (saveAs = false) => call<SettingsSnapshot>("settings", "saveConfig", { saveAs }, forUser),
+    confirmConfigDrop: () => call<SettingsSnapshot>("settings", "confirmConfigDrop"),
+    cancelConfigDrop: () => call<SettingsSnapshot>("settings", "cancelConfigDrop"),
     pickSigningKey: () => call<SettingsSnapshot>("settings", "pickSigningKey", {}, forUser),
   },
 

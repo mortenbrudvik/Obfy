@@ -40,13 +40,24 @@ public class OpenConfigRequestHandler(
         run.WhileIdle(() =>
         {
             session.FromObfySettings(loaded.Settings, path);
-            input?.ReplaceNoticeWithPrefix(
-                ConfigFile.UnknownKeysNoticePrefix,
-                NoticeLevel.Warning,
-                "Unknown configuration keys",
-                loaded.UnknownKeys.Count > 0 ? ConfigFile.FormatUnknownKeysNotice(loaded.UnknownKeys) : null);
+            ClearConfigLoadErrorNotice(input);
+            ApplyUnknownKeysNotice(input, loaded.UnknownKeys);
         });
     }
+
+    internal static void ClearConfigLoadErrorNotice(InputSession? input) =>
+        input?.ReplaceNoticeWithPrefix(
+            ConfigFile.ConfigLoadErrorNoticePrefix,
+            NoticeLevel.Error,
+            ConfigFile.ConfigLoadErrorNoticePrefix,
+            null);
+
+    internal static void ApplyUnknownKeysNotice(InputSession? input, IReadOnlyList<string> unknownKeys) =>
+        input?.ReplaceNoticeWithPrefix(
+            ConfigFile.UnknownKeysNoticePrefix,
+            NoticeLevel.Warning,
+            "Unknown configuration keys",
+            unknownKeys.Count > 0 ? ConfigFile.FormatUnknownKeysNotice(unknownKeys) : null);
 }
 
 public class LoadConfigRequestHandler(

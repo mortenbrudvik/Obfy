@@ -209,7 +209,7 @@ th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacin
         <thead><tr><th>Repo</th><th>State</th></tr></thead>
         <tbody>
           <tr><td>Obfy</td><td>Merged into main as PR #33 (15988d0), PR #34 (d294551), and PR #35 (5251e42), plus docs, CI console-test, and XAML closed-set warning fixes up to f2bf4ad, pushed to origin/main.</td></tr>
-          <tr><td>Obfy, 22 Nov review &amp; Wave 1–4 fixes</td><td>Wave 1 (46b580a), Wave 2 (5b8d75b), Wave 3 (2e5eb67), VS extension removal (4a71c10; B-70 &amp; B-14), and Wave 4 fixes completed on main: 58/72 fixed on the 22 Nov board (all 7 Critical fixed, 1 removed, 13 open), 108/127 done overall (85%; Wave 4 closed B-83, B-115, B-62, B-10, B-29, B-33, and B-34); verified by 3,174 passing .NET tests and 304 passing WebApp Vitest tests with 0 Warning(s), 0 Error(s). Both superseded worktrees under .worktrees and the stray nul file have been removed.</td></tr>
+          <tr><td>Obfy, 22 Nov review &amp; Wave 1–5 fixes</td><td>Wave 1 (46b580a), Wave 2 (5b8d75b), Wave 3 (2e5eb67), VS extension removal (4a71c10; B-70 &amp; B-14), Wave 4 (4587796), and Wave 5 (f15cc4d B-19, a11075a B-55, and B-61 NuGet lockfiles) completed: 61/72 fixed on the 22 Nov board (all 7 Critical fixed, 1 removed, 10 open), 111/127 done overall (87%; Wave 5 closed B-19, B-55, and B-61). Waves 1–4 baseline verified by 3,174 passing .NET tests and 304 passing WebApp Vitest tests with 0 Warning(s), 0 Error(s); Wave 5 adds XamlTypeCollector/XamlPreservationTests (B-19), WebViewHandlerTests (B-55), and NuGetLockFileTests (B-61). Both superseded worktrees under .worktrees and the stray nul file have been removed.</td></tr>
           <tr><td>Homepage</td><td>Merged into main and live at brudvik.com (936a8b0). Branch and worktree removed.</td></tr>
         </tbody>
       </table>
@@ -332,7 +332,10 @@ var DONE = [
   { id: "D-105", title: "Gated AntiTamper on NativeAot/UnityIl2Cpp/BlazorWasm (RuntimeProfileGating + UI ProfileGates/ProtectionSession + schema + NativeAotTests + docs) and expanded docs/Advanced.md performance remarks across all 16 techniques", tag: "B-10 · main (Wave 4)" },
   { id: "D-106", title: "Upgraded actions/setup-node to verified Node 24 v6.5.0 SHA (249970729cb0ef3589644e2896645e5dc5ba9c38) across all 4 workflows (locked by Workflows_DoNotUseDeprecatedNode20ActionShas; ilammy/msvc-dev-cmd awaits upstream Node 24)", tag: "B-29 · main (Wave 4)" },
   { id: "D-107", title: "Added LoggingConfiguration.ResolveExplorerLogDirectory() (GetCurrentPackageFamilyName) so OpenLogFolder() resolves %LOCALAPPDATA%\\Packages\\<PFN>\\LocalCache\\Local\\Obfy\\Logs in MSIX/Store builds, and documented Store paths in PRIVACY.md", tag: "B-33 · main (Wave 4)" },
-  { id: "D-108", title: "Empirically verified native-packed lifecycle with 5 E2E tests (ReviewFixesWave4PackedTests.cs): GetEntryAssembly() == null (AntiTamper contract), Main exceptions exit 1 with inner trace on stderr while secondary threads fire AppDomain.UnhandledException, and joined vs unjoined foreground-thread component-hosting behavior documented and tested", tag: "B-34 · main (Wave 4)" }
+  { id: "D-108", title: "Empirically verified native-packed lifecycle with 5 E2E tests (ReviewFixesWave4PackedTests.cs): GetEntryAssembly() == null (AntiTamper contract), Main exceptions exit 1 with inner trace on stderr while secondary threads fire AppDomain.UnhandledException, and joined vs unjoined foreground-thread component-hosting behavior documented and tested", tag: "B-34 · main (Wave 4)" },
+  { id: "D-109", title: "Automatically preserve XAML & BAML referenced types when preserveXaml is enabled: XamlTypeCollector scans project .xaml files (SolutionAnalyzer/SolutionHintApplier/ClosedSetProcessor) and XamlAssemblyInspector inspects IComponentConnector/IStyleConnector plus BAML TypeInfo/TypeSerializerInfo in *.g.resources (SymbolRenamingObfuscator), covered by XamlTypeCollectorTests, XamlPreservationTests, WpfAppTests, and WpfSolutionTests", tag: "B-19 · main (Wave 5)" },
+  { id: "D-110", title: "Hardened CoreWebView2 origin isolation and host-object lifecycle (HostObjectOriginGuard revoking HostObject across InitialUrl/NavigationStarting/SourceChanged/ContentLoading error & blank pages, AreHostObjectsAllowed=false when null, subframe ShouldAllowSubframeNavigation on FrameNavigationStarting & FrameCreated, and WebViewHandler threat-model docs), covered by WebViewHandlerTests alongside ShellWindow.xaml.cs reveal guards", tag: "B-55 · main (Wave 5)" },
+  { id: "D-111", title: "Enabled NuGet packages.lock.json locked-mode restore in Directory.Build.props (RestorePackagesWithLockFile, CI/ContinuousIntegrationBuild RestoreLockedMode, win-x64 NuGetLockFilePath; excluding Fixtures/examples), committed 18 packages.lock.json + 9 packages.win-x64.lock.json files, enforced --locked-mode / RestoreLockedMode=true across ci.yml, publish.yml & platform.yml, and added NuGetLockFileTests.cs", tag: "B-61 · main (Wave 5)" }
 ];
 
 var ITEMS = [
@@ -352,10 +355,6 @@ var ITEMS = [
     why: "--merge without -o writes {name}.merged{ext} in the CLI and *.obfuscated.* in the app. For a solution the CLI writes obfy-out next to the solution file, while the app writes it next to the first included assembly, usually inside bin. The docs now say which tool each rule is about.",
     next: "Pick one rule for each case and change the other tool to match.",
     refs: ["Src/Obfy.Console/Program.cs", "Src/Obfy.App/Sessions/InputSession.cs", "docs/CLI.md"] },
-  { id: "B-19", pri: "p3", area: "Core", kind: "Idea", title: "Keep the types that XAML names, automatically",
-    why: "Preserve XAML keeps only public properties of types that look bindable. A window or control named in XAML still needs a manual exclusion. How compiled XAML is handled is unverified.",
-    next: "Collect type names from XAML files in a project run and exclude them. Check it with the WPF fixture.",
-    refs: ["Src/Obfy.Core/Obfuscators/Assembly/SymbolRenamingObfuscator.cs", "Tests/Obfy.ScenarioTests"] },
   { id: "B-20", pri: "p3", area: "Privacy", kind: "Decide", title: "Decide whether the watermark id may be logged",
     why: "The watermark obfuscator logs the watermark id in some warnings. The privacy page does not claim the id is never logged.",
     next: "Stop logging the id, or keep logging it and say so on the page.",
@@ -396,18 +395,10 @@ var ITEMS = [
     why: "The publish job in publish.yml has no environment, so a release, or a manual run from main or a tag, publishes to nuget.org with no human approval. An approval gate needs repository settings, which a code change cannot create. Left open by the code review.",
     next: "Create a GitHub Environment (for example nuget-publish) with required reviewers and deployment limited to main and tags. Add environment: nuget-publish to the publish job, and bind the nuget.org trusted-publishing policy to that environment.",
     refs: [".github/workflows/publish.yml"] },
-  { id: "B-55", pri: "p3", area: "App", kind: "Fix", title: "Handle CoreWebView2 origin guard (cloak-refused timer & closed-window guard fixed)",
-    why: "Fixed in ShellWindow.xaml.cs: cloak-refused path now publishes app.revealed and stops/disposes _revealTimer, and closed-window guard prevents late timer ticks from revealing a closed window (alongside earlier run-bar and failed-cancel fixes). Remaining: top-level CoreWebView2 has no AddHostObjectToScriptWithOrigins API (only CoreWebView2Frame does), so the bridge relies on the navigation guards alone.",
-    next: "Harden or document the CoreWebView2 navigation/origin guard without relying on AddHostObjectToScriptWithOrigins.",
-    refs: ["Src/Obfy.UI/Views/ShellWindow.xaml.cs", "Src/Obfy.WebView/WebViewHandler.cs"] },
   { id: "B-59", pri: "p3", area: "Core", kind: "Decide", title: "Decide whether output should be reproducible",
     why: "Control flow uses an unseeded Random, and name generation uses Random.Shared with a random salt. Two runs on the same input differ, and no setting offers a seed.",
     next: "Add a seed setting, or say in the docs that output is not reproducible.",
     refs: ["Src/Obfy.Core/Obfuscators/Assembly/ControlFlowObfuscator.cs", "Src/Obfy.Core/Utilities/NameGenerator.cs"] },
-  { id: "B-61", pri: "p3", area: "Release", kind: "Chore", title: "Add NuGet packages.lock.json locked-mode restore (global.json, nuget.config & Dependabot ecosystems added)",
-    why: "Wave 3 added global.json (10.0.100, latestFeature), nuget.config (<clear /> + <packageSourceMapping>), and nuget/npm ecosystems in .github/dependabot.yml. Remaining: generating NuGet packages.lock.json lock files and enabling locked-mode restore across all TFMs/RIDs.",
-    next: "Generate packages.lock.json lock files and restore in locked mode across all TFMs/RIDs.",
-    refs: ["global.json", "nuget.config", "Directory.Packages.props", ".github/dependabot.yml"] },
   { id: "B-74", pri: "p3", area: "Core", kind: "Decide", title: "Decide what a cancelled CLI run prints and returns",
     why: "Ctrl+C now stops every kind of run, but a cancelled run prints nothing and exits with code 1, the same as a failure. Nothing in the CLI catches the cancellation.",
     next: "Print Cancelled and choose an exit code (130 is the convention), then update the exit-code table in docs/CLI.md. Or leave it and say so there.",
@@ -443,7 +434,7 @@ function renderProgress() {
   bar.setAttribute("aria-valuenow", String(done));
   bar.setAttribute("aria-valuetext", done + " of " + total + " items done");
   document.getElementById("pfill").style.width = pct + "%";
-  document.getElementById("asof").textContent = "Updated 2026-11-24: Waves 1–4 & VS extension removal (4a71c10) complete on main (58/72 board fixed, 1 removed, 13 open; 3,174 .NET & 304 WebApp Vitest tests passing, 0 Warning(s), 0 Error(s)) · " + open + " open · " + done + " done";
+  document.getElementById("asof").textContent = "Updated 2026-11-24: Waves 1–5 & VS extension removal (4a71c10) complete (61/72 board fixed, 1 removed, 10 open) · " + open + " open · " + done + " done";
   document.getElementById("nopen").textContent = open;
   document.getElementById("ndone").textContent = done;
 

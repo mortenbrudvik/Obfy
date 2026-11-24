@@ -1031,8 +1031,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   <header class="topbar">
     <div class="title-block">
       <h1>Obfy — Prioritized Backlog &amp; Decisions</h1>
-      <p class="lede">All 19 remaining open items from the backlog organized into an execution sequence for v2.0.0 release, open product decisions, and remaining external, manual, or optional follow-ups.</p>
-      <p class="asof" id="asof">Updated 2026-11-24 · main @ 4a71c10 + Wave 4 · 0 warnings · 3,174 .NET + 304 WebApp tests · 19 active items (6 decisions, 13 backlog) · 108/127 historical items done</p>
+      <p class="lede">All 16 remaining open items from the backlog organized into an execution sequence for v2.0.0 release, open product decisions, and remaining external or manual follow-ups.</p>
+      <p class="asof" id="asof">Updated 2026-11-24 · main @ a11075a + Wave 5 · 16 active items (6 decisions, 10 backlog) · 111/127 historical items done</p>
     </div>
     <div class="header-actions">
       <button type="button" class="btn primary" id="copy-md-btn">Copy Summary (Markdown)</button>
@@ -1042,8 +1042,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     </div>
   </header>
 
-  <div class="banner-row success" role="note" aria-label="Closed in 4a71c10 and Wave 4">
-    <span><strong>9 items closed in 4a71c10 + Wave 4:</strong> removed Visual Studio extension items (<code>B-70</code>, <code>B-14</code> in <code>4a71c10</code>) and completed Wave 4 items (<code>B-83</code>, <code>B-115</code>, <code>B-62</code>, <code>B-10</code>, <code>B-29</code>, <code>B-33</code>, <code>B-34</code>) — moved to <code>DONE</code> in <code>backlog.html</code> (108/127 done).</span>
+  <div class="banner-row success" role="note" aria-label="Closed in 4a71c10, Wave 4, and Wave 5">
+    <span><strong>12 items closed in 4a71c10 + Wave 4–5:</strong> removed Visual Studio extension items (<code>B-70</code>, <code>B-14</code> in <code>4a71c10</code>), completed Wave 4 (<code>B-83</code>, <code>B-115</code>, <code>B-62</code>, <code>B-10</code>, <code>B-29</code>, <code>B-33</code>, <code>B-34</code>), and completed Wave 5 (<code>B-19</code>, <code>B-55</code>, <code>B-61</code>) — moved to <code>DONE</code> in <code>backlog.html</code> (111/127 done).</span>
   </div>
 
   <div id="status-banner" class="banner-row" hidden role="status" aria-live="polite">
@@ -1065,8 +1065,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   <section class="kpi-grid" aria-label="Summary KPIs">
     <div class="kpi-card" data-kpi="active">
       <span class="kpi-label">Total Active Items</span>
-      <span class="kpi-val" id="kpi-active">19</span>
-      <span class="kpi-sub" id="kpi-active-sub">13 backlog · 6 decisions</span>
+      <span class="kpi-val" id="kpi-active">16</span>
+      <span class="kpi-sub" id="kpi-active-sub">10 backlog · 6 decisions</span>
     </div>
     <div class="kpi-card k-dec" data-kpi="decisions">
       <span class="kpi-label">Decisions Needed</span>
@@ -1080,18 +1080,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     </div>
     <div class="kpi-card k-p2" data-kpi="p2">
       <span class="kpi-label">P2 — Next Up</span>
-      <span class="kpi-val" id="kpi-p2">9</span>
-      <span class="kpi-sub" id="kpi-p2-sub">of 9 P2 items</span>
+      <span class="kpi-val" id="kpi-p2">8</span>
+      <span class="kpi-sub" id="kpi-p2-sub">of 8 P2 items</span>
     </div>
     <div class="kpi-card k-p3" data-kpi="p3">
       <span class="kpi-label">P3 — Later / Optional</span>
-      <span class="kpi-val" id="kpi-p3">6</span>
-      <span class="kpi-sub" id="kpi-p3-sub">of 6 P3 items</span>
+      <span class="kpi-val" id="kpi-p3">4</span>
+      <span class="kpi-sub" id="kpi-p3-sub">of 4 P3 items</span>
     </div>
     <div class="kpi-card k-done" data-kpi="done">
       <span class="kpi-label">Done (this session)</span>
       <span class="kpi-val" id="kpi-done">0</span>
-      <span class="kpi-sub" id="kpi-done-sub">108 historical done</span>
+      <span class="kpi-sub" id="kpi-done-sub">111 historical done</span>
     </div>
   </section>
 
@@ -1109,9 +1109,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   <section class="controls-card" aria-label="View and Filters">
     <div class="tabs-row">
       <div class="tabs" role="tablist" aria-label="Item categories">
-        <button type="button" class="tab-btn" role="tab" id="tab-all" data-view="all" aria-selected="true">All Items (19)</button>
+        <button type="button" class="tab-btn" role="tab" id="tab-all" data-view="all" aria-selected="true">All Items (16)</button>
         <button type="button" class="tab-btn" role="tab" id="tab-decisions" data-view="decisions" aria-selected="false">Decisions Only (6)</button>
-        <button type="button" class="tab-btn" role="tab" id="tab-backlog" data-view="backlog" aria-selected="false">Backlog Only (13)</button>
+        <button type="button" class="tab-btn" role="tab" id="tab-backlog" data-view="backlog" aria-selected="false">Backlog Only (10)</button>
       </div>
       <div class="banner-actions">
         <button type="button" class="btn sm" id="expand-all-btn">Collapse All</button>
@@ -1151,7 +1151,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   </section>
 
   <div class="results-bar">
-    <span class="results-count" id="results-count" aria-live="polite">Showing 19 of 19 items</span>
+    <span class="results-count" id="results-count" aria-live="polite">Showing 16 of 16 items</span>
     <span>Edits save automatically to <code>localStorage</code> (<code>obfy.backlogDecisions.v1</code>)</span>
   </div>
 
@@ -1186,7 +1186,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   </section>
 
   <footer class="foot-note">
-    <span>Source baseline: <code>backlog.html</code> (108/127 historical items done, 19 remaining open).</span>
+    <span>Source baseline: <code>backlog.html</code> (111/127 historical items done, 16 remaining open).</span>
     <span>Offline-ready single file · zero external JS frameworks.</span>
   </footer>
 </div>
@@ -1212,11 +1212,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
   var PRIORITY_META = {
     P1: { label: "P1 — Release 2.0.0 & Immediate Gates", desc: "Execute in order before and immediately around tagging v2.0.0" },
-    P2: { label: "P2 — Decisions Needed & Remaining Verification / Optional", desc: "Product decisions first, followed by remaining local/external checks and optional lockfiles" },
+    P2: { label: "P2 — Decisions Needed & Remaining Verification", desc: "Product decisions first, followed by remaining local/external checks" },
     P3: { label: "P3 — Nice-to-Have & Homepage", desc: "Follow-up polish and external homepage repo chores" }
   };
 
-  /* All 19 remaining open items from C:\code\projects\Obfy\backlog.html in prioritized execution order */
+  /* All 16 remaining open items from C:\code\projects\Obfy\backlog.html in prioritized execution order */
   var ITEMS = [
     /* === P1 — Release 2.0.0 & Immediate Gates === */
     {
@@ -1398,7 +1398,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
       refs: ["CHANGELOG.md", "docs/superpowers"]
     },
 
-    /* === P2 — Local Housekeeping & Remaining Verification / Optional === */
+    /* === P2 — Local Housekeeping & Remaining Verification === */
     {
       id: "B-26",
       priority: "P2",
@@ -1429,52 +1429,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
       next: "Verify each external Microsoft Store, WebView2 bootstrapper, and Windows crash reporting statement against Microsoft’s documentation or a test install.",
       refs: ["PRIVACY.md", "Tests/Obfy.Tests/ReviewFixesWave2CoreTests.cs", "public/obfy/privacy/index.html"]
     },
-    {
-      id: "B-61",
-      priority: "P2",
-      category: "Backlog",
-      area: "Release",
-      kind: "Chore",
-      owner: "Repo",
-      initialStatus: "Partial",
-      statusNote: "Wave 3 added global.json & nuget.config",
-      summary: "Optional packages.lock.json locked-mode restore across TFMs/RIDs",
-      title: "Add NuGet packages.lock.json locked-mode restore (global.json, nuget.config & Dependabot ecosystems added)",
-      why: "Wave 3 added global.json (10.0.100, latestFeature), nuget.config (<clear /> + <packageSourceMapping>), and nuget/npm ecosystems in .github/dependabot.yml. Remaining: generating NuGet packages.lock.json lock files and enabling locked-mode restore across all TFMs/RIDs.",
-      next: "Generate packages.lock.json lock files and restore in locked mode across all TFMs/RIDs.",
-      refs: ["global.json", "nuget.config", "Directory.Packages.props", ".github/dependabot.yml"]
-    },
 
     /* === P3 — Nice-to-Have & Homepage === */
-    {
-      id: "B-19",
-      priority: "P3",
-      category: "Backlog",
-      area: "Core",
-      kind: "Idea",
-      owner: "Repo",
-      initialStatus: "Ready",
-      summary: "Auto-collect XAML-referenced type names",
-      title: "Keep the types that XAML names, automatically",
-      why: "Preserve XAML keeps only public properties of types that look bindable. A window or control named in XAML still needs a manual exclusion. How compiled XAML is handled is unverified.",
-      next: "Collect type names from XAML files in a project run and exclude them. Check it with the WPF fixture.",
-      refs: ["Src/Obfy.Core/Obfuscators/Assembly/SymbolRenamingObfuscator.cs", "Tests/Obfy.ScenarioTests"]
-    },
-    {
-      id: "B-55",
-      priority: "P3",
-      category: "Backlog",
-      area: "App",
-      kind: "Fix",
-      owner: "Repo",
-      initialStatus: "Partial",
-      statusNote: "Cloak/closed-window guards fixed",
-      summary: "WebView2 host-object origin restriction (top-level CoreWebView2 has no origin-list API; relies on navigation guards)",
-      title: "Handle CoreWebView2 origin guard (cloak-refused timer & closed-window guard fixed)",
-      why: "Fixed in ShellWindow.xaml.cs: cloak-refused path now publishes app.revealed and stops/disposes _revealTimer, and closed-window guard prevents late timer ticks from revealing a closed window (alongside earlier run-bar and failed-cancel fixes). Remaining: top-level CoreWebView2 has no AddHostObjectToScriptWithOrigins API (only CoreWebView2Frame does), so the bridge relies on the navigation guards alone.",
-      next: "Harden or document the CoreWebView2 navigation/origin guard without relying on AddHostObjectToScriptWithOrigins.",
-      refs: ["Src/Obfy.UI/Views/ShellWindow.xaml.cs", "Src/Obfy.WebView/WebViewHandler.cs"]
-    },
     {
       id: "B-22",
       priority: "P3",
@@ -1730,8 +1686,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     document.getElementById("kpi-done").textContent = String(m.doneCount);
     document.getElementById("kpi-done-sub").textContent =
       m.wontCount > 0
-        ? m.wontCount + " Won't Do · 108 historical"
-        : "108 historical done";
+        ? m.wontCount + " Won't Do · 111 historical"
+        : "111 historical done";
 
     /* Progress strip */
     var closed = m.doneCount + m.wontCount;
@@ -1743,8 +1699,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     document.getElementById("seg-p2").style.width = ((m.pOpen.P2 * 100) / m.total) + "%";
     document.getElementById("seg-p3").style.width = ((m.pOpen.P3 * 100) / m.total) + "%";
 
-    var totalAllTime = 108 + m.total;
-    var doneAllTime = 108 + m.doneCount;
+    var totalAllTime = 111 + m.total;
+    var doneAllTime = 111 + m.doneCount;
     document.getElementById("prog-overall").textContent =
       "Overall historical: " + doneAllTime + " / " + totalAllTime + " (" + Math.round((doneAllTime * 100) / totalAllTime) + "%)";
   }
@@ -2108,7 +2064,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     var m = computeMetrics();
     var lines = [];
     lines.push("# Obfy — Backlog & Decisions Summary");
-    lines.push("- **Repo State:** main @ `4a71c10` + Wave 4 (108/127 historical done)");
+    lines.push("- **Repo State:** main @ `a11075a` + Wave 5 (111/127 historical done)");
     lines.push("- **Snapshot:** " + new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC");
     lines.push("- **Active:** " + m.active + " / " + m.total + " · **Decisions Needed:** " + m.decisionsNeeded + " / " + m.decisionsTotal + " · **Done (this session):** " + m.doneCount);
     lines.push("");
@@ -2162,7 +2118,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     var m = computeMetrics();
     return {
       generatedAt: new Date().toISOString(),
-      repoState: "main @ 4a71c10 + Wave 4",
+      repoState: "main @ a11075a + Wave 5",
       metrics: m,
       items: ITEMS.map(function (it) {
         return {

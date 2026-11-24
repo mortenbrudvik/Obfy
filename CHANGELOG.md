@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Automatic XAML and BAML referenced type preservation when `preserveXaml` is enabled (`XamlTypeCollector` scans project `.xaml` files via `SolutionAnalyzer`/`SolutionHintApplier`/`ClosedSetProcessor`, and `XamlAssemblyInspector` inspects `IComponentConnector`/`IStyleConnector` plus BAML `TypeInfo`/`TypeSerializerInfo` records in `*.g.resources` via `SymbolRenamingObfuscator`) (`B-19`)
+- NuGet `packages.lock.json` locked-mode restore across all 18 solution projects and `packages.win-x64.lock.json` across the 9 `win-x64` self-contained publish-closure projects via `Directory.Build.props`, `.github/workflows/ci.yml`, `publish.yml`, and `platform.yml` (`NuGetLockFileTests`) (`B-61`)
 - Native `.json` configuration drag-and-drop confirmation dialog when protection settings have unsaved changes (`settings.confirmConfigDrop` / `settings.cancelConfigDrop`)
 - `global.json`, `nuget.config` with `packageSourceMapping`, NuGet/npm Dependabot ecosystems (`.github/dependabot.yml`), and a `macos-cli` CI job (`Obfy.Console.Tests`)
 - End-to-end scenario tests for `PublishSingleFile=true` (with `AntiTamper`), `PublishTrimmed=true` (with injected `FrameworkReferences`), and separate vs. closed-set sequential short names (`Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs`)
@@ -46,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The JetBrains Rider plugin (`Src/Obfy.Rider`) was removed, with its Gradle build, JVM tests, and the `rider-tests` CI job. It was never published to a marketplace or attached to a release
 
 ### Fixed
+- CoreWebView2 origin-gated host-object lifecycle and subframe isolation hardening (`HostObjectOriginGuard` attaches/revokes `HostObject` across `InitialUrl`, `NavigationStarting`, `SourceChanged`, and `ContentLoading` error/blank pages, `AreHostObjectsAllowed` disabled when null, `FrameNavigationStarting`/`FrameCreated` subframe blocking, normalized `AllowedOrigins`, and `WebViewHandlerTests`) (`B-55`)
 - `DotnetToolPackTests` installs the packed tool from its temp folder with a local `--configfile` so repo-root `nuget.config` `packageSourceMapping` stays intact on Windows, Linux, and macOS
 - `ScenarioHarness` strips inherited MSBuild/SDK-resolver environment variables, propagates repo `global.json` into temp fixtures, disables shared compiler servers, and bounds stream drain so `PublishSingleFile` and `PublishTrimmed` scenario tests do not hit SDK skew or task-host hangs in CI
 - **Open log folder** resolves the redirected MSIX package folder (`%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\Local\Obfy\Logs`) via `LoggingConfiguration.ResolveExplorerLogDirectory()` (`GetCurrentPackageFamilyName`) when running as a Store/MSIX app, with Store redirection paths documented in `PRIVACY.md`

@@ -295,6 +295,83 @@ function Get-LatestObfyLogTail {
     return "Latest log $($latest.Name):`n$($tail -join "`n")"
 }
 
+function Assert-ProtectedUiXamlBindings {
+    # Verifies via PE metadata (without loading or executing ObfyUI.dll) that symbol renaming with
+    # preserveXaml kept all 7 public failure-panel properties bound by Views\ShellWindow.xaml.
+    param([Parameter(Mandatory = $true)][string]$UiDll)
+
+    if (-not (Test-Path -LiteralPath $UiDll)) {
+        throw "Protected UI assembly not found: $UiDll"
+    }
+
+    $required = @(
+        "WebView",
+        "WebViewFailed",
+        "FailureAdvice",
+        "LogsNote",
+        "RestartCommand",
+        "OpenLogFolderCommand",
+        "QuitCommand"
+    )
+
+    $stream = [System.IO.File]::OpenRead($UiDll)
+    try {
+        $peReader = [System.Reflection.PortableExecutable.PEReader]::new($stream)
+        try {
+            if (-not $peReader.HasMetadata) {
+                throw "Protected UI assembly has no CLI metadata: $UiDll"
+            }
+
+            $reader = [System.Reflection.Metadata.PEReaderExtensions]::GetMetadataReader($peReader)
+            $bestMatched = 0
+            $bestMissing = $required
+
+            foreach ($typeHandle in $reader.TypeDefinitions) {
+                $typeDef = $reader.GetTypeDefinition($typeHandle)
+                if (($typeDef.Attributes -band [System.Reflection.TypeAttributes]::ClassSemanticsMask) -ne [System.Reflection.TypeAttributes]::Class) {
+                    continue
+                }
+
+                $publicInstanceProps = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+                foreach ($propHandle in $typeDef.GetProperties()) {
+                    $prop = $reader.GetPropertyDefinition($propHandle)
+                    $accessors = $prop.GetAccessors()
+                    if ($accessors.Getter.IsNil) {
+                        continue
+                    }
+
+                    $getter = $reader.GetMethodDefinition($accessors.Getter)
+                    $isPublic = ($getter.Attributes -band [System.Reflection.MethodAttributes]::MemberAccessMask) -eq [System.Reflection.MethodAttributes]::Public
+                    $isInstance = ($getter.Attributes -band [System.Reflection.MethodAttributes]::Static) -eq 0
+                    if ($isPublic -and $isInstance) {
+                        $null = $publicInstanceProps.Add($reader.GetString($prop.Name))
+                    }
+                }
+
+                $missing = @($required | Where-Object { -not $publicInstanceProps.Contains($_) })
+                if ($missing.Count -eq 0) {
+                    Write-Host "    Protected UI failure-panel XAML bindings verified ($($required.Count)/$($required.Count))" -ForegroundColor Green
+                    return
+                }
+
+                $matchedCount = $required.Count - $missing.Count
+                if ($matchedCount -gt $bestMatched) {
+                    $bestMatched = $matchedCount
+                    $bestMissing = $missing
+                }
+            }
+
+            throw "Protected UI assembly ($UiDll) is missing ShellWindow.xaml failure-panel XAML-bound public properties: $($bestMissing -join ', '). Ensure symbolRenaming.preserveXaml preserves them."
+        }
+        finally {
+            $peReader.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 function Assert-ProcessedUi {
     # Proves the protected shell starts, the page paints the Files screen (not the crash view), the bridge
     # answers with the documented JSON names, a level change sticks, and a startup assembly can be protected.
@@ -310,6 +387,8 @@ function Assert-ProcessedUi {
     if (-not (Test-Path -LiteralPath $UiExe)) {
         throw "Protected desktop app not found: $UiExe"
     }
+
+    Assert-ProtectedUiXamlBindings -UiDll (Join-Path (Split-Path -Parent $UiExe) "ObfyUI.dll")
 
     $work = Join-Path ([System.IO.Path]::GetTempPath()) ("obfy-installer-ui-check-" + [guid]::NewGuid().ToString("N"))
     $output = Join-Path $work "out"

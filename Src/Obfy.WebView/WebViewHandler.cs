@@ -24,6 +24,26 @@ public enum ProcessFailureResponse
 }
 
 /// <summary>Configures a <see cref="WebView2"/> once its CoreWebView2 is ready, and hardens it.</summary>
+/// <remarks>
+/// <para>
+/// <b>Origin-isolation threat model:</b> Top-level <see cref="CoreWebView2"/> has no
+/// <c>AddHostObjectToScriptWithOrigins</c> API (origin-scoped host-object registration only exists on
+/// <see cref="CoreWebView2Frame"/> via <see cref="CoreWebView2Frame.AddHostObjectToScript(string, object, IEnumerable{string})"/>).
+/// Any top-level document loaded into the control would therefore have access to <see cref="HostObject"/> unless
+/// top-level access is strictly origin-gated.
+/// </para>
+/// <para>
+/// Defense-in-depth layers enforcing origin isolation:
+/// <list type="bullet">
+/// <item><description><see cref="InitialUrl"/> validation: <see cref="HostObject"/> is not attached and initial navigation is skipped if <see cref="InitialUrl"/> is outside <see cref="AllowedOrigins"/> (including when <see cref="AllowedOrigins"/> is empty); <see cref="CoreWebView2Settings.AreHostObjectsAllowed"/> is disabled when <see cref="HostObject"/> is null.</description></item>
+/// <item><description>Navigation and frame guards: <c>NavigationStarting</c>, <c>FrameNavigationStarting</c>, <c>FrameCreated</c> (<see cref="CoreWebView2Frame.NavigationStarting"/>), and <c>NewWindowRequested</c> block disallowed top-level navigations, subframes (never exposing the host object to child frames), and popups.</description></item>
+/// <item><description>Lifecycle revocation: <see cref="HostObjectOriginGuard"/> reconciles attachment on <c>NavigationStarting</c>, <c>SourceChanged</c>, and <c>ContentLoading</c>, calling <c>RemoveHostObjectFromScript</c> immediately if the WebView ever lands on <c>about:blank</c>, an error page, or any non-allowed origin.</description></item>
+/// <item><description>Network filter: <c>WebResourceRequested</c> answers any request outside <see cref="AllowedOrigins"/> with HTTP 403 before reaching the network.</description></item>
+/// <item><description>Web message check: <c>WebMessageReceived</c> ignores any message whose <c>args.Source</c> is outside <see cref="AllowedOrigins"/>.</description></item>
+/// <item><description>Release CSP: the bundled frontend enforces <c>default-src 'self'</c>, <c>script-src 'self'</c>, <c>style-src 'self'</c>, <c>object-src 'none'</c>, <c>base-uri 'none'</c>, and <c>form-action 'none'</c>.</description></item>
+/// </list>
+/// </para>
+/// </remarks>
 public class WebViewHandler
 {
     /// <summary>A renderer that has failed this many times is not reloaded again: it would likely only fail again.</summary>
@@ -125,11 +145,50 @@ public class WebViewHandler
     /// Whether <paramref name="uri"/> has exactly the scheme, host and port of one of <paramref name="allowed"/>. A URI
     /// with no host (<c>about:blank</c>, <c>data:</c>, <c>file:</c>) is never allowed.
     /// </summary>
-    public static bool IsAllowedOrigin(Uri uri, IReadOnlyList<string> allowed)
+    public static bool IsAllowedOrigin(Uri uri, IReadOnlyList<string> allowed) =>
+        IsAllowedOriginCore(uri, allowed);
+
+    /// <summary>As <see cref="IsAllowedOrigin(Uri, IReadOnlyList{string})"/>; an address that does not parse is not allowed.</summary>
+    public static bool IsAllowedOrigin(string? uri, IReadOnlyList<string> allowed) =>
+        IsAllowedOriginCore(uri, allowed);
+
+    /// <summary>
+    /// Whether a subframe navigation to <paramref name="uri"/> is allowed. Only addresses whose scheme, host and port
+    /// match <paramref name="allowedOrigins"/> are permitted; <c>about:blank</c>, <c>about:srcdoc</c>, <c>data:</c>,
+    /// <c>javascript:</c>, <c>file:</c>, foreign origins, and empty allowlists are rejected.
+    /// </summary>
+    internal static bool ShouldAllowSubframeNavigation(string? uri, IReadOnlySet<string> allowedOrigins)
+    {
+        ArgumentNullException.ThrowIfNull(allowedOrigins);
+        return IsAllowedOriginCore(uri, allowedOrigins);
+    }
+
+    /// <summary>Normalizes each absolute origin entry via <see cref="OriginOf"/>, discarding invalid or hostless entries.</summary>
+    internal static HashSet<string> NormalizeAllowedOrigins(IEnumerable<string> allowed)
+    {
+        ArgumentNullException.ThrowIfNull(allowed);
+
+        var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in allowed)
+        {
+            if (Uri.TryCreate(entry, UriKind.Absolute, out var parsed) && OriginOf(parsed) is { } origin)
+                normalized.Add(origin);
+        }
+
+        return normalized;
+    }
+
+    internal static bool IsAllowedOriginCore(string? uri, IEnumerable<string> allowed) =>
+        Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && IsAllowedOriginCore(parsed, allowed);
+
+    private static bool IsAllowedOriginCore(Uri uri, IEnumerable<string> allowed)
     {
         var origin = OriginOf(uri);
         if (origin == null)
             return false;
+
+        if (allowed is IReadOnlySet<string> set && set.Contains(origin))
+            return true;
 
         foreach (var entry in allowed)
         {
@@ -139,10 +198,6 @@ public class WebViewHandler
 
         return false;
     }
-
-    /// <summary>As <see cref="IsAllowedOrigin(Uri, IReadOnlyList{string})"/>; an address that does not parse is not allowed.</summary>
-    public static bool IsAllowedOrigin(string? uri, IReadOnlyList<string> allowed) =>
-        Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && IsAllowedOrigin(parsed, allowed);
 
     /// <summary>
     /// What the log may keep of a blocked address: its scheme ("file", "https"), or "unknown" when it does not parse. The
@@ -224,6 +279,8 @@ public class WebViewHandler
         // SmartScreen would send the addresses the page loads to Microsoft. The page is Obfy's own, from a local folder
         // or the dev server.
         settings.IsReputationCheckingRequired = false;
+        // Disable host objects altogether when none is configured; otherwise HostObjectOriginGuard gates access by origin.
+        settings.AreHostObjectsAllowed = HostObject != null;
     }
 
     private void OnProcessFailed(CoreWebView2ProcessFailedKind kind, CoreWebView2ProcessFailedReason reason, int exitCode)
@@ -278,9 +335,6 @@ public class WebViewHandler
                 };
             }
 
-            if (HostObject != null)
-                core.AddHostObjectToScript(HostObjectName, HostObject);
-
             if (!string.IsNullOrEmpty(HostWebRootFolder))
             {
                 EnsureWebRoot(HostWebRootFolder);
@@ -293,14 +347,27 @@ public class WebViewHandler
                     CoreWebView2HostResourceAccessKind.DenyCors);
             }
 
-            InstallRequestFilter(core);
-            InstallNavigationGuards(core);
+            var allowedOrigins = NormalizeAllowedOrigins(AllowedOrigins);
+            var hostObjectGuard = CreateHostObjectGuard(core);
+
+            InstallRequestFilter(core, allowedOrigins);
+            InstallNavigationGuards(core, hostObjectGuard, allowedOrigins);
             InstallDefaultDenials(core);
-            core.WebMessageReceived += (_, args) => OnWebMessage(args);
+            core.WebMessageReceived += (_, args) => OnWebMessage(args, allowedOrigins);
             core.ProcessFailed += (_, args) => OnProcessFailed(args.ProcessFailedKind, args.Reason, args.ExitCode);
 
-            if (!string.IsNullOrEmpty(InitialUrl))
+            // Top-level CoreWebView2 has no AddHostObjectToScriptWithOrigins API (only CoreWebView2Frame does), so
+            // attach HostObject only when InitialUrl is permitted.
+            hostObjectGuard?.ReconcileForUri(InitialUrl, allowedOrigins);
+
+            if (!IsAllowedOriginCore(InitialUrl, allowedOrigins))
+            {
+                LogBlocked("initial navigation to", InitialUrl);
+            }
+            else if (!string.IsNullOrEmpty(InitialUrl))
+            {
                 WebView.Source = new Uri(InitialUrl);
+            }
         }
         catch (Exception ex)
         {
@@ -309,16 +376,26 @@ public class WebViewHandler
         }
     }
 
+    private HostObjectOriginGuard? CreateHostObjectGuard(CoreWebView2 core)
+    {
+        if (HostObject is not { } hostObject)
+            return null;
+
+        return new HostObjectOriginGuard(
+            attach: () => core.AddHostObjectToScript(HostObjectName, hostObject),
+            detach: () => TryWebViewInterop(() => core.RemoveHostObjectFromScript(HostObjectName), "remove host object"));
+    }
+
     /// <summary>
     /// A message the page posted. Only <see cref="FilesDroppedMessage"/> from an allowed origin is acted on; every other
     /// message is ignored. The dropped files arrive as <see cref="CoreWebView2File"/> objects, whose
     /// <see cref="CoreWebView2File.Path"/> is the real path on disk; anything else among the objects is skipped.
     /// </summary>
-    private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs args)
+    private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs args, IReadOnlySet<string> allowedOrigins)
     {
         try
         {
-            if (!IsAllowedOrigin(args.Source, AllowedOrigins))
+            if (!IsAllowedOriginCore(args.Source, allowedOrigins))
                 return;
 
             // Throws when the message is not a string.
@@ -396,12 +473,12 @@ public class WebViewHandler
     /// reaching the network. The bundled CSP already blocks such requests in Release; this also covers Debug, which has
     /// no CSP, and anything the CSP does not govern.
     /// </summary>
-    private void InstallRequestFilter(CoreWebView2 core)
+    private void InstallRequestFilter(CoreWebView2 core, IReadOnlySet<string> allowedOrigins)
     {
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
         core.WebResourceRequested += (_, args) =>
         {
-            if (IsAllowedOrigin(args.Request.Uri, AllowedOrigins))
+            if (IsAllowedOriginCore(args.Request.Uri, allowedOrigins))
                 return;
             LogBlocked("request to", args.Request.Uri);
             args.Response = core.Environment.CreateWebResourceResponse(null, 403, "Forbidden", "");
@@ -412,7 +489,7 @@ public class WebViewHandler
     /// The page and its frames navigate only within the allowed origins, and never open a window. The initial
     /// about:blank is navigated while the control is created, before these handlers exist.
     /// </summary>
-    private void InstallNavigationGuards(CoreWebView2 core)
+    private void InstallNavigationGuards(CoreWebView2 core, HostObjectOriginGuard? hostObjectGuard, IReadOnlySet<string> allowedOrigins)
     {
         core.NavigationCompleted += (_, args) =>
         {
@@ -435,27 +512,81 @@ public class WebViewHandler
 
         core.NavigationStarting += (_, args) =>
         {
-            if (!IsAllowedOrigin(args.Uri, AllowedOrigins))
+            if (!IsAllowedOriginCore(args.Uri, allowedOrigins))
             {
                 LogBlocked("navigation to", args.Uri);
                 args.Cancel = true;
+                return;
             }
+
+            // Re-attach before an allowed page loads if the host object was previously revoked.
+            hostObjectGuard?.ReconcileForUri(args.Uri, allowedOrigins);
         };
+
+        // Immediately revoke the top-level host object if the WebView ever lands on about:blank, an error page, or
+        // any non-allowed origin (top-level CoreWebView2 lacks AddHostObjectToScriptWithOrigins).
+        core.SourceChanged += (_, _) => hostObjectGuard?.ReconcileForUri(core.Source, allowedOrigins);
+        core.ContentLoading += (_, args) => hostObjectGuard?.ReconcileForUri(core.Source, allowedOrigins, isErrorPage: args.IsErrorPage);
 
         core.FrameNavigationStarting += (_, args) =>
         {
-            if (!IsAllowedOrigin(args.Uri, AllowedOrigins))
+            if (!ShouldAllowSubframeNavigation(args.Uri, allowedOrigins))
             {
                 LogBlocked("frame navigation to", args.Uri);
                 args.Cancel = true;
             }
         };
 
+        TryWebViewInterop(() => core.FrameCreated += (_, args) =>
+        {
+            TryWebViewInterop(() =>
+            {
+                var frame = args.Frame;
+
+                // Defense-in-depth alongside FrameNavigationStarting; host objects are never exposed to child frames via
+                // CoreWebView2Frame.AddHostObjectToScript.
+                void OnFrameNavigationStarting(object? _, CoreWebView2NavigationStartingEventArgs frameArgs)
+                {
+                    if (!ShouldAllowSubframeNavigation(frameArgs.Uri, allowedOrigins))
+                    {
+                        LogBlocked("subframe navigation to", frameArgs.Uri);
+                        frameArgs.Cancel = true;
+                    }
+                }
+
+                void OnFrameDestroyed(object? _, object __) =>
+                    TryWebViewInterop(() =>
+                    {
+                        frame.NavigationStarting -= OnFrameNavigationStarting;
+                        frame.Destroyed -= OnFrameDestroyed;
+                    }, "detach subframe navigation guard");
+
+                frame.NavigationStarting += OnFrameNavigationStarting;
+                frame.Destroyed += OnFrameDestroyed;
+            }, "attach subframe navigation guard");
+        }, "subscribe to FrameCreated");
+
         core.NewWindowRequested += (_, args) =>
         {
             LogBlocked("popup request to", args.Uri);
             args.Handled = true;
         };
+    }
+
+    /// <summary>
+    /// Runs a WebView2 COM/event operation, logging and ignoring interop or disposal failures so older WebView2 runtimes
+    /// and teardown races do not surface as unhandled exceptions.
+    /// </summary>
+    private void TryWebViewInterop(Action action, string operation)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException or COMException or NotImplementedException or InvalidCastException)
+        {
+            _logger.LogDebug("Could not {Operation} ({ExceptionType})", operation, ex.GetType().Name);
+        }
     }
 
     /// <summary>

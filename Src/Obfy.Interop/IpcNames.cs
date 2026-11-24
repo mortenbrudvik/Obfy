@@ -28,6 +28,8 @@ public static class IpcNames
         public const string SettingsApplyLevel = "applyLevel";
         public const string SettingsOpenConfig = "openConfig";
         public const string SettingsSaveConfig = "saveConfig";
+        public const string SettingsConfirmConfigDrop = "confirmConfigDrop";
+        public const string SettingsCancelConfigDrop = "cancelConfigDrop";
         public const string SettingsPickSigningKey = "pickSigningKey";
         public const string FilesGet = "get";
         public const string FilesPick = "pick";

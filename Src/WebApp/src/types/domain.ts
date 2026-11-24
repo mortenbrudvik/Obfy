@@ -142,6 +142,7 @@ export interface SettingsSnapshot {
   exclusions: NameLists;
   inclusions: NameLists;
   choices: SettingsChoices;
+  pendingConfigDrop: boolean;
 }
 
 // ---- Results (Obfy.App/Models/ResultsSnapshot.cs, StatisticGroup.cs). Answers `results.summary`; pushed with `results.changed`. ----

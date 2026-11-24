@@ -7,6 +7,14 @@ export type MockHandler = (params: unknown) => unknown | Promise<unknown>;
 /** Handlers by `"service.method"`. */
 export type MockHandlers = Record<string, MockHandler>;
 
+const defaultSettings = (): SettingsSnapshot => ({
+  revision: 1, level: "Standard", levelSummary: "", techniques: [], errors: [], configPath: null, dirty: false,
+  runtimeProfile: "Default", exclusions: { namespaces: [], types: [], methods: [] },
+  inclusions: { namespaces: [], types: [], methods: [] },
+  choices: { levels: [], algorithms: [], controlFlowModes: [], namingModes: [], runtimeProfiles: [], packingRids: [] },
+  pendingConfigDrop: false,
+});
+
 /** A host with nothing added yet, for the shell in a plain browser: Obfuscate is blocked and nothing has run. */
 export const defaultMockHandlers: MockHandlers = {
   "app.info": (): AppInfo => ({ version: "0.0.0-mock" }),
@@ -23,12 +31,9 @@ export const defaultMockHandlers: MockHandlers = {
     revision: 1, files: [], hasIncludedFiles: false, outputFolder: "", outputHint: "", mergeOutputHint: "",
     outputWarning: null, writeSymbolMap: false, symbolMapPath: "", resolvedSymbolMapPath: null, notices: [],
   }),
-  "settings.get": (): SettingsSnapshot => ({
-    revision: 1, level: "Standard", levelSummary: "", techniques: [], errors: [], configPath: null, dirty: false,
-    runtimeProfile: "Default", exclusions: { namespaces: [], types: [], methods: [] },
-    inclusions: { namespaces: [], types: [], methods: [] },
-    choices: { levels: [], algorithms: [], controlFlowModes: [], namingModes: [], runtimeProfiles: [], packingRids: [] },
-  }),
+  "settings.get": defaultSettings,
+  "settings.confirmConfigDrop": defaultSettings,
+  "settings.cancelConfigDrop": defaultSettings,
   "results.summary": (): ResultsSnapshot => ({
     revision: 1, state: "NotRun", groups: [], elapsedMs: 0, symbolCount: 0, hasReport: false, hasPreview: false,
     previewPaths: [], selectedPreviewPath: null, previewError: null,

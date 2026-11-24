@@ -42,6 +42,17 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
   const { state: info } = usePushedState<AppInfo>("app", "info", null);
   const { state: files, failed: filesFailed } = usePushedState<InputSnapshot>("files", "get", events.filesChanged);
   const { state: settings, failed: settingsFailed } = usePushedState<SettingsSnapshot>("settings", "get", events.settingsChanged);
+  const [answeredSettings, setAnsweredSettings] = useState<{ next: SettingsSnapshot; over: SettingsSnapshot | null } | null>(null);
+  const latestSettings = useRef(settings);
+  useLayoutEffect(() => {
+    latestSettings.current = settings;
+  });
+  const currentSettings =
+    answeredSettings &&
+    answeredSettings.over === settings &&
+    (!settings || answeredSettings.next.revision >= settings.revision)
+      ? answeredSettings.next
+      : settings;
   const { state: results, failed: resultsFailed } = usePushedState<ResultsSnapshot>("results", "summary", events.resultsChanged);
 
   const { run, failed, error: runError, start, cancel } = useRun({
@@ -56,10 +67,16 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
     (run !== null || failed) && (files !== null || filesFailed) && (settings !== null || settingsFailed) && (results !== null || resultsFailed),
   );
 
+  const running = run?.status === "Running";
+  const pendingConfigDrop = Boolean(currentSettings?.pendingConfigDrop);
+
   // A shortcut's failure is shown on whatever screen is open, so it goes when the user moves on, the state changes,
   // or another shell action runs.
-  const staleAfter = [screen, files?.revision, settings?.revision].join("|");
+  const staleAfter = [screen, files?.revision, currentSettings?.revision].join("|");
   const [runAction, shortcutError] = useActionRunner(staleAfter);
+  const [runConfigDropAction, configDropError] = useActionRunner(
+    [pendingConfigDrop, currentSettings?.revision].join("|"),
+  );
 
   const addFiles = () =>
     runAction(strings.shell.addFilesFailed, async () => {
@@ -76,9 +93,19 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
     runAction(strings.shell.openConfigFailed, async () => {
       await api.settings.openConfig();
     });
+  const confirmConfigDrop = () =>
+    runConfigDropAction(strings.shell.openConfigFailed, async () => {
+      const over = latestSettings.current;
+      const next = await api.settings.confirmConfigDrop();
+      setAnsweredSettings({ next, over });
+    });
+  const cancelConfigDrop = () =>
+    runConfigDropAction(strings.shell.cancelConfigDropFailed, async () => {
+      const over = latestSettings.current;
+      const next = await api.settings.cancelConfigDrop();
+      setAnsweredSettings({ next, over });
+    });
   const [confirmOpenConfig, setConfirmOpenConfig] = useState(false);
-
-  const running = run?.status === "Running";
 
   // The web area takes the OS drop, so the page receives it and hands the files to the host, which reads their paths and
   // applies the rules (a run refuses them with a notice). The overlay is shown while a drag of files is over the window.
@@ -103,8 +130,8 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
   };
 
   const requestOpenConfig = () => {
-    if (running) return;
-    if (settings?.dirty) {
+    if (running || pendingConfigDrop) return;
+    if (currentSettings?.dirty) {
       setConfirmOpenConfig(true);
     } else {
       void openConfig();
@@ -126,7 +153,7 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
 
   const fileCount = files?.files.length ?? 0;
   const includedCount = files?.files.filter((file) => file.included).length ?? 0;
-  const level = settings?.level ?? null;
+  const level = currentSettings?.level ?? null;
   const resultsDot: ResultsDot = running ? "running" : results?.state === "Finished" ? "done" : "none";
   const configNotices =
     files?.notices?.filter(
@@ -186,15 +213,34 @@ export default function Shell({ screen, onNavigate, children }: ShellProps) {
         />
       </div>
       <ConfirmDialog
-        open={confirmOpenConfig}
-        title={strings.protection.confirmOpenConfig.title}
-        message={strings.protection.confirmOpenConfig.body}
-        confirmLabel={strings.protection.confirmOpenConfig.confirm}
-        cancelLabel={strings.protection.confirmOpenConfig.cancel}
-        onCancel={() => setConfirmOpenConfig(false)}
+        open={pendingConfigDrop || confirmOpenConfig}
+        title={pendingConfigDrop ? strings.protection.confirmDropConfig.title : strings.protection.confirmOpenConfig.title}
+        message={pendingConfigDrop ? strings.protection.confirmDropConfig.body : strings.protection.confirmOpenConfig.body}
+        confirmLabel={
+          pendingConfigDrop ? strings.protection.confirmDropConfig.confirm : strings.protection.confirmOpenConfig.confirm
+        }
+        cancelLabel={
+          pendingConfigDrop ? strings.protection.confirmDropConfig.cancel : strings.protection.confirmOpenConfig.cancel
+        }
+        confirmDisabled={pendingConfigDrop && running}
+        error={pendingConfigDrop ? configDropError : null}
+        onCancel={() => {
+          if (pendingConfigDrop) {
+            setConfirmOpenConfig(false);
+            void cancelConfigDrop();
+          } else {
+            setConfirmOpenConfig(false);
+          }
+        }}
         onConfirm={() => {
-          setConfirmOpenConfig(false);
-          if (!running) void openConfig();
+          if (pendingConfigDrop) {
+            if (running) return;
+            setConfirmOpenConfig(false);
+            void confirmConfigDrop();
+          } else {
+            setConfirmOpenConfig(false);
+            if (!running) void openConfig();
+          }
         }}
       />
     </div>

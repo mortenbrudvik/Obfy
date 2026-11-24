@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, type MouseEvent } from "react";
+import Notice from "./Notice";
 import "./components.css";
 
 interface ConfirmDialogProps {
@@ -7,6 +8,8 @@ interface ConfirmDialogProps {
   message: string;
   confirmLabel: string;
   cancelLabel?: string;
+  confirmDisabled?: boolean;
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -18,6 +21,8 @@ export default function ConfirmDialog({
   message,
   confirmLabel,
   cancelLabel = "Cancel",
+  confirmDisabled = false,
+  error = null,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -97,11 +102,12 @@ export default function ConfirmDialog({
       >
         <h2 id={titleId}>{title}</h2>
         <p id={bodyId}>{message}</p>
+        {error && <Notice tone="error">{error}</Notice>}
         <div className="dialog-actions">
           <button ref={cancelRef} type="button" className="btn" onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button ref={confirmRef} type="button" className="btn primary" onClick={onConfirm}>
+          <button ref={confirmRef} type="button" className="btn primary" disabled={confirmDisabled} onClick={onConfirm}>
             {confirmLabel}
           </button>
         </div>

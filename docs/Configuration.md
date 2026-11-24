@@ -379,7 +379,7 @@ Thresholds prevent encrypting ubiquitous values like 0, 1, and -1 which appear f
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `antiTamper.enabled` | bool | `false` | Enable anti-tampering protection |
+| `antiTamper.enabled` | bool | `false` | Enable anti-tampering protection. Gated off NativeAOT / IL2CPP / Blazor WASM. |
 | `antiTamper.checkEntryPoint` | bool | `true` | Verify integrity at entry point |
 | `antiTamper.checkModuleInitializer` | bool | `true` | Verify integrity at module init |
 
@@ -479,11 +479,11 @@ Opt-in; not flipped by level presets. CLI: `--watermark-id`. The desktop app has
 | Value | Effect |
 |-------|--------|
 | `Default` | All protections as configured |
-| `NativeAot` | Disables method encryption, anti-dump, dependency embedding, native packing, and virtualization; anti-debug omits kernel32 P/Invoke. Emits report warnings. |
+| `NativeAot` | Disables method encryption, anti-dump, anti-tamper, dependency embedding, native packing, and virtualization; anti-debug omits kernel32 P/Invoke. Emits report warnings. |
 | `UnityIl2Cpp` | Same gating; Unity wizard also excludes `UnityEngine`, `UnityEngine.*`, `Unity`, and `Unity.*` |
 | `BlazorWasm` | Same gating for Blazor WebAssembly (no `AppDomain.AssemblyResolve` / `VirtualProtect`); anti-debug omits kernel32 P/Invoke; virtualization off (`MethodBase.Invoke`); native packing off. |
 
-The desktop Protection screen greys out method encryption, anti-dump, dependency embedding, virtualization and native packing for the three profiles other than `Default`, and keeps their stored values. The engine turns the same five off at run time and logs a warning for each.
+The desktop Protection screen greys out method encryption, anti-dump, anti-tamper, dependency embedding, virtualization and native packing for the three profiles other than `Default`, and keeps their stored values. The engine turns the same six off at run time and logs a warning for each.
 
 ### signing
 

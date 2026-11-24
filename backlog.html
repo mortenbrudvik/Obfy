@@ -209,7 +209,7 @@ th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacin
         <thead><tr><th>Repo</th><th>State</th></tr></thead>
         <tbody>
           <tr><td>Obfy</td><td>Merged into main as PR #33 (15988d0), PR #34 (d294551), and PR #35 (5251e42), plus docs, CI console-test, and XAML closed-set warning fixes up to f2bf4ad, pushed to origin/main.</td></tr>
-          <tr><td>Obfy, 22 Nov review &amp; Wave 1–3 fixes</td><td>Wave 1 (46b580a), Wave 2 (5b8d75b), and Wave 3 (fix/nov-22-review-wave-3; B-70 excluded) merged into main and pushed to origin/main: 51/72 fixed on the 22 Nov board (all 7 Critical fixed), 99/127 done overall (78%; Wave 3 closed 7 additional items and partially addressed 4); verified by 3,273 passing .NET tests and 304 passing WebApp Vitest tests with 0 C# compiler/analyzer warnings. Two worktrees remain under .worktrees (closed-set-followups, fix-ci-flaui), both already on or superseded by main (see B-62).</td></tr>
+          <tr><td>Obfy, 22 Nov review &amp; Wave 1–4 fixes</td><td>Wave 1 (46b580a), Wave 2 (5b8d75b), Wave 3 (2e5eb67), VS extension removal (4a71c10; B-70 &amp; B-14), and Wave 4 fixes completed on main: 58/72 fixed on the 22 Nov board (all 7 Critical fixed, 1 removed, 13 open), 108/127 done overall (85%; Wave 4 closed B-83, B-115, B-62, B-10, B-29, B-33, and B-34); verified by 3,174 passing .NET tests and 304 passing WebApp Vitest tests with 0 Warning(s), 0 Error(s). Both superseded worktrees under .worktrees and the stray nul file have been removed.</td></tr>
           <tr><td>Homepage</td><td>Merged into main and live at brudvik.com (936a8b0). Branch and worktree removed.</td></tr>
         </tbody>
       </table>
@@ -325,7 +325,14 @@ var DONE = [
   { id: "D-98", title: "Completed [STAThread] support across both portable (ManagedLauncherPacker.cs) and win-x64 native (PackedBootstrap.cs + rebuilt Obfy.NativeHost.exe + sources.sha256) packed hosts", tag: "B-105 · main (Wave 3)" },
   { id: "D-99", title: "Completed VM & Native Host hardening: VmMemberTables, VmEncoder, MethodBodyPeEncryptor, heap-allocated host.c path buffers (freed before run()) + GetModuleFileNameW truncation checks, and traversal-safe PackedBootstrap ResolvingUnmanagedDll", tag: "B-112 · main (Wave 3)" },
   { id: "D-100", title: "Closed without building: the Visual Studio extension was removed from the repo on 2026-11-24, so there is no .vsix to build, package or test", tag: "B-70 · removed 2026-11-24" },
-  { id: "D-101", title: "Closed without a decision: the Visual Studio extension was removed from the repo on 2026-11-24, so there is nothing to publish", tag: "B-14 · removed 2026-11-24" }
+  { id: "D-101", title: "Closed without a decision: the Visual Studio extension was removed from the repo on 2026-11-24, so there is nothing to publish", tag: "B-14 · removed 2026-11-24" },
+  { id: "D-102", title: "package.yml passed on GitHub Actions main (run 45419202787), verifying the installer WebView2 start-check and Assert-ProtectedUiXamlBindings on a runner", tag: "B-83 · main (Wave 4)" },
+  { id: "D-103", title: "Deleted the stray 0-byte \\\\?\\C:\\code\\projects\\Obfy\\nul file; clean solution build now passes with 0 Warning(s), 0 Error(s)", tag: "B-115 · main (Wave 4)" },
+  { id: "D-104", title: "Verified clean and removed both superseded worktrees (.worktrees/closed-set-followups, .worktrees/fix-ci-flaui) and their local branches", tag: "B-62 · main (Wave 4)" },
+  { id: "D-105", title: "Gated AntiTamper on NativeAot/UnityIl2Cpp/BlazorWasm (RuntimeProfileGating + UI ProfileGates/ProtectionSession + schema + NativeAotTests + docs) and expanded docs/Advanced.md performance remarks across all 16 techniques", tag: "B-10 · main (Wave 4)" },
+  { id: "D-106", title: "Upgraded actions/setup-node to verified Node 24 v6.5.0 SHA (249970729cb0ef3589644e2896645e5dc5ba9c38) across all 4 workflows (locked by Workflows_DoNotUseDeprecatedNode20ActionShas; ilammy/msvc-dev-cmd awaits upstream Node 24)", tag: "B-29 · main (Wave 4)" },
+  { id: "D-107", title: "Added LoggingConfiguration.ResolveExplorerLogDirectory() (GetCurrentPackageFamilyName) so OpenLogFolder() resolves %LOCALAPPDATA%\\Packages\\<PFN>\\LocalCache\\Local\\Obfy\\Logs in MSIX/Store builds, and documented Store paths in PRIVACY.md", tag: "B-33 · main (Wave 4)" },
+  { id: "D-108", title: "Empirically verified native-packed lifecycle with 5 E2E tests (ReviewFixesWave4PackedTests.cs): GetEntryAssembly() == null (AntiTamper contract), Main exceptions exit 1 with inner trace on stderr while secondary threads fire AppDomain.UnhandledException, and joined vs unjoined foreground-thread component-hosting behavior documented and tested", tag: "B-34 · main (Wave 4)" }
 ];
 
 var ITEMS = [
@@ -337,10 +344,6 @@ var ITEMS = [
     why: "The Store listing uses the GitHub PRIVACY.md as its privacy policy. The new page at brudvik.com/obfy/privacy says the same things and is easier to find. The Store page also shows no version, so it is not confirmed that 2.0.0 is what ships.",
     next: "The page is live. Set the policy URL in Partner Center and check which version the listing carries.",
     refs: ["package/store-identity.json", "PRIVACY.md"] },
-  { id: "B-10", pri: "p2", area: "Docs", kind: "Verify", title: "Test the remaining guide behaviours (PublishSingleFile & short-name scenario tests added)",
-    why: "Wave 2 updated docs/Advanced.md and docs/Platforms.md for exclusions.attributes, BAML x:Class exclusions, the GitHub Actions snippet, and short-name reuse across runs; Wave 3 added end-to-end PublishSingleFile=true (AntiTamper) and separate-vs-closed-set short-name scenario tests in Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs. Remaining: AntiTamper on NativeAOT/IL2CPP and benchmarked technique costs.",
-    next: "Run runtime tests for AntiTamper on NativeAOT/IL2CPP and benchmark technique costs, then update the guide and product page with what holds.",
-    refs: ["public/obfy/guide/index.html", "docs/Advanced.md", "docs/Platforms.md", "docs/Testing.md", "Tests/Obfy.ScenarioTests/PublishModesScenarioTests.cs"] },
   { id: "B-11", pri: "p2", area: "Privacy", kind: "Verify", title: "Confirm remaining external privacy statements (output network-reference scan test added)",
     why: "Wave 2 added an automated output-assembly network-reference scan test in Tests/Obfy.Tests/ReviewFixesWave2CoreTests.cs. Still not verifiable from repo code alone: Windows moving AppData into the Store package folder, the WebView2 bootstrapper’s download, the Microsoft Store’s own data collection, and Windows crash reporting.",
     next: "Verify each external Microsoft Store, WebView2 bootstrapper, and Windows crash reporting statement against Microsoft’s documentation or a test install.",
@@ -385,10 +388,6 @@ var ITEMS = [
     why: "The desktop app refuses a run that would replace an input. The CLI still writes over the original when -o is the input's folder. That is the documented MSBuild post-build step, and the write is atomic, so a failed run no longer truncates the original. A successful run still replaces it, by design. The CLI now does refuse a --map or --report path that would replace an input or an output.",
     next: "Decide whether -o into an input's own folder, outside the post-build case, should warn or need a flag. Add tests either way.",
     refs: ["Src/Obfy.Console/Program.cs", "Src/Obfy.App/Sessions/OutputCollisions.cs"] },
-  { id: "B-29", pri: "p3", area: "Release", kind: "Chore", title: "Update remaining GitHub Actions still targeting Node 20 (checkout, setup-dotnet, upload-artifact & sticky-pull-request-comment updated)",
-    why: "Wave 3 bumped actions/checkout (v7.0.1), actions/setup-dotnet (v6.1.0), actions/upload-artifact (v7.0.2), and marocchino/sticky-pull-request-comment (v3.0.5) to verified Node 24 SHAs across all 4 workflows (ci.yml, package.yml, platform.yml, publish.yml). Remaining: actions/setup-node (v4 -> Node 24 SHA) and ilammy/msvc-dev-cmd (awaiting upstream Node 24 release).",
-    next: "Bump actions/setup-node from v4 to a verified Node 24 SHA and update ilammy/msvc-dev-cmd once an upstream Node 24 release ships.",
-    refs: [".github/workflows/ci.yml", ".github/workflows/package.yml", ".github/workflows/platform.yml", ".github/workflows/publish.yml", "Tests/Obfy.Tests/ReviewFixesWave3WorkflowTests.cs"] },
   { id: "B-30", pri: "p2", area: "Privacy", kind: "Fix", title: "Update /obfy/privacy in external homepage repo (PRIVACY.md, CLAUDE.md & packer Trace.WriteLine scrubbed)",
     why: "Wave 2 updated PRIVACY.md and CLAUDE.md in the Obfy repo and scrubbed packer Trace.WriteLine paths in NativePacker.cs and ManagedLauncherPacker.cs. Updating and redeploying /obfy/privacy in the external homepage repo to match remains.",
     next: "Update /obfy/privacy in the external homepage repo and redeploy brudvik.com/obfy/privacy.",
@@ -397,14 +396,6 @@ var ITEMS = [
     why: "The publish job in publish.yml has no environment, so a release, or a manual run from main or a tag, publishes to nuget.org with no human approval. An approval gate needs repository settings, which a code change cannot create. Left open by the code review.",
     next: "Create a GitHub Environment (for example nuget-publish) with required reviewers and deployment limited to main and tags. Add environment: nuget-publish to the publish job, and bind the nuget.org trusted-publishing policy to that environment.",
     refs: [".github/workflows/publish.yml"] },
-  { id: "B-33", pri: "p2", area: "Release", kind: "Verify", title: "Check where the Store (MSIX) app writes its files",
-    why: "A packaged app’s writes under %LOCALAPPDATA% and %APPDATA% are likely redirected into its package folder. If so, the Open log folder button and PRIVACY.md point at a path the app never wrote to. Not tested on an installed package. Related to B-11.",
-    next: "Install the MSIX and see where the logs, ui-preferences.json and the WebView2 profile land. If they are redirected, set desktop6:FileSystemWriteVirtualization to disabled in the manifest (it needs the unvirtualizedResources capability), or point the docs at the package path.",
-    refs: ["package/AppxManifest.xml", "PRIVACY.md", "build/build-msix.ps1"] },
-  { id: "B-34", pri: "p2", area: "Core", kind: "Fix", title: "Close remaining packed-app gaps (stack traces, [STAThread] & ResolvingUnmanagedDll fixed)",
-    why: "Wave 3 preserved full sync/async Task Main exception stack traces on stderr and added [STAThread] support plus traversal-safe ResolvingUnmanagedDll (with rebuilt Obfy.NativeHost.exe). Remaining: component-hosting foreground-thread join and AppDomain.UnhandledException on Main (Assembly.GetEntryAssembly() stays null by design because AntiTamper treats a null entry assembly with an empty Location as packed).",
-    next: "Join non-background foreground threads before wmain exits and let unhandled Main exceptions reach AppDomain.UnhandledException while preserving AntiTamper's null GetEntryAssembly() behavior; regenerate sources.sha256 and rebuild Obfy.NativeHost.exe after any host/bootstrap edit.",
-    refs: ["Src/Obfy.PackedBootstrap/PackedBootstrap.cs", "Src/Obfy.NativeHost/host.c", "Src/Obfy.NativeHost/dist/sources.sha256", "Src/Obfy.Core/Utilities/ManagedLauncherPacker.cs"] },
   { id: "B-55", pri: "p3", area: "App", kind: "Fix", title: "Handle CoreWebView2 origin guard (cloak-refused timer & closed-window guard fixed)",
     why: "Fixed in ShellWindow.xaml.cs: cloak-refused path now publishes app.revealed and stops/disposes _revealTimer, and closed-window guard prevents late timer ticks from revealing a closed window (alongside earlier run-bar and failed-cancel fixes). Remaining: top-level CoreWebView2 has no AddHostObjectToScriptWithOrigins API (only CoreWebView2Frame does), so the bridge relies on the navigation guards alone.",
     next: "Harden or document the CoreWebView2 navigation/origin guard without relying on AddHostObjectToScriptWithOrigins.",
@@ -417,22 +408,10 @@ var ITEMS = [
     why: "Wave 3 added global.json (10.0.100, latestFeature), nuget.config (<clear /> + <packageSourceMapping>), and nuget/npm ecosystems in .github/dependabot.yml. Remaining: generating NuGet packages.lock.json lock files and enabling locked-mode restore across all TFMs/RIDs.",
     next: "Generate packages.lock.json lock files and restore in locked mode across all TFMs/RIDs.",
     refs: ["global.json", "nuget.config", "Directory.Packages.props", ".github/dependabot.yml"] },
-  { id: "B-62", pri: "p3", area: "Housekeeping", kind: "Chore", title: "Clean up the two superseded worktrees under .worktrees",
-    why: "C:\\localhost has already been deleted. All commits in the two remaining worktrees under .worktrees — closed-set-followups (e2e9dfd) and fix-ci-flaui (branch fix/ci-flaui-filter, f75c0f5) — are already on or superseded by main.",
-    next: "Remove both remaining worktrees and delete their local branches.",
-    refs: [".worktrees"] },
   { id: "B-74", pri: "p3", area: "Core", kind: "Decide", title: "Decide what a cancelled CLI run prints and returns",
     why: "Ctrl+C now stops every kind of run, but a cancelled run prints nothing and exits with code 1, the same as a failure. Nothing in the CLI catches the cancellation.",
     next: "Print Cancelled and choose an exit code (130 is the convention), then update the exit-code table in docs/CLI.md. Or leave it and say so there.",
-    refs: ["Src/Obfy.Console/Program.cs", "docs/CLI.md"] },
-  { id: "B-83", pri: "p2", area: "Release", kind: "Chore", title: "Verify installer start check on GitHub Actions package.yml (CloseAsync & HKLM cleanup fixed)",
-    why: "Fixed in build-installer.ps1: added CloseAsync timeout, fixed HKLM policy cleanup logic, and added RegistryKey.Dispose() in Assert-ProcessedUi. Remaining: verify on a real GitHub Actions package.yml run.",
-    next: "Run and confirm the first package.yml workflow run passes on a real GitHub Actions runner.",
-    refs: [".github/workflows/package.yml", "build/build-installer.ps1"] },
-  { id: "B-115", pri: "p3", area: "Docs", kind: "Chore", title: "Delete stray 0-byte nul file at repo root outside sandbox (docs, MAUI example & xUnit1031 warning fixed)",
-    why: "Fixed across Wave 1 & Wave 2: build-msix.ps1 version delegation, OutputWriteTests.cs xUnit1031 warning (0 C# compiler warnings), examples/maui/obfy.json, docs/Testing-Roadmap.md, docs/Competitive-Analysis.md, docs/Roadmap.md, and README.md. Remaining: only deleting the stray 0-byte C:\\code\\projects\\Obfy\\nul file outside the sandbox.",
-    next: "Delete C:\\code\\projects\\Obfy\\nul outside the sandbox (using \\\\?\\C:\\code\\projects\\Obfy\\nul).",
-    refs: ["nul", "Tests/Obfy.Tests/OutputWriteTests.cs", "examples/maui/obfy.json", "docs/Testing-Roadmap.md", "docs/Competitive-Analysis.md", "docs/Roadmap.md", "README.md"] }
+    refs: ["Src/Obfy.Console/Program.cs", "docs/CLI.md"] }
 ];
 
 var state = { area: "All", q: "" };
@@ -464,7 +443,7 @@ function renderProgress() {
   bar.setAttribute("aria-valuenow", String(done));
   bar.setAttribute("aria-valuetext", done + " of " + total + " items done");
   document.getElementById("pfill").style.width = pct + "%";
-  document.getElementById("asof").textContent = "Updated 2026-11-24: Wave 1 (46b580a), Wave 2 (5b8d75b) & Wave 3 (fix/nov-22-review-wave-3; B-70 excluded) merged into main & pushed to origin/main (51/72 board fixed, 7 Wave 3 closed, 4 partial; 3,273 .NET & 304 WebApp Vitest tests passing, 0 C# compiler/analyzer warnings) · " + open + " open · " + done + " done";
+  document.getElementById("asof").textContent = "Updated 2026-11-24: Waves 1–4 & VS extension removal (4a71c10) complete on main (58/72 board fixed, 1 removed, 13 open; 3,174 .NET & 304 WebApp Vitest tests passing, 0 Warning(s), 0 Error(s)) · " + open + " open · " + done + " done";
   document.getElementById("nopen").textContent = open;
   document.getElementById("ndone").textContent = done;
 

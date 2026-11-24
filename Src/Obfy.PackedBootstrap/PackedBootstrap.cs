@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 
@@ -32,8 +33,7 @@ public static class PackedBootstrap
             MethodImageDecryptor.Decrypt(bytes);
 
             var alc = AssemblyLoadContext.Default;
-            if (Interlocked.Exchange(ref _resolvingHooked, 1) == 0)
-                alc.Resolving += ResolveSibling;
+            RegisterDefaultResolvers(alc);
 
             var assembly = alc.LoadFromStream(new MemoryStream(bytes));
             var entry = assembly.EntryPoint;
@@ -63,13 +63,54 @@ public static class PackedBootstrap
         }
     }
 
+    internal static bool RegisterDefaultResolvers(AssemblyLoadContext alc)
+    {
+        if (Interlocked.Exchange(ref _resolvingHooked, 1) != 0)
+            return false;
+
+        alc.Resolving += ResolveSibling;
+        alc.ResolvingUnmanagedDll += ResolveUnmanagedSibling;
+        return true;
+    }
+
     /// <summary>
     /// Runs the payload's entry point and maps its result to the process exit code the way the
     /// runtime's own app host does: an <c>int</c> / <c>Task&lt;int&gt;</c> is the code, and a
     /// <c>void</c> / <c>Task</c> Main exits with <see cref="Environment.ExitCode"/> (0 unless the
-    /// payload set it).
+    /// payload set it). On Windows, entry points marked with <see cref="STAThreadAttribute"/> are
+    /// dispatched to an STA thread when the current thread is not already STA.
     /// </summary>
     internal static int InvokeEntryPoint(MethodBase entry, string[] args)
+    {
+        if (OperatingSystem.IsWindows()
+            && entry.GetCustomAttributes(typeof(STAThreadAttribute), false).Length > 0
+            && Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
+        {
+            var exitCode = 1;
+            Exception? failure = null;
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    exitCode = InvokeEntryPointCore(entry, args);
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                }
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            thread.Join();
+            if (failure != null)
+                ExceptionDispatchInfo.Capture(failure).Throw();
+            return exitCode;
+        }
+
+        return InvokeEntryPointCore(entry, args);
+    }
+
+    private static int InvokeEntryPointCore(MethodBase entry, string[] args)
     {
         object?[]? invokeArgs = entry.GetParameters().Length == 0 ? null : new object[] { args };
         var result = entry.Invoke(null, invokeArgs);
@@ -94,5 +135,64 @@ public static class PackedBootstrap
         if (!File.Exists(probe) && !string.IsNullOrEmpty(name.CultureName))
             probe = Path.Combine(AppContext.BaseDirectory, name.CultureName, fileName);
         return File.Exists(probe) ? context.LoadFromAssemblyPath(probe) : null;
+    }
+
+    private static IntPtr ResolveUnmanagedSibling(Assembly requestingAssembly, string unmanagedDllName) =>
+        ResolveUnmanagedFromBaseDirectory(AppContext.BaseDirectory, unmanagedDllName);
+
+    internal static IntPtr ResolveUnmanagedFromBaseDirectory(string baseDirectory, string unmanagedDllName)
+    {
+        if (string.IsNullOrWhiteSpace(baseDirectory)
+            || string.IsNullOrWhiteSpace(unmanagedDllName)
+            || Path.IsPathRooted(unmanagedDllName))
+        {
+            return IntPtr.Zero;
+        }
+
+        var handle = TryLoadUnmanagedFromDirectory(baseDirectory, unmanagedDllName);
+        if (handle != IntPtr.Zero)
+            return handle;
+
+        return TryLoadUnmanagedFromDirectory(
+            Path.Combine(baseDirectory, "runtimes", "win-x64", "native"),
+            unmanagedDllName);
+    }
+
+    private static IntPtr TryLoadUnmanagedFromDirectory(string directory, string unmanagedDllName)
+    {
+        string fullDir;
+        string fullCandidate;
+        try
+        {
+            fullDir = Path.GetFullPath(directory);
+            if (!fullDir.EndsWith(Path.DirectorySeparatorChar))
+                fullDir += Path.DirectorySeparatorChar;
+
+            fullCandidate = Path.GetFullPath(Path.Combine(fullDir, unmanagedDllName));
+        }
+        catch (Exception ex) when (ex is ArgumentException
+            or NotSupportedException
+            or PathTooLongException
+            or System.Security.SecurityException)
+        {
+            return IntPtr.Zero;
+        }
+
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        if (!fullCandidate.StartsWith(fullDir, comparison) || Path.EndsInDirectorySeparator(fullCandidate))
+            return IntPtr.Zero;
+
+        if (NativeLibrary.TryLoad(fullCandidate, out var handle))
+            return handle;
+
+        if (!unmanagedDllName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            && NativeLibrary.TryLoad(fullCandidate + ".dll", out handle))
+        {
+            return handle;
+        }
+
+        return IntPtr.Zero;
     }
 }

@@ -42,6 +42,14 @@ if ($dotnetRoot) {
 # Pin 8.0.6: later host packs need MSVC 14.42+ (__std_find_end_2) and would churn CI dist.
 # 8.0.6 is the runtime/host-pack version (there is no SDK 8.0.6).
 $packVersion = "8.0.6"
+# Pin the exact official Microsoft.NETCore.App.Host.win-x64 8.0.6 native pack files.
+$expectedPackHashes = @{
+    "libnethost.lib"      = "812C7B0CA2B9B5783565A2632AE63F7ACFAA3ECD6ACF0307C2BB82A836EF47FE"
+    "nethost.h"           = "D5254A53C8C95CF1878D39D88A5274F94B31717543AA5FB6A8EF005BC1007DEE"
+    "hostfxr.h"           = "D510F774012576AB31B6964223F41491C5326998CA8AEBBD90F0422C239140C9"
+    "coreclr_delegates.h" = "344E5467128AFFF9074B4FE65285E810FD65C9C9823366C53EA0A1793060F2A8"
+}
+
 $pack = $null
 foreach ($root in $packCandidates) {
     if (-not $root -or -not (Test-Path $root)) { continue }
@@ -55,6 +63,19 @@ if (-not $pack) {
     $pack = Restore-NetHostPack $packVersion
 }
 
+$native = Join-Path $pack.FullName "runtimes\win-x64\native"
+foreach ($entry in ($expectedPackHashes.GetEnumerator() | Sort-Object Key)) {
+    $packFile = Join-Path $native $entry.Key
+    if (-not (Test-Path -LiteralPath $packFile -PathType Leaf)) {
+        throw "Microsoft.NETCore.App.Host.win-x64 $packVersion is missing $($entry.Key) at $packFile"
+    }
+    $actualHash = (Get-FileHash -LiteralPath $packFile -Algorithm SHA256).Hash
+    if (-not [string]::Equals($actualHash, $entry.Value, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "SHA-256 mismatch for $($entry.Key) at $packFile (expected $($entry.Value), got $actualHash)"
+    }
+}
+$nethostLib = Join-Path $native "libnethost.lib"
+
 $dist = Join-Path $here "dist"
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 $exe = Join-Path $dist "Obfy.NativeHost.exe"
@@ -62,7 +83,8 @@ $rc = Join-Path $here "host.generated.rc"
 $res = Join-Path $here "host.res"
 $implib = Join-Path $here "host.lib"
 $escapedBootstrap = $bootstrap -replace '\\', '\\'
-Set-Content -Path $rc -Value "BOOTSTRAP RCDATA `"$escapedBootstrap`"" -Encoding ascii
+$rcContent = "BOOTSTRAP RCDATA `"$escapedBootstrap`"`n"
+[System.IO.File]::WriteAllText($rc, $rcContent, [System.Text.UTF8Encoding]::new($false))
 
 function Invoke-WithMsvc([string]$CommandLine) {
     $full = "cd /d `"$here`" && $CommandLine"
@@ -82,14 +104,8 @@ function Invoke-WithMsvc([string]$CommandLine) {
     }
 }
 
-Invoke-WithMsvc "rc.exe /nologo /fo `"$res`" `"$rc`""
+Invoke-WithMsvc "rc.exe /nologo /c 65001 /fo `"$res`" `"$rc`""
 if ($LASTEXITCODE -ne 0) { throw "rc.exe failed with exit $LASTEXITCODE" }
-
-$native = Join-Path $pack.FullName "runtimes\win-x64\native"
-$nethostLib = Join-Path $native "libnethost.lib"
-if (-not (Test-Path $nethostLib)) { throw "libnethost.lib missing: $nethostLib" }
-if (-not (Test-Path (Join-Path $native "nethost.h"))) { throw "nethost.h missing under $native" }
-if (-not (Test-Path (Join-Path $native "hostfxr.h"))) { throw "hostfxr.h missing under $native" }
 
 $compile = @(
     "cl.exe /nologo /O2 /Brepro /W3 /WX /MT /DUNICODE /D_UNICODE /I `"$native`"",

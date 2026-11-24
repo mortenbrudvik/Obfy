@@ -98,6 +98,7 @@ public class ReviewFixesWave3WorkflowTests
         [
             "11d5960a326750d5838078e36cf38b85af677262", // actions/checkout v4
             "67a3573c9a986a3f9c594539f4ab511d57bb3ce9", // actions/setup-dotnet v4
+            "49933ea5288caeca8642d1e84afbd3f7d6820020", // actions/setup-node v4
             "ea165f8d65b6e75b540449e92b4886f43607fa02", // actions/upload-artifact v4
             "773744901bac0e8cbb5a0dc842800d45e9b2b405"  // marocchino/sticky-pull-request-comment v2
         ];

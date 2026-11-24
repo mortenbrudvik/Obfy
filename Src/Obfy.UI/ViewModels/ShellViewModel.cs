@@ -106,7 +106,7 @@ public partial class ShellViewModel : ObservableObject
     /// "the log has the details" would send the user to a folder that is not there.
     /// </summary>
     public string LogsNote => LogsAvailable
-        ? $"The log is in {LogsDirectory}."
+        ? $"The log is in {ResolveDisplayLogDirectory()}."
         : "Obfy could not create its log folder, so there is no log to read.";
 
     /// <summary>What to try if restarting does not help; mentions the log only when there is one.</summary>
@@ -185,6 +185,11 @@ public partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private Task QuitAsync() => _shutdown.QuitAsync();
 
+    private string ResolveDisplayLogDirectory() =>
+        LogsDirectory.Equals(LoggingConfiguration.LogDirectory, StringComparison.OrdinalIgnoreCase)
+            ? LoggingConfiguration.ResolveExplorerLogDirectory()
+            : LogsDirectory;
+
     /// <summary>The failure panel's Open log folder. A command must not throw: a folder that will not open is logged.</summary>
     [RelayCommand(CanExecute = nameof(LogsAvailable))]
     private void OpenLogFolder()
@@ -192,7 +197,7 @@ public partial class ShellViewModel : ObservableObject
         try
         {
             Directory.CreateDirectory(LogsDirectory);
-            Process.Start(new ProcessStartInfo(LogsDirectory) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(ResolveDisplayLogDirectory()) { UseShellExecute = true });
         }
         catch (Exception ex)
         {

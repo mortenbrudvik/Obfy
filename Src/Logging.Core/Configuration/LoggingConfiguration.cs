@@ -1,7 +1,11 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using NLog;
 using NLog.Extensions.Logging;
 using NLog.Targets.Wrappers;
+
+[assembly: InternalsVisibleTo("Obfy.UI.Tests")]
 
 namespace Logging.Core.Configuration;
 
@@ -10,6 +14,9 @@ namespace Logging.Core.Configuration;
 /// </summary>
 public static class LoggingConfiguration
 {
+    private const int AppModelErrorNoPackage = 15700;
+    private const int ErrorInsufficientBuffer = 122;
+
     private static readonly string _logDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Obfy", "Logs");
@@ -18,6 +25,71 @@ public static class LoggingConfiguration
     /// Gets the directory where log files are stored.
     /// </summary>
     public static string LogDirectory => _logDirectory;
+
+    /// <summary>
+    /// Resolves the directory File Explorer should open to show log files. Inside an MSIX/Store package, Windows
+    /// virtualizes writes under <see cref="LogDirectory"/> into the package's <c>LocalCache\Local\Obfy\Logs</c> folder;
+    /// File Explorer runs outside package virtualization, so it must be given the redirected folder when it exists.
+    /// </summary>
+    public static string ResolveExplorerLogDirectory()
+        => OperatingSystem.IsWindows()
+            ? ResolveExplorerLogDirectory(
+                TryGetCurrentPackageFamilyName(),
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                Directory.Exists)
+            : _logDirectory;
+
+    internal static string ResolveExplorerLogDirectory(
+        string? packageFamilyName,
+        string localAppData,
+        Func<string, bool> directoryExists)
+    {
+        ArgumentNullException.ThrowIfNull(directoryExists);
+
+        if (string.IsNullOrWhiteSpace(packageFamilyName) || string.IsNullOrWhiteSpace(localAppData))
+            return _logDirectory;
+
+        var virtualized = Path.Combine(
+            localAppData,
+            "Packages",
+            packageFamilyName,
+            "LocalCache",
+            "Local",
+            "Obfy",
+            "Logs");
+        return directoryExists(virtualized) ? virtualized : _logDirectory;
+    }
+
+    private static string? TryGetCurrentPackageFamilyName()
+    {
+        try
+        {
+            uint length = 0;
+            var status = GetCurrentPackageFamilyName(ref length, null);
+            if (status == AppModelErrorNoPackage || status != ErrorInsufficientBuffer || length == 0)
+                return null;
+
+            var buffer = new char[length];
+            status = GetCurrentPackageFamilyName(ref length, buffer);
+            if (status != 0)
+                return null;
+
+            var count = (int)Math.Min(length, (uint)buffer.Length);
+            var terminator = Array.IndexOf(buffer, '\0', 0, count);
+            if (terminator >= 0)
+                count = terminator;
+
+            var familyName = new string(buffer, 0, count);
+            return string.IsNullOrWhiteSpace(familyName) ? null : familyName;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, EntryPoint = "GetCurrentPackageFamilyName")]
+    private static extern int GetCurrentPackageFamilyName(ref uint packageFamilyNameLength, [Out] char[]? packageFamilyName);
 
     /// <summary>
     /// Creates and configures the logger factory with NLog.
